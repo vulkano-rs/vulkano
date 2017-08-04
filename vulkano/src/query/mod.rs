@@ -20,6 +20,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use device::DeviceOwned;
 
 use Error;
 use OomError;
@@ -80,10 +81,11 @@ impl UnsafeQueryPool {
     pub fn num_slots(&self) -> u32 {
         self.num_slots
     }
+}
 
-    /// Returns the device used to create the pool.
+unsafe impl DeviceOwned for UnsafeQueryPool {
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
+    fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
@@ -268,10 +270,11 @@ impl OcclusionQueriesPool {
     pub fn num_slots(&self) -> u32 {
         self.inner.num_slots()
     }
+}
 
-    /// Returns the device that was used to create this pool.
+unsafe impl DeviceOwned for OcclusionQueriesPool {
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
+    fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
 }
