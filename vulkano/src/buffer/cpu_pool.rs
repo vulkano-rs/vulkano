@@ -757,4 +757,14 @@ mod tests {
 
         assert_eq!(pool.capacity(), 5);
     }
+
+    #[test]
+    fn chunk_0_elems_doesnt_pollute() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let pool = CpuBufferPool::<u8>::upload(device);
+
+        let _ = pool.chunk(vec![]);
+        let _ = pool.chunk(vec![0, 0]);
+    }
 }
