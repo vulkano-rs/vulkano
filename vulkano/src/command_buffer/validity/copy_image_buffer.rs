@@ -81,7 +81,7 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
     // TODO: wrong because we don't take the mipmap level into account for the dimensions
     let image_dimensions = image.dimensions();
 
-    if image_first_layer + image_num_layers >= image_dimensions.array_layers() {
+    if image_first_layer + image_num_layers > image_dimensions.array_layers() {
         return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
     }
 
@@ -99,7 +99,7 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
 
     image.format().ensure_accepts()?;
 
-    if image_dimensions.num_texels() as usize * image.format().rate() as usize >= buffer.len() {
+    if image_dimensions.num_texels() as usize * image.format().rate() as usize > buffer.len() {
         return Err(CheckCopyBufferImageError::BufferTooSmall);
     }
 
