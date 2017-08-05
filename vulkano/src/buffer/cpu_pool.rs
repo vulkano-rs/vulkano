@@ -282,7 +282,7 @@ impl<T, A> CpuBufferPool<T, A>
         };
 
         // TODO: choose the capacity better?
-        let next_capacity = data.len() * match *mutex {
+        let next_capacity = cmp::max(data.len(), 1) * match *mutex {
             Some(ref b) => b.capacity * 2,
             None => 3,
         };
