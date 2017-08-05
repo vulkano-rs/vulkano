@@ -111,13 +111,32 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
                 enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
             };
 
+            let stage = match *execution {
+                enums::ExecutionModel::ExecutionModelVertex => {
+                    "ShaderStages { vertex: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelTessellationControl => {
+                    "ShaderStages { tessellation_control: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
+                    "ShaderStages { tessellation_evaluation: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelGeometry => {
+                    "ShaderStages { geometry: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelFragment => {
+                    "ShaderStages { fragment: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelGLCompute => unreachable!(),
+                enums::ExecutionModel::ExecutionModelKernel => unreachable!(),
+            };
+
             let t = format!("::vulkano::pipeline::shader::GraphicsEntryPoint<(), {0}Input, \
                                 {0}Output, Layout>",
                             capitalized_ep_name);
             let f = format!("graphics_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() \
-                                as *const _), {0}Input, {0}Output, Layout(ShaderStages {{ vertex: \
-                                true, .. ShaderStages::none() }}), {1})",
-                            capitalized_ep_name, ty);
+                                as *const _), {0}Input, {0}Output, Layout({2}), {1})",
+                            capitalized_ep_name, ty, stage);
 
             (t, f)
         }
