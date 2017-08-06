@@ -68,6 +68,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
 
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
+    #[inline]
     pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
         where F: FormatDesc,
@@ -92,6 +93,16 @@ impl<F> StorageImage<F> {
             transient_attachment: false,
         };
 
+        StorageImage::with_usage(device, dimensions, format, usage, queue_families)
+    }
+
+    /// Same as `new`, but allows specifying the usage.
+    pub fn with_usage<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F,
+                             usage: ImageUsage, queue_families: I)
+                             -> Result<Arc<StorageImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>
+    {
         let queue_families = queue_families
             .into_iter()
             .map(|f| f.id())
