@@ -99,8 +99,15 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
 
     image.format().ensure_accepts()?;
 
-    if image_dimensions.num_texels() as usize * image.format().rate() as usize > buffer.len() {
-        return Err(CheckCopyBufferImageError::BufferTooSmall);
+    {
+        let num_texels = image_size[0] * image_size[1] * image_size[2] * image_num_layers;
+        let required_len = num_texels as usize * image.format().rate() as usize;
+        if required_len > buffer.len() {
+            return Err(CheckCopyBufferImageError::BufferTooSmall {
+                required_len: required_len,
+                actual_len: buffer.len(),
+            });
+        }
     }
 
     // TODO: check memory overlap?
@@ -124,7 +131,12 @@ pub enum CheckCopyBufferImageError {
     /// The type of pixels in the buffer isn't compatible with the image format.
     WrongPixelType(IncompatiblePixelsType),
     /// The buffer is too small for the copy operation.
-    BufferTooSmall,
+    BufferTooSmall {
+        /// Required number of elements in the buffer.
+        required_len: usize,
+        /// Actual number of elements in the buffer.
+        actual_len: usize,
+    },
 }
 
 impl error::Error for CheckCopyBufferImageError {
@@ -149,7 +161,7 @@ impl error::Error for CheckCopyBufferImageError {
             CheckCopyBufferImageError::WrongPixelType(_) => {
                 "the type of pixels in the buffer isn't compatible with the image format"
             },
-            CheckCopyBufferImageError::BufferTooSmall => {
+            CheckCopyBufferImageError::BufferTooSmall { .. } => {
                 "the buffer is too small for the copy operation"
             },
         }
