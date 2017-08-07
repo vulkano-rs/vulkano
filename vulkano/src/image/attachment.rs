@@ -31,10 +31,12 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
@@ -69,7 +71,7 @@ use sync::Sharing;
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<F = Format, A = StdMemoryPoolAlloc> {
+pub struct AttachmentImage<F = Format, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner implementation.
     image: UnsafeImage,
 
@@ -230,7 +232,8 @@ impl<F> AttachmentImage<F> {
                                     mem_reqs.size,
                                     mem_reqs.alignment,
                                     AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image))?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;

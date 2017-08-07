@@ -44,18 +44,20 @@ use device::Queue;
 use instance::QueueFamily;
 use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
+use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
+pub struct CpuAccessibleBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -207,7 +209,8 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                                     mem_reqs.size,
                                     mem_reqs.alignment,
                                     AllocLayout::Linear,
-                                    MappingRequirement::Map)?;
+                                    MappingRequirement::Map,
+                                    DedicatedAlloc::Buffer(&buffer))?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
         buffer.bind_memory(mem.memory(), mem.offset())?;

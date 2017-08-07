@@ -30,10 +30,12 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use memory::DeviceMemoryAllocError;
 use sync::AccessError;
@@ -48,7 +50,7 @@ use sync::Sharing;
 /// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
 /// device-local memory.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
+pub struct DeviceLocalBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -146,7 +148,8 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                                     mem_reqs.size,
                                     mem_reqs.alignment,
                                     AllocLayout::Linear,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Buffer(&buffer))?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         buffer.bind_memory(mem.memory(), mem.offset())?;
 

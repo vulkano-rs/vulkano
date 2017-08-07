@@ -46,7 +46,9 @@ use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
+use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::NowFuture;
@@ -54,7 +56,7 @@ use sync::Sharing;
 
 /// Buffer that is written once then read for as long as it is alive.
 // TODO: implement Debug
-pub struct ImmutableBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
+pub struct ImmutableBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -270,7 +272,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
                                     mem_reqs.size,
                                     mem_reqs.alignment,
                                     AllocLayout::Linear,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Buffer(&buffer))?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         buffer.bind_memory(mem.memory(), mem.offset())?;
 
@@ -368,7 +371,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A> {
 
 /// Access to the immutable buffer that can be used for the initial upload.
 //#[derive(Debug)]      // TODO:
-pub struct ImmutableBufferInitialization<T: ?Sized, A = StdMemoryPoolAlloc> {
+pub struct ImmutableBufferInitialization<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     buffer: Arc<ImmutableBuffer<T, A>>,
     used: Arc<AtomicBool>,
 }

@@ -30,10 +30,12 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
 use memory::DeviceMemoryAllocError;
 use sync::AccessError;
@@ -93,7 +95,7 @@ struct ActualBuffer<A>
     inner: UnsafeBuffer,
 
     // The memory held by the buffer.
-    memory: A::Alloc,
+    memory: PotentialDedicatedAllocation<A::Alloc>,
 
     // List of the chunks that are reserved.
     chunks_in_use: Mutex<Vec<ActualBufferChunk>>,
@@ -337,7 +339,8 @@ impl<T, A> CpuBufferPool<T, A>
                                         mem_reqs.size,
                                         mem_reqs.alignment,
                                         AllocLayout::Linear,
-                                        MappingRequirement::Map)?;
+                                        MappingRequirement::Map,
+                                    DedicatedAlloc::Buffer(&buffer))?;
             debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
             debug_assert!(mem.mapped_memory().is_some());
             buffer.bind_memory(mem.memory(), mem.offset())?;

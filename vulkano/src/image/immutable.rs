@@ -38,10 +38,12 @@ use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
@@ -51,7 +53,7 @@ use sync::NowFuture;
 /// but then you must only ever read from it.
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F, A = StdMemoryPoolAlloc> {
+pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
     view: UnsafeImageView,
     dimensions: Dimensions,
@@ -62,7 +64,7 @@ pub struct ImmutableImage<F, A = StdMemoryPoolAlloc> {
 }
 
 // Must not implement Clone, as that would lead to multiple `used` values.
-pub struct ImmutableImageInitialization<F, A = StdMemoryPoolAlloc> {
+pub struct ImmutableImageInitialization<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<F, A>>,
     used: AtomicBool,
 }
@@ -155,7 +157,8 @@ impl<F> ImmutableImage<F> {
                                     mem_reqs.size,
                                     mem_reqs.alignment,
                                     AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image))?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;

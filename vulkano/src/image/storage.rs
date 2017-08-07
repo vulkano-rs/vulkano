@@ -30,10 +30,12 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
 use sync::AccessError;
 use sync::Sharing;
@@ -51,7 +53,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
     view: UnsafeImageView,
 
     // Memory used to back the image.
-    memory: A::Alloc,
+    memory: PotentialDedicatedAllocation<A::Alloc>,
 
     // Dimensions of the image view.
     dimensions: Dimensions,
@@ -144,7 +146,8 @@ impl<F> StorageImage<F> {
                                     mem_reqs.size,
                                     mem_reqs.alignment,
                                     AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image))?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
