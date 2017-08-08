@@ -91,16 +91,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
             return Ok(alloc.into());
         }
 
-        let use_dedicated = match dedicated {
-            DedicatedAlloc::None => false,
-            DedicatedAlloc::Buffer(ref buf) => size >= 20 * 1024 * 1024,
-            DedicatedAlloc::Image(ref img) => {
-                size >= 20 * 1024 * 1024 || img.usage_color_attachment() ||
-                    img.usage_depth_stencil_attachment()
-            },
-        };
-
-        if !use_dedicated {
+        if let DedicatedAlloc::None = dedicated {
             let alloc = self.alloc_generic(ty, size, alignment, layout, map)?;
             return Ok(alloc.into());
         }
