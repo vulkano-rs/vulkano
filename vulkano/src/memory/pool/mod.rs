@@ -12,6 +12,7 @@ use instance::MemoryType;
 use memory::DedicatedAlloc;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
+use memory::MemoryRequirements;
 use memory::DeviceMemoryAllocError;
 
 pub use self::host_visible::StdHostVisibleMemoryTypePool;
@@ -54,12 +55,14 @@ pub unsafe trait MemoryPool: DeviceOwned {
     fn alloc_generic(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout,
                      map: MappingRequirement) -> Result<Self::Alloc, DeviceMemoryAllocError>;
 
-    /// Allocates memory from the pool.
+    /// Chooses a memory type and allocates memory from it.
     ///
     /// Contrary to `alloc_generic`, this function may allocate a whole new block of memory
-    /// dedicated to a resource. The default provided implementation will do so for allocations
-    /// of more than 20MB and for images that have the color_attachment or depth_stencil_attachment
-    /// usages enabled.
+    /// dedicated to a resource based on `requirements.prefer_dedicated`.
+    ///
+    /// `filter` can be used to restrict the memory types and to indicate which are preferred.
+    /// If `map` is `MappingRequirement::Map`, then non-host-visible memory types will
+    /// automatically be filtered out.
     ///
     /// # Safety
     ///
@@ -76,41 +79,75 @@ pub unsafe trait MemoryPool: DeviceOwned {
     ///
     /// # Panic
     ///
-    /// - Panics if `memory_type` doesn't belong to the same physical device as the device which
-    ///   was used to create this pool.
-    /// - Panics if the memory type is not host-visible and `map` is `MappingRequirement::Map`.
+    /// - Panics if no memory type could be found, which can happen if `filter` is too restrictive.
+    // TODO: ^ is this a good idea?
     /// - Panics if `size` is 0.
     /// - Panics if `alignment` is 0.
     ///
-    fn alloc(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout,
-             map: MappingRequirement, dedicated: DedicatedAlloc)
-             -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
+    fn alloc_from_requirements<F>(&self, requirements: &MemoryRequirements, layout: AllocLayout,
+                                  map: MappingRequirement, dedicated: DedicatedAlloc, mut filter: F)
+                    -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
+        where F: FnMut(MemoryType) -> AllocFromRequirementsFilter
     {
-        if !self.device().loaded_extensions().khr_dedicated_allocation {
-            let alloc = self.alloc_generic(ty, size, alignment, layout, map)?;
+        // Choose a suitable memory type.
+        let mem_ty = {
+            let mut filter = |ty: MemoryType| {
+                if map == MappingRequirement::Map && !ty.is_host_visible() {
+                    return AllocFromRequirementsFilter::Forbidden;
+                }
+                filter(ty)
+            };
+            let first_loop = self.device()
+                .physical_device()
+                .memory_types()
+                .map(|t| (t, AllocFromRequirementsFilter::Preferred));
+            let second_loop = self.device()
+                .physical_device()
+                .memory_types()
+                .map(|t| (t, AllocFromRequirementsFilter::Allowed));
+            first_loop
+                .chain(second_loop)
+                .filter(|&(t, _)| (requirements.memory_type_bits & (1 << t.id())) != 0)
+                .filter(|&(t, rq)| filter(t) == rq)
+                .next()
+                .expect("Couldn't find a memory type to allocate from").0
+        };
+
+        // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
+        if !requirements.prefer_dedicated ||
+            !self.device().loaded_extensions().khr_dedicated_allocation
+        {
+            let alloc = self.alloc_generic(mem_ty, requirements.size, requirements.alignment,
+                                           layout, map)?;
             return Ok(alloc.into());
         }
-
         if let DedicatedAlloc::None = dedicated {
-            let alloc = self.alloc_generic(ty, size, alignment, layout, map)?;
+            let alloc = self.alloc_generic(mem_ty, requirements.size, requirements.alignment,
+                                           layout, map)?;
             return Ok(alloc.into());
         }
 
         // If we reach here, then we perform a dedicated alloc.
-
         match map {
             MappingRequirement::Map => {
-                let mem = DeviceMemory::dedicated_alloc_and_map(self.device().clone(), ty, size,
-                                                                dedicated)?;
+                let mem = DeviceMemory::dedicated_alloc_and_map(self.device().clone(), mem_ty,
+                                                                requirements.size, dedicated)?;
                 Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
             },
             MappingRequirement::DoNotMap => {
-                let mem = DeviceMemory::dedicated_alloc(self.device().clone(), ty, size,
-                                                        dedicated)?;
+                let mem = DeviceMemory::dedicated_alloc(self.device().clone(), mem_ty,
+                                                        requirements.size, dedicated)?;
                 Ok(PotentialDedicatedAllocation::Dedicated(mem))
             },
         }
     }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum AllocFromRequirementsFilter {
+    Preferred,
+    Allowed,
+    Forbidden,
 }
 
 /// Object that represents a single allocation. Its destructor should free the chunk.

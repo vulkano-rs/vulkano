@@ -42,6 +42,7 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
@@ -254,26 +255,16 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             }
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
-                                    AllocLayout::Linear,
-                                    MappingRequirement::DoNotMap,
-                                    DedicatedAlloc::Buffer(&buffer))?;
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                                      &mem_reqs,
+                                                      AllocLayout::Linear,
+                                                      MappingRequirement::DoNotMap,
+                                                      DedicatedAlloc::Buffer(&buffer),
+                                                      |t| if t.is_device_local() {
+                                                          AllocFromRequirementsFilter::Preferred
+                                                      } else {
+                                                          AllocFromRequirementsFilter::Allowed
+                                                      })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         buffer.bind_memory(mem.memory(), mem.offset())?;
 

@@ -46,6 +46,7 @@ use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
 use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
@@ -196,21 +197,12 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             }
         };
 
-        let mem_ty = device
-            .physical_device()
-            .memory_types()
-            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-            .filter(|t| t.is_host_visible())
-            .next()
-            .unwrap(); // Vk specs guarantee that this can't fail
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
                                     AllocLayout::Linear,
                                     MappingRequirement::Map,
-                                    DedicatedAlloc::Buffer(&buffer))?;
+                                    DedicatedAlloc::Buffer(&buffer),
+                                    |_| AllocFromRequirementsFilter::Allowed)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
         buffer.bind_memory(mem.memory(), mem.offset())?;

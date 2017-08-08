@@ -32,6 +32,7 @@ use device::Queue;
 use instance::QueueFamily;
 use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
@@ -326,21 +327,12 @@ impl<T, A> CpuBufferPool<T, A>
                 }
             };
 
-            let mem_ty = self.device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_host_visible())
-                .next()
-                .unwrap(); // Vk specs guarantee that this can't fail
-
-            let mem = MemoryPool::alloc(&self.pool,
-                                        mem_ty,
-                                        mem_reqs.size,
-                                        mem_reqs.alignment,
+            let mem = MemoryPool::alloc_from_requirements(&self.pool,
+                                        &mem_reqs,
                                         AllocLayout::Linear,
                                         MappingRequirement::Map,
-                                    DedicatedAlloc::Buffer(&buffer))?;
+                                        DedicatedAlloc::Buffer(&buffer),
+                                        |_| AllocFromRequirementsFilter::Allowed)?;
             debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
             debug_assert!(mem.mapped_memory().is_some());
             buffer.bind_memory(mem.memory(), mem.offset())?;

@@ -118,8 +118,8 @@ pub struct MemoryRequirements {
     pub memory_type_bits: u32,
 
     /// True if the implementation prefers to use dedicated allocations (in other words, allocate
-    /// a whole block of memory dedicated to this resource alone). If the implementation doesn't
-    /// support dedicated allocations, this will be false.
+    /// a whole block of memory dedicated to this resource alone). If the
+    /// `khr_get_memory_requirements2` extension isn't enabled, then this will be false.
     ///
     /// > **Note**: As its name says, using a dedicated allocation is an optimization and not a
     /// > requirement.
