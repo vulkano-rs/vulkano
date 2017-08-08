@@ -1018,10 +1018,16 @@ impl<P> SyncCommandBuffer<P> {
     /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
     pub fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
                        -> Result<(), CommandBufferExecError> {
-        // TODO: if at any point we return an error, we can't recover
 
         let commands_lock = self.commands.lock().unwrap();
 
+        // Number of resources in `self.resources` that have been successfully locked.
+        let mut locked_resources = 0;
+        // Final return value of this function.
+        let mut ret_value = Ok(());
+
+        // Try locking resources. Updates `locked_resources` and `ret_value`, and break if an error
+        // happens.
         for (key, entry) in self.resources.iter() {
             let (commands, command_id, resource_ty, resource_index) = match *key {
                 CbKey::Command {
@@ -1045,6 +1051,7 @@ impl<P> SyncCommandBuffer<P> {
                             unsafe {
                                 buf.increase_gpu_lock();
                             }
+                            locked_resources += 1;
                             continue;
                         },
                         Err(err) => err,
@@ -1052,10 +1059,19 @@ impl<P> SyncCommandBuffer<P> {
 
                     match (buf.try_gpu_lock(entry.exclusive, queue), prev_err) {
                         (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) => return Err(err.into()),
-                        (_, AccessCheckError::Denied(err)) => return Err(err.into()),
-                    }
+                        (Err(err), AccessCheckError::Unknown) => {
+                            ret_value = Err(err.into());
+                            break;
+                        },
+                        (_, AccessCheckError::Denied(err)) => {
+                            ret_value = Err(err.into());
+                            break;
+                        },
+                    };
+
+                    locked_resources += 1;
                 },
+
                 KeyTy::Image => {
                     let cmd = &commands_lock[command_id];
                     let img = cmd.image(resource_index);
@@ -1065,6 +1081,7 @@ impl<P> SyncCommandBuffer<P> {
                     {
                         Ok(_) => {
                             unsafe { img.increase_gpu_lock(); }
+                            locked_resources += 1;
                             continue;
                         },
                         Err(err) => err
@@ -1072,16 +1089,55 @@ impl<P> SyncCommandBuffer<P> {
 
                     match (img.try_gpu_lock(entry.exclusive, queue), prev_err) {
                         (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) => return Err(err.into()),
-                        (_, AccessCheckError::Denied(err)) => return Err(err.into()),
-                    }
+                        (Err(err), AccessCheckError::Unknown) => {
+                            ret_value = Err(err.into());
+                            break;
+                        },
+                        (_, AccessCheckError::Denied(err)) => {
+                            ret_value = Err(err.into());
+                            break;
+                        },
+                    };
+
+                    locked_resources += 1;
                 },
+            }
+        }
+
+        // If we are going to return an error, we have to unlock all the resources we locked above.
+        if let Err(_) = ret_value {
+            for (key, entry) in self.resources.iter().take(locked_resources) {
+                let (commands, command_id, resource_ty, resource_index) = match *key {
+                    CbKey::Command {
+                        ref commands,
+                        command_id,
+                        resource_ty,
+                        resource_index,
+                    } => {
+                        (commands, command_id, resource_ty, resource_index)
+                    },
+                    _ => unreachable!(),
+                };
+
+                match resource_ty {
+                    KeyTy::Buffer => {
+                        let cmd = &commands_lock[command_id];
+                        let buf = cmd.buffer(resource_index);
+                        unsafe { buf.unlock(); }
+                    },
+
+                    KeyTy::Image => {
+                        let cmd = &commands_lock[command_id];
+                        let img = cmd.image(resource_index);
+                        unsafe { img.unlock(); }
+                    },
+                }
             }
         }
 
         // TODO: pipeline barriers if necessary?
 
-        Ok(())
+        ret_value
     }
 
     /// Unlocks the resources used by the command buffer.
