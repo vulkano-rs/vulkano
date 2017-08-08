@@ -109,14 +109,14 @@ pub unsafe trait MemoryPool: DeviceOwned {
 
         match map {
             MappingRequirement::Map => {
-                let mem = DeviceMemory::dedicated_alloc(self.device().clone(), ty, size,
-                                                        dedicated)?;
-                Ok(PotentialDedicatedAllocation::Dedicated(mem))
-            },
-            MappingRequirement::DoNotMap => {
                 let mem = DeviceMemory::dedicated_alloc_and_map(self.device().clone(), ty, size,
                                                                 dedicated)?;
                 Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
+            },
+            MappingRequirement::DoNotMap => {
+                let mem = DeviceMemory::dedicated_alloc(self.device().clone(), ty, size,
+                                                        dedicated)?;
+                Ok(PotentialDedicatedAllocation::Dedicated(mem))
             },
         }
     }
