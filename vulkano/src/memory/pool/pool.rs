@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use device::Device;
+use device::DeviceOwned;
 use instance::MemoryType;
 use memory::DeviceMemory;
 use memory::MappedDeviceMemory;
@@ -53,8 +54,9 @@ impl StdMemoryPool {
 unsafe impl MemoryPool for Arc<StdMemoryPool> {
     type Alloc = StdMemoryPoolAlloc;
 
-    fn alloc(&self, memory_type: MemoryType, size: usize, alignment: usize, layout: AllocLayout,
-             map: MappingRequirement) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
+    fn alloc_generic(&self, memory_type: MemoryType, size: usize, alignment: usize,
+                     layout: AllocLayout, map: MappingRequirement)
+                     -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
         let mut pools = self.pools.lock().unwrap();
 
         let memory_type_host_visible = memory_type.is_host_visible();
@@ -106,6 +108,13 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
                 }
             },
         }
+    }
+}
+
+unsafe impl DeviceOwned for StdMemoryPool {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

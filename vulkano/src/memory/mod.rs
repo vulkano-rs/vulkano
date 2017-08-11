@@ -118,8 +118,8 @@ pub struct MemoryRequirements {
     pub memory_type_bits: u32,
 
     /// True if the implementation prefers to use dedicated allocations (in other words, allocate
-    /// a whole block of memory dedicated to this resource alone). If the implementation doesn't
-    /// support dedicated allocations, this will be false.
+    /// a whole block of memory dedicated to this resource alone). If the
+    /// `khr_get_memory_requirements2` extension isn't enabled, then this will be false.
     ///
     /// > **Note**: As its name says, using a dedicated allocation is an optimization and not a
     /// > requirement.
@@ -138,10 +138,20 @@ impl MemoryRequirements {
     }
 }
 
+/// Indicates whether we want to allocate memory for a specific resource, or in a generic way.
+///
+/// Using dedicated allocations can yield faster performances, but requires the
+/// `VK_KHR_dedicated_allocation` extension to be enabled on the device.
+///
+/// If a dedicated allocation is performed, it must only be bound to any resource other than the
+/// one that was passed with the enumeration.
 #[derive(Debug, Copy, Clone)]
 pub enum DedicatedAlloc<'a> {
+    /// Generic allocation.
     None,
+    /// Allocation dedicated to a buffer.
     Buffer(&'a UnsafeBuffer),
+    /// Allocation dedicated to an image.
     Image(&'a UnsafeImage),
 }
 

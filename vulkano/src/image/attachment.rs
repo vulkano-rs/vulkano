@@ -31,10 +31,13 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use memory::DedicatedAlloc;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
@@ -69,7 +72,7 @@ use sync::Sharing;
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<F = Format, A = StdMemoryPoolAlloc> {
+pub struct AttachmentImage<F = Format, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner implementation.
     image: UnsafeImage,
 
@@ -364,25 +367,16 @@ impl<F> AttachmentImage<F> {
                              false)?
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
                                     AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
