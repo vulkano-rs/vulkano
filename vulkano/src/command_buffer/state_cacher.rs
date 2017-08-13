@@ -249,6 +249,7 @@ impl<'s> StateCacherDescriptorSets<'s> {
 
         if self.offset < self.state.len() {
             if self.state[self.offset] == raw {
+                self.offset += 1;
                 return;
             }
 
@@ -261,6 +262,7 @@ impl<'s> StateCacherDescriptorSets<'s> {
         if self.found_diff.is_none() {
             self.found_diff = Some(self.offset as u32);
         }
+        self.offset += 1;
     }
 
     /// Compares your list to the list in cache, and returns the offset of the first set to bind.
@@ -315,6 +317,7 @@ impl<'s> StateCacherVertexBuffers<'s> {
 
         if self.offset < self.state.len() {
             if self.state[self.offset] == raw {
+                self.offset += 1;
                 return;
             }
 
@@ -328,6 +331,7 @@ impl<'s> StateCacherVertexBuffers<'s> {
         if self.first_diff.is_none() {
             self.first_diff = Some(self.offset as u32);
         }
+        self.offset += 1;
     }
 
     /// Compares your list to the list in cache, and returns the range of the vertex buffers to
