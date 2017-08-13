@@ -359,3 +359,124 @@ impl<'s> StateCacherVertexBuffers<'s> {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use buffer::BufferUsage;
+    use buffer::CpuAccessibleBuffer;
+    use command_buffer::state_cacher::StateCacher;
+
+    #[test]
+    fn vb_caching_single() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+        let buf = CpuAccessibleBuffer::from_data(device,
+                                                 BufferUsage::vertex_buffer(),
+                                                 Some(queue.family()),
+                                                 EMPTY.iter()).unwrap();
+        
+        let mut cacher = StateCacher::new();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+
+        for _ in 0 .. 3 {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), None);
+        }
+    }
+
+    #[test]
+    fn vb_caching_invalidated() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+        let buf = CpuAccessibleBuffer::from_data(device,
+                                                 BufferUsage::vertex_buffer(),
+                                                 Some(queue.family()),
+                                                 EMPTY.iter()).unwrap();
+        
+        let mut cacher = StateCacher::new();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), None);
+        }
+
+        cacher.invalidate();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+    }
+
+    #[test]
+    fn vb_caching_multi() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+        let buf1 = CpuAccessibleBuffer::from_data(device.clone(),
+                                                  BufferUsage::vertex_buffer(),
+                                                  Some(queue.family()),
+                                                  EMPTY.iter()).unwrap();
+        let buf2 = CpuAccessibleBuffer::from_data(device.clone(),
+                                                  BufferUsage::vertex_buffer(),
+                                                  Some(queue.family()),
+                                                  EMPTY.iter()).unwrap();
+        let buf3 = CpuAccessibleBuffer::from_data(device,
+                                                  BufferUsage::vertex_buffer(),
+                                                  Some(queue.family()),
+                                                  EMPTY.iter()).unwrap();
+        
+        let mut cacher = StateCacher::new();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            bind_vb.add(&buf2);
+            assert_eq!(bind_vb.compare(), Some(0 .. 2));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            bind_vb.add(&buf2);
+            bind_vb.add(&buf3);
+            assert_eq!(bind_vb.compare(), Some(2 .. 3));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            assert_eq!(bind_vb.compare(), None);
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            bind_vb.add(&buf3);
+            assert_eq!(bind_vb.compare(), Some(1 .. 2));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf2);
+            bind_vb.add(&buf3);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+    }
+}
