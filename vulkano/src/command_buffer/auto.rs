@@ -818,7 +818,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
-            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
+            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
 
             debug_assert!(self.graphics_allowed);
 
@@ -865,7 +865,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
-            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
+            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
             debug_assert!(self.graphics_allowed);
@@ -909,7 +909,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
             descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
-            vertex_buffers(&mut self.inner, vb_infos.vertex_buffers)?;
+            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
 
             debug_assert!(self.graphics_allowed);
 
@@ -1108,14 +1108,29 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: D
 
 // Shortcut function to bind vertex buffers.
 unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
+                            state_cacher: &mut StateCacher,
                             vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
                             -> Result<(), SyncCommandBufferBuilderError>
 {
+    let binding_range = {
+        let mut compare = state_cacher.bind_vertex_buffers();
+        for vb in vertex_buffers.iter() {
+            compare.add(vb);
+        }
+        match compare.compare() {
+            Some(r) => r,
+            None => return Ok(())
+        }
+    };
+
+    let first_binding = binding_range.start;
+    let num_bindings = binding_range.end - binding_range.start;
+
     let mut binder = destination.bind_vertex_buffers();
-    for vb in vertex_buffers {
+    for vb in vertex_buffers.into_iter().skip(first_binding as usize).take(num_bindings as usize) {
         binder.add(vb);
     }
-    binder.submit(0)?;
+    binder.submit(first_binding)?;
     Ok(())
 }
 
