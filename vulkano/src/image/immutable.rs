@@ -24,6 +24,7 @@ use command_buffer::CommandBufferExecFuture;
 use device::Device;
 use device::Queue;
 use format::AcceptsPixels;
+use format::Format;
 use format::FormatDesc;
 use image::Dimensions;
 use image::ImageInner;
@@ -37,9 +38,13 @@ use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
@@ -49,7 +54,7 @@ use sync::NowFuture;
 /// but then you must only ever read from it.
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F, A = StdMemoryPoolAlloc> {
+pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
     view: UnsafeImageView,
     dimensions: Dimensions,
@@ -60,7 +65,7 @@ pub struct ImmutableImage<F, A = StdMemoryPoolAlloc> {
 }
 
 // Must not implement Clone, as that would lead to multiple `used` values.
-pub struct ImmutableImageInitialization<F, A = StdMemoryPoolAlloc> {
+pub struct ImmutableImageInitialization<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<F, A>>,
     used: AtomicBool,
 }
@@ -135,24 +140,16 @@ impl<F> ImmutableImage<F> {
                              false)?
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
-                                    AllocLayout::Optimal)?;
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
+                                    AllocLayout::Optimal,
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
@@ -194,6 +191,7 @@ impl<F> ImmutableImage<F> {
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: ExactSizeIterator<Item = P>,
               J: IntoIterator<Item = QueueFamily<'a>>,
+              Format: AcceptsPixels<P>,
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
@@ -212,17 +210,10 @@ impl<F> ImmutableImage<F> {
               P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: IntoIterator<Item = QueueFamily<'a>>,
+              Format: AcceptsPixels<P>,
     {
         let usage = ImageUsage { transfer_destination: true, sampled: true, ..ImageUsage::none() };
         let layout = ImageLayout::ShaderReadOnlyOptimal;
-        // TODO: The following panics should be removed in favor of propagating errors from copy_buffer_to_image.
-        format.ensure_accepts().unwrap();
-        if source.len() % format.rate() as usize != 0 {
-            panic!("cannot divide {} datums into an image with {} channels", source.len(), format.rate());
-        }
-        if dimensions.num_texels() as usize * format.rate() as usize != source.len() {
-            panic!("image with {} texels cannot be initialized with {}", dimensions.num_texels(), source.len() / format.rate() as usize);
-        }
 
         let (buffer, init) = ImmutableImage::uninitialized(source.device().clone(),
                                                            dimensions, format,

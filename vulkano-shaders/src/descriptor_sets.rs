@@ -18,7 +18,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
     struct Descriptor {
-        name: String,
         set: u32,
         binding: u32,
         desc_ty: String,
@@ -70,7 +69,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                              pointed_ty));
 
         descriptors.push(Descriptor {
-                             name: name,
                              desc_ty: desc_ty,
                              set: descriptor_set,
                              binding: binding,
@@ -137,18 +135,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             .concat()
     };
 
-    // Writing the body of the `descriptor_by_name_body` method.
-    let descriptor_by_name_body = descriptors
-        .iter()
-        .map(|d| {
-                 format!(r#"{name:?} => Some(({set}, {binding})),"#,
-                         name = d.name,
-                         set = d.set,
-                         binding = d.binding)
-             })
-        .collect::<Vec<_>>()
-        .concat();
-
     // Writing the body of the `num_push_constants_ranges` method.
     let num_push_constants_ranges_body = {
         if push_constants_size == 0 { "0" } else { "1" }
@@ -200,20 +186,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 {push_constants_range_body}
             }}
         }}
-
-        #[allow(unsafe_code)]
-        unsafe impl PipelineLayoutDescNames for Layout {{
-            fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {{
-                match name {{
-                    {descriptor_by_name_body}
-                    _ => None
-                }}
-            }}
-        }}
         "#,
         num_sets = num_sets,
         num_bindings_in_set_body = num_bindings_in_set_body,
-        descriptor_by_name_body = descriptor_by_name_body,
         descriptor_body = descriptor_body,
         num_push_constants_ranges_body = num_push_constants_ranges_body,
         push_constants_range_body = push_constants_range_body
@@ -286,7 +261,6 @@ fn descriptor_infos(doc: &parse::Spirv, pointed_ty: u32, force_combined_image_sa
                 let desc = format!("DescriptorDescTy::Buffer(DescriptorBufferDesc {{
                     dynamic: Some(false),
                     storage: {},
-                    content: DescriptorBufferContentDesc::F32,      // FIXME: wrong
                 }})", if is_ssbo { "true" } else { "false "});
 
                 Some((desc, true, 1))

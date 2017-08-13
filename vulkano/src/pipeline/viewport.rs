@@ -141,10 +141,9 @@ pub struct Viewport {
     pub depth_range: Range<f32>,
 }
 
-#[doc(hidden)]
-impl Into<vk::Viewport> for Viewport {
+impl Viewport {
     #[inline]
-    fn into(self) -> vk::Viewport {
+    pub(crate) fn into_vulkan_viewport(self) -> vk::Viewport {
         vk::Viewport {
             x: self.origin[0],
             y: self.origin[1],
@@ -178,19 +177,9 @@ impl Scissor {
             dimensions: [0x7fffffff, 0x7fffffff],
         }
     }
-}
 
-impl Default for Scissor {
     #[inline]
-    fn default() -> Scissor {
-        Scissor::irrelevant()
-    }
-}
-
-#[doc(hidden)]
-impl Into<vk::Rect2D> for Scissor {
-    #[inline]
-    fn into(self) -> vk::Rect2D {
+    pub(crate) fn into_vulkan_rect(self) -> vk::Rect2D {
         vk::Rect2D {
             offset: vk::Offset2D {
                 x: self.origin[0],
@@ -201,5 +190,12 @@ impl Into<vk::Rect2D> for Scissor {
                 height: self.dimensions[1],
             },
         }
+    }
+}
+
+impl Default for Scissor {
+    #[inline]
+    fn default() -> Scissor {
+        Scissor::irrelevant()
     }
 }

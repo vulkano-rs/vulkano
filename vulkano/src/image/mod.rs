@@ -314,6 +314,7 @@ impl Dimensions {
         }
     }
 
+    /// Returns the total number of texels for an image of these dimensions.
     #[inline]
     pub fn num_texels(&self) -> u32 {
         self.width() * self.height() * self.depth() * self.array_layers_with_cube()
@@ -388,5 +389,11 @@ impl ImageDimensions {
             ImageDimensions::Dim2d { array_layers, .. } => array_layers,
             ImageDimensions::Dim3d { .. } => 1,
         }
+    }
+
+    /// Returns the total number of texels for an image of these dimensions.
+    #[inline]
+    pub fn num_texels(&self) -> u32 {
+        self.width() * self.height() * self.depth() * self.array_layers()
     }
 }

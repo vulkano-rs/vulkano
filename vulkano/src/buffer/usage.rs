@@ -30,6 +30,39 @@ pub struct BufferUsage {
 }
 
 impl BufferUsage {
+    /// Turns this `BufferUsage` into raw Vulkan bits.
+    pub(crate) fn to_vulkan_bits(&self) -> vk::BufferUsageFlagBits {
+        let mut result = 0;
+        if self.transfer_source {
+            result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
+        }
+        if self.transfer_destination {
+            result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
+        }
+        if self.uniform_texel_buffer {
+            result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+        }
+        if self.storage_texel_buffer {
+            result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+        }
+        if self.uniform_buffer {
+            result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        }
+        if self.storage_buffer {
+            result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
+        if self.index_buffer {
+            result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
+        if self.vertex_buffer {
+            result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        }
+        if self.indirect_buffer {
+            result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
+        result
+    }
+
     /// Builds a `BufferUsage` with all values set to false.
     #[inline]
     pub fn none() -> BufferUsage {
@@ -177,38 +210,4 @@ impl BitOr for BufferUsage {
             indirect_buffer: self.indirect_buffer || rhs.indirect_buffer,
         }
     }
-}
-
-/// Turns a `BufferUsage` into raw bits.
-#[inline]
-pub fn usage_to_bits(usage: BufferUsage) -> vk::BufferUsageFlagBits {
-    let mut result = 0;
-    if usage.transfer_source {
-        result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
-    }
-    if usage.transfer_destination {
-        result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
-    }
-    if usage.uniform_texel_buffer {
-        result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-    }
-    if usage.storage_texel_buffer {
-        result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
-    }
-    if usage.uniform_buffer {
-        result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    }
-    if usage.storage_buffer {
-        result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
-    }
-    if usage.index_buffer {
-        result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
-    }
-    if usage.vertex_buffer {
-        result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
-    }
-    if usage.indirect_buffer {
-        result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-    }
-    result
 }

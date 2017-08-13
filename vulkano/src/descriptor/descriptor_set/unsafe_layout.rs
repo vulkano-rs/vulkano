@@ -68,7 +68,7 @@ impl UnsafeDescriptorSetLayout {
                          binding: binding as u32,
                          descriptorType: ty as u32,
                          descriptorCount: desc.array_count,
-                         stageFlags: desc.stages.into(),
+                         stageFlags: desc.stages.into_vulkan_bits(),
                          pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
                      })
             })
@@ -145,7 +145,6 @@ impl Drop for UnsafeDescriptorSetLayout {
 
 #[cfg(test)]
 mod tests {
-    use descriptor::descriptor::DescriptorBufferContentDesc;
     use descriptor::descriptor::DescriptorBufferDesc;
     use descriptor::descriptor::DescriptorDesc;
     use descriptor::descriptor::DescriptorDescTy;
@@ -168,7 +167,6 @@ mod tests {
             ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
                                              dynamic: Some(false),
                                              storage: false,
-                                             content: DescriptorBufferContentDesc::F32,
                                          }),
             array_count: 1,
             stages: ShaderStages::all_graphics(),

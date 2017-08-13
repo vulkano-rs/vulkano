@@ -31,7 +31,6 @@ use vulkano::command_buffer::DynamicState;
 use vulkano::descriptor::descriptor::DescriptorDesc;
 use vulkano::descriptor::descriptor::ShaderStages;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-use vulkano::descriptor::pipeline_layout::PipelineLayoutDescNames;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
@@ -39,6 +38,7 @@ use vulkano::format;
 use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::Subpass;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::shader::GraphicsShaderType;
 use vulkano::pipeline::shader::ShaderInterfaceDef;
 use vulkano::pipeline::shader::ShaderInterfaceDefEntry;
 use vulkano::pipeline::shader::ShaderModule;
@@ -265,11 +265,6 @@ fn main() {
                                              stages: ShaderStages::all() })
         }
     }
-    unsafe impl PipelineLayoutDescNames for VertLayout {
-        fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-            match name { _ => None, }
-        }
-    }
 
     // Same as with our vertex shader, but for fragment one instead.
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -361,11 +356,6 @@ fn main() {
                                              stages: ShaderStages::all() })
         }
     }
-    unsafe impl PipelineLayoutDescNames for FragLayout {
-        fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-            match name { _ => None, }
-        }
-    }
 
     // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
     // checking and you have to verify correctness of what you are doing by
@@ -374,18 +364,20 @@ fn main() {
     // You must be extra careful to specify correct entry point, or program will
     // crash at runtime outside of rust and you will get NO meaningful error
     // information!
-    let vert_main = unsafe { vs.vertex_shader_entry_point(
+    let vert_main = unsafe { vs.graphics_entry_point(
         CStr::from_bytes_with_nul_unchecked(b"main\0"),
         VertInput,
         VertOutput,
-        VertLayout(ShaderStages { vertex: true, ..ShaderStages::none() })
+        VertLayout(ShaderStages { vertex: true, ..ShaderStages::none() }),
+        GraphicsShaderType::Vertex
     ) };
 
-    let frag_main = unsafe { fs.fragment_shader_entry_point(
+    let frag_main = unsafe { fs.graphics_entry_point(
         CStr::from_bytes_with_nul_unchecked(b"main\0"),
         FragInput,
         FragOutput,
-        FragLayout(ShaderStages { fragment: true, ..ShaderStages::none() })
+        FragLayout(ShaderStages { fragment: true, ..ShaderStages::none() }),
+        GraphicsShaderType::Fragment
     ) };
 
     let graphics_pipeline = Arc::new(

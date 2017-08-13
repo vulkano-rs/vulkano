@@ -54,7 +54,8 @@ macro_rules! ordered_passes_renderpass {
                 {
                     color: [$($color_atch:ident),*],
                     depth_stencil: {$($depth_atch:ident)*},
-                    input: [$($input_atch:ident),*]
+                    input: [$($input_atch:ident),*]$(,)*
+                    $(resolve: [$($resolve_atch:ident),*])*$(,)*
                 }
             ),*
         ]
@@ -192,7 +193,7 @@ macro_rules! ordered_passes_renderpass {
                             depth = Some(($depth_atch, ImageLayout::DepthStencilAttachmentOptimal));
                         )*
 
-                        return Some(LayoutPassDescription {
+                        let mut desc = LayoutPassDescription {
                             color_attachments: vec![
                                 $(
                                     ($color_atch, ImageLayout::ColorAttachmentOptimal)
@@ -204,14 +205,22 @@ macro_rules! ordered_passes_renderpass {
                                     ($input_atch, ImageLayout::ShaderReadOnlyOptimal)
                                 ),*
                             ],
-                            resolve_attachments: vec![],
+                            resolve_attachments: vec![
+                                $(
+                                    ($resolve_atch, ImageLayout::TransferDstOptimal)
+                                ),*
+                            ],
                             preserve_attachments: (0 .. attachment_num).filter(|&a| {
                                 $(if a == $color_atch { return false; })*
                                 $(if a == $depth_atch { return false; })*
                                 $(if a == $input_atch { return false; })*
                                 true
                             }).collect()
-                        });
+                        };
+
+                        assert!(desc.resolve_attachments.is_empty() ||
+                                desc.resolve_attachments.len() == desc.color_attachments.len());
+                        return Some(desc);
                     }
 
                     cur_pass_num += 1;
@@ -281,6 +290,15 @@ macro_rules! ordered_passes_renderpass {
                     )*
 
                     $(
+                        if $resolve_atch == num {
+                            if initial_layout.is_none() {
+                                initial_layout = Some(ImageLayout::TransferDstOptimal);
+                            }
+                            final_layout = Some(ImageLayout::TransferDstOptimal);
+                        }
+                    )*
+
+                    $(
                         if $input_atch == num {
                             if initial_layout.is_none() {
                                 initial_layout = Some(ImageLayout::ShaderReadOnlyOptimal);
@@ -293,7 +311,8 @@ macro_rules! ordered_passes_renderpass {
                 $(if $atch_name == num {
                     // If the clear OP is Clear or DontCare, default to the Undefined layout.
                     if initial_layout == Some(ImageLayout::DepthStencilAttachmentOptimal) ||
-                        initial_layout == Some(ImageLayout::ColorAttachmentOptimal)
+                        initial_layout == Some(ImageLayout::ColorAttachmentOptimal) ||
+                        initial_layout == Some(ImageLayout::TransferDstOptimal)
                     {
                         if $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::Clear ||
                             $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::DontCare

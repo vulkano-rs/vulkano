@@ -31,9 +31,13 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use memory::DedicatedAlloc;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
@@ -68,7 +72,7 @@ use sync::Sharing;
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
-pub struct AttachmentImage<F = Format, A = StdMemoryPoolAlloc> {
+pub struct AttachmentImage<F = Format, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner implementation.
     image: UnsafeImage,
 
@@ -102,6 +106,22 @@ impl<F> AttachmentImage<F> {
         AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), 1)
     }
 
+    /// Same as `new`, but creates an image that can be used as an input attachment.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `with_usage`.
+    #[inline]
+    pub fn input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
+                            -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            input_attachment: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+    }
+
     /// Same as `new`, but creates a multisampled image.
     ///
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
@@ -114,7 +134,28 @@ impl<F> AttachmentImage<F> {
         AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), samples)
     }
 
+    /// Same as `multisampled`, but creates an image that can be used as an input attachment.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
+    #[inline]
+    pub fn multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
+                                         format: F)
+                        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            input_attachment: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+    }
+
     /// Same as `new`, but lets you specify additional usages.
+    ///
+    /// The `color_attachment` or `depth_stencil_attachment` usages are automatically added based
+    /// on the format of the usage. Therefore the `usage` parameter allows you specify usages in
+    /// addition to these two.
     #[inline]
     pub fn with_usage(device: Arc<Device>, dimensions: [u32; 2], format: F, usage: ImageUsage)
                       -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
@@ -127,6 +168,8 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
     /// > want a regular image.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn multisampled_with_usage(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
                                    format: F, usage: ImageUsage)
@@ -136,10 +179,84 @@ impl<F> AttachmentImage<F> {
         AttachmentImage::new_impl(device, dimensions, format, usage, samples)
     }
 
+    /// Same as `new`, except that the image can later be sampled.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `with_usage`.
+    #[inline]
+    pub fn sampled(device: Arc<Device>, dimensions: [u32; 2], format: F)
+                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            sampled: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+    }
+
+    /// Same as `sampled`, except that the image can be used as an input attachment.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `with_usage`.
+    #[inline]
+    pub fn sampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
+                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            sampled: true,
+            input_attachment: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+    }
+
+    /// Same as `sampled`, but creates a multisampled image.
+    ///
+    /// > **Note**: You can also use this function and pass `1` for the number of samples if you
+    /// > want a regular image.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
+    #[inline]
+    pub fn sampled_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
+                                  format: F)
+                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            sampled: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+    }
+
+    /// Same as `sampled_multisampled`, but creates an image that can be used as an input
+    /// attachment.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
+    #[inline]
+    pub fn sampled_multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2],
+                                                   samples: u32, format: F)
+                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            sampled: true,
+            input_attachment: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+    }
+
     /// Same as `new`, except that the image will be transient.
     ///
     /// A transient image is special because its content is undefined outside of a render pass.
     /// This means that the implementation has the possibility to not allocate any memory for it.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn transient(device: Arc<Device>, dimensions: [u32; 2], format: F)
                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
@@ -153,10 +270,29 @@ impl<F> AttachmentImage<F> {
         AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
     }
 
+    /// Same as `transient`, except that the image can be used as an input attachment.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `with_usage`.
+    #[inline]
+    pub fn transient_input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
+                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            transient_attachment: true,
+            input_attachment: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+    }
+
     /// Same as `transient`, but creates a multisampled image.
     ///
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
     /// > want a regular image.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
                                   format: F)
@@ -171,6 +307,26 @@ impl<F> AttachmentImage<F> {
         AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
     }
 
+    /// Same as `transient_multisampled`, but creates an image that can be used as an input
+    /// attachment.
+    ///
+    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
+    #[inline]
+    pub fn transient_multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2],
+                                                   samples: u32, format: F)
+                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+        where F: FormatDesc
+    {
+        let base_usage = ImageUsage {
+            transient_attachment: true,
+            input_attachment: true,
+            ..ImageUsage::none()
+        };
+
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+    }
+
+    // All constructors dispatch to this one.
     fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage,
                 samples: u32)
                 -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
@@ -211,24 +367,16 @@ impl<F> AttachmentImage<F> {
                              false)?
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
-                                    AllocLayout::Optimal)?;
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
+                                    AllocLayout::Optimal,
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;

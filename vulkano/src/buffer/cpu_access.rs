@@ -44,17 +44,21 @@ use device::Queue;
 use instance::QueueFamily;
 use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
+use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
-pub struct CpuAccessibleBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
+pub struct CpuAccessibleBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -87,16 +91,6 @@ enum CurrentGpuAccess {
 }
 
 impl<T> CpuAccessibleBuffer<T> {
-    /// Deprecated. Use `from_data` instead.
-    #[deprecated]
-    #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        unsafe { CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
-    }
-
     /// Builds a new buffer with some data in it. Only allowed for sized data.
     pub fn from_data<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I, data: T)
                             -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
@@ -161,17 +155,6 @@ impl<T> CpuAccessibleBuffer<[T]> {
         }
     }
 
-    /// Deprecated. Use `uninitialized_array` or `from_iter` instead.
-    // TODO: remove
-    #[inline]
-    #[deprecated]
-    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                        -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        unsafe { CpuAccessibleBuffer::uninitialized_array(device, len, usage, queue_families) }
-    }
-
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub unsafe fn uninitialized_array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage,
@@ -214,19 +197,12 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
             }
         };
 
-        let mem_ty = device
-            .physical_device()
-            .memory_types()
-            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-            .filter(|t| t.is_host_visible())
-            .next()
-            .unwrap(); // Vk specs guarantee that this can't fail
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
-                                    AllocLayout::Linear)?;
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
+                                    AllocLayout::Linear,
+                                    MappingRequirement::Map,
+                                    DedicatedAlloc::Buffer(&buffer),
+                                    |_| AllocFromRequirementsFilter::Allowed)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
         buffer.bind_memory(mem.memory(), mem.offset())?;

@@ -20,12 +20,11 @@ use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
-use pipeline::shader::ComputeShaderEntryPoint;
+use pipeline::shader::EntryPointAbstract;
 use pipeline::shader::SpecializationConstants;
 
 use Error;
@@ -56,11 +55,11 @@ struct Inner {
 
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(
-        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css)
-        -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
-        where Csl: PipelineLayoutDescNames + Clone,
-              Css: SpecializationConstants
+    pub fn new<Cs>(
+        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants)
+        -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
+        where Cs::PipelineLayout: Clone,
+              Cs: EntryPointAbstract
     {
         unsafe {
             let pipeline_layout = shader.layout().clone().build(device.clone())?;
@@ -77,12 +76,12 @@ impl<Pl> ComputePipeline<Pl> {
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
     /// uses.
-    pub fn with_pipeline_layout<Css, Csl>(
-        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css,
+    pub fn with_pipeline_layout<Cs>(
+        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl)
         -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
-        where Csl: PipelineLayoutDescNames + Clone,
-              Css: SpecializationConstants,
+        where Cs::PipelineLayout: Clone,
+              Cs: EntryPointAbstract,
               Pl: PipelineLayoutAbstract
     {
         unsafe {
@@ -96,23 +95,23 @@ impl<Pl> ComputePipeline<Pl> {
 
     /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
     /// superset of what the shader expects.
-    pub unsafe fn with_unchecked_pipeline_layout<Css, Csl>(
-        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css,
+    pub unsafe fn with_unchecked_pipeline_layout<Cs>(
+        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl)
         -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
-        where Csl: PipelineLayoutDescNames + Clone,
-              Css: SpecializationConstants,
+        where Cs::PipelineLayout: Clone,
+              Cs: EntryPointAbstract,
               Pl: PipelineLayoutAbstract
     {
         let vk = device.pointers();
 
         let pipeline = {
-            let spec_descriptors = <Css as SpecializationConstants>::descriptors();
+            let spec_descriptors = Cs::SpecializationConstants::descriptors();
             let specialization = vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
                 dataSize: mem::size_of_val(specialization),
-                pData: specialization as *const Css as *const _,
+                pData: specialization as *const Cs::SpecializationConstants as *const _,
             };
 
             let stage = vk::PipelineShaderStageCreateInfo {
@@ -259,15 +258,6 @@ unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl>
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         self.pipeline_layout.push_constants_range(num)
-    }
-}
-
-unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl>
-    where Pl: PipelineLayoutDescNames
-{
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        self.pipeline_layout.descriptor_by_name(name)
     }
 }
 

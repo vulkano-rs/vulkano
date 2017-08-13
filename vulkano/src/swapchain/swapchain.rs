@@ -80,7 +80,7 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
             return Err(AcquireError::OutOfDate);
         }
 
-        unsafe { acquire_next_image_raw2(&swapchain, timeout, Some(&semaphore), Some(&fence)) }?
+        unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) }?
     };
 
     Ok((id,
@@ -1077,19 +1077,12 @@ pub struct AcquiredImage {
 ///
 /// # Safety
 ///
-/// - The semaphore must be kept alive until it is signaled.
-/// - The swapchain must not have been replaced by being passed as the old swapchain when creating a new one.
-#[inline]
-pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>, semaphore: &Semaphore)
+/// - The semaphore and/or the fence must be kept alive until it is signaled.
+/// - The swapchain must not have been replaced by being passed as the old swapchain when creating
+///   a new one.
+pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>,
+                                     semaphore: Option<&Semaphore>, fence: Option<&Fence>)
                                      -> Result<AcquiredImage, AcquireError>
-{
-    acquire_next_image_raw2(swapchain, timeout, Some(semaphore), None)
-}
-
-// TODO: this should replace `acquire_next_image_raw`, but requires an API break
-unsafe fn acquire_next_image_raw2(swapchain: &Swapchain, timeout: Option<Duration>,
-                                  semaphore: Option<&Semaphore>, fence: Option<&Fence>)
-                                  -> Result<AcquiredImage, AcquireError>
 {
     let vk = swapchain.device.pointers();
 

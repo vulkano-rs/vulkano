@@ -473,12 +473,6 @@ impl Surface {
         }
     }
 
-    #[deprecated = "Renamed to `capabilities`"]
-    #[inline]
-    pub fn get_capabilities(&self, device: &PhysicalDevice) -> Result<Capabilities, OomError> {
-        Ok(self.capabilities(*device).unwrap())
-    }
-
     /// Retreives the capabilities of a surface when used by a certain device.
     ///
     /// # Panic
@@ -561,7 +555,7 @@ impl Surface {
                     usage
                 },
                 supported_formats: formats.into_iter().map(|f| {
-                    (Format::from_num(f.format).unwrap(), capabilities::color_space_from_num(f.colorSpace))
+                    (Format::from_vulkan_num(f.format).unwrap(), capabilities::color_space_from_num(f.colorSpace))
                 }).collect(),
                 present_modes: modes,
             })

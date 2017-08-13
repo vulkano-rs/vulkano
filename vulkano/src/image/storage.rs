@@ -30,9 +30,13 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
+use memory::pool::AllocFromRequirementsFilter;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
 use sync::AccessError;
 use sync::Sharing;
@@ -50,7 +54,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
     view: UnsafeImageView,
 
     // Memory used to back the image.
-    memory: A::Alloc,
+    memory: PotentialDedicatedAllocation<A::Alloc>,
 
     // Dimensions of the image view.
     dimensions: Dimensions,
@@ -67,6 +71,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
 
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
+    #[inline]
     pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
         where F: FormatDesc,
@@ -91,6 +96,16 @@ impl<F> StorageImage<F> {
             transient_attachment: false,
         };
 
+        StorageImage::with_usage(device, dimensions, format, usage, queue_families)
+    }
+
+    /// Same as `new`, but allows specifying the usage.
+    pub fn with_usage<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F,
+                             usage: ImageUsage, queue_families: I)
+                             -> Result<Arc<StorageImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>
+    {
         let queue_families = queue_families
             .into_iter()
             .map(|f| f.id())
@@ -114,24 +129,16 @@ impl<F> StorageImage<F> {
                              false)?
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
-                                    AllocLayout::Optimal)?;
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
+                                    AllocLayout::Optimal,
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;

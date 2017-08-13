@@ -34,6 +34,7 @@ impl StdHostVisibleMemoryTypePool {
     /// # Panic
     ///
     /// - Panics if the `device` and `memory_type` don't belong to the same physical device.
+    /// - Panics if the memory type is not host-visible.
     ///
     #[inline]
     pub fn new(device: Arc<Device>, memory_type: MemoryType) -> Arc<StdHostVisibleMemoryTypePool> {
@@ -41,6 +42,7 @@ impl StdHostVisibleMemoryTypePool {
                    &**memory_type.physical_device().instance() as *const Instance);
         assert_eq!(device.physical_device().index(),
                    memory_type.physical_device().index());
+        assert!(memory_type.is_host_visible());
 
         Arc::new(StdHostVisibleMemoryTypePool {
                      device: device.clone(),

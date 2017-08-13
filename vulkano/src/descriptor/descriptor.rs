@@ -376,19 +376,6 @@ impl DescriptorImageDescDimensions {
 pub struct DescriptorBufferDesc {
     pub dynamic: Option<bool>,
     pub storage: bool,
-    pub content: DescriptorBufferContentDesc,
-}
-
-// TODO: documentation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DescriptorBufferContentDesc {
-    F32,
-    F64,
-    Struct {},
-    Array {
-        len: Box<DescriptorBufferContentDesc>,
-        num_array: usize,
-    },
 }
 
 /// Describes what kind of resource may later be bound to a descriptor.
@@ -506,6 +493,30 @@ impl ShaderStages {
             (self.geometry && other.geometry) || (self.fragment && other.fragment) ||
             (self.compute && other.compute)
     }
+
+    #[inline]
+    pub(crate) fn into_vulkan_bits(self) -> vk::ShaderStageFlags {
+        let mut result = 0;
+        if self.vertex {
+            result |= vk::SHADER_STAGE_VERTEX_BIT;
+        }
+        if self.tessellation_control {
+            result |= vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        }
+        if self.tessellation_evaluation {
+            result |= vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        }
+        if self.geometry {
+            result |= vk::SHADER_STAGE_GEOMETRY_BIT;
+        }
+        if self.fragment {
+            result |= vk::SHADER_STAGE_FRAGMENT_BIT;
+        }
+        if self.compute {
+            result |= vk::SHADER_STAGE_COMPUTE_BIT;
+        }
+        result
+    }
 }
 
 impl BitOr for ShaderStages {
@@ -536,32 +547,5 @@ impl From<ShaderStages> for PipelineStages {
             compute_shader: stages.compute,
             .. PipelineStages::none()
         }
-    }
-}
-
-#[doc(hidden)]
-impl Into<vk::ShaderStageFlags> for ShaderStages {
-    #[inline]
-    fn into(self) -> vk::ShaderStageFlags {
-        let mut result = 0;
-        if self.vertex {
-            result |= vk::SHADER_STAGE_VERTEX_BIT;
-        }
-        if self.tessellation_control {
-            result |= vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        }
-        if self.tessellation_evaluation {
-            result |= vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        }
-        if self.geometry {
-            result |= vk::SHADER_STAGE_GEOMETRY_BIT;
-        }
-        if self.fragment {
-            result |= vk::SHADER_STAGE_FRAGMENT_BIT;
-        }
-        if self.compute {
-            result |= vk::SHADER_STAGE_COMPUTE_BIT;
-        }
-        result
     }
 }
