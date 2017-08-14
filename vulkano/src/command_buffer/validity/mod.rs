@@ -15,6 +15,7 @@ pub use self::copy_buffer::{CheckCopyBufferError, check_copy_buffer, CheckCopyBu
 pub use self::copy_image_buffer::{CheckCopyBufferImageError, check_copy_buffer_image, CheckCopyBufferImageTy};
 pub use self::descriptor_sets::{check_descriptor_sets_validity, CheckDescriptorSetsValidityError};
 pub use self::dispatch::{check_dispatch, CheckDispatchError};
+pub use self::draw_subset::{CheckIndexedSubsetError, CheckSubsetError, check_indexed_subset_validity, check_subset_validity};
 pub use self::dynamic_state::{CheckDynamicStateValidityError, check_dynamic_state_validity};
 pub use self::fill_buffer::{CheckFillBufferError, check_fill_buffer};
 pub use self::index_buffer::{check_index_buffer, CheckIndexBuffer, CheckIndexBufferError};
@@ -28,6 +29,7 @@ mod copy_buffer;
 mod copy_image_buffer;
 mod descriptor_sets;
 mod dispatch;
+mod draw_subset;
 mod dynamic_state;
 mod fill_buffer;
 mod index_buffer;
