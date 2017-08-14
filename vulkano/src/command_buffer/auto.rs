@@ -21,6 +21,7 @@ use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
+use command_buffer::DrawIndexedIndirectCommand;
 use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::StateCacher;
@@ -433,7 +434,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         if !RenderPassCompatible::is_compatible_with(pipeline, &local_render_pass.0) {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
-        
+
         Ok(())
     }
 
@@ -621,7 +622,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                 ClearValue::Float(_) | ClearValue::Int(_) | ClearValue::Uint(_) => {},
                 _ => panic!("The clear color is not a color value"),
             };
-    
+
             let region = UnsafeCommandBufferBuilderColorImageClear {
                 base_mip_level: first_mipmap,
                 level_count: num_mipmaps,
@@ -793,6 +794,95 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
+    pub fn draw_subset<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, subset: DrawIndirectCommand,
+                                     vertices: V, sets: S, constants: Pc) -> Result<Self, DrawSubsetError>
+        where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+              S: DescriptorSetsCollection
+    {
+        unsafe {
+            // TODO: must check that pipeline is compatible with render pass
+
+            self.ensure_inside_render_pass_inline(&pipeline)?;
+            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            check_subset_validity(&vb_infos, &subset)?;
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_graphics_pipeline(&pipeline)
+            {
+                self.inner.bind_pipeline_graphics(pipeline.clone());
+            }
+
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            set_state(&mut self.inner, dynamic);
+            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
+            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
+
+            debug_assert!(self.graphics_allowed);
+
+            self.inner.draw(subset.vertex_count, subset.instance_count,
+                            subset.first_vertex, subset.first_instance);
+            Ok(self)
+        }
+    }
+
+    #[inline]
+    pub fn draw_indexed_subset<V, Gp, S, Pc, Ib, I>(
+        mut self, pipeline: Gp, dynamic: DynamicState,
+        subset: DrawIndexedIndirectCommand, vertices: V,
+        index_buffer: Ib, sets: S, constants: Pc)
+        -> Result<Self, DrawIndexedSubsetError>
+        where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+              S: DescriptorSetsCollection,
+              Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+              I: Index + 'static
+    {
+        unsafe {
+            // TODO: must check that pipeline is compatible with render pass
+
+            self.ensure_inside_render_pass_inline(&pipeline)?;
+            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
+            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            check_indexed_subset_validity(&vb_infos, &ib_infos, &subset)?;
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_graphics_pipeline(&pipeline)
+            {
+                self.inner.bind_pipeline_graphics(pipeline.clone());
+            }
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_index_buffer(&index_buffer, I::ty())
+            {
+                self.inner.bind_index_buffer(index_buffer, I::ty())?;
+            }
+
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            set_state(&mut self.inner, dynamic);
+            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
+            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
+            // TODO: how to handle an index out of range of the vertex buffers?
+
+            debug_assert!(self.graphics_allowed);
+
+            self.inner.draw_indexed(subset.index_count, subset.instance_count,
+                                    subset.first_index, subset.vertex_offset,
+                                    subset.first_instance);
+            Ok(self)
+        }
+    }
+
+
+    #[inline]
     pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
                               constants: Pc) -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -840,7 +930,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
-    
+
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, &dynamic)?;
@@ -1371,6 +1461,27 @@ err_gen!(DispatchError {
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
     CheckDispatchError,
+    SyncCommandBufferBuilderError
+});
+
+err_gen!(DrawSubsetError {
+    AutoCommandBufferBuilderContextError,
+    CheckDynamicStateValidityError,
+    CheckPushConstantsValidityError,
+    CheckDescriptorSetsValidityError,
+    CheckVertexBufferError,
+    CheckSubsetError,
+    SyncCommandBufferBuilderError
+});
+
+err_gen!(DrawIndexedSubsetError {
+    AutoCommandBufferBuilderContextError,
+    CheckDynamicStateValidityError,
+    CheckPushConstantsValidityError,
+    CheckDescriptorSetsValidityError,
+    CheckVertexBufferError,
+    CheckIndexBufferError,
+    CheckIndexedSubsetError,
     SyncCommandBufferBuilderError
 });
 
