@@ -83,8 +83,6 @@ pub use self::graphics_pipeline::GraphicsPipeline;
 pub use self::graphics_pipeline::GraphicsPipelineAbstract;
 pub use self::graphics_pipeline::GraphicsPipelineBuilder;
 pub use self::graphics_pipeline::GraphicsPipelineCreationError;
-pub use self::graphics_pipeline::GraphicsPipelineParams;
-pub use self::graphics_pipeline::GraphicsPipelineParamsTess;
 pub use self::graphics_pipeline::GraphicsPipelineSys;
 
 mod compute_pipeline;
