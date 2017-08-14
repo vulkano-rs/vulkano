@@ -7,10 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// TODO: graphics pipeline params are deprecated, but are still the primary implementation in order
-// to avoid duplicating code, so we hide the warnings for now
-#![allow(deprecated)]
-
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -79,8 +75,7 @@ mod builder;
 //mod tests;
 
 /// Description of a `GraphicsPipeline`.
-#[deprecated = "Use the GraphicsPipelineBuilder instead"]
-pub struct GraphicsPipelineParams<
+pub(crate) struct GraphicsPipelineParams<
  Vdef,
  Vs,
  Tcs,
@@ -139,8 +134,7 @@ pub struct GraphicsPipelineParams<
 }
 
 /// Additional parameters if you use tessellation.
-#[deprecated = "Use the GraphicsPipelineBuilder instead"]
-pub struct GraphicsPipelineParamsTess<Tcs, Tes> {
+pub(crate) struct GraphicsPipelineParamsTess<Tcs, Tes> {
     /// The entry point of the tessellation control shader.
     pub tessellation_control_shader: Tcs,
     /// The entry point of the tessellation evaluation shader.
@@ -205,8 +199,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will only use a vertex shader and a fragment shader. See
     /// the other constructors for other possibilities.
     #[inline]
-    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn new<Vs, Fs>
+    pub(crate) fn new<Vs, Fs>
               (device: Arc<Device>,
                params: GraphicsPipelineParams<Vdef, Vs, EmptyEntryPointDummy, EmptyEntryPointDummy, EmptyEntryPointDummy, Fs, Rp>)
               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
@@ -249,8 +242,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// this function assumes that you will use a vertex shader, a geometry shader and a fragment
     /// shader. See the other constructors for other possibilities.
     #[inline]
-    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn with_geometry_shader<Vs, Gs, Fs>
+    pub(crate) fn with_geometry_shader<Vs, Gs, Fs>
               (device: Arc<Device>,
                params: GraphicsPipelineParams<Vdef, Vs, EmptyEntryPointDummy, EmptyEntryPointDummy, Gs, Fs, Rp>)
               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>, Gs::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
@@ -307,8 +299,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// tessellation evaluation shader and a fragment shader. See the other constructors for other
     /// possibilities.
     #[inline]
-    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn with_tessellation<Vs, Tcs, Tes, Fs>
+    pub(crate) fn with_tessellation<Vs, Tcs, Tes, Fs>
               (device: Arc<Device>,
                params: GraphicsPipelineParams<Vdef, Vs, Tcs, Tes, EmptyEntryPointDummy, Fs, Rp>)
                -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>, Tcs::PipelineLayout>, Tes::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
@@ -376,8 +367,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// constructors for other possibilities.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
     #[inline]
-    #[deprecated = "Use the GraphicsPipelineBuilder instead"]
-    pub fn with_tessellation_and_geometry<Vs,
+    pub(crate) fn with_tessellation_and_geometry<Vs,
                                           Tcs,
                                           Tes,
                                           Gs,
