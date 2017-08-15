@@ -1046,7 +1046,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             check_update_buffer(self.device(), &buffer, &data)?;
 
             let size_of_data = mem::size_of_val(&data);
-            if buffer.size() > size_of_data {
+            if buffer.size() >= size_of_data {
                 self.inner.update_buffer(buffer, data);
             } else {
                 unimplemented!() // TODO:
