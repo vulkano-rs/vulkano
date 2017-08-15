@@ -45,6 +45,8 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
     {
         assert!(layout.num_sets() > set_id);
 
+        let device = layout.device().clone();
+
         let set_layout = layout.descriptor_set_layout(set_id)
             .expect("Unable to get the descriptor set layout")
             .clone();
@@ -54,6 +56,8 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
             set_id,
             set_layout,
             pool: LocalPool {
+                device: device,
+                next_capacity: 3,
                 current_pool: None,
             },
         }
@@ -134,6 +138,10 @@ unsafe impl<L, R> DeviceOwned for FixedSizeDescriptorSet<L, R>
 #[derive(Clone)]
 struct LocalPool {
     current_pool: Option<Arc<LocalPoolInner>>,
+    // Capacity to use if we create a new `LocalPoolInner`.
+    next_capacity: u32,
+    // The Vulkan device.
+    device: Arc<Device>,
 }
 
 struct LocalPoolInner {
@@ -157,7 +165,14 @@ unsafe impl DescriptorPool for LocalPool {
     fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
         loop {
             if self.current_pool.is_none() {
-                unimplemented!()
+                let count = *layout.descriptors_count() * self.next_capacity;
+                let new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count,
+                                                         self.next_capacity, false)?;
+                self.next_capacity = self.next_capacity.saturating_mul(2);
+                self.current_pool = Some(Arc::new(LocalPoolInner {
+                    actual_pool: Mutex::new(new_pool),
+                    reserve: Arc::new(Mutex::new(Vec::new()))
+                }));
             }
 
             let alloc_result = {
@@ -207,7 +222,7 @@ unsafe impl DescriptorPool for LocalPool {
 unsafe impl DeviceOwned for LocalPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
-        unimplemented!()
+        &self.device
     }
 }
 
