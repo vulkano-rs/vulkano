@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -146,7 +145,7 @@ struct LocalPool {
 
 struct LocalPoolInner {
     // The actual Vulkan descriptor pool.
-    actual_pool: Mutex<UnsafeDescriptorPool>,
+    actual_pool: UnsafeDescriptorPool,
 
     // TODO: lock-free list?
     reserve: Arc<Mutex<Vec<UnsafeDescriptorSet>>>,
@@ -164,22 +163,8 @@ unsafe impl DescriptorPool for LocalPool {
 
     fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
         loop {
-            if self.current_pool.is_none() {
-                let count = *layout.descriptors_count() * self.next_capacity;
-                let new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count,
-                                                         self.next_capacity, false)?;
-                self.next_capacity = self.next_capacity.saturating_mul(2);
-                self.current_pool = Some(Arc::new(LocalPoolInner {
-                    actual_pool: Mutex::new(new_pool),
-                    reserve: Arc::new(Mutex::new(Vec::new()))
-                }));
-            }
-
-            let alloc_result = {
-                let current_pool = self.current_pool.as_mut().unwrap();
-
+            if let Some(ref mut current_pool) = self.current_pool {
                 let reserve = current_pool.reserve.clone();
-
                 let mut already_existing_sets = current_pool.reserve.lock().unwrap();
                 if !already_existing_sets.is_empty() {
                     return Ok(LocalPoolAlloc {
@@ -187,34 +172,35 @@ unsafe impl DescriptorPool for LocalPool {
                         pool: current_pool.clone(),
                     });
                 }
+            }
 
-                unsafe {
-                    current_pool.actual_pool.lock().unwrap().alloc(iter::once(layout))
+            let count = *layout.descriptors_count() * self.next_capacity;
+            let mut new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count,
+                                                            self.next_capacity, false)?;
+            let alloc = unsafe {
+                match new_pool.alloc((0 .. self.next_capacity).map(|_| layout)) {
+                    Ok(a) => a.collect(),
+                    Err(DescriptorPoolAllocError::OutOfHostMemory) => {
+                        return Err(OomError::OutOfHostMemory);
+                    },
+                    Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
+                        return Err(OomError::OutOfDeviceMemory);
+                    },
+                    Err(DescriptorPoolAllocError::FragmentedPool) => {
+                        // This can't happen as we don't free individual sets.
+                        unreachable!()
+                    },
+                    Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
+                        unreachable!()
+                    },
                 }
             };
 
-            let alloc = match alloc_result {
-                Ok(mut a) => a.next().unwrap(),
-                Err(DescriptorPoolAllocError::OutOfHostMemory) => {
-                    return Err(OomError::OutOfHostMemory);
-                },
-                Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
-                    return Err(OomError::OutOfDeviceMemory);
-                },
-                Err(DescriptorPoolAllocError::FragmentedPool) => {
-                    // This can't happen as we don't free individual sets.
-                    unreachable!()
-                },
-                Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                    self.current_pool = None;
-                    continue;
-                },
-            };
-
-            return Ok(LocalPoolAlloc {
-                actual_alloc: Some(alloc),
-                pool: self.current_pool.as_ref().unwrap().clone(),
-            });
+            self.next_capacity = self.next_capacity.saturating_mul(2);
+            self.current_pool = Some(Arc::new(LocalPoolInner {
+                actual_pool: new_pool,
+                reserve: Arc::new(Mutex::new(alloc))
+            }));
         }
     }
 }
