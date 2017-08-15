@@ -36,7 +36,7 @@ pub struct FixedSizeDescriptorSetsPool<L> {
     pipeline_layout: L,
     set_id: usize,
     set_layout: Arc<UnsafeDescriptorSetLayout>,
-    pool: Arc<LocalPool>,
+    pool: LocalPool,
 }
 
 impl<L> FixedSizeDescriptorSetsPool<L> {
@@ -53,9 +53,9 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
             pipeline_layout: layout,
             set_id,
             set_layout,
-            pool: Arc::new(LocalPool {
-                current_pool: Mutex::new(None),
-            }),
+            pool: LocalPool {
+                current_pool: None,
+            },
         }
     }
 
@@ -131,8 +131,9 @@ unsafe impl<L, R> DeviceOwned for FixedSizeDescriptorSet<L, R>
     }
 }
 
+#[derive(Clone)]
 struct LocalPool {
-    current_pool: Mutex<Option<Arc<LocalPoolInner>>>,
+    current_pool: Option<Arc<LocalPoolInner>>,
 }
 
 struct LocalPoolInner {
@@ -153,16 +154,14 @@ struct LocalPoolAlloc {
 unsafe impl DescriptorPool for LocalPool {
     type Alloc = LocalPoolAlloc;
 
-    fn alloc(&self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
-        let mut current_pool = self.current_pool.lock().unwrap();
-
+    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
         loop {
-            if current_pool.is_none() {
+            if self.current_pool.is_none() {
                 unimplemented!()
             }
 
             let alloc_result = {
-                let current_pool = current_pool.as_mut().unwrap();
+                let current_pool = self.current_pool.as_mut().unwrap();
 
                 let reserve = current_pool.reserve.clone();
 
@@ -192,14 +191,14 @@ unsafe impl DescriptorPool for LocalPool {
                     unreachable!()
                 },
                 Err(DescriptorPoolAllocError::OutOfPoolMemory) => {
-                    *current_pool = None;
+                    self.current_pool = None;
                     continue;
                 },
             };
 
             return Ok(LocalPoolAlloc {
                 actual_alloc: Some(alloc),
-                pool: current_pool.as_ref().unwrap().clone(),
+                pool: self.current_pool.as_ref().unwrap().clone(),
             });
         }
     }
@@ -249,7 +248,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     /// Builds a `FixedSizeDescriptorSet` from the builder.
     #[inline]
     pub fn build(self) -> Result<FixedSizeDescriptorSet<L, R>, PersistentDescriptorSetBuildError> {
-        let inner = self.inner.build_with_pool(&*self.pool.pool)?;
+        let inner = self.inner.build_with_pool(&mut self.pool.pool)?;
         Ok(FixedSizeDescriptorSet {
             inner: inner,
         })

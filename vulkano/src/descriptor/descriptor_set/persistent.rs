@@ -168,8 +168,8 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     /// Builds a `PersistentDescriptorSet` from the builder.
     #[inline]
     pub fn build(self) -> Result<PersistentDescriptorSet<L, R, StdDescriptorPoolAlloc>, PersistentDescriptorSetBuildError> {
-        let pool = Device::standard_descriptor_pool(self.layout.device());
-        self.build_with_pool(&pool)
+        let mut pool = Device::standard_descriptor_pool(self.layout.device());
+        self.build_with_pool(&mut pool)
     }
 
     /// Builds a `PersistentDescriptorSet` from the builder.
@@ -178,7 +178,7 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// Panics if the pool doesn't have the same device as the pipeline layout.
     ///
-    pub fn build_with_pool<P>(self, pool: &P)
+    pub fn build_with_pool<P>(self, pool: &mut P)
                               -> Result<PersistentDescriptorSet<L, R, P::Alloc>, PersistentDescriptorSetBuildError>
         where P: ?Sized + DescriptorPool
     {
