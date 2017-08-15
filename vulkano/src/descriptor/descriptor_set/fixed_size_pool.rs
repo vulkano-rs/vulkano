@@ -29,16 +29,25 @@ use image::ImageViewAccess;
 use sampler::Sampler;
 use OomError;
 
-/// Pools of descriptor sets of a specific capacity and that are automatically reclaimed.
+/// Pool of descriptor sets of a specific capacity and that are automatically reclaimed.
+///
+/// You are encouraged to use this type when you need a different descriptor set at each frame, or
+/// regularly during the execution.
+///
+// TODO: add example
 #[derive(Clone)]
 pub struct FixedSizeDescriptorSetsPool<L> {
     pipeline_layout: L,
     set_id: usize,
     set_layout: Arc<UnsafeDescriptorSetLayout>,
+    // We hold a local implementation of the `DescriptorPool` trait for our own purpose. Since we
+    // don't want to expose this trait impl in our API, we use a separate struct.
     pool: LocalPool,
 }
 
 impl<L> FixedSizeDescriptorSetsPool<L> {
+    /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
+    /// parameters passed to this function.
     pub fn new(layout: L, set_id: usize) -> FixedSizeDescriptorSetsPool<L>
         where L: PipelineLayoutAbstract
     {
@@ -63,6 +72,8 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
     }
 
     /// Starts the process of building a new descriptor set.
+    ///
+    /// The set will corresponds to the set layout that was passed to `new`.
     #[inline]
     pub fn next(&mut self) -> FixedSizeDescriptorSetBuilder<L, ()>
         where L: PipelineLayoutAbstract + Clone
@@ -134,27 +145,38 @@ unsafe impl<L, R> DeviceOwned for FixedSizeDescriptorSet<L, R>
     }
 }
 
+// The fields of this struct can be considered as fields of the `FixedSizeDescriptorSet`. They are
+// in a separate struct because we don't want to expose the fact that we implement the
+// `DescriptorPool` trait.
 #[derive(Clone)]
 struct LocalPool {
+    // The `LocalPoolInner` struct contains an actual Vulkan pool. Every time it is full, we create
+    // a new pool and replace the current one with the new one.
     current_pool: Option<Arc<LocalPoolInner>>,
-    // Capacity to use if we create a new `LocalPoolInner`.
+    // Capacity to use when we create a new Vulkan pool.
     next_capacity: u32,
     // The Vulkan device.
     device: Arc<Device>,
 }
 
 struct LocalPoolInner {
-    // The actual Vulkan descriptor pool.
+    // The actual Vulkan descriptor pool. This field isn't actually used anywhere, but we need to
+    // keep the pool alive in order to keep the descriptor sets valid.
     actual_pool: UnsafeDescriptorPool,
 
+    // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
+    // list. When a `LocalPoolAlloc` is dropped, its descriptor set is put back in this list.
     // TODO: lock-free list?
     reserve: Arc<Mutex<Vec<UnsafeDescriptorSet>>>,
 }
 
 struct LocalPoolAlloc {
+    // The `LocalPoolInner` we were allocated from. We need to keep a copy of it in each allocation
+    // so that we can put back the allocation in the list in our `Drop` impl.
     pool: Arc<LocalPoolInner>,
+
     // The actual descriptor set, wrapped inside an `Option` so that we can extract it in our
-    // `Drop` implementation.
+    // `Drop` impl.
     actual_alloc: Option<UnsafeDescriptorSet>,
 }
 
@@ -163,6 +185,8 @@ unsafe impl DescriptorPool for LocalPool {
 
     fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
         loop {
+            // Try to extract a descriptor from the current pool if any exist.
+            // This is the most common case.
             if let Some(ref mut current_pool) = self.current_pool {
                 let reserve = current_pool.reserve.clone();
                 let mut already_existing_sets = current_pool.reserve.lock().unwrap();
@@ -174,9 +198,11 @@ unsafe impl DescriptorPool for LocalPool {
                 }
             }
 
+            // If we failed to grab an existing set, that means the current pool is full. Create a
+            // new one of larger capacity.
             let count = *layout.descriptors_count() * self.next_capacity;
             let mut new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count,
-                                                            self.next_capacity, false)?;
+                                                         self.next_capacity, false)?;
             let alloc = unsafe {
                 match new_pool.alloc((0 .. self.next_capacity).map(|_| layout)) {
                     Ok(a) => a.collect(),
@@ -225,7 +251,6 @@ impl DescriptorPoolAlloc for LocalPoolAlloc {
 }
 
 impl Drop for LocalPoolAlloc {
-    #[inline]
     fn drop(&mut self) {
         let inner = self.actual_alloc.take().unwrap();
         self.pool.reserve.lock().unwrap().push(inner);
