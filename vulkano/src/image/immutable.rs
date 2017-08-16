@@ -11,7 +11,6 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::iter;
 
 use buffer::BufferAccess;
 use buffer::BufferUsage;
@@ -194,7 +193,6 @@ impl<F> ImmutableImage<F> {
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
-                                                    iter::once(queue.family()),
                                                     iter)?;
         ImmutableImage::from_buffer(source, dimensions, format, queue)
     }

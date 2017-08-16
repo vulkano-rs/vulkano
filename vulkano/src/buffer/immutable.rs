@@ -19,7 +19,6 @@
 //!
 
 use smallvec::SmallVec;
-use std::iter;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
@@ -96,7 +95,6 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     {
         let source = CpuAccessibleBuffer::from_data(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
-                                                    iter::once(queue.family()),
                                                     data)?;
         ImmutableBuffer::from_buffer(source, usage, queue)
     }
@@ -176,7 +174,6 @@ impl<T> ImmutableBuffer<[T]> {
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
-                                                    iter::once(queue.family()),
                                                     data)?;
         ImmutableBuffer::from_buffer(source, usage, queue)
     }
@@ -433,7 +430,6 @@ mod tests {
     use buffer::immutable::ImmutableBuffer;
     use command_buffer::AutoCommandBufferBuilder;
     use command_buffer::CommandBuffer;
-    use std::iter;
     use sync::GpuFuture;
 
     #[test]
@@ -447,7 +443,6 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_data(device.clone(),
                                                   BufferUsage::all(),
-                                                  iter::once(queue.family()),
                                                   0)
             .unwrap();
 
@@ -477,7 +472,6 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_iter(device.clone(),
                                                   BufferUsage::all(),
-                                                  iter::once(queue.family()),
                                                   (0 .. 512).map(|_| 0u32))
             .unwrap();
 
@@ -533,7 +527,6 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_data(device.clone(),
                                                  BufferUsage::all(),
-                                                 iter::once(queue.family()),
                                                  0)
             .unwrap();
 
@@ -563,7 +556,6 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_data(device.clone(),
                                                  BufferUsage::all(),
-                                                 iter::once(queue.family()),
                                                  0)
             .unwrap();
 
@@ -594,7 +586,6 @@ mod tests {
 
         let source = CpuAccessibleBuffer::from_data(device.clone(),
                                                  BufferUsage::all(),
-                                                 iter::once(queue.family()),
                                                  0)
             .unwrap();
 

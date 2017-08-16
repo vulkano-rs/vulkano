@@ -89,7 +89,6 @@ impl fmt::Display for CheckIndexBufferError {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
     use super::*;
@@ -98,7 +97,6 @@ mod tests {
     fn num_indices() {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::index_buffer(),
-                                                    iter::once(queue.family()),
                                                     0 .. 500u32).unwrap();
 
         match check_index_buffer(&device, &buffer) {
@@ -113,7 +111,6 @@ mod tests {
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::vertex_buffer(),
-                                                    iter::once(queue.family()),
                                                     0 .. 500u32).unwrap();
 
         match check_index_buffer(&device, &buffer) {
@@ -128,7 +125,6 @@ mod tests {
         let (dev2, _) = gfx_dev_and_queue!();
 
         let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(),
-                                                    iter::once(queue.family()),
                                                     0 .. 500u32).unwrap();
 
         assert_should_panic!({
