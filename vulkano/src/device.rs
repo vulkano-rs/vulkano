@@ -480,7 +480,6 @@ impl Drop for Device {
             for &raw_event in self.event_pool.lock().unwrap().iter() {
                 self.vk.DestroyEvent(self.device, raw_event, ptr::null());
             }
-            self.vk.DeviceWaitIdle(self.device);
             self.vk.DestroyDevice(self.device, ptr::null());
         }
     }
