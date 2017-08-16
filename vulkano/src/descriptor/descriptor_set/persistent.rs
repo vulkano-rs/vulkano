@@ -131,8 +131,8 @@ unsafe impl<L, R, P> DescriptorSetDesc for PersistentDescriptorSet<L, R, P>
     }
 }
 
-unsafe impl<R, P> DeviceOwned for PersistentDescriptorSet<R, P>
-    where P: DeviceOwned
+unsafe impl<L, R, P> DeviceOwned for PersistentDescriptorSet<L, R, P>
+    where L: DeviceOwned
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -168,8 +168,8 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     /// Builds a `PersistentDescriptorSet` from the builder.
     #[inline]
     pub fn build(self) -> Result<PersistentDescriptorSet<L, R, StdDescriptorPoolAlloc>, PersistentDescriptorSetBuildError> {
-        let pool = Device::standard_descriptor_pool(self.layout.device());
-        self.build_with_pool(pool)
+        let mut pool = Device::standard_descriptor_pool(self.layout.device());
+        self.build_with_pool(&mut pool)
     }
 
     /// Builds a `PersistentDescriptorSet` from the builder.
@@ -178,9 +178,9 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// Panics if the pool doesn't have the same device as the pipeline layout.
     ///
-    pub fn build_with_pool<P>(self, pool: P)
+    pub fn build_with_pool<P>(self, pool: &mut P)
                               -> Result<PersistentDescriptorSet<L, R, P::Alloc>, PersistentDescriptorSetBuildError>
-        where P: DescriptorPool
+        where P: ?Sized + DescriptorPool
     {
         assert_eq!(self.layout.device().internal_object(),
                    pool.device().internal_object());

@@ -60,7 +60,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
     // TODO: eventually use a lock-free algorithm?
-    fn alloc(&self, layout: &UnsafeDescriptorSetLayout)
+    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout)
              -> Result<StdDescriptorPoolAlloc, OomError> {
         let mut pools = self.pools.lock().unwrap();
 
