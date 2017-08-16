@@ -101,7 +101,7 @@ fn main() {
     let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
     const data: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
     let (image, _) = ImmutableImage::from_iter(data.iter().cloned(), dimensions, pixel_format,
-                                               Some(queue.family()), queue.clone()).unwrap();
+                                               queue.clone()).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)
 }

@@ -79,7 +79,7 @@ fn main() {
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer::<[Vertex]>
                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(),
-                                       Some(queue.family()), [
+                                       [
                                            Vertex { position: [-0.5, -0.5 ] },
                                            Vertex { position: [-0.5,  0.5 ] },
                                            Vertex { position: [ 0.5, -0.5 ] },
@@ -115,7 +115,6 @@ fn main() {
             image_data.iter().cloned(),
             vulkano::image::Dimensions::Dim2d { width: 93, height: 93 },
             vulkano::format::R8G8B8A8Srgb,
-            Some(queue.family()),
             queue.clone()).unwrap()
     };
 

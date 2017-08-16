@@ -197,7 +197,7 @@ fn main() {
         struct Vertex { position: [f32; 2] }
         impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), Some(queue.family()), [
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
             Vertex { position: [-0.5, -0.25] },
             Vertex { position: [0.0, 0.5] },
             Vertex { position: [0.25, -0.1] }
