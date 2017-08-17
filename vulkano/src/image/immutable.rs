@@ -11,7 +11,6 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::iter;
 
 use buffer::BufferAccess;
 use buffer::BufferUsage;
@@ -184,32 +183,29 @@ impl<F> ImmutableImage<F> {
     ///
     /// TODO: Support mipmaps
     #[inline]
-    pub fn from_iter<'a, P, I, J>(iter: I, dimensions: Dimensions, format: F, queue_families: J, queue: Arc<Queue>)
-                                  -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
-                                            ImageCreationError>
+    pub fn from_iter<P, I>(iter: I, dimensions: Dimensions, format: F, queue: Arc<Queue>)
+                           -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
+                                     ImageCreationError>
         where P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: ExactSizeIterator<Item = P>,
-              J: IntoIterator<Item = QueueFamily<'a>>,
               Format: AcceptsPixels<P>,
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
-                                                    iter::once(queue.family()),
                                                     iter)?;
-        ImmutableImage::from_buffer(source, dimensions, format, queue_families, queue)
+        ImmutableImage::from_buffer(source, dimensions, format, queue)
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     ///
     /// TODO: Support mipmaps
-    pub fn from_buffer<'a, B, P, I>(source: B, dimensions: Dimensions, format: F, queue_families: I, queue: Arc<Queue>)
-                                    -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
-                                              ImageCreationError>
+    pub fn from_buffer<B, P>(source: B, dimensions: Dimensions, format: F, queue: Arc<Queue>)
+                             -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
+                                       ImageCreationError>
         where B: BufferAccess + TypedBufferAccess<Content = [P]> + 'static + Clone + Send + Sync,
               P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
-              I: IntoIterator<Item = QueueFamily<'a>>,
               Format: AcceptsPixels<P>,
     {
         let usage = ImageUsage { transfer_destination: true, sampled: true, ..ImageUsage::none() };
@@ -218,7 +214,7 @@ impl<F> ImmutableImage<F> {
         let (buffer, init) = ImmutableImage::uninitialized(source.device().clone(),
                                                            dimensions, format,
                                                            MipmapsCount::One, usage, layout,
-                                                           queue_families)?;
+                                                           source.device().active_queue_families())?;
 
         let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
             .copy_buffer_to_image_dimensions(source, init, [0, 0, 0], dimensions.width_height_depth(), 0, dimensions.array_layers_with_cube(), 0).unwrap()

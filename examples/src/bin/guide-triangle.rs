@@ -61,7 +61,6 @@ fn main() {
                                   Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
     let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                             Some(queue.family()),
                                              (0 .. 1024 * 1024 * 4).map(|_| 0u8))
                                              .expect("failed to create buffer");
 
@@ -74,7 +73,6 @@ fn main() {
     let vertex2 = Vertex { position: [ 0.0,  0.5] };
     let vertex3 = Vertex { position: [ 0.5, -0.25] };
     let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                                    Some(queue.family()),
                                                     vec![vertex1, vertex2, vertex3].into_iter()).unwrap();
                                                     
     let render_pass = Arc::new(single_pass_renderpass!(device.clone(),

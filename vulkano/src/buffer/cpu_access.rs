@@ -19,6 +19,7 @@
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
+use std::iter;
 use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
@@ -92,14 +93,13 @@ enum CurrentGpuAccess {
 
 impl<T> CpuAccessibleBuffer<T> {
     /// Builds a new buffer with some data in it. Only allowed for sized data.
-    pub fn from_data<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I, data: T)
-                            -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>,
-              T: Content + 'static
+    pub fn from_data(device: Arc<Device>, usage: BufferUsage, data: T)
+                     -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
+        where T: Content + 'static
     {
         unsafe {
             let uninitialized =
-                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)?;
+                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -116,28 +116,25 @@ impl<T> CpuAccessibleBuffer<T> {
 
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
-    pub unsafe fn uninitialized<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                                       -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
+    pub unsafe fn uninitialized(device: Arc<Device>, usage: BufferUsage)
+                                -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
     {
-        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
+        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())
     }
 }
 
 impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
-    pub fn from_iter<'a, I, Q>(device: Arc<Device>, usage: BufferUsage, queue_families: Q, data: I)
+    pub fn from_iter<I>(device: Arc<Device>, usage: BufferUsage, data: I)
                                -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static,
-              Q: IntoIterator<Item = QueueFamily<'a>>
     {
         unsafe {
             let uninitialized = CpuAccessibleBuffer::uninitialized_array(device,
                                                                          data.len(),
-                                                                         usage,
-                                                                         queue_families)?;
+                                                                         usage)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -157,12 +154,10 @@ impl<T> CpuAccessibleBuffer<[T]> {
 
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub unsafe fn uninitialized_array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage,
-                                             queue_families: I)
-                                             -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
+    pub unsafe fn uninitialized_array(device: Arc<Device>, len: usize, usage: BufferUsage)
+                                      -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
     {
-        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
+        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, iter::empty())
     }
 }
 
@@ -576,7 +571,6 @@ mod tests {
 
         let _ = CpuAccessibleBuffer::from_data(device,
                                                BufferUsage::all(),
-                                               Some(queue.family()),
                                                EMPTY.iter());
     }
 }

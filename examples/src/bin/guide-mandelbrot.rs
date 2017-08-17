@@ -103,7 +103,6 @@ void main() {
     );
 
     let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                             Some(queue.family()),
                                              (0 .. 1024 * 1024 * 4).map(|_| 0u8))
                                              .expect("failed to create buffer");
 

@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
 use std::cmp;
 use std::iter;
 use std::marker::PhantomData;
@@ -29,7 +28,6 @@ use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use instance::QueueFamily;
 use memory::DedicatedAlloc;
 use memory::pool::AllocLayout;
 use memory::pool::AllocFromRequirementsFilter;
@@ -80,9 +78,6 @@ pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
 
     // Buffer usage.
     usage: BufferUsage,
-
-    // Queue families allowed to access this buffer.
-    queue_families: SmallVec<[u32; 4]>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -160,15 +155,7 @@ pub struct CpuBufferPoolSubbuffer<T, A>
 impl<T> CpuBufferPool<T> {
     /// Builds a `CpuBufferPool`.
     #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> CpuBufferPool<T>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
-
+    pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
         let pool = Device::standard_pool(&device);
 
         CpuBufferPool {
@@ -176,7 +163,6 @@ impl<T> CpuBufferPool<T> {
             pool: pool,
             current_buffer: Mutex::new(None),
             usage: usage.clone(),
-            queue_families: queue_families,
             marker: PhantomData,
         }
     }
@@ -187,7 +173,7 @@ impl<T> CpuBufferPool<T> {
     /// family accesses.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_source(), iter::empty())
+        CpuBufferPool::new(device, BufferUsage::transfer_source())
     }
 
     /// Builds a `CpuBufferPool` meant for simple downloads.
@@ -196,7 +182,7 @@ impl<T> CpuBufferPool<T> {
     /// family accesses.
     #[inline]
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_destination(), iter::empty())
+        CpuBufferPool::new(device, BufferUsage::transfer_destination())
     }
 }
 
@@ -304,12 +290,6 @@ impl<T, A> CpuBufferPool<T, A>
                  -> Result<(), DeviceMemoryAllocError> {
         unsafe {
             let (buffer, mem_reqs) = {
-                let sharing = if self.queue_families.len() >= 2 {
-                    Sharing::Concurrent(self.queue_families.iter().cloned())
-                } else {
-                    Sharing::Exclusive
-                };
-
                 let size_bytes = match mem::size_of::<T>().checked_mul(capacity) {
                     Some(s) => s,
                     None => return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)),
@@ -318,7 +298,7 @@ impl<T, A> CpuBufferPool<T, A>
                 match UnsafeBuffer::new(self.device.clone(),
                                           size_bytes,
                                           self.usage,
-                                          sharing,
+                                          Sharing::Exclusive::<iter::Empty<_>>,
                                           SparseLevel::none()) {
                     Ok(b) => b,
                     Err(BufferCreationError::AllocError(err)) => return Err(err),
@@ -480,7 +460,6 @@ impl<T, A> Clone for CpuBufferPool<T, A>
             pool: self.pool.clone(),
             current_buffer: Mutex::new(buf.clone()),
             usage: self.usage.clone(),
-            queue_families: self.queue_families.clone(),
             marker: PhantomData,
         }
     }
