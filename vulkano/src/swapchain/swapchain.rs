@@ -101,8 +101,8 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
 ///
 /// The actual behavior depends on the present mode that you passed when creating the
 /// swapchain.
-pub fn present<'a, F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize)
-                  -> PresentFuture<'a, F>
+pub fn present<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize)
+                  -> PresentFuture<F>
     where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
@@ -131,9 +131,9 @@ pub fn present<'a, F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, i
 /// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
 ///
 /// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
-pub fn present_incremental<'a, F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize,
-                              present_region: &'a PresentRegion)
-                  -> PresentFuture<'a, F>
+pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize,
+                              present_region: PresentRegion)
+                  -> PresentFuture<F>
     where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
@@ -928,14 +928,14 @@ impl From<Error> for AcquireError {
 
 /// Represents a swapchain image being presented on the screen.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
-pub struct PresentFuture<'a, P>
+pub struct PresentFuture<P>
     where P: GpuFuture
 {
     previous: P,
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
     image_id: usize,
-    present_region: Option<&'a PresentRegion<'a>>,
+    present_region: Option<PresentRegion>,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
     flushed: AtomicBool,
@@ -944,7 +944,7 @@ pub struct PresentFuture<'a, P>
     finished: AtomicBool,
 }
 
-impl<'a, P> PresentFuture<'a, P>
+impl<P> PresentFuture<P>
     where P: GpuFuture
 {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
@@ -960,7 +960,7 @@ impl<'a, P> PresentFuture<'a, P>
     }
 }
 
-unsafe impl<'a, P> GpuFuture for PresentFuture<'a, P>
+unsafe impl<P> GpuFuture for PresentFuture<P>
     where P: GpuFuture
 {
     #[inline]
@@ -982,24 +982,24 @@ unsafe impl<'a, P> GpuFuture for PresentFuture<'a, P>
         Ok(match self.previous.build_submission()? {
                SubmitAnyBuilder::Empty => {
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::SemaphoresWait(sem) => {
                    let mut builder: SubmitPresentBuilder = sem.into();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::CommandBuffer(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::BindSparse(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::QueuePresent(present) => {
@@ -1077,7 +1077,7 @@ unsafe impl<'a, P> GpuFuture for PresentFuture<'a, P>
     }
 }
 
-unsafe impl<'a, P> DeviceOwned for PresentFuture<'a, P>
+unsafe impl<P> DeviceOwned for PresentFuture<P>
     where P: GpuFuture
 {
     #[inline]
@@ -1086,7 +1086,7 @@ unsafe impl<'a, P> DeviceOwned for PresentFuture<'a, P>
     }
 }
 
-impl<'a, P> Drop for PresentFuture<'a, P>
+impl<P> Drop for PresentFuture<P>
     where P: GpuFuture
 {
     fn drop(&mut self) {

@@ -7,30 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 use smallvec::SmallVec;
-use std::convert::Into;
-
 use swapchain::Swapchain;
-
 use vk;
 
 /// Represents a region on an image.
 ///
 /// A region consists of an arbitrary amount of rectangles.
 #[derive(Debug, Clone)]
-pub struct PresentRegion<'a> {
-    pub rectangles: &'a [RectangleLayer],
+pub struct PresentRegion {
+    pub rectangles: Vec<RectangleLayer>,
 }
 
-impl<'a> PresentRegion<'a> {
+impl PresentRegion {
     /// Returns true if this present region is compatible with swapchain.
     pub fn is_compatible_with(&self, swapchain: &Swapchain) -> bool {
         self.rectangles.iter().all(|rect| rect.is_compatible_with(swapchain))
     }
-}
 
-impl<'a> Into<vk::PresentRegionKHR> for &'a PresentRegion<'a> {
-    fn into(self) -> vk::PresentRegionKHR {
-        let vk_rects = self.rectangles.iter().map(|rect| rect.into()).collect::<SmallVec<[vk::RectLayerKHR; 4]>>();
+    pub(crate) fn to_vk(&self) -> vk::PresentRegionKHR {
+        let vk_rects = self.rectangles.iter().map(|rect| rect.to_vk()).collect::<SmallVec<[vk::RectLayerKHR; 4]>>();
         vk::PresentRegionKHR {
             rectangleCount: self.rectangles.len() as u32,
             pRectangles: vk_rects.as_ptr(),
@@ -61,10 +56,8 @@ impl RectangleLayer {
         self.offset[1] as u32 + self.extent[1] <= swapchain.dimensions()[1] &&
         self.layer < swapchain.layers()
     }
-}
 
-impl<'a> Into<vk::RectLayerKHR> for &'a RectangleLayer {
-    fn into(self) -> vk::RectLayerKHR {
+    pub(crate) fn to_vk(&self) -> vk::RectLayerKHR {
         vk::RectLayerKHR {
             offset: vk::Offset2D {
                 x: self.offset[0],

@@ -2630,7 +2630,6 @@ pub struct RectLayerKHR {
 }
 
 #[repr(C)]
-#[derive(Debug)]
 pub struct PresentRegionKHR {
     pub rectangleCount: u32,
     pub pRectangles: *const RectLayerKHR,
