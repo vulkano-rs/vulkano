@@ -80,7 +80,7 @@ impl<'a> SubmitPresentBuilder<'a> {
     /// Areas outside the present region *can* be ignored by the Vulkan implementation for
     /// optimizations purposes.
     ///
-    /// If `VK_KHR_incremental_present` is not enabled, the parameter is ignored.
+    /// If `VK_KHR_incremental_present` is not enabled, the `present_region` parameter is ignored.
     ///
     /// # Safety
     ///
@@ -167,7 +167,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
                 pNext: present_regions
                     .as_ref()
-                    .map(|pr| pr as *const _ as *const _)
+                    .map(|pr| pr as *const vk::PresentRegionsKHR as *const _)
                     .unwrap_or(ptr::null()),
                 waitSemaphoreCount: self.wait_semaphores.len() as u32,
                 pWaitSemaphores: self.wait_semaphores.as_ptr(),
@@ -190,12 +190,12 @@ impl<'a> SubmitPresentBuilder<'a> {
 }
 
 impl<'a> fmt::Debug for SubmitPresentBuilder<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f,
-               "SubmitPresentBuilder {{ wait_semaphores: {:?}, swapchains: {:?}, image_indices: {:?} }}",
-               self.wait_semaphores,
-               self.swapchains,
-               self.image_indices)
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        fmt.debug_struct("SubmitPresentBuilder")
+            .field("wait_semaphores", &self.wait_semaphores)
+            .field("swapchains", &self.swapchains)
+            .field("image_indices", &self.image_indices)
+            .finish()
     }
 }
 
