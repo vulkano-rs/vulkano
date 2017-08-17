@@ -398,6 +398,7 @@ device_extensions! {
     khr_maintenance1 => b"VK_KHR_maintenance1",
     khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
+    khr_incremental_present => b"VK_KHR_incremental_present",
 }
 
 /// Error that can happen when loading the list of layers.

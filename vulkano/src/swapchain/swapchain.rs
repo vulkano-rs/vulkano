@@ -37,6 +37,7 @@ use swapchain::CapabilitiesError;
 use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
+use swapchain::PresentRegion;
 use swapchain::Surface;
 use swapchain::SurfaceSwapchainLock;
 use swapchain::SurfaceTransform;
@@ -118,6 +119,38 @@ pub fn present<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index
         queue: queue,
         swapchain: swapchain,
         image_id: index,
+        present_region: None,
+        flushed: AtomicBool::new(false),
+        finished: AtomicBool::new(false),
+    }
+}
+
+/// Same as `swapchain::present`, except it allows specifying a present region.
+/// Areas outside the present region may be ignored by vulkan in order to optimize presentation.
+///
+/// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
+///
+/// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
+pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize,
+                              present_region: PresentRegion)
+                  -> PresentFuture<F>
+    where F: GpuFuture
+{
+    assert!(index < swapchain.images.len());
+
+    // TODO: restore this check with a dummy ImageAccess implementation
+    /*let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
+    // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
+    // function on the image instead. But since we know that this method on `SwapchainImage`
+    // always returns false anyway (by design), we don't need to do it.
+    assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead*/
+
+    PresentFuture {
+        previous: before,
+        queue: queue,
+        swapchain: swapchain,
+        image_id: index,
+        present_region: Some(present_region),
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
     }
@@ -520,6 +553,12 @@ unsafe impl VulkanObject for Swapchain {
     }
 }
 
+unsafe impl DeviceOwned for Swapchain {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 impl fmt::Debug for Swapchain {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -896,6 +935,7 @@ pub struct PresentFuture<P>
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
     image_id: usize,
+    present_region: Option<PresentRegion>,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
     flushed: AtomicBool,
@@ -942,24 +982,24 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
         Ok(match self.previous.build_submission()? {
                SubmitAnyBuilder::Empty => {
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::SemaphoresWait(sem) => {
                    let mut builder: SubmitPresentBuilder = sem.into();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::CommandBuffer(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::BindSparse(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::QueuePresent(present) => {

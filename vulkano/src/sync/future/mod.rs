@@ -26,6 +26,7 @@ use image::ImageAccess;
 use image::ImageLayout;
 use swapchain;
 use swapchain::PresentFuture;
+use swapchain::PresentRegion;
 use swapchain::Swapchain;
 use sync::AccessFlagBits;
 use sync::FenceWaitError;
@@ -241,6 +242,18 @@ pub unsafe trait GpuFuture: DeviceOwned {
         where Self: Sized
     {
         swapchain::present(swapchain, self, queue, image_index)
+    }
+
+    /// Same as `then_swapchain_present`, except it allows specifying a present region.
+    ///
+    /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
+    #[inline]
+    fn then_swapchain_present_incremental(self, queue: Arc<Queue>, swapchain: Arc<Swapchain>,
+                              image_index: usize, present_region: PresentRegion)
+                              -> PresentFuture<Self>
+        where Self: Sized
+    {
+        swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
     }
 }
 
