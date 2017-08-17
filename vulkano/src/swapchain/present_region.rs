@@ -6,7 +6,6 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
-use smallvec::SmallVec;
 use swapchain::Swapchain;
 use vk;
 
@@ -22,14 +21,6 @@ impl PresentRegion {
     /// Returns true if this present region is compatible with swapchain.
     pub fn is_compatible_with(&self, swapchain: &Swapchain) -> bool {
         self.rectangles.iter().all(|rect| rect.is_compatible_with(swapchain))
-    }
-
-    pub(crate) fn to_vk(&self) -> vk::PresentRegionKHR {
-        let vk_rects = self.rectangles.iter().map(|rect| rect.to_vk()).collect::<SmallVec<[vk::RectLayerKHR; 4]>>();
-        vk::PresentRegionKHR {
-            rectangleCount: self.rectangles.len() as u32,
-            pRectangles: vk_rects.as_ptr(),
-        }
     }
 }
 
