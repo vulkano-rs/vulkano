@@ -45,6 +45,18 @@ pub struct Surface {
 }
 
 impl Surface {
+    /// Creates a `Surface` given the raw handler.
+    ///
+    /// Be careful when using it
+    ///
+    pub unsafe fn new(instance: Arc<Instance>, surface: vk::SurfaceKHR) -> Surface {
+        Surface {
+            instance: instance.clone(),
+            surface: surface,
+            has_swapchain: AtomicBool::new(false),
+        }
+    }
+
     /// Creates a `Surface` that covers a display mode.
     ///
     /// # Panic
