@@ -49,9 +49,9 @@ impl Surface {
     ///
     /// Be careful when using it
     ///
-    pub unsafe fn new(instance: Arc<Instance>, surface: vk::SurfaceKHR) -> Surface {
+    pub unsafe fn from_raw_surface(instance: Arc<Instance>, surface: vk::SurfaceKHR) -> Surface {
         Surface {
-            instance: instance.clone(),
+            instance: instance,
             surface: surface,
             has_swapchain: AtomicBool::new(false),
         }
