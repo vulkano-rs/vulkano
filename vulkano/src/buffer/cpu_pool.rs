@@ -184,6 +184,33 @@ impl<T> CpuBufferPool<T> {
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
         CpuBufferPool::new(device, BufferUsage::transfer_destination())
     }
+
+    /// Builds a `CpuBufferPool` meant for usage as a uniform buffer.
+    ///
+    /// Shortcut for a pool that can only be used as uniform buffer and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn uniform_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::uniform_buffer())
+    }
+
+    /// Builds a `CpuBufferPool` meant for usage as a vertex buffer.
+    ///
+    /// Shortcut for a pool that can only be used as vertex buffer and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn vertex_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::vertex_buffer())
+    }
+
+    /// Builds a `CpuBufferPool` meant for usage as a indirect buffer.
+    ///
+    /// Shortcut for a pool that can only be used as indirect buffer and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn indirect_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::indirect_buffer())
+    }
 }
 
 impl<T, A> CpuBufferPool<T, A>
