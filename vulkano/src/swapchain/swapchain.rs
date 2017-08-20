@@ -344,7 +344,14 @@ impl Swapchain {
         assert_ne!(usage, ImageUsage::none());
 
         if let Some(ref old_swapchain) = old_swapchain {
-            *old_swapchain.stale.lock().unwrap() = false;
+            let mut stale = old_swapchain.stale.lock().unwrap();
+
+            // The swapchain has already been used to create a new one.
+            if *stale {
+                return Err(SwapchainCreationError::OldSwapchainAlreadyUsed);
+            } else {
+                *stale = true;
+            }
         }
 
         let vk = device.pointers();
@@ -594,6 +601,8 @@ pub enum SwapchainCreationError {
     MissingExtension,
     /// Surface mismatch between old and new swapchain.
     OldSwapchainSurfaceMismatch,
+    /// The old swapchain has already been used to recreate another one.
+    OldSwapchainAlreadyUsed,
     /// The requested number of swapchain images is not supported by the surface.
     UnsupportedMinImagesCount,
     /// The requested number of swapchain images is not supported by the surface.
@@ -638,6 +647,9 @@ impl error::Error for SwapchainCreationError {
             },
             SwapchainCreationError::OldSwapchainSurfaceMismatch => {
                 "surface mismatch between old and new swapchain"
+            },
+            SwapchainCreationError::OldSwapchainAlreadyUsed => {
+                "old swapchain has already been used to recreate a new one"
             },
             SwapchainCreationError::UnsupportedMinImagesCount => {
                 "the requested number of swapchain images is not supported by the surface"
