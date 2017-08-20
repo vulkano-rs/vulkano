@@ -168,7 +168,7 @@ pub struct Swapchain {
     // The images of this swapchain.
     images: Vec<ImageEntry>,
 
-    // If true, that means we have used this swapchain to recreate a new swapchain. The current
+    // If true, that means we have tried to use this swapchain to recreate a new swapchain. The current
     // swapchain can no longer be used for anything except presenting already-acquired images.
     //
     // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
@@ -344,7 +344,21 @@ impl Swapchain {
         assert_ne!(usage, ImageUsage::none());
 
         if let Some(ref old_swapchain) = old_swapchain {
-            *old_swapchain.stale.lock().unwrap() = false;
+            let mut stale = old_swapchain.stale.lock().unwrap();
+
+            // The swapchain has already been used to create a new one.
+            if *stale {
+                return Err(SwapchainCreationError::OldSwapchainAlreadyUsed);
+            } else {
+                // According to the documentation of VkSwapchainCreateInfoKHR:
+                //
+                // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
+                // > any images not acquired by the application may be freed by the implementation,
+                // > which may occur even if creation of the new swapchain fails.
+                //
+                // Therefore, we set stale to true and keep it to true even if the call to `vkCreateSwapchainKHR` below fails.
+                *stale = true;
+            }
         }
 
         let vk = device.pointers();
@@ -594,6 +608,8 @@ pub enum SwapchainCreationError {
     MissingExtension,
     /// Surface mismatch between old and new swapchain.
     OldSwapchainSurfaceMismatch,
+    /// The old swapchain has already been used to recreate another one.
+    OldSwapchainAlreadyUsed,
     /// The requested number of swapchain images is not supported by the surface.
     UnsupportedMinImagesCount,
     /// The requested number of swapchain images is not supported by the surface.
@@ -638,6 +654,9 @@ impl error::Error for SwapchainCreationError {
             },
             SwapchainCreationError::OldSwapchainSurfaceMismatch => {
                 "surface mismatch between old and new swapchain"
+            },
+            SwapchainCreationError::OldSwapchainAlreadyUsed => {
+                "old swapchain has already been used to recreate a new one"
             },
             SwapchainCreationError::UnsupportedMinImagesCount => {
                 "the requested number of swapchain images is not supported by the surface"
