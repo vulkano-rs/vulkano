@@ -212,10 +212,6 @@ impl Swapchain {
     /// swapchain. The order in which the images are returned is important for the
     /// `acquire_next_image` and `present` functions.
     ///
-    /// According to the specification, if the `old_swapchain` is not `None`,
-    /// > any images not acquired by the application may be freed by the implementation,
-    /// > which may occur even if creation of the new swapchain fails.
-    ///
     /// # Panic
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
