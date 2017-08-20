@@ -212,9 +212,9 @@ impl Swapchain {
     /// swapchain. The order in which the images are returned is important for the
     /// `acquire_next_image` and `present` functions.
     ///
-    /// If the `old_swapchain` is not `None`, the old swapchain **cannot** be used after the call,
-    /// except for presenting already acquired images. Even if the call fails, the implementation
-    /// is allowed to free the old swapchain.
+    /// According to the specification, if the `old_swapchain` is not `None`,
+    /// > "any images not acquired by the application may be freed by the implementation,
+    /// > which may occur even if creation of the new swapchain fails."
     ///
     /// # Panic
     ///
@@ -356,9 +356,9 @@ impl Swapchain {
             } else {
                 // According to the documentation of VkSwapchainCreateInfoKHR:
                 //
-                //  "Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
-                //  any images not acquired by the application may be freed by the implementation,
-                //  which may occur even if creation of the new swapchain fails."
+                // > "Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
+                // > any images not acquired by the application may be freed by the implementation,
+                // > which may occur even if creation of the new swapchain fails."
                 //
                 // Therefore, we set stale to true and keep it to true even if the call to `vkCreateSwapchainKHR` below fails.
                 *stale = true;
