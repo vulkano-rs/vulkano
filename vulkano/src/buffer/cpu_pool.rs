@@ -535,6 +535,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+        if self.requested_len == 0 {
+            return Ok(());
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
@@ -548,6 +552,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
@@ -558,6 +566,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     unsafe fn unlock(&self) {
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
