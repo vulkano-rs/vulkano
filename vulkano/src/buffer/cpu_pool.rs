@@ -136,6 +136,7 @@ pub struct CpuBufferPoolChunk<T, A>
     align_offset: usize,
 
     // Size of the subbuffer in number of elements, as requested by the user.
+    // If this is 0, then no entry was added to `chunks_in_use`.
     requested_len: usize,
 
     // Necessary to make it compile.
@@ -341,7 +342,7 @@ impl<T, A> CpuBufferPool<T, A>
     // Panicks if the length of the iterator didn't match the actual number of element.
     //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
-                        data: I) -> Result<CpuBufferPoolChunk<T, A>, I>
+                        mut data: I) -> Result<CpuBufferPoolChunk<T, A>, I>
         where I: ExactSizeIterator<Item = T>
     {
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
@@ -351,9 +352,25 @@ impl<T, A> CpuBufferPool<T, A>
         };
 
         let mut chunks_in_use = current_buffer.chunks_in_use.lock().unwrap();
+        debug_assert!(!chunks_in_use.iter().any(|c| c.len == 0));
 
         // Number of elements requested by the user.
         let requested_len = data.len();
+
+        // We special case when 0 elements are requested. Polluting the list of allocated chunks
+        // with chunks of length 0 means that we will have troubles deallocating.
+        if requested_len == 0 {
+            assert!(data.next().is_none(),
+                    "Expected iterator passed to CpuBufferPool::chunk to be empty");
+            return Ok(CpuBufferPoolChunk {
+               // TODO: remove .clone() once non-lexical borrows land
+               buffer: current_buffer.clone(),
+               index: 0,
+               align_offset: 0,
+               requested_len: 0,
+               marker: PhantomData,
+            });
+        }
 
         // Find a suitable offset and len, or returns if none available.
         let (index, occupied_len, align_offset) = {
@@ -518,6 +535,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+        if self.requested_len == 0 {
+            return Ok(());
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
@@ -531,6 +552,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
@@ -541,6 +566,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     unsafe fn unlock(&self) {
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
 
@@ -553,6 +582,11 @@ impl<T, A> Drop for CpuBufferPoolChunk<T, A>
     where A: MemoryPool
 {
     fn drop(&mut self) {
+        // If `requested_len` is 0, then no entry was added in the chunks.
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
         let chunk_num = chunks_in_use_lock.iter_mut().position(|c| c.index == self.index).unwrap();
 
