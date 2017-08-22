@@ -17,6 +17,7 @@ use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::pipeline_layout::limits_check;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
@@ -97,6 +98,14 @@ pub unsafe trait PipelineLayoutDesc {
         where Self: Sized
     {
         PipelineLayoutDescUnion::new(self, other)
+    }
+
+    /// Checks whether this description fulfills the device limits requirements.
+    #[inline]
+    fn check_against_limits(&self, device: &Device)
+                            -> Result<(), limits_check::PipelineLayoutLimitsError>
+    {
+        limits_check::check_desc_against_limits(device, self)
     }
 
     /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.
