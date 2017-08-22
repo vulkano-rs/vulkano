@@ -50,6 +50,7 @@
 //! TODO: write this section
 
 pub use self::empty::EmptyPipelineDesc;
+pub use self::limits_check::PipelineLayoutLimitsError;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;
 pub use self::sys::PipelineLayoutSys;
@@ -63,6 +64,7 @@ pub use self::traits::PipelineLayoutSuperset;
 pub use self::union::PipelineLayoutDescUnion;
 
 mod empty;
+mod limits_check;
 mod sys;
 mod traits;
 mod union;

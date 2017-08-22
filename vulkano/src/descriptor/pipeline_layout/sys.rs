@@ -26,6 +26,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use descriptor::pipeline_layout::PipelineLayoutLimitsError;
 use device::Device;
 use device::DeviceOwned;
 
@@ -51,7 +52,8 @@ impl<L> PipelineLayout<L>
     pub fn new(device: Arc<Device>, desc: L)
                -> Result<PipelineLayout<L>, PipelineLayoutCreationError> {
         let vk = device.pointers();
-        let limits = device.physical_device().limits();
+        
+        desc.check_against_limits(&device)?;
 
         // Building the list of `UnsafeDescriptorSetLayout` objects.
         let layouts = {
@@ -81,12 +83,6 @@ impl<L> PipelineLayout<L>
             .map(|l| l.internal_object())
             .collect::<SmallVec<[_; 16]>>();
 
-        // FIXME: must also check per-descriptor-type limits (eg. max uniform buffer descriptors)
-
-        if layouts_ids.len() > limits.max_bound_descriptor_sets() as usize {
-            return Err(PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded);
-        }
-
         // Builds a list of `vkPushConstantRange` that describe the push constants.
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
@@ -105,10 +101,6 @@ impl<L> PipelineLayout<L>
 
                 if stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
                     return Err(PipelineLayoutCreationError::InvalidPushConstant);
-                }
-
-                if offset + size > limits.max_push_constants_size() as usize {
-                    return Err(PipelineLayoutCreationError::MaxPushConstantsSizeExceeded);
                 }
 
                 out.push(vk::PushConstantRange {
@@ -267,15 +259,13 @@ unsafe impl<'a> VulkanObject for PipelineLayoutSys<'a> {
     }
 }
 
-/// Error that can happen when creating an instance.
+/// Error that can happen when creating a pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PipelineLayoutCreationError {
     /// Not enough memory.
     OomError(OomError),
-    /// The maximum number of descriptor sets has been exceeded.
-    MaxDescriptorSetsLimitExceeded,
-    /// The maximum size of push constants has been exceeded.
-    MaxPushConstantsSizeExceeded,
+    /// The pipeline layout description doesn't fulfill the limit requirements.
+    LimitsError(PipelineLayoutLimitsError),
     /// One of the push constants range didn't obey the rules. The list of stages must not be
     /// empty, the size must not be 0, and the size must be a multiple or 4.
     InvalidPushConstant,
@@ -288,11 +278,8 @@ impl error::Error for PipelineLayoutCreationError {
             PipelineLayoutCreationError::OomError(_) => {
                 "not enough memory available"
             },
-            PipelineLayoutCreationError::MaxDescriptorSetsLimitExceeded => {
-                "the maximum number of descriptor sets has been exceeded"
-            },
-            PipelineLayoutCreationError::MaxPushConstantsSizeExceeded => {
-                "the maximum size of push constants has been exceeded"
+            PipelineLayoutCreationError::LimitsError(_) => {
+                "the pipeline layout description doesn't fulfill the limit requirements"
             },
             PipelineLayoutCreationError::InvalidPushConstant => {
                 "one of the push constants range didn't obey the rules"
@@ -304,6 +291,7 @@ impl error::Error for PipelineLayoutCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             PipelineLayoutCreationError::OomError(ref err) => Some(err),
+            PipelineLayoutCreationError::LimitsError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -320,6 +308,13 @@ impl From<OomError> for PipelineLayoutCreationError {
     #[inline]
     fn from(err: OomError) -> PipelineLayoutCreationError {
         PipelineLayoutCreationError::OomError(err)
+    }
+}
+
+impl From<PipelineLayoutLimitsError> for PipelineLayoutCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutLimitsError) -> PipelineLayoutCreationError {
+        PipelineLayoutCreationError::LimitsError(err)
     }
 }
 
