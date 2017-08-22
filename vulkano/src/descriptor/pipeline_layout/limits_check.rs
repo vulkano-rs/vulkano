@@ -36,45 +36,37 @@ pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
     for set in 0 .. desc.num_sets() {
         for binding in 0 .. desc.num_bindings_in_set(set).unwrap() {
             let descriptor = desc.descriptor(set, binding).unwrap();
+            num_resources.increment(descriptor.array_count, &descriptor.stages);
 
             match descriptor.ty.ty().expect("Not implemented yet") {        // TODO:
                 DescriptorType::Sampler => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_samplers.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::CombinedImageSampler => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_samplers.increment(descriptor.array_count, &descriptor.stages);
                     num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_storage_images.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::UniformBuffer => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_uniform_buffers.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::UniformBufferDynamic => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_uniform_buffers.increment(descriptor.array_count, &descriptor.stages);
                     num_uniform_buffers_dynamic += 1;
                 },
                 DescriptorType::StorageBuffer => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_storage_buffers.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::StorageBufferDynamic => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_storage_buffers.increment(descriptor.array_count, &descriptor.stages);
                     num_storage_buffers_dynamic += 1;
                 },
                 DescriptorType::InputAttachment => {
-                    num_resources.increment(descriptor.array_count, &descriptor.stages);
                     num_input_attachments.increment(descriptor.array_count, &descriptor.stages);
                 },
             }
