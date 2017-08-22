@@ -141,7 +141,7 @@ pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
     if num_uniform_buffers_dynamic > limits.max_descriptor_set_uniform_buffers_dynamic() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
             limit: limits.max_descriptor_set_uniform_buffers_dynamic(),
-            requested: num_uniform_buffers.total,
+            requested: num_uniform_buffers_dynamic,
         });
     }
     if num_storage_buffers.total > limits.max_descriptor_set_storage_buffers() {
@@ -153,7 +153,7 @@ pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
     if num_storage_buffers_dynamic > limits.max_descriptor_set_storage_buffers_dynamic() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
             limit: limits.max_descriptor_set_storage_buffers_dynamic(),
-            requested: num_storage_buffers.total,
+            requested: num_storage_buffers_dynamic,
         });
     }
     if num_sampled_images.total > limits.max_descriptor_set_sampled_images() {
