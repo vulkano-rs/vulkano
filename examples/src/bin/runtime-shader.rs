@@ -246,10 +246,10 @@ fn main() {
     struct VertLayout(ShaderStages);
     unsafe impl PipelineLayoutDesc for VertLayout {
         // Number of descriptor sets it takes.
-        fn num_sets(&self) -> usize { 1 }
+        fn num_sets(&self) -> usize { 0 }
         // Number of entries (bindings) in each set.
         fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-            match set { 0 => Some(1), _ => None, }
+            match set { _ => None, }
         }
         // Descriptor descriptions.
         fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
@@ -341,9 +341,9 @@ fn main() {
     #[derive(Debug, Copy, Clone)]
     struct FragLayout(ShaderStages);
     unsafe impl PipelineLayoutDesc for FragLayout {
-        fn num_sets(&self) -> usize { 1 }
+        fn num_sets(&self) -> usize { 0 }
         fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-            match set { 0 => Some(1), _ => None, }
+            match set { _ => None, }
         }
         fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
             match (set, binding) { _ => None, }
