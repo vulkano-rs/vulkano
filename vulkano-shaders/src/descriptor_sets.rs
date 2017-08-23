@@ -118,7 +118,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         .collect::<Vec<_>>()
         .concat();
 
-    let num_sets = 1 + descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
+    let num_sets = descriptors.iter().fold(0, |s, d| cmp::max(s, d.set + 1));
 
     // Writing the body of the `num_bindings_in_set` method.
     let num_bindings_in_set_body = {
