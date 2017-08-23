@@ -25,10 +25,8 @@ use check_errors;
 use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
@@ -191,172 +189,6 @@ impl GraphicsPipeline<(), (), ()> {
 impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     where Rp: RenderPassAbstract
 {
-    /// Builds a new graphics pipeline object.
-    ///
-    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
-    ///
-    /// In order to avoid compiler errors caused by not being able to infer template parameters,
-    /// this function assumes that you will only use a vertex shader and a fragment shader. See
-    /// the other constructors for other possibilities.
-    #[inline]
-    pub(crate) fn new<Vs, Fs>
-              (device: Arc<Device>,
-               params: GraphicsPipelineParams<Vdef, Vs, EmptyEntryPointDummy, EmptyEntryPointDummy, EmptyEntryPointDummy, Fs, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vs::InputDefinition>,
-              Vs: GraphicsEntryPointAbstract,
-              Fs: GraphicsEntryPointAbstract,
-              Vs::PipelineLayout: Clone,
-              Fs::PipelineLayout: Clone,
-              Fs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-              Rp: RenderPassSubpassInterface<Fs::OutputDefinition>,
-    {
-        if let Err(err) = params
-            .fragment_shader
-            .input()
-            .matches(params.vertex_shader.output())
-        {
-            return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
-        }
-
-        let pl = params
-            .vertex_shader
-            .layout()
-            .clone()
-            .union(params.fragment_shader.layout().clone())
-            .build(device.clone())
-            .unwrap(); // TODO: error
-
-        GraphicsPipeline::new_inner::<_,
-                                      EmptyEntryPointDummy,
-                                      EmptyEntryPointDummy,
-                                      EmptyEntryPointDummy,
-                                      _>(device, params, pl)
-    }
-
-    /// Builds a new graphics pipeline object with a geometry shader.
-    ///
-    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
-    ///
-    /// In order to avoid compiler errors caused by not being able to infer template parameters,
-    /// this function assumes that you will use a vertex shader, a geometry shader and a fragment
-    /// shader. See the other constructors for other possibilities.
-    #[inline]
-    pub(crate) fn with_geometry_shader<Vs, Gs, Fs>
-              (device: Arc<Device>,
-               params: GraphicsPipelineParams<Vdef, Vs, EmptyEntryPointDummy, EmptyEntryPointDummy, Gs, Fs, Rp>)
-              -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>, Gs::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vs::InputDefinition>,
-              Vs: GraphicsEntryPointAbstract,
-              Fs: GraphicsEntryPointAbstract,
-              Gs: GraphicsEntryPointAbstract,
-              Vs::PipelineLayout: Clone,
-              Fs::PipelineLayout: Clone,
-              Gs::PipelineLayout: Clone,
-              Gs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-              Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition> + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-              Rp: RenderPassSubpassInterface<Fs::OutputDefinition>,
-    {
-        if let Some(ref geometry_shader) = params.geometry_shader {
-            if let Err(err) = geometry_shader
-                .input()
-                .matches(params.vertex_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::VertexGeometryStagesMismatch(err));
-            };
-
-            if let Err(err) = params
-                .fragment_shader
-                .input()
-                .matches(geometry_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
-            }
-        } else {
-            if let Err(err) = params
-                .fragment_shader
-                .input()
-                .matches(params.vertex_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
-            }
-        }
-
-        let pl = params.vertex_shader.layout().clone()
-                    .union(params.fragment_shader.layout().clone())
-                    .union(params.geometry_shader.as_ref().unwrap().layout().clone())    // FIXME: unwrap()
-                    .build(device.clone()).unwrap(); // TODO: error
-
-        GraphicsPipeline::new_inner(device.clone(), params, pl)
-    }
-
-    /// Builds a new graphics pipeline object with tessellation shaders.
-    ///
-    /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
-    ///
-    /// In order to avoid compiler errors caused by not being able to infer template parameters,
-    /// this function assumes that you will use a vertex shader, a tessellation control shader, a
-    /// tessellation evaluation shader and a fragment shader. See the other constructors for other
-    /// possibilities.
-    #[inline]
-    pub(crate) fn with_tessellation<Vs, Tcs, Tes, Fs>
-              (device: Arc<Device>,
-               params: GraphicsPipelineParams<Vdef, Vs, Tcs, Tes, EmptyEntryPointDummy, Fs, Rp>)
-               -> Result<GraphicsPipeline<Vdef, PipelineLayout<PipelineLayoutDescUnion<PipelineLayoutDescUnion<PipelineLayoutDescUnion<Vs::PipelineLayout, Fs::PipelineLayout>, Tcs::PipelineLayout>, Tes::PipelineLayout>>, Rp>, GraphicsPipelineCreationError>
-        where Vdef: VertexDefinition<Vs::InputDefinition>,
-              Vs: GraphicsEntryPointAbstract,
-              Fs: GraphicsEntryPointAbstract,
-              Tcs: GraphicsEntryPointAbstract,
-              Tes: GraphicsEntryPointAbstract,
-              Vs::PipelineLayout: Clone,
-              Fs::PipelineLayout: Clone,
-              Tcs::PipelineLayout: Clone,
-              Tes::PipelineLayout: Clone,
-              Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-              Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
-              Fs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition> + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-              Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>,
-    {
-        if let Some(ref tess) = params.tessellation {
-            if let Err(err) = tess.tessellation_control_shader
-                .input()
-                .matches(params.vertex_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
-            }
-            if let Err(err) = tess.tessellation_evaluation_shader
-                .input()
-                .matches(tess.tessellation_control_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
-            }
-            if let Err(err) = params
-                .fragment_shader
-                .input()
-                .matches(tess.tessellation_evaluation_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(err));
-            }
-
-        } else {
-            if let Err(err) = params
-                .fragment_shader
-                .input()
-                .matches(params.vertex_shader.output())
-            {
-                return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
-            }
-        }
-
-        let pl = params.vertex_shader.layout().clone()
-                    .union(params.fragment_shader.layout().clone())
-                    .union(params.tessellation.as_ref().unwrap().tessellation_control_shader.layout().clone())    // FIXME: unwrap()
-                    .union(params.tessellation.as_ref().unwrap().tessellation_evaluation_shader.layout().clone())    // FIXME: unwrap()
-                    .build(device.clone()).unwrap(); // TODO: error
-
-        GraphicsPipeline::new_inner(device, params, pl)
-    }
-
     /// Builds a new graphics pipeline object with a geometry and tessellation shaders.
     ///
     /// See the documentation of `GraphicsPipelineCreateInfo` for more info about the parameter.
@@ -366,6 +198,7 @@ impl<Vdef, Rp> GraphicsPipeline<Vdef, (), Rp>
     /// tessellation evaluation shader, a geometry shader and a fragment shader. See the other
     /// constructors for other possibilities.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
+    // TODO: remove
     #[inline]
     pub(crate) fn with_tessellation_and_geometry<Vs,
                                           Tcs,

@@ -75,7 +75,7 @@ pub unsafe trait PipelineLayoutDesc {
     /// If the `PipelineLayoutDesc` implementation is able to provide an existing
     /// `UnsafeDescriptorSetLayout` for a given set, it can do so by returning it here.
     #[inline]
-    fn provided_set_layout(&self, set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
+    fn provided_set_layout(&self, _set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
         None
     }
 

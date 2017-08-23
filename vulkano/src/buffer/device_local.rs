@@ -195,7 +195,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+    fn conflict_key(&self, _: usize, _: usize) -> u64 {
         self.inner.key()
     }
 
@@ -220,7 +220,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
                     Ok(())
                 }
             },
-            &mut GpuAccess::Exclusive { ref mut num } => {
+            &mut GpuAccess::Exclusive { .. } => {
                 Err(AccessError::AlreadyInUse)
             }
         }
