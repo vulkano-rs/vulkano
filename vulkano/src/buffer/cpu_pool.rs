@@ -46,9 +46,10 @@ use OomError;
 //       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
 //       a buffer is locked.
 
-/// Buffer from which "sub-buffers" can be individually allocated.
+/// Ring buffer from which "sub-buffers" can be individually allocated.
 ///
-/// This buffer is especially suitable when you want to upload or download some data at each frame.
+/// This buffer is especially suitable when you want to upload or download some data regularly
+/// (for example, at each frame for a video game).
 ///
 /// # Usage
 ///
@@ -57,12 +58,45 @@ use OomError;
 /// in size.
 ///
 /// Contrary to a `Vec`, elements automatically free themselves when they are dropped (ie. usually
-/// when they are no longer in use by the GPU).
+/// when you call `cleanup_finished()` on a future, or when you drop that future).
 ///
 /// # Arc-like
 ///
 /// The `CpuBufferPool` struct internally contains an `Arc`. You can clone the `CpuBufferPool` for
 /// a cheap cost, and all the clones will share the same underlying buffer.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::buffer::CpuBufferPool;
+/// use vulkano::command_buffer::AutoCommandBufferBuilder;
+/// use vulkano::command_buffer::CommandBuffer;
+/// use vulkano::sync::GpuFuture;
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+///
+/// // Create the ring buffer.
+/// let buffer = CpuBufferPool::upload(device.clone());
+///
+/// for n in 0 .. 25u32 {
+///     // Each loop grabs a new entry from that ring buffer and stores ` data` in it.
+///     let data: [f32; 4] = [1.0, 0.5, n as f32 / 24.0, 0.0];
+///     let sub_buffer = buffer.next(data);
+///
+///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
+///     AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+///         .unwrap()
+///         // For the sake of the example we just call `update_buffer` on the buffer, even though
+///         // it is pointless to do that.
+///         .update_buffer(sub_buffer.clone(), [0.2, 0.3, 0.4, 0.5])
+///         .unwrap()
+///         .build().unwrap()
+///         .execute(queue.clone())
+///         .unwrap()
+///         .then_signal_fence_and_flush()
+///         .unwrap();
+/// }
+/// ```
 ///
 pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
     where A: MemoryPool
