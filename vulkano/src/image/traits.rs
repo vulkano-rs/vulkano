@@ -412,7 +412,7 @@ pub unsafe trait ImageViewAccess {
     /// This method should check whether the sampler's configuration can be used with the format
     /// of the view.
     // TODO: return a Result and propagate it when binding to a descriptor set
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
+    fn can_be_sampled(&self, _sampler: &Sampler) -> bool {
         true /* FIXME */
     }
 

@@ -97,8 +97,8 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
-                        other_offset: usize, other_size: usize)
+    fn conflicts_buffer(&self, _self_offset: usize, self_size: usize, other: &BufferAccess,
+                        _other_offset: usize, _other_size: usize)
                         -> bool {
         // TODO: should we really provide a default implementation?
 
@@ -142,7 +142,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+    fn conflict_key(&self, _self_offset: usize, _self_size: usize) -> u64 {
         // FIXME: remove implementation
         unimplemented!()
     }

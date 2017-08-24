@@ -188,7 +188,6 @@ unsafe impl DescriptorPool for LocalPool {
             // Try to extract a descriptor from the current pool if any exist.
             // This is the most common case.
             if let Some(ref mut current_pool) = self.current_pool {
-                let reserve = current_pool.reserve.clone();
                 let mut already_existing_sets = current_pool.reserve.lock().unwrap();
                 if !already_existing_sets.is_empty() {
                     return Ok(LocalPoolAlloc {

@@ -8,7 +8,6 @@
 // according to those terms.
 
 use smallvec::SmallVec;
-use std::iter::Empty;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -124,7 +123,7 @@ impl<F> StorageImage<F> {
                              dimensions.to_image_dimensions(),
                              1,
                              1,
-                             Sharing::Exclusive::<Empty<u32>>,
+                             sharing,
                              false,
                              false)?
         };

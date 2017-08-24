@@ -34,12 +34,12 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
     }
 
     #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+    fn num_bindings_in_set(&self, _: usize) -> Option<usize> {
         None
     }
 
     #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+    fn descriptor(&self, _: usize, _: usize) -> Option<DescriptorDesc> {
         None
     }
 
@@ -49,7 +49,7 @@ unsafe impl PipelineLayoutDesc for EmptyPipelineDesc {
     }
 
     #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+    fn push_constants_range(&self, _: usize) -> Option<PipelineLayoutDescPcRange> {
         None
     }
 }

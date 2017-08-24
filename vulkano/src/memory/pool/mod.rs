@@ -198,7 +198,7 @@ unsafe impl<A> MemoryPoolAlloc for PotentialDedicatedAllocation<A>
     fn mapped_memory(&self) -> Option<&MappedDeviceMemory> {
         match *self {
             PotentialDedicatedAllocation::Generic(ref alloc) => alloc.mapped_memory(),
-            PotentialDedicatedAllocation::Dedicated(ref mem) => None,
+            PotentialDedicatedAllocation::Dedicated(_) => None,
             PotentialDedicatedAllocation::DedicatedMapped(ref mem) => Some(mem),
         }
     }

@@ -424,8 +424,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
             },
         });
 
-        let readonly = self.desc.readonly;
-
         Ok(PersistentDescriptorSetBuilderArray {
             builder: PersistentDescriptorSetBuilder {
                 layout: self.builder.layout,
@@ -462,7 +460,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
         }
 
         self.builder.writes.push(match self.desc.ty {
-            DescriptorDescTy::TexelBuffer { storage, format } => {
+            DescriptorDescTy::TexelBuffer { storage, .. } => {
                 if storage {
                     // TODO: storage_texel_buffer_atomic
 
@@ -489,8 +487,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 });
             },
         });
-
-        let readonly = self.desc.readonly;
 
         Ok(PersistentDescriptorSetBuilderArray {
             builder: PersistentDescriptorSetBuilder {
@@ -582,8 +578,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
             },
         });
 
-        let readonly = self.desc.readonly;
-
         Ok(PersistentDescriptorSetBuilderArray {
             builder: PersistentDescriptorSetBuilder {
                 layout: self.builder.layout,
@@ -639,8 +633,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R> where L: PipelineLayoutAbst
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: ty.ty().unwrap() });
             },
         });
-
-        let readonly = self.desc.readonly;
 
         Ok(PersistentDescriptorSetBuilderArray {
             builder: PersistentDescriptorSetBuilder {
@@ -783,7 +775,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, _: usize) -> Option<(&BufferAccess, u32)> {
         None
     }
 
@@ -793,7 +785,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, _: usize) -> Option<(&ImageViewAccess, u32)> {
         None
     }
 }

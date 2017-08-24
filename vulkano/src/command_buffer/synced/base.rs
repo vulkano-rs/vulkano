@@ -199,24 +199,24 @@ pub trait Command<P> {
     fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync>;
 
     // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, num: usize) -> &BufferAccess {
+    fn buffer(&self, _num: usize) -> &BufferAccess {
         panic!()
     }
 
     // Gives access to the `num`th image used by the command.
-    fn image(&self, num: usize) -> &ImageAccess {
+    fn image(&self, _num: usize) -> &ImageAccess {
         panic!()
     }
 
     // Returns a user-friendly name for the `num`th buffer used by the command, for error
     // reporting purposes.
-    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+    fn buffer_name(&self, _num: usize) -> Cow<'static, str> {
         panic!()
     }
 
     // Returns a user-friendly name for the `num`th image used by the command, for error
     // reporting purposes.
-    fn image_name(&self, num: usize) -> Cow<'static, str> {
+    fn image_name(&self, _num: usize) -> Cow<'static, str> {
         panic!()
     }
 }
@@ -812,12 +812,12 @@ struct ResourceFinalState {
 /// `Command` it comes from.
 pub trait FinalCommand {
     // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, num: usize) -> &BufferAccess {
+    fn buffer(&self, _num: usize) -> &BufferAccess {
         panic!()
     }
 
     // Gives access to the `num`th image used by the command.
-    fn image(&self, num: usize) -> &ImageAccess {
+    fn image(&self, _num: usize) -> &ImageAccess {
         panic!()
     }
 }
@@ -1029,14 +1029,14 @@ impl<P> SyncCommandBuffer<P> {
         // Try locking resources. Updates `locked_resources` and `ret_value`, and break if an error
         // happens.
         for (key, entry) in self.resources.iter() {
-            let (commands, command_id, resource_ty, resource_index) = match *key {
+            let (command_id, resource_ty, resource_index) = match *key {
                 CbKey::Command {
-                    ref commands,
                     command_id,
                     resource_ty,
                     resource_index,
+                    ..
                 } => {
-                    (commands, command_id, resource_ty, resource_index)
+                    (command_id, resource_ty, resource_index)
                 },
                 _ => unreachable!(),
             };
@@ -1106,15 +1106,15 @@ impl<P> SyncCommandBuffer<P> {
 
         // If we are going to return an error, we have to unlock all the resources we locked above.
         if let Err(_) = ret_value {
-            for (key, entry) in self.resources.iter().take(locked_resources) {
-                let (commands, command_id, resource_ty, resource_index) = match *key {
+            for key in self.resources.keys().take(locked_resources) {
+                let (command_id, resource_ty, resource_index) = match *key {
                     CbKey::Command {
-                        ref commands,
                         command_id,
                         resource_ty,
                         resource_index,
+                        ..
                     } => {
-                        (commands, command_id, resource_ty, resource_index)
+                        (command_id, resource_ty, resource_index)
                     },
                     _ => unreachable!(),
                 };
@@ -1151,7 +1151,7 @@ impl<P> SyncCommandBuffer<P> {
     pub unsafe fn unlock(&self) {
         let commands_lock = self.commands.lock().unwrap();
 
-        for (key, entry) in self.resources.iter() {
+        for key in self.resources.keys() {
             let (command_id, resource_ty, resource_index) = match *key {
                 CbKey::Command {
                     command_id,

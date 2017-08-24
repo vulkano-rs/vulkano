@@ -1178,7 +1178,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 &self.buffer
             }
 
-            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+            fn buffer_name(&self, _: usize) -> Cow<'static, str> {
                 "destination".into()
             }
         }
@@ -1551,7 +1551,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 &self.buffer
             }
 
-            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+            fn buffer_name(&self, _: usize) -> Cow<'static, str> {
                 "destination".into()
             }
         }

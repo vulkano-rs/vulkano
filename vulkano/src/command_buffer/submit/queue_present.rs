@@ -179,10 +179,10 @@ impl<'a> SubmitPresentBuilder<'a> {
 
             check_errors(vk.QueuePresentKHR(*queue, &infos))?;
 
-            for result in results {
-                // TODO: AMD driver initially didn't write the results ; check that it's been fixed
+            // TODO: AMD driver initially didn't write the results ; check that it's been fixed
+            //for result in results {
                 //try!(check_errors(result));
-            }
+            //}
 
             Ok(())
         }

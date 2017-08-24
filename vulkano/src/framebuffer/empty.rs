@@ -39,7 +39,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, _: usize) -> Option<LayoutAttachmentDescription> {
         None
     }
 
@@ -69,7 +69,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, _: usize) -> Option<LayoutPassDependencyDescription> {
         None
     }
 
@@ -123,7 +123,7 @@ unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRender
 
 unsafe impl RenderPassDescClearValues<()> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_clear_values(&self, values: ()) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, _: ()) -> Box<Iterator<Item = ClearValue>> {
         Box::new(iter::empty())
     }
 }

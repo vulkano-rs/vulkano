@@ -273,7 +273,7 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
         if exclusive_access {
             return Err(AccessError::ExclusiveDenied);
         }
@@ -369,7 +369,7 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         if self.image.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }

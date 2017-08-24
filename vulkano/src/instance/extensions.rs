@@ -320,7 +320,7 @@ macro_rules! device_extensions {
             pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
                 match $rawname::supported_by_device_raw(physical_device) {
                     Ok(l) => l,
-                    Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
+                    Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }
@@ -361,7 +361,7 @@ macro_rules! device_extensions {
             pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
                 match $sname::supported_by_device_raw(physical_device) {
                     Ok(l) => l,
-                    Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
+                    Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }

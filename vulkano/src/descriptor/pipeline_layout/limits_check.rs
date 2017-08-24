@@ -182,7 +182,7 @@ pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
         let PipelineLayoutDescPcRange {
             offset,
             size,
-            stages,
+            ..
         } = {
             match desc.push_constants_range(pc_id) {
                 Some(o) => o,

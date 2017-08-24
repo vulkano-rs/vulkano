@@ -425,8 +425,7 @@ impl Swapchain {
 
         let images = image_handles
             .into_iter()
-            .enumerate()
-            .map(|(id, image)| unsafe {
+            .map(|image| unsafe {
                 let dims = ImageDimensions::Dim2d {
                     width: dimensions[0],
                     height: dimensions[1],
@@ -714,13 +713,13 @@ impl From<Error> for SwapchainCreationError {
             err @ Error::OutOfDeviceMemory => {
                 SwapchainCreationError::OomError(OomError::from(err))
             },
-            err @ Error::DeviceLost => {
+            Error::DeviceLost => {
                 SwapchainCreationError::DeviceLost
             },
-            err @ Error::SurfaceLost => {
+            Error::SurfaceLost => {
                 SwapchainCreationError::SurfaceLost
             },
-            err @ Error::NativeWindowInUse => {
+            Error::NativeWindowInUse => {
                 SwapchainCreationError::NativeWindowInUse
             },
             _ => panic!("unexpected error: {:?}", err),
@@ -810,15 +809,14 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, _: &BufferAccess, _: bool, _: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, _: bool,
+                          _: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {

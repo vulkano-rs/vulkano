@@ -35,12 +35,12 @@ unsafe impl DescriptorSetsCollection for () {
     }
 
     #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+    fn num_bindings_in_set(&self, _: usize) -> Option<usize> {
         None
     }
 
     #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+    fn descriptor(&self, _: usize, _: usize) -> Option<DescriptorDesc> {
         None
     }
 }
