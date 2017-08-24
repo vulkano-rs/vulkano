@@ -1,5 +1,9 @@
 # [Vulkano](http://vulkano.rs)
 
+[![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
+[![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
+[![Build Status](https://travis-ci.org/vulkano-rs/vulkano.svg?branch=master)](https://travis-ci.org/vulkano-rs/vulkano)
+
 See also [vulkano.rs](http://vulkano.rs).
 
 Vulkano is a Rust wrapper around [the Vulkan graphics API](https://www.khronos.org/vulkan/).
@@ -34,8 +38,6 @@ the general structure of the library is most likely definitive, and all future b
 will likely be straight-forward to fix in user code.
 
 ## [Documentation](https://docs.rs/vulkano)
-
-[![](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
 
 To get started you are encouraged to read the examples in `examples/src/bin`, starting with
 the `triangle` example.
