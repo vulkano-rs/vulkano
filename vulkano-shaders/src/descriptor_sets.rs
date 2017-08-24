@@ -124,11 +124,11 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     let num_bindings_in_set_body = {
         (0 .. num_sets)
             .map(|set| {
-                     let num = 1 +
-                         descriptors
+                     let num =
+                        descriptors
                              .iter()
                              .filter(|d| d.set == set)
-                             .fold(0, |s, d| cmp::max(s, d.binding));
+                             .fold(0, |s, d| cmp::max(s, 1 + d.binding));
                      format!("{set} => Some({num}),", set = set, num = num)
                  })
             .collect::<Vec<_>>()
