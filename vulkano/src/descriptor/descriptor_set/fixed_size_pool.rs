@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::sync::Arc;
-use std::sync::Mutex;
+use crossbeam::sync::SegQueue;
 
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
@@ -166,8 +166,7 @@ struct LocalPoolInner {
 
     // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
     // list. When a `LocalPoolAlloc` is dropped, its descriptor set is put back in this list.
-    // TODO: lock-free list?
-    reserve: Arc<Mutex<Vec<UnsafeDescriptorSet>>>,
+    reserve: SegQueue<UnsafeDescriptorSet>,
 }
 
 struct LocalPoolAlloc {
@@ -188,10 +187,9 @@ unsafe impl DescriptorPool for LocalPool {
             // Try to extract a descriptor from the current pool if any exist.
             // This is the most common case.
             if let Some(ref mut current_pool) = self.current_pool {
-                let mut already_existing_sets = current_pool.reserve.lock().unwrap();
-                if !already_existing_sets.is_empty() {
+                if let Some(already_existing_set) = current_pool.reserve.try_pop() {
                     return Ok(LocalPoolAlloc {
-                        actual_alloc: Some(already_existing_sets.remove(0)),
+                        actual_alloc: Some(already_existing_set),
                         pool: current_pool.clone(),
                     });
                 }
@@ -204,7 +202,13 @@ unsafe impl DescriptorPool for LocalPool {
                                                          self.next_capacity, false)?;
             let alloc = unsafe {
                 match new_pool.alloc((0 .. self.next_capacity).map(|_| layout)) {
-                    Ok(a) => a.collect(),
+                    Ok(iter) => {
+                        let stack = SegQueue::new();
+                        for elem in iter {
+                            stack.push(elem);
+                        }
+                        stack
+                    },
                     Err(DescriptorPoolAllocError::OutOfHostMemory) => {
                         return Err(OomError::OutOfHostMemory);
                     },
@@ -224,7 +228,7 @@ unsafe impl DescriptorPool for LocalPool {
             self.next_capacity = self.next_capacity.saturating_mul(2);
             self.current_pool = Some(Arc::new(LocalPoolInner {
                 actual_pool: new_pool,
-                reserve: Arc::new(Mutex::new(alloc))
+                reserve: alloc,
             }));
         }
     }
@@ -252,7 +256,7 @@ impl DescriptorPoolAlloc for LocalPoolAlloc {
 impl Drop for LocalPoolAlloc {
     fn drop(&mut self) {
         let inner = self.actual_alloc.take().unwrap();
-        self.pool.reserve.lock().unwrap().push(inner);
+        self.pool.reserve.push(inner);
     }
 }
 
