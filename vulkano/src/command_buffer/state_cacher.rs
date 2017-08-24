@@ -272,15 +272,8 @@ impl<'s> StateCacherDescriptorSets<'s> {
     #[inline]
     pub fn compare(self) -> Option<u32> {
         *self.poisonned = false;
-
         // Removing from the cache any set that wasn't added with `add`.
-        if self.offset < self.state.len() {
-            // TODO: SmallVec doesn't provide any method for this
-            for _ in self.offset .. self.state.len() {
-                self.state.remove(self.offset);
-            }
-        }
-
+        self.state.truncate(self.offset);
         self.found_diff
     }
 }
@@ -346,12 +339,7 @@ impl<'s> StateCacherVertexBuffers<'s> {
         *self.poisonned = false;
 
         // Removing from the cache any set that wasn't added with `add`.
-        if self.offset < self.state.len() {
-            // TODO: SmallVec doesn't provide any method for this
-            for _ in self.offset .. self.state.len() {
-                self.state.remove(self.offset);
-            }
-        }
+        self.state.truncate(self.offset);
 
         self.first_diff.map(|first| {
             debug_assert!(first <= self.last_diff);
