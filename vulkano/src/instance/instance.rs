@@ -542,7 +542,7 @@ impl<'a> ApplicationInfo<'a> {
 ///   wasn't built by Cargo.
 ///
 #[macro_export]
-macro_rules! from_cargo_toml {
+macro_rules! app_info_from_cargo_toml {
     () => {
         {
             let version = Version {

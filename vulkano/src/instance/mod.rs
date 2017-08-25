@@ -89,7 +89,7 @@
 //!
 //! // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
 //! // compile-time.
-//! let app_infos = from_cargo_toml!();
+//! let app_infos = app_info_from_cargo_toml!();
 //!
 //! let _instance = Instance::new(Some(&app_infos), &InstanceExtensions::none(), None).unwrap();
 //! # }
