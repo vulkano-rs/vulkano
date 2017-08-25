@@ -82,6 +82,7 @@
 //!
 //! ```no_run
 //! # #[macro_use] extern crate vulkano;
+//! # fn main() {
 //! use vulkano::instance::ApplicationInfo;
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
@@ -91,6 +92,7 @@
 //! let app_infos = from_cargo_toml!();
 //!
 //! let _instance = Instance::new(Some(&app_infos), &InstanceExtensions::none(), None).unwrap();
+//! # }
 //! ```
 //!
 //! # Enumerating physical devices and creating a device
