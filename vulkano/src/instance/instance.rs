@@ -538,8 +538,12 @@ macro_rules! from_cargo_toml {
 
 impl<'a> Default for ApplicationInfo<'a> {
     fn default() -> ApplicationInfo<'a> {
-        // Use vulkano's version and name as default.
-        from_cargo_toml!()
+        ApplicationInfo {
+            application_name: None,
+            application_version: None,
+            engine_name: None,
+            engine_version: None,
+        }
     }
 }
 
