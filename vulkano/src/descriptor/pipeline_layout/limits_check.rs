@@ -34,11 +34,17 @@ pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
     let mut num_input_attachments = Counter::default();
 
     for set in 0 .. desc.num_sets() {
-        let num_bindings_in_set = desc.num_bindings_in_set(set)
-                                      .expect("Wrong implementation of PipelineLayoutDesc");
+        let num_bindings_in_set = match desc.num_bindings_in_set(set) {
+            None => continue,
+            Some(n) => n,
+        };
+
         for binding in 0 .. num_bindings_in_set {
-            let descriptor = desc.descriptor(set, binding)
-                                 .expect("Wrong implementation of PipelineLayoutDesc");
+            let descriptor = match desc.descriptor(set, binding) {
+                None => continue,
+                Some(n) => n,
+            };
+
             num_resources.increment(descriptor.array_count, &descriptor.stages);
 
             match descriptor.ty.ty().expect("Not implemented yet") {        // TODO:
