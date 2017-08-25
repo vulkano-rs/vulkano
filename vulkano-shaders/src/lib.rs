@@ -24,6 +24,7 @@ mod descriptor_sets;
 mod entry_point;
 mod enums;
 mod parse;
+mod spec_consts;
 mod structs;
 
 pub fn build_glsl_shaders<'a, I>(shaders: I)
@@ -108,6 +109,10 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
         #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::SpecializationMapEntry;
     "#,
     );
 
@@ -202,6 +207,9 @@ impl {name} {{
 
         // descriptor sets
         output.push_str(&descriptor_sets::write_descriptor_sets(&doc));
+
+        // specialization constants
+        output.push_str(&spec_consts::write_specialization_constants(&doc));
     }
 
     Ok(output)
