@@ -507,35 +507,39 @@ pub struct ApplicationInfo<'a> {
     pub engine_version: Option<Version>,
 }
 
-impl<'a> ApplicationInfo<'a> {
-    /// Builds an `ApplicationInfo` from the information gathered by Cargo.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the required environment variables are missing, which happens if the project
-    ///   wasn't built by Cargo.
-    ///
-    pub fn from_cargo_toml() -> ApplicationInfo<'a> {
-        let version = Version {
-            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
-            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
-            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
-        };
+/// Builds an `ApplicationInfo` from the information gathered by Cargo.
+///
+/// # Panic
+///
+/// - Panics if the required environment variables are missing, which happens if the project
+///   wasn't built by Cargo.
+///
+#[macro_export]
+macro_rules! from_cargo_toml {
+    () => {
+        {
+            let version = Version {
+                major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+                minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+                patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+            };
 
-        let name = env!("CARGO_PKG_NAME");
+            let name = env!("CARGO_PKG_NAME");
 
-        ApplicationInfo {
-            application_name: Some(name.into()),
-            application_version: Some(version),
-            engine_name: None,
-            engine_version: None,
+            ApplicationInfo {
+                application_name: Some(name.into()),
+                application_version: Some(version),
+                engine_name: None,
+                engine_version: None,
+            }
         }
     }
 }
 
 impl<'a> Default for ApplicationInfo<'a> {
     fn default() -> ApplicationInfo<'a> {
-        ApplicationInfo::from_cargo_toml()
+        // Use vulkano's version and name as default.
+        from_cargo_toml!()
     }
 }
 
