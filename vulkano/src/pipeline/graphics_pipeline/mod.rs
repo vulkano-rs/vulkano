@@ -33,19 +33,12 @@ use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
 use framebuffer::Subpass;
-use vk;
-
-use pipeline::blend::Blend;
-use pipeline::depth_stencil::DepthStencil;
-use pipeline::input_assembly::InputAssembly;
-use pipeline::multisample::Multisample;
-use pipeline::raster::Rasterization;
 use pipeline::shader::EmptyEntryPointDummy;
 use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::vertex::VertexSource;
-use pipeline::viewport::ViewportsState;
+use vk;
 
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
@@ -54,65 +47,6 @@ mod builder;
 mod creation_error;
 // FIXME: restore
 //mod tests;
-
-/// Description of a `GraphicsPipeline`.
-pub(crate) struct GraphicsPipelineParams<
- Vdef,
- Vs,
- Tcs,
- Tes,
- Gs,
- Fs,
- Rp>
-{
-    /// Describes the layout of the vertex input.
-    ///
-    /// For example if you want to pass a vertex buffer and an instance buffer, this parameter
-    /// should describe it as well as the offsets and data type of various vertex attributes.
-    ///
-    /// Must implement the `VertexDefinition` trait.
-    pub vertex_input: Vdef,
-
-    /// The entry point of the vertex shader that will be run on the vertex input.
-    pub vertex_shader: Vs,
-
-    /// Describes how vertices should be assembled into primitives. Essentially contains the type
-    /// of primitives.
-    pub input_assembly: InputAssembly,
-
-    /// Parameters of the tessellation stage. `None` if you don't want to use tessellation.
-    /// If you use tessellation, you must enable the `tessellation_shader` feature on the device.
-    pub tessellation: Option<GraphicsPipelineParamsTess<Tcs, Tes>>,
-
-    /// The entry point of the geometry shader. `None` if you don't want a geometry shader.
-    /// If you use a geometry shader, you must enable the `geometry_shader` feature on the device.
-    pub geometry_shader: Option<Gs>,
-
-    /// Describes the subsection of the framebuffer attachments where the scene will be drawn.
-    /// You can use one or multiple viewports, but using multiple viewports is only relevant with
-    /// a geometry shader.
-    pub viewport: ViewportsState,
-
-    /// Describes how the implementation determines which pixels are covered by the shape.
-    pub raster: Rasterization,
-
-    // TODO: document
-    pub multisample: Multisample,
-
-    /// The entry point of the fragment shader that will be run on the pixels.
-    pub fragment_shader: Fs,
-
-    /// Describes how the implementation should perform the depth and stencil tests.
-    pub depth_stencil: DepthStencil,
-
-    /// Describes how the implementation should merge the color output of the fragment shader with
-    /// the existing value in the attachments.
-    pub blend: Blend,
-
-    /// Which subpass of which render pass this pipeline will run on. It is an error to run a
-    /// graphics pipeline on a different subpass.
-    pub render_pass: Subpass<Rp>,
-}
 
 /// Additional parameters if you use tessellation.
 #[derive(Copy, Clone)]
