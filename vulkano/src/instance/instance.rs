@@ -507,6 +507,33 @@ pub struct ApplicationInfo<'a> {
     pub engine_version: Option<Version>,
 }
 
+impl<'a> ApplicationInfo<'a> {
+    /// Builds an `ApplicationInfo` from the information gathered by Cargo.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the required environment variables are missing, which happens if the project
+    ///   wasn't built by Cargo.
+    ///
+    #[deprecated(note="Please use the `from_cargo_toml!` macro instead")]
+    pub fn from_cargo_toml() -> ApplicationInfo<'a> {
+        let version = Version {
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        };
+
+        let name = env!("CARGO_PKG_NAME");
+
+        ApplicationInfo {
+            application_name: Some(name.into()),
+            application_version: Some(version),
+            engine_name: None,
+            engine_version: None,
+        }
+    }
+}
+
 /// Builds an `ApplicationInfo` from the information gathered by Cargo.
 ///
 /// # Panic
