@@ -81,13 +81,14 @@
 //! behavior for your application alone through a control panel.
 //!
 //! ```no_run
+//! # #[macro_use] extern crate vulkano;
 //! use vulkano::instance::ApplicationInfo;
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //!
 //! // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
 //! // compile-time.
-//! let app_infos = ApplicationInfo::from_cargo_toml();
+//! let app_infos = from_cargo_toml!();
 //!
 //! let _instance = Instance::new(Some(&app_infos), &InstanceExtensions::none(), None).unwrap();
 //! ```
