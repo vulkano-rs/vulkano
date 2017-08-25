@@ -515,7 +515,7 @@ impl<'a> ApplicationInfo<'a> {
     /// - Panics if the required environment variables are missing, which happens if the project
     ///   wasn't built by Cargo.
     ///
-    #[deprecated(note="Please use the `from_cargo_toml!` macro instead")]
+    #[deprecated(note="Please use the `app_info_from_cargo_toml!` macro instead")]
     pub fn from_cargo_toml() -> ApplicationInfo<'a> {
         let version = Version {
             major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
