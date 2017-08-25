@@ -769,35 +769,24 @@ impl<Vdef,
     }
 }
 
-// TODO:
-/*impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
-     Fo, Fl, Rp> Copy for
-    GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                            Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    where Vdef: Copy, Rp: Copy
-{
-}
-
-impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
-     Fo, Fl, Rp> Clone for
-    GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                            Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    where Vdef: Clone, Rp: Clone
+impl<Vdef, Vs, Tcs, Tes, Gs, Fs, Rp> Clone for
+    GraphicsPipelineBuilder<Vdef, Vs, Tcs, Tes, Gs, Fs, Rp>
+    where Vdef: Clone, Vs: Clone, Tcs: Clone, Tes: Clone, Gs: Clone, Fs: Clone, Rp: Clone
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input.clone(),
-            vertex_shader: self.vertex_shader,
-            input_assembly: self.input_assembly,
-            tessellation: self.tessellation,
-            geometry_shader: self.geometry_shader,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            fragment_shader: self.fragment_shader,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-            render_pass: self.render_pass,
+            vertex_shader: self.vertex_shader.clone(),
+            input_assembly: self.input_assembly.clone(),
+            tessellation: self.tessellation.clone(),
+            geometry_shader: self.geometry_shader.clone(),
+            viewport: self.viewport.clone(),
+            raster: self.raster.clone(),
+            multisample: self.multisample.clone(),
+            fragment_shader: self.fragment_shader.clone(),
+            depth_stencil: self.depth_stencil.clone(),
+            blend: self.blend.clone(),
+            render_pass: self.render_pass.clone(),
         }
     }
-}*/
+}
