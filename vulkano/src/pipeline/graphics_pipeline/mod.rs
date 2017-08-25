@@ -132,6 +132,7 @@ pub(crate) struct GraphicsPipelineParams<
 }
 
 /// Additional parameters if you use tessellation.
+#[derive(Copy, Clone)]
 pub(crate) struct GraphicsPipelineParamsTess<Tcs, Tes> {
     /// The entry point of the tessellation control shader.
     pub tessellation_control_shader: Tcs,
