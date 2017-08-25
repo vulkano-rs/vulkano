@@ -48,15 +48,6 @@ mod creation_error;
 // FIXME: restore
 //mod tests;
 
-/// Additional parameters if you use tessellation.
-#[derive(Copy, Clone)]
-pub(crate) struct GraphicsPipelineParamsTess<Tcs, Tes> {
-    /// The entry point of the tessellation control shader.
-    pub tessellation_control_shader: Tcs,
-    /// The entry point of the tessellation evaluation shader.
-    pub tessellation_evaluation_shader: Tes,
-}
-
 /// Defines how the implementation should perform a draw operation.
 ///
 /// This object contains the shaders and the various fixed states that describe how the

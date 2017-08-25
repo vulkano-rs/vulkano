@@ -31,7 +31,6 @@ use pipeline::depth_stencil::DepthStencil;
 use pipeline::graphics_pipeline::GraphicsPipeline;
 use pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use pipeline::graphics_pipeline::GraphicsPipelineCreationError;
-use pipeline::graphics_pipeline::GraphicsPipelineParamsTess;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::input_assembly::PrimitiveTopology;
 use pipeline::multisample::Multisample;
@@ -71,7 +70,7 @@ pub struct GraphicsPipelineBuilder<
     vertex_input: Vdef,
     vertex_shader: Option<Vs>,
     input_assembly: InputAssembly,
-    tessellation: Option<GraphicsPipelineParamsTess<Tcs, Tes>>,
+    tessellation: Option<TessInfo<Tcs, Tes>>,
     geometry_shader: Option<Gs>,
     viewport: Option<ViewportsState>,
     raster: Rasterization,
@@ -80,6 +79,13 @@ pub struct GraphicsPipelineBuilder<
     depth_stencil: DepthStencil,
     blend: Blend,
     render_pass: Option<Subpass<Rp>>,
+}
+
+// Additional parameters if tessellation is used.
+#[derive(Copy, Clone)]
+struct TessInfo<Tcs, Tes> {
+    tessellation_control_shader: Tcs,
+    tessellation_evaluation_shader: Tes,
 }
 
 impl GraphicsPipelineBuilder<SingleBufferDefinition<()>,
@@ -1186,7 +1192,7 @@ impl<Vdef,
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
-            tessellation: Some(GraphicsPipelineParamsTess {
+            tessellation: Some(TessInfo {
                                    tessellation_control_shader: tessellation_control_shader,
                                    tessellation_evaluation_shader: tessellation_evaluation_shader,
                                }),
