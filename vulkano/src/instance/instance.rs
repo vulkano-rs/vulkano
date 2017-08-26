@@ -515,6 +515,7 @@ impl<'a> ApplicationInfo<'a> {
     /// - Panics if the required environment variables are missing, which happens if the project
     ///   wasn't built by Cargo.
     ///
+    #[deprecated(note="Please use the `app_info_from_cargo_toml!` macro instead")]
     pub fn from_cargo_toml() -> ApplicationInfo<'a> {
         let version = Version {
             major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
@@ -533,9 +534,41 @@ impl<'a> ApplicationInfo<'a> {
     }
 }
 
+/// Builds an `ApplicationInfo` from the information gathered by Cargo.
+///
+/// # Panic
+///
+/// - Panics if the required environment variables are missing, which happens if the project
+///   wasn't built by Cargo.
+///
+#[macro_export]
+macro_rules! app_info_from_cargo_toml {
+    () => {{
+        let version = $crate::instance::Version {
+            major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),
+            minor: env!("CARGO_PKG_VERSION_MINOR").parse().unwrap(),
+            patch: env!("CARGO_PKG_VERSION_PATCH").parse().unwrap(),
+        };
+
+        let name = env!("CARGO_PKG_NAME");
+
+        $crate::instance::ApplicationInfo {
+            application_name: Some(name.into()),
+            application_version: Some(version),
+            engine_name: None,
+            engine_version: None,
+        }
+    }}
+}
+
 impl<'a> Default for ApplicationInfo<'a> {
     fn default() -> ApplicationInfo<'a> {
-        ApplicationInfo::from_cargo_toml()
+        ApplicationInfo {
+            application_name: None,
+            application_version: None,
+            engine_name: None,
+            engine_version: None,
+        }
     }
 }
 
