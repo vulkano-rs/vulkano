@@ -129,7 +129,7 @@ unsafe impl SpecConstsTrait for SpecializationConstants {{
 }}
 
     "#,
-        struct_def = spec_consts.iter().map(|c| format!("{}: {}", c.name, c.rust_ty))
+        struct_def = spec_consts.iter().map(|c| format!("pub {}: {}", c.name, c.rust_ty))
                                 .collect::<Vec<_>>().join(", "),
         def_vals = spec_consts.iter().map(|c| format!("{}: {}", c.name, c.default_value))
                                 .collect::<Vec<_>>().join(", "),
