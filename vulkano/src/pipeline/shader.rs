@@ -494,11 +494,67 @@ impl fmt::Display for ShaderInterfaceMismatchError {
 
 /// Trait for types that contain specialization data for shaders.
 ///
-/// It is implemented on `()` for shaders that don't have any specialization constant.
+/// Shader modules can contain what is called *specialization constants*. They are the same as
+/// constants except that their values can be defined when you create a compute pipeline or a
+/// graphics pipeline. Doing so is done by passing a type that implements the
+/// `SpecializationConstants` trait and that stores the values in question. The `descriptors()`
+/// method of this trait indicates how to grab them.
+///
+/// Boolean specialization constants must be stored as 32bits integers, where `0` means `false` and
+/// any non-zero value means `true`. Integer and floating-point specialization constants are
+/// stored as their Rust equivalent.
+///
+/// This trait is implemented on `()` for shaders that don't have any specialization constant.
+///
+/// Note that it is the shader module that chooses which type that implements
+/// `SpecializationConstants` it is possible to pass when creating the pipeline, through [the
+/// `EntryPointAbstract` trait](trait.EntryPointAbstract.html). Therefore there is generally no
+/// point to implement this trait yourself, unless you are also writing your own implementation of
+/// `EntryPointAbstract`.
+///
+/// # Example
+/// 
+/// ```rust
+/// use vulkano::pipeline::shader::SpecializationConstants;
+/// use vulkano::pipeline::shader::SpecializationMapEntry;
+///
+/// #[repr(C)]      // `#[repr(C)]` guarantees that the struct has a specific layout
+/// struct MySpecConstants {
+///     my_integer_constant: i32,
+///     a_boolean: u32,
+///     floating_point: f32,
+/// }
+///
+/// unsafe impl SpecializationConstants for MySpecConstants {
+///     fn descriptors() -> &'static [SpecializationMapEntry] {
+///         static DESCRIPTORS: [SpecializationMapEntry; 3] = [
+///             SpecializationMapEntry {
+///                 constant_id: 0,
+///                 offset: 0,
+///                 size: 4,
+///             },
+///             SpecializationMapEntry {
+///                 constant_id: 1,
+///                 offset: 4,
+///                 size: 4,
+///             },
+///             SpecializationMapEntry {
+///                 constant_id: 2,
+///                 offset: 8,
+///                 size: 4,
+///             },
+///         ];
+///
+///         &DESCRIPTORS
+///     }
+/// }
+/// ```
 ///
 /// # Safety
 ///
 /// - The `SpecializationMapEntry` returned must contain valid offsets and sizes.
+/// - The size of each `SpecializationMapEntry` must match the size of the corresponding constant
+///   (`4` for booleans).
 ///
 pub unsafe trait SpecializationConstants {
     /// Returns descriptors of the struct's layout.
@@ -513,13 +569,20 @@ unsafe impl SpecializationConstants for () {
 }
 
 /// Describes an indiviual constant to set in the shader. Also a field in the struct.
-// Has the same memory representation as a `VkSpecializationMapEntry`.
+// Implementation note: has the same memory representation as a `VkSpecializationMapEntry`.
 #[repr(C)]
 pub struct SpecializationMapEntry {
     /// Identifier of the constant in the shader that corresponds to this field.
+    ///
+    /// For SPIR-V, this must be the value of the `SpecId` decoration applied to the specialization
+    /// constant.
+    /// For GLSL, this must be the value of `N` in the `layout(constant_id = N)` attribute applied
+    /// to a constant.
     pub constant_id: u32,
-    /// Offset within this struct for the data.
+
+    /// Offset within the struct where the data can be found.
     pub offset: u32,
-    /// Size of the data in bytes.
+
+    /// Size of the data in bytes. Must match the size of the constant (`4` for booleans).
     pub size: usize,
 }
