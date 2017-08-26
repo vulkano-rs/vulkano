@@ -53,10 +53,16 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
                                         true,
                                     _ => false,
                                 });
+    
+    let spec_consts_struct = if ::spec_consts::has_specialization_constants(doc) {
+        "SpecializationConstants"
+    } else {
+        "()"
+    };
 
     let (ty, f_call) = {
         if let enums::ExecutionModel::ExecutionModelGLCompute = *execution {
-            (format!("::vulkano::pipeline::shader::ComputeEntryPoint<(), Layout>"),
+            (format!("::vulkano::pipeline::shader::ComputeEntryPoint<{}, Layout>", spec_consts_struct),
             format!("compute_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as \
                     *const _), Layout(ShaderStages {{ compute: true, .. ShaderStages::none() \
                     }}))"))
@@ -131,8 +137,9 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
                 enums::ExecutionModel::ExecutionModelKernel => unreachable!(),
             };
 
-            let t = format!("::vulkano::pipeline::shader::GraphicsEntryPoint<(), {0}Input, \
-                                {0}Output, Layout>",
+            let t = format!("::vulkano::pipeline::shader::GraphicsEntryPoint<{0}, {1}Input, \
+                                {1}Output, Layout>",
+                            spec_consts_struct,
                             capitalized_ep_name);
             let f = format!("graphics_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() \
                                 as *const _), {0}Input, {0}Output, Layout({2}), {1})",

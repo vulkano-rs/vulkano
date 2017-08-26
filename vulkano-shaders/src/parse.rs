@@ -166,6 +166,24 @@ pub enum Instruction {
         result_id: u32,
         data: Vec<u32>,
     },
+    SpecConstantTrue {
+        result_type_id: u32,
+        result_id: u32,
+    },
+    SpecConstantFalse {
+        result_type_id: u32,
+        result_id: u32,
+    },
+    SpecConstant {
+        result_type_id: u32,
+        result_id: u32,
+        data: Vec<u32>,
+    },
+    SpecConstantComposite {
+        result_type_id: u32,
+        result_id: u32,
+        data: Vec<u32>,
+    },
     FunctionEnd,
     Variable {
         result_type_id: u32,
@@ -314,6 +332,24 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
                type_id: operands[2],
            },
            43 => Instruction::Constant {
+               result_type_id: operands[0],
+               result_id: operands[1],
+               data: operands[2 ..].to_owned(),
+           },
+           48 => Instruction::SpecConstantTrue {
+               result_type_id: operands[0],
+               result_id: operands[1],
+           },
+           49 => Instruction::SpecConstantFalse {
+               result_type_id: operands[0],
+               result_id: operands[1],
+           },
+           50 => Instruction::SpecConstant {
+               result_type_id: operands[0],
+               result_id: operands[1],
+               data: operands[2 ..].to_owned(),
+           },
+           51 => Instruction::SpecConstantComposite {
                result_type_id: operands[0],
                result_id: operands[1],
                data: operands[2 ..].to_owned(),

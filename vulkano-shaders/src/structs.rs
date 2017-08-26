@@ -252,13 +252,7 @@ pub fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::TypeBool { result_id } if result_id == searched => {
-                #[repr(C)]
-                struct Foo {
-                    data: bool,
-                    after: u8,
-                }
-                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                return ("bool".to_owned(), Some(size), mem::align_of::<Foo>());
+                panic!("Can't put booleans in structs")
             },
             &parse::Instruction::TypeInt {
                 result_id,
