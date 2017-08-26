@@ -83,9 +83,7 @@
 //! ```no_run
 //! # #[macro_use] extern crate vulkano;
 //! # fn main() {
-//! use vulkano::instance::ApplicationInfo;
-//! use vulkano::instance::Instance;
-//! use vulkano::instance::InstanceExtensions;
+//! use vulkano::instance::{Instance, InstanceExtensions};
 //!
 //! // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
 //! // compile-time.
