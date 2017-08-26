@@ -1,6 +1,4 @@
-<div style="float:left; margin-right:1em;">
-  <img alt="" src="logo.png" height="150" />
-</div>
+<img align="left" alt="" src="logo.png" height="150" />
 
 # [Vulkano](https://vulkano.rs)
 
