@@ -527,7 +527,7 @@ impl fmt::Display for ShaderInterfaceMismatchError {
 ///
 /// unsafe impl SpecializationConstants for MySpecConstants {
 ///     fn descriptors() -> &'static [SpecializationMapEntry] {
-///         &[
+///         static DESCRIPTORS: [SpecializationMapEntry; 3] = [
 ///             SpecializationMapEntry {
 ///                 constant_id: 0,
 ///                 offset: 0,
@@ -543,7 +543,9 @@ impl fmt::Display for ShaderInterfaceMismatchError {
 ///                 offset: 8,
 ///                 size: 4,
 ///             },
-///         ]
+///         ];
+///
+///         &DESCRIPTORS
 ///     }
 /// }
 /// ```
