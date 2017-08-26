@@ -135,6 +135,11 @@ impl<Vdef,
           Gs: GraphicsEntryPointAbstract,
           Tcs: GraphicsEntryPointAbstract,
           Tes: GraphicsEntryPointAbstract,
+          Vss: SpecializationConstants,
+          Tcss: SpecializationConstants,
+          Tess: SpecializationConstants,
+          Gss: SpecializationConstants,
+          Fss: SpecializationConstants,
           Vs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
           Fs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
           Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
@@ -289,6 +294,65 @@ impl<Vdef,
         // Will contain the list of dynamic states. Filled throughout this function.
         let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
 
+        // Creating the specialization constants of the various stages.
+        let vertex_shader_specialization = {
+            let spec_descriptors = Vss::descriptors();
+            let constants = &self.vertex_shader.as_ref().unwrap().1;
+            vk::SpecializationInfo {
+                mapEntryCount: spec_descriptors.len() as u32,
+                pMapEntries: spec_descriptors.as_ptr() as *const _,
+                dataSize: mem::size_of_val(constants),
+                pData: constants as *const Vss as *const _,
+            }
+        };
+        let tess_shader_specialization = if let Some(ref tess) = self.tessellation {
+            let tcs_spec = {
+                let spec_descriptors = Tcss::descriptors();
+                let constants = &tess.tessellation_control_shader.1;
+                vk::SpecializationInfo {
+                    mapEntryCount: spec_descriptors.len() as u32,
+                    pMapEntries: spec_descriptors.as_ptr() as *const _,
+                    dataSize: mem::size_of_val(constants),
+                    pData: constants as *const Tcss as *const _,
+                }
+            };
+            let tes_spec = {
+                let spec_descriptors = Tess::descriptors();
+                let constants = &tess.tessellation_evaluation_shader.1;
+                vk::SpecializationInfo {
+                    mapEntryCount: spec_descriptors.len() as u32,
+                    pMapEntries: spec_descriptors.as_ptr() as *const _,
+                    dataSize: mem::size_of_val(constants),
+                    pData: constants as *const Tess as *const _,
+                }
+            };
+            Some((tcs_spec, tes_spec))
+        } else {
+            None
+        };
+        let geometry_shader_specialization = if let Some(ref gs) = self.geometry_shader {
+            let spec_descriptors = Gss::descriptors();
+            let constants = &gs.1;
+            Some(vk::SpecializationInfo {
+                mapEntryCount: spec_descriptors.len() as u32,
+                pMapEntries: spec_descriptors.as_ptr() as *const _,
+                dataSize: mem::size_of_val(constants),
+                pData: constants as *const Gss as *const _,
+            })
+        } else {
+            None
+        };
+        let fragment_shader_specialization = {
+            let spec_descriptors = Fss::descriptors();
+            let constants = &self.fragment_shader.as_ref().unwrap().1;
+            vk::SpecializationInfo {
+                mapEntryCount: spec_descriptors.len() as u32,
+                pMapEntries: spec_descriptors.as_ptr() as *const _,
+                dataSize: mem::size_of_val(constants),
+                pData: constants as *const Fss as *const _,
+            }
+        };
+
         // List of shader stages.
         let stages = {
             let mut stages = SmallVec::<[_; 5]>::new();
@@ -305,7 +369,7 @@ impl<Vdef,
                             stage: vk::SHADER_STAGE_VERTEX_BIT,
                             module: self.vertex_shader.as_ref().unwrap().0.module().internal_object(),
                             pName: self.vertex_shader.as_ref().unwrap().0.name().as_ptr(),
-                            pSpecializationInfo: ptr::null(), // TODO:
+                            pSpecializationInfo: &vertex_shader_specialization as *const _,
                         });
 
             match self.fragment_shader.as_ref().unwrap().0.ty() {
@@ -320,7 +384,7 @@ impl<Vdef,
                             stage: vk::SHADER_STAGE_FRAGMENT_BIT,
                             module: self.fragment_shader.as_ref().unwrap().0.module().internal_object(),
                             pName: self.fragment_shader.as_ref().unwrap().0.name().as_ptr(),
-                            pSpecializationInfo: ptr::null(), // TODO:
+                            pSpecializationInfo: &fragment_shader_specialization as *const _,
                         });
 
             if let Some(ref gs) = self.geometry_shader {
@@ -335,7 +399,7 @@ impl<Vdef,
                                 stage: vk::SHADER_STAGE_GEOMETRY_BIT,
                                 module: gs.0.module().internal_object(),
                                 pName: gs.0.name().as_ptr(),
-                                pSpecializationInfo: ptr::null(), // TODO:
+                                pSpecializationInfo: geometry_shader_specialization.as_ref().unwrap() as *const _,
                             });
             }
 
@@ -363,7 +427,7 @@ impl<Vdef,
                                 stage: vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT,
                                 module: tess.tessellation_control_shader.0.module().internal_object(),
                                 pName: tess.tessellation_control_shader.0.name().as_ptr(),
-                                pSpecializationInfo: ptr::null(), // TODO:
+                                pSpecializationInfo: &tess_shader_specialization.as_ref().unwrap().0 as *const _,
                             });
 
                 stages.push(vk::PipelineShaderStageCreateInfo {
@@ -375,7 +439,7 @@ impl<Vdef,
                                     .module()
                                     .internal_object(),
                                 pName: tess.tessellation_evaluation_shader.0.name().as_ptr(),
-                                pSpecializationInfo: ptr::null(), // TODO:
+                                pSpecializationInfo: &tess_shader_specialization.as_ref().unwrap().1 as *const _,
                             });
             }
 
