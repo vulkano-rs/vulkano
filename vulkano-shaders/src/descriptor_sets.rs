@@ -156,7 +156,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     format!(
         r#"
         #[derive(Debug, Clone)]
-        pub struct Layout(ShaderStages);
+        pub struct Layout(pub ShaderStages);
 
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutDesc for Layout {{
