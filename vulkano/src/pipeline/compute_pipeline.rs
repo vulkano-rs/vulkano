@@ -366,6 +366,154 @@ impl From<Error> for ComputePipelineCreationError {
 
 #[cfg(test)]
 mod tests {
+    use std::ffi::CStr;
+    use std::sync::Arc;
+    use buffer::BufferUsage;
+    use buffer::CpuAccessibleBuffer;
+    use command_buffer::AutoCommandBufferBuilder;
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::descriptor::DescriptorDescTy;
+    use descriptor::descriptor::DescriptorBufferDesc;
+    use descriptor::descriptor::ShaderStages;
+    use descriptor::descriptor_set::PersistentDescriptorSet;
+    use descriptor::pipeline_layout::PipelineLayoutDesc;
+    use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+    use pipeline::shader::ShaderModule;
+    use pipeline::shader::SpecializationConstants;
+    use pipeline::shader::SpecializationMapEntry;
+    use pipeline::ComputePipeline;
+    use sync::now;
+    use sync::GpuFuture;
+
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
+
+    #[test]
+    fn spec_constants() {
+        // This test checks whether specialization constants work.
+        // It executes a single compute shader (one invocation) that writes the value of a spec.
+        // constant to a buffer. The buffer content is then checked for the right value.
+
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let module = unsafe {
+            /*
+            #version 450
+
+            layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+            layout(constant_id = 83) const int VALUE = 0xdeadbeef;
+
+            layout(set = 0, binding = 0) buffer Output {
+                int write;
+            } write;
+
+            void main() {
+                write.write = VALUE;
+            }
+            */
+            const MODULE: [u8; 480] = [3, 2, 35, 7, 0, 0, 1, 0, 1, 0, 8, 0, 14, 0, 0, 0, 0, 0, 0,
+                                       0, 17, 0, 2, 0, 1, 0, 0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76,
+                                       83, 76, 46, 115, 116, 100, 46, 52, 53, 48, 0, 0, 0, 0, 14,
+                                       0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0, 0, 4,
+                                       0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0,
+                                       0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0,
+                                       3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0, 109,
+                                       97, 105, 110, 0, 0, 0, 0, 5, 0, 4, 0, 7, 0, 0, 0, 79, 117,
+                                       116, 112, 117, 116, 0, 0, 6, 0, 5, 0, 7, 0, 0, 0, 0, 0, 0,
+                                       0, 119, 114, 105, 116, 101, 0, 0, 0, 5, 0, 4, 0, 9, 0, 0,
+                                       0, 119, 114, 105, 116, 101, 0, 0, 0, 5, 0, 4, 0, 11, 0, 0,
+                                       0, 86, 65, 76, 85, 69, 0, 0, 0, 72, 0, 5, 0, 7, 0, 0, 0, 0,
+                                       0, 0, 0, 35, 0, 0, 0, 0, 0, 0, 0, 71, 0, 3, 0, 7, 0, 0, 0,
+                                       3, 0, 0, 0, 71, 0, 4, 0, 9, 0, 0, 0, 34, 0, 0, 0, 0, 0, 0,
+                                       0, 71, 0, 4, 0, 9, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 71, 0,
+                                       4, 0, 11, 0, 0, 0, 1, 0, 0, 0, 83, 0, 0, 0, 19, 0, 2, 0, 2,
+                                       0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2, 0, 0, 0, 21, 0, 4, 0,
+                                       6, 0, 0, 0, 32, 0, 0, 0, 1, 0, 0, 0, 30, 0, 3, 0, 7, 0, 0,
+                                       0, 6, 0, 0, 0, 32, 0, 4, 0, 8, 0, 0, 0, 2, 0, 0, 0, 7, 0, 0,
+                                       0, 59, 0, 4, 0, 8, 0, 0, 0, 9, 0, 0, 0, 2, 0, 0, 0, 43, 0,
+                                       4, 0, 6, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 50, 0, 4, 0, 6,
+                                       0, 0, 0, 11, 0, 0, 0, 239, 190, 173, 222, 32, 0, 4, 0, 12,
+                                       0, 0, 0, 2, 0, 0, 0, 6, 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4,
+                                       0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0, 5, 0, 0, 0,
+                                       65, 0, 5, 0, 12, 0, 0, 0, 13, 0, 0, 0, 9, 0, 0, 0, 10, 0, 0,
+                                       0, 62, 0, 3, 0, 13, 0, 0, 0, 11, 0, 0, 0, 253, 0, 1, 0, 56,
+                                       0, 1, 0];
+            ShaderModule::new(device.clone(), &MODULE).unwrap()
+        };
+
+        let shader = unsafe {
+            #[derive(Debug, Copy, Clone)]
+            struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                fn num_sets(&self) -> usize { 1 }
+                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                    match set {
+                        0 => Some(1),
+                        _ => None
+                    }
+                }
+                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                    match (set, binding) {
+                        (0, 0) => Some(DescriptorDesc {
+                            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                                    dynamic: Some(false),
+                                    storage: true,
+                                }),
+                            array_count: 1,
+                            stages: ShaderStages { compute: true, .. ShaderStages::none() },
+                            readonly: true,
+                        }),
+                        _ => None
+                    }
+                }
+                fn num_push_constants_ranges(&self) -> usize { 0 }
+                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+                    None
+                }
+            }
+
+            static NAME: [u8; 5] = [109, 97, 105, 110, 0];     // "main"
+            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+        };
+
+        #[derive(Debug, Copy, Clone)]
+        #[allow(non_snake_case)]
+        #[repr(C)]
+        struct SpecConsts { VALUE: i32 }
+        unsafe impl SpecializationConstants for SpecConsts {
+            fn descriptors() -> &'static [SpecializationMapEntry] {
+                static DESCRIPTORS: [SpecializationMapEntry; 1] = [
+                    SpecializationMapEntry {
+                        constant_id: 83,
+                        offset: 0,
+                        size: 4,
+                    }
+                ];
+                &DESCRIPTORS
+            }
+        }
+
+        let pipeline = Arc::new(ComputePipeline::new(device.clone(), &shader,
+                                                     &SpecConsts { VALUE: 0x12345678 }).unwrap());
+
+        let data_buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(),
+                                                         0).unwrap();
+        let set = PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_buffer(data_buffer.clone()).unwrap()
+            .build().unwrap();
+
+        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(),
+                                                                           queue.family()).unwrap()
+            .dispatch([1, 1, 1], pipeline, set, ()).unwrap()
+            .build().unwrap();
+
+        let future = now(device.clone())
+            .then_execute(queue.clone(), command_buffer).unwrap()
+            .then_signal_fence_and_flush().unwrap();
+        future.wait(None).unwrap();
+
+        let data_buffer_content = data_buffer.read().unwrap();
+        assert_eq!(*data_buffer_content, 0x12345678);
+    }
 }
