@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use vk;
-
 //! The `Limits` struct provides a nicer API around `vkPhysicalDeviceLimits`.
+
+use vk;
 
 /// Limits of a physical device.
 pub struct Limits<'a> {
