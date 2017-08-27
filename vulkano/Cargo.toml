@@ -6,6 +6,7 @@ repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/vulkano"
+readme = "../README.md"
 categories = ["rendering::graphics-api"]
 build = "build.rs"
 
