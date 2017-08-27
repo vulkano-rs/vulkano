@@ -1,4 +1,6 @@
-# [Vulkano](http://vulkano.rs)
+<img align="left" alt="" src="logo.png" height="150" />
+
+# [Vulkano](https://vulkano.rs)
 
 [![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
 [![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
