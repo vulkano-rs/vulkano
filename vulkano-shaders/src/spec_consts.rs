@@ -122,17 +122,19 @@ impl Default for SpecializationConstants {{
 
 unsafe impl SpecConstsTrait for SpecializationConstants {{
     fn descriptors() -> &'static [SpecializationMapEntry] {{
-        &[
+        static DESCRIPTORS: [SpecializationMapEntry; {num_map_entries}] = [
             {map_entries}
-        ]
+        ];
+        &DESCRIPTORS
     }}
 }}
 
     "#,
-        struct_def = spec_consts.iter().map(|c| format!("{}: {}", c.name, c.rust_ty))
+        struct_def = spec_consts.iter().map(|c| format!("pub {}: {}", c.name, c.rust_ty))
                                 .collect::<Vec<_>>().join(", "),
         def_vals = spec_consts.iter().map(|c| format!("{}: {}", c.name, c.default_value))
                                 .collect::<Vec<_>>().join(", "),
+        num_map_entries = map_entries.len(),
         map_entries = map_entries.join(", ")
     )
 }

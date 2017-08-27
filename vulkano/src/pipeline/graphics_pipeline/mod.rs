@@ -84,11 +84,11 @@ impl GraphicsPipeline<(), (), ()> {
     /// fill with the various parameters.
     pub fn start<'a>()
         -> GraphicsPipelineBuilder<SingleBufferDefinition<()>,
-                                   EmptyEntryPointDummy,
-                                   EmptyEntryPointDummy,
-                                   EmptyEntryPointDummy,
-                                   EmptyEntryPointDummy,
-                                   EmptyEntryPointDummy,
+                                   EmptyEntryPointDummy, (),
+                                   EmptyEntryPointDummy, (),
+                                   EmptyEntryPointDummy, (),
+                                   EmptyEntryPointDummy, (),
+                                   EmptyEntryPointDummy, (),
                                    ()>
     {
         GraphicsPipelineBuilder::new()
