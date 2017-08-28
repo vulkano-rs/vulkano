@@ -527,6 +527,13 @@ pub struct QueuesIter {
     families_and_ids: SmallVec<[(u32, u32); 8]>,
 }
 
+impl QueuesIter {
+    /// Returns the device the queues were produced for.
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 impl Iterator for QueuesIter {
     type Item = Arc<Queue>;
 
