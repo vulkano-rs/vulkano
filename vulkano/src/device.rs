@@ -527,6 +527,12 @@ pub struct QueuesIter {
     families_and_ids: SmallVec<[(u32, u32); 8]>,
 }
 
+unsafe impl DeviceOwned for QueuesIter {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 impl Iterator for QueuesIter {
     type Item = Arc<Queue>;
 
@@ -694,6 +700,13 @@ impl Queue {
             check_errors(vk.QueueWaitIdle(*queue))?;
             Ok(())
         }
+    }
+}
+
+
+unsafe impl DeviceOwned for Queue {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 
