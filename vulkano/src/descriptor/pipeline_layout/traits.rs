@@ -105,7 +105,7 @@ pub unsafe trait PipelineLayoutDesc {
     fn check_against_limits(&self, device: &Device)
                             -> Result<(), limits_check::PipelineLayoutLimitsError>
     {
-        limits_check::check_desc_against_limits(device, self)
+        limits_check::check_desc_against_limits(self, device.physical_device().limits())
     }
 
     /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.

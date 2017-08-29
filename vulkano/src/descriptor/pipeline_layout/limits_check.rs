@@ -12,14 +12,14 @@
 use std::error;
 use std::fmt;
 
-use device::Device;
 use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor::ShaderStages;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use instance::Limits;
 
 /// Checks whether the pipeline layout description fulfills the device limits requirements.
-pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
+pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
                                     -> Result<(), PipelineLayoutLimitsError>
     where D: ?Sized + PipelineLayoutDesc
 {
@@ -81,8 +81,6 @@ pub fn check_desc_against_limits<D>(device: &Device, desc: &D)
             }
         }
     }
-
-    let limits = device.physical_device().limits();
 
     if desc.num_sets() > limits.max_bound_descriptor_sets() as usize {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
