@@ -98,11 +98,11 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
     let source_dimensions = source.dimensions();
     let destination_dimensions = destination.dimensions();
 
-    if source_base_array_layer + layer_count >= source_dimensions.array_layers() {
+    if source_base_array_layer + layer_count > source_dimensions.array_layers() {
         return Err(CheckBlitImageError::SourceCoordinatesOutOfRange);
     }
 
-    if destination_base_array_layer + layer_count >= destination_dimensions.array_layers() {
+    if destination_base_array_layer + layer_count > destination_dimensions.array_layers() {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
@@ -156,15 +156,15 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
 
     match source_dimensions {
         ImageDimensions::Dim1d { .. } => {
-            if source_top_left[1] != 0 || source_bottom_right[1] != 0 {
+            if source_top_left[1] != 0 || source_bottom_right[1] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-            if source_top_left[2] != 0 || source_bottom_right[2] != 0 {
+            if source_top_left[2] != 0 || source_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
         ImageDimensions::Dim2d { .. } => {
-            if source_top_left[2] != 0 || source_bottom_right[2] != 0 {
+            if source_top_left[2] != 0 || source_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
@@ -173,15 +173,15 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
 
     match destination_dimensions {
         ImageDimensions::Dim1d { .. } => {
-            if destination_top_left[1] != 0 || destination_bottom_right[1] != 0 {
+            if destination_top_left[1] != 0 || destination_bottom_right[1] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-            if destination_top_left[2] != 0 || destination_bottom_right[2] != 0 {
+            if destination_top_left[2] != 0 || destination_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
         ImageDimensions::Dim2d { .. } => {
-            if destination_top_left[2] != 0 || destination_bottom_right[2] != 0 {
+            if destination_top_left[2] != 0 || destination_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },

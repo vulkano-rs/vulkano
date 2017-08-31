@@ -574,7 +574,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         debug_assert!(source.image.supports_blit_source());
         debug_assert!(source.image.usage_transfer_source());
         debug_assert!(source_layout == ImageLayout::General ||
-                      source_layout == ImageLayout::TransferDstOptimal);
+                      source_layout == ImageLayout::TransferSrcOptimal);
 
         debug_assert_eq!(destination.samples(), 1);
         let destination = destination.inner();
