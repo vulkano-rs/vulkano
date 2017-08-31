@@ -50,11 +50,11 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::MissingTransferDestinationUsage);
     }
 
-    if source_inner.image.supports_blit_source() {
+    if !source_inner.image.supports_blit_source() {
         return Err(CheckBlitImageError::SourceFormatNotSupported);
     }
 
-    if source_inner.image.supports_blit_destination() {
+    if !destination_inner.image.supports_blit_destination() {
         return Err(CheckBlitImageError::DestinationFormatNotSupported);
     }
 
