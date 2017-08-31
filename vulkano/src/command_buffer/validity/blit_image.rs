@@ -62,7 +62,10 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::UnexpectedMultisampled);
     }
 
-    if source.format().ty().is_depth_and_or_stencil() {
+    let source_format_ty = source.format().ty();
+    let destination_format_ty = destination.format().ty();
+
+    if source_format_ty.is_depth_and_or_stencil() {
         if source.format() != destination.format() {
             return Err(CheckBlitImageError::DepthStencilFormatMismatch);
         }
@@ -72,14 +75,10 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         }
     }
 
-    if source.format().ty() == FormatTy::Uint && destination.format().ty() != FormatTy::Uint {
-        return Err(CheckBlitImageError::IncompatibleFormatsTypes {
-            source_format_ty: source.format().ty(),
-            destination_format_ty: destination.format().ty()
-        });
-    }
-
-    if source.format().ty() == FormatTy::Sint && destination.format().ty() != FormatTy::Sint {
+    let types_should_be_same =
+        source_format_ty == FormatTy::Uint || destination_format_ty == FormatTy::Uint ||
+        source_format_ty == FormatTy::Sint || destination_format_ty == FormatTy::Sint;
+    if types_should_be_same && (source_format_ty != destination_format_ty) { 
         return Err(CheckBlitImageError::IncompatibleFormatsTypes {
             source_format_ty: source.format().ty(),
             destination_format_ty: destination.format().ty()
@@ -98,11 +97,11 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
     let source_dimensions = source.dimensions();
     let destination_dimensions = destination.dimensions();
 
-    if source_base_array_layer + layer_count >= source_dimensions.array_layers() {
+    if source_base_array_layer + layer_count > source_dimensions.array_layers() {
         return Err(CheckBlitImageError::SourceCoordinatesOutOfRange);
     }
 
-    if destination_base_array_layer + layer_count >= destination_dimensions.array_layers() {
+    if destination_base_array_layer + layer_count > destination_dimensions.array_layers() {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
@@ -156,15 +155,15 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
 
     match source_dimensions {
         ImageDimensions::Dim1d { .. } => {
-            if source_top_left[1] != 0 || source_bottom_right[1] != 0 {
+            if source_top_left[1] != 0 || source_bottom_right[1] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-            if source_top_left[2] != 0 || source_bottom_right[2] != 0 {
+            if source_top_left[2] != 0 || source_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
         ImageDimensions::Dim2d { .. } => {
-            if source_top_left[2] != 0 || source_bottom_right[2] != 0 {
+            if source_top_left[2] != 0 || source_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
@@ -173,15 +172,15 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
 
     match destination_dimensions {
         ImageDimensions::Dim1d { .. } => {
-            if destination_top_left[1] != 0 || destination_bottom_right[1] != 0 {
+            if destination_top_left[1] != 0 || destination_bottom_right[1] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-            if destination_top_left[2] != 0 || destination_bottom_right[2] != 0 {
+            if destination_top_left[2] != 0 || destination_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
         ImageDimensions::Dim2d { .. } => {
-            if destination_top_left[2] != 0 || destination_bottom_right[2] != 0 {
+            if destination_top_left[2] != 0 || destination_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
         },
