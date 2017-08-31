@@ -62,7 +62,10 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::UnexpectedMultisampled);
     }
 
-    if source.format().ty().is_depth_and_or_stencil() {
+    let source_format_ty = source.format().ty();
+    let destination_format_ty = destination.format().ty();
+
+    if source_format_ty.is_depth_and_or_stencil() {
         if source.format() != destination.format() {
             return Err(CheckBlitImageError::DepthStencilFormatMismatch);
         }
@@ -72,14 +75,10 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         }
     }
 
-    if source.format().ty() == FormatTy::Uint && destination.format().ty() != FormatTy::Uint {
-        return Err(CheckBlitImageError::IncompatibleFormatsTypes {
-            source_format_ty: source.format().ty(),
-            destination_format_ty: destination.format().ty()
-        });
-    }
-
-    if source.format().ty() == FormatTy::Sint && destination.format().ty() != FormatTy::Sint {
+    let types_should_be_same =
+        source_format_ty == FormatTy::Uint || destination_format_ty == FormatTy::Uint ||
+        source_format_ty == FormatTy::Sint || destination_format_ty == FormatTy::Sint;
+    if types_should_be_same && (source_format_ty != destination_format_ty) { 
         return Err(CheckBlitImageError::IncompatibleFormatsTypes {
             source_format_ty: source.format().ty(),
             destination_format_ty: destination.format().ty()
