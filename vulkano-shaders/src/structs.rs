@@ -209,8 +209,10 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> (String,
         ("".to_owned(), "")
     };
 
-    let s = format!("#[repr(C)]{derive_text}\npub struct {name} {{\n{members}\n}} /* total_size: \
-                     {t:?} */\n{impl_text}",
+    let s = format!("#[repr(C)]\n\
+                     {derive_text}\n\
+                     #[allow(non_snake_case)]\n\
+                     pub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
                     name = name,
                     members = rust_members
                         .iter()
