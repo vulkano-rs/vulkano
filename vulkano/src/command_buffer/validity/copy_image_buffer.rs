@@ -74,12 +74,10 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
         return Err(CheckCopyBufferImageError::UnexpectedMultisampled);
     }
 
-    if image_mipmap >= image.mipmap_levels() {
-        return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-    }
-
-    // TODO: wrong because we don't take the mipmap level into account for the dimensions
-    let image_dimensions = image.dimensions();
+    let image_dimensions = match image.dimensions().mipmap_dimensions(image_mipmap) {
+        Some(d) => d,
+        None => return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange),
+    };
 
     if image_first_layer + image_num_layers > image_dimensions.array_layers() {
         return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
