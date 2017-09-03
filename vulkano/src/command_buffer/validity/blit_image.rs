@@ -85,17 +85,15 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         });
     }
 
-    if source_mip_level >= source.mipmap_levels() {
-        return Err(CheckBlitImageError::SourceCoordinatesOutOfRange);
-    }
+    let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
+        Some(d) => d,
+        None => return Err(CheckBlitImageError::SourceCoordinatesOutOfRange),
+    };
 
-    if destination_mip_level >= destination.mipmap_levels() {
-        return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
-    }
-
-    // TODO: wrong because we don't take the mipmap level into account for the dimensions
-    let source_dimensions = source.dimensions();
-    let destination_dimensions = destination.dimensions();
+    let destination_dimensions = match destination.dimensions().mipmap_dimensions(destination_mip_level) {
+        Some(d) => d,
+        None => return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange),
+    };
 
     if source_base_array_layer + layer_count > source_dimensions.array_layers() {
         return Err(CheckBlitImageError::SourceCoordinatesOutOfRange);
