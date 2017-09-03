@@ -194,7 +194,7 @@ impl UnsafeImage {
         // Compute the number of mipmaps.
         let mipmaps = match mipmaps.into() {
             MipmapsCount::Specific(num) => {
-                let max_mipmaps = dimensions.num_mipmaps();
+                let max_mipmaps = dimensions.max_mipmaps();
                 debug_assert!(max_mipmaps >= 1);
                 if num < 1 {
                     return Err(ImageCreationError::InvalidMipmapsCount {
@@ -210,7 +210,7 @@ impl UnsafeImage {
 
                 num
             },
-            MipmapsCount::Log2 => dimensions.num_mipmaps(),
+            MipmapsCount::Log2 => dimensions.max_mipmaps(),
             MipmapsCount::One => 1,
         };
 
