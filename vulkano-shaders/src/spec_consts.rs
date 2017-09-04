@@ -107,6 +107,7 @@ pub fn write_specialization_constants(doc: &parse::Spirv) -> String {
     format!(r#"
 
 #[derive(Debug, Copy, Clone)]
+#[allow(non_snake_case)]
 #[repr(C)]
 pub struct SpecializationConstants {{
     {struct_def}
