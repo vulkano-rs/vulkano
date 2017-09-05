@@ -23,6 +23,9 @@ use device::DeviceOwned;
 
 /// Standard implementation of a descriptor pool.
 ///
+/// It is guaranteed that the `Arc<StdDescriptorPool>` is kept alive by its allocations. This is
+/// desirable so that we can store a `Weak<StdDescriptorPool>`.
+///
 /// Whenever a set is allocated, this implementation will try to find a pool that has some space
 /// for it. If there is one, allocate from it. If there is none, create a new pool whose capacity
 /// is 40 sets and 40 times the requested descriptors. This number is arbitrary.
@@ -172,5 +175,37 @@ impl Drop for StdDescriptorPoolAlloc {
             pool.remaining_sets_count += 1;
             pool.remaining_capacity += self.descriptors;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::iter;
+    use std::sync::Arc;
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::descriptor::DescriptorDescTy;
+    use descriptor::descriptor::ShaderStages;
+    use descriptor::descriptor_set::DescriptorPool;
+    use descriptor::descriptor_set::StdDescriptorPool;
+    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+
+    #[test]
+    fn desc_pool_kept_alive() {
+        // Test that the `StdDescriptorPool` is kept alive by its allocations.
+        let (device, _) = gfx_dev_and_queue!();
+    
+        let desc = DescriptorDesc {
+            ty: DescriptorDescTy::Sampler,
+            array_count: 1,
+            stages: ShaderStages::all(),
+            readonly: false,
+        };
+        let layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc))).unwrap();
+
+        let mut pool = Arc::new(StdDescriptorPool::new(device));
+        let pool_weak = Arc::downgrade(&pool);
+        let alloc = pool.alloc(&layout);
+        drop(pool);
+        assert!(pool_weak.upgrade().is_some());
     }
 }
