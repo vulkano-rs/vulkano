@@ -92,20 +92,8 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         // Get an appropriate `Arc<StandardCommandPoolPerThread>`.
         let per_thread = match hashmap.entry(thread::current().id()) {
             Entry::Occupied(mut entry) => {
-                if let Some(entry) = entry.get().upgrade() {
-                    entry
-                } else {
-                    let new_pool =
-                        UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
-                    let pt = Arc::new(StandardCommandPoolPerThread {
-                                          pool: Mutex::new(new_pool),
-                                          available_primary_command_buffers: MsQueue::new(),
-                                          available_secondary_command_buffers: MsQueue::new(),
-                                      });
-
-                    entry.insert(Arc::downgrade(&pt));
-                    pt
-                }
+                // The `unwrap()` can't fail, since we retained only valid members earlier.
+                entry.get().upgrade().unwrap()
             },
             Entry::Vacant(entry) => {
                 let new_pool =
