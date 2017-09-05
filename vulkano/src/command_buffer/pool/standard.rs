@@ -138,6 +138,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                         inner: StandardCommandPoolAlloc {
                             cmd: Some(cmd),
                             pool: per_thread.clone(),
+                            pool_parent: self.clone(),
                             secondary: secondary,
                             device: self.device.clone(),
                         },
@@ -159,6 +160,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                     inner: StandardCommandPoolAlloc {
                         cmd: Some(cmd),
                         pool: per_thread.clone(),
+                        pool_parent: self.clone(),
                         secondary: secondary,
                         device: self.device.clone(),
                     },
@@ -228,6 +230,8 @@ pub struct StandardCommandPoolAlloc {
     cmd: Option<UnsafeCommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
     pool: Arc<StandardCommandPoolPerThread>,
+    // Keep alive the `StandardCommandPool`, otherwise it would be destroyed.
+    pool_parent: Arc<StandardCommandPool>,
     // True if secondary command buffer.
     secondary: bool,
     // The device we belong to. Necessary because of the `DeviceOwned` trait implementation.
