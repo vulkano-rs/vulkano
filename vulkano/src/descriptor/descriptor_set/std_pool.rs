@@ -54,6 +54,8 @@ pub struct StdDescriptorPoolAlloc {
     set: Option<UnsafeDescriptorSet>,
     // We need to keep track of this count in order to add it back to the capacity when freeing.
     descriptors: DescriptorsCount,
+    // We keep the parent of the pool alive, otherwise it would be destroyed.
+    pool_parent: Arc<StdDescriptorPool>,
 }
 
 unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
@@ -96,6 +98,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                           pool: pool_arc.clone(),
                           set: Some(alloc),
                           descriptors: *layout.descriptors_count(),
+                          pool_parent: self.clone(),
                       });
         }
 
@@ -135,6 +138,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                pool: pool_obj,
                set: Some(alloc),
                descriptors: *layout.descriptors_count(),
+               pool_parent: self.clone(),
            })
     }
 }
