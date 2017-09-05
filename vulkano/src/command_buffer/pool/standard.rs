@@ -31,6 +31,9 @@ use device::DeviceOwned;
 
 /// Standard implementation of a command pool.
 ///
+/// It is guaranteed that the allocated command buffers keep the `Arc<StandardCommandPool>` alive.
+/// This is desirable so that we can store a `Weak<StandardCommandPool>`.
+///
 /// Will use one Vulkan pool per thread in order to avoid locking. Will try to reuse command
 /// buffers. Command buffers can't be moved between threads during the building process, but
 /// finished command buffers can.
@@ -273,7 +276,9 @@ impl Drop for StandardCommandPoolAlloc {
 mod tests {
     use command_buffer::pool::CommandPool;
     use command_buffer::pool::CommandPoolBuilderAlloc;
+    use command_buffer::pool::StandardCommandPool;
     use device::Device;
+    use std::sync::Arc;
     use VulkanObject;
 
     #[test]
@@ -289,5 +294,20 @@ mod tests {
 
         let cb2 = pool.alloc(false, 1).unwrap().next().unwrap();
         assert_eq!(raw, cb2.inner().internal_object());
+    }
+
+    #[test]
+    fn pool_kept_alive_by_allocs() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let pool = Arc::new(StandardCommandPool::new(device, queue.family()));
+        let pool_weak = Arc::downgrade(&pool);
+
+        let cb = pool.alloc(false, 1).unwrap().next().unwrap();
+        drop(pool);
+        assert!(pool_weak.upgrade().is_some());
+
+        drop(cb);
+        assert!(pool_weak.upgrade().is_none());
     }
 }
