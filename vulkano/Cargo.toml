@@ -11,7 +11,7 @@ categories = ["rendering::graphics-api"]
 build = "build.rs"
 
 [dependencies]
-crossbeam = "0.2.10"
+crossbeam = "0.3.0"
 fnv = "1.0.5"
 shared_library = "0.1.5"
 smallvec = "0.4.3"
