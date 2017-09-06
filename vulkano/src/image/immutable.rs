@@ -46,8 +46,8 @@ use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
-use sync::Sharing;
 use sync::NowFuture;
+use sync::Sharing;
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it.
@@ -90,9 +90,9 @@ impl<F> ImmutableImage<F> {
     pub fn with_mipmaps<'a, I, M>(device: Arc<Device>, dimensions: Dimensions, format: F,
                                   mipmaps: M, queue_families: I)
                                   -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
-         where F: FormatDesc,
-               I: IntoIterator<Item = QueueFamily<'a>>,
-               M: Into<MipmapsCount>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>,
+              M: Into<MipmapsCount>
     {
         let usage = ImageUsage {
             transfer_source: true, // for blits
@@ -101,7 +101,13 @@ impl<F> ImmutableImage<F> {
             ..ImageUsage::none()
         };
 
-        let (image, _) = ImmutableImage::uninitialized(device, dimensions, format, mipmaps, usage, ImageLayout::ShaderReadOnlyOptimal, queue_families)?;
+        let (image, _) = ImmutableImage::uninitialized(device,
+                                                       dimensions,
+                                                       format,
+                                                       mipmaps,
+                                                       usage,
+                                                       ImageLayout::ShaderReadOnlyOptimal,
+                                                       queue_families)?;
         image.initialized.store(true, Ordering::Relaxed); // Allow uninitialized access for backwards compatibility
         Ok(image)
     }
@@ -109,9 +115,10 @@ impl<F> ImmutableImage<F> {
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
-    pub fn uninitialized<'a, I, M>(device: Arc<Device>, dimensions: Dimensions, format: F,
-                                   mipmaps: M, usage: ImageUsage, layout: ImageLayout, queue_families: I)
-                                   -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
+    pub fn uninitialized<'a, I, M>(
+        device: Arc<Device>, dimensions: Dimensions, format: F, mipmaps: M, usage: ImageUsage,
+        layout: ImageLayout, queue_families: I)
+        -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
         where F: FormatDesc,
               I: IntoIterator<Item = QueueFamily<'a>>,
               M: Into<MipmapsCount>
@@ -162,14 +169,14 @@ impl<F> ImmutableImage<F> {
         };
 
         let image = Arc::new(ImmutableImage {
-            image: image,
-            view: view,
-            memory: mem,
-            dimensions: dimensions,
-            format: format,
-            initialized: AtomicBool::new(false),
-            layout: layout,
-        });
+                                 image: image,
+                                 view: view,
+                                 memory: mem,
+                                 dimensions: dimensions,
+                                 format: format,
+                                 initialized: AtomicBool::new(false),
+                                 layout: layout,
+                             });
 
         let init = ImmutableImageInitialization {
             image: image.clone(),
@@ -184,12 +191,13 @@ impl<F> ImmutableImage<F> {
     /// TODO: Support mipmaps
     #[inline]
     pub fn from_iter<P, I>(iter: I, dimensions: Dimensions, format: F, queue: Arc<Queue>)
-                           -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
+                           -> Result<(Arc<Self>,
+                                      CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
                                      ImageCreationError>
         where P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: ExactSizeIterator<Item = P>,
-              Format: AcceptsPixels<P>,
+              Format: AcceptsPixels<P>
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
@@ -201,24 +209,41 @@ impl<F> ImmutableImage<F> {
     ///
     /// TODO: Support mipmaps
     pub fn from_buffer<B, P>(source: B, dimensions: Dimensions, format: F, queue: Arc<Queue>)
-                             -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
+                             -> Result<(Arc<Self>,
+                                        CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
                                        ImageCreationError>
         where B: BufferAccess + TypedBufferAccess<Content = [P]> + 'static + Clone + Send + Sync,
               P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
-              Format: AcceptsPixels<P>,
+              Format: AcceptsPixels<P>
     {
-        let usage = ImageUsage { transfer_destination: true, sampled: true, ..ImageUsage::none() };
+        let usage = ImageUsage {
+            transfer_destination: true,
+            sampled: true,
+            ..ImageUsage::none()
+        };
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 
-        let (buffer, init) = ImmutableImage::uninitialized(source.device().clone(),
-                                                           dimensions, format,
-                                                           MipmapsCount::One, usage, layout,
-                                                           source.device().active_queue_families())?;
+        let (buffer, init) =
+            ImmutableImage::uninitialized(source.device().clone(),
+                                          dimensions,
+                                          format,
+                                          MipmapsCount::One,
+                                          usage,
+                                          layout,
+                                          source.device().active_queue_families())?;
 
         let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
-            .copy_buffer_to_image_dimensions(source, init, [0, 0, 0], dimensions.width_height_depth(), 0, dimensions.array_layers_with_cube(), 0).unwrap()
-            .build().unwrap();
+            .copy_buffer_to_image_dimensions(source,
+                                             init,
+                                             [0, 0, 0],
+                                             dimensions.width_height_depth(),
+                                             0,
+                                             dimensions.array_layers_with_cube(),
+                                             0)
+            .unwrap()
+            .build()
+            .unwrap();
 
         let future = match cb.execute(queue) {
             Ok(f) => f,
@@ -244,7 +269,7 @@ impl<F, A> ImmutableImage<F, A> {
 }
 
 unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -286,14 +311,16 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {}
+    unsafe fn increase_gpu_lock(&self) {
+    }
 
     #[inline]
-    unsafe fn unlock(&self) {}
+    unsafe fn unlock(&self) {
+    }
 }
 
 unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -302,7 +329,7 @@ unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
 }
 
 unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn parent(&self) -> &ImageAccess {
@@ -346,7 +373,7 @@ unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
 }
 
 unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> ImageInner {

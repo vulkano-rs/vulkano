@@ -11,9 +11,9 @@ use std::collections::HashSet;
 use std::error;
 use std::ffi::{CStr, CString};
 use std::fmt;
+use std::iter::FromIterator;
 use std::ptr;
 use std::str;
-use std::iter::FromIterator;
 
 use Error;
 use OomError;

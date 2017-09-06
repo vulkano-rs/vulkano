@@ -40,9 +40,7 @@ pub fn check_index_buffer<B, I>(device: &Device, buffer: &B)
 
     // TODO: fullDrawIndexUint32 feature
 
-    Ok(CheckIndexBuffer {
-        num_indices: buffer.len(),
-    })
+    Ok(CheckIndexBuffer { num_indices: buffer.len() })
 }
 
 /// Information returned if `check_index_buffer` succeeds.
@@ -89,33 +87,37 @@ impl fmt::Display for CheckIndexBufferError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
-    use super::*;
 
     #[test]
     fn num_indices() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::index_buffer(),
-                                                    0 .. 500u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
+                                                    BufferUsage::index_buffer(),
+                                                    0 .. 500u32)
+            .unwrap();
 
         match check_index_buffer(&device, &buffer) {
             Ok(CheckIndexBuffer { num_indices }) => {
                 assert_eq!(num_indices, 500);
             },
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::vertex_buffer(),
-                                                    0 .. 500u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
+                                                    BufferUsage::vertex_buffer(),
+                                                    0 .. 500u32)
+            .unwrap();
 
         match check_index_buffer(&device, &buffer) {
             Err(CheckIndexBufferError::BufferMissingUsage) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -124,11 +126,10 @@ mod tests {
         let (dev1, queue) = gfx_dev_and_queue!();
         let (dev2, _) = gfx_dev_and_queue!();
 
-        let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(),
-                                                    0 .. 500u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(), 0 .. 500u32).unwrap();
 
         assert_should_panic!({
-            let _ = check_index_buffer(&dev2, &buffer);
-        });
+                                 let _ = check_index_buffer(&dev2, &buffer);
+                             });
     }
 }

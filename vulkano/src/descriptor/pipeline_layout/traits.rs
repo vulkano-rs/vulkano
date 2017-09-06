@@ -17,11 +17,11 @@ use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::pipeline_layout::limits_check;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::limits_check;
 use device::Device;
 use device::DeviceOwned;
 
@@ -103,8 +103,7 @@ pub unsafe trait PipelineLayoutDesc {
     /// Checks whether this description fulfills the device limits requirements.
     #[inline]
     fn check_against_limits(&self, device: &Device)
-                            -> Result<(), limits_check::PipelineLayoutLimitsError>
-    {
+                            -> Result<(), limits_check::PipelineLayoutLimitsError> {
         limits_check::check_desc_against_limits(self, device.physical_device().limits())
     }
 

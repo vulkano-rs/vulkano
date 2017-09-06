@@ -131,9 +131,8 @@ impl
     #[inline]
     pub fn secondary(occlusion_query: KindOcclusionQuery,
                      query_statistics_flags: QueryPipelineStatisticFlags)
-        -> Kind<Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-                Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-    {
+                     -> Kind<Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
+                             Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>> {
         Kind::Secondary {
             render_pass: None,
             occlusion_query,
@@ -267,20 +266,27 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                 };
                 (rp, sp, fb)
             },
-            _ => (0, 0, 0)
+            _ => (0, 0, 0),
         };
 
         let (oqe, qf, ps) = match kind {
-            Kind::Secondary { occlusion_query, query_statistics_flags, .. } => {
+            Kind::Secondary {
+                occlusion_query,
+                query_statistics_flags,
+                ..
+            } => {
                 let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
                 debug_assert!(ps == 0 ||
-                              alloc.device().enabled_features().pipeline_statistics_query);
+                                  alloc.device().enabled_features().pipeline_statistics_query);
 
                 let (oqe, qf) = match occlusion_query {
                     KindOcclusionQuery::Allowed { control_precise_allowed } => {
                         debug_assert!(alloc.device().enabled_features().inherited_queries);
-                        let qf = if control_precise_allowed { vk::QUERY_CONTROL_PRECISE_BIT }
-                                 else { 0 };
+                        let qf = if control_precise_allowed {
+                            vk::QUERY_CONTROL_PRECISE_BIT
+                        } else {
+                            0
+                        };
                         (vk::TRUE, qf)
                     },
                     KindOcclusionQuery::Forbidden => (0, 0),
@@ -288,7 +294,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
                 (oqe, qf, ps)
             },
-            _ => (0, 0, 0)
+            _ => (0, 0, 0),
         };
 
         let inheritance = vk::CommandBufferInheritanceInfo {
@@ -387,22 +393,28 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                          vk::ClearValue { color: vk::ClearColorValue { uint32: val } }
                      },
                      ClearValue::Depth(val) => {
-                         vk::ClearValue { depthStencil: vk::ClearDepthStencilValue {
-                                                           depth: val,
-                                                           stencil: 0,
-                                                       }}
+                         vk::ClearValue {
+                             depthStencil: vk::ClearDepthStencilValue {
+                                 depth: val,
+                                 stencil: 0,
+                             },
+                         }
                      },
                      ClearValue::Stencil(val) => {
-                         vk::ClearValue { depthStencil: vk::ClearDepthStencilValue {
-                                                           depth: 0.0,
-                                                           stencil: val,
-                                                       }}
+                         vk::ClearValue {
+                             depthStencil: vk::ClearDepthStencilValue {
+                                 depth: 0.0,
+                                 stencil: val,
+                             },
+                         }
                      },
                      ClearValue::DepthStencil((depth, stencil)) => {
-                         vk::ClearValue { depthStencil: vk::ClearDepthStencilValue {
-                                                           depth: depth,
-                                                           stencil: stencil,
-                                                       }}
+                         vk::ClearValue {
+                             depthStencil: vk::ClearDepthStencilValue {
+                                 depth: depth,
+                                 stencil: stencil,
+                             },
+                         }
                      },
                  })
             .collect();
@@ -563,31 +575,33 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     {
         debug_assert!(filter == Filter::Nearest || !source.format().ty().is_depth_and_or_stencil());
         debug_assert!((source.format().ty() == FormatTy::Uint) ==
-                      (destination.format().ty() == FormatTy::Uint));
+                          (destination.format().ty() == FormatTy::Uint));
         debug_assert!((source.format().ty() == FormatTy::Sint) ==
-                      (destination.format().ty() == FormatTy::Sint));
+                          (destination.format().ty() == FormatTy::Sint));
         debug_assert!(source.format() == destination.format() ||
-                      !source.format().ty().is_depth_and_or_stencil());
-    
+                          !source.format().ty().is_depth_and_or_stencil());
+
         debug_assert_eq!(source.samples(), 1);
         let source = source.inner();
         debug_assert!(source.image.supports_blit_source());
         debug_assert!(source.image.usage_transfer_source());
         debug_assert!(source_layout == ImageLayout::General ||
-                      source_layout == ImageLayout::TransferSrcOptimal);
+                          source_layout == ImageLayout::TransferSrcOptimal);
 
         debug_assert_eq!(destination.samples(), 1);
         let destination = destination.inner();
         debug_assert!(destination.image.supports_blit_destination());
         debug_assert!(destination.image.usage_transfer_destination());
         debug_assert!(destination_layout == ImageLayout::General ||
-                      destination_layout == ImageLayout::TransferDstOptimal);
+                          destination_layout == ImageLayout::TransferDstOptimal);
 
         let regions: SmallVec<[_; 8]> = regions
             .filter_map(|blit| {
                 // TODO: not everything is checked here
-                debug_assert!(blit.source_base_array_layer + blit.layer_count <= source.num_layers as u32);
-                debug_assert!(blit.destination_base_array_layer + blit.layer_count <= destination.num_layers as u32);
+                debug_assert!(blit.source_base_array_layer + blit.layer_count <=
+                                  source.num_layers as u32);
+                debug_assert!(blit.destination_base_array_layer + blit.layer_count <=
+                                  destination.num_layers as u32);
                 debug_assert!(blit.source_mip_level < destination.num_mipmap_levels as u32);
                 debug_assert!(blit.destination_mip_level < destination.num_mipmap_levels as u32);
 
@@ -612,12 +626,13 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                             x: blit.source_bottom_right[0],
                             y: blit.source_bottom_right[1],
                             z: blit.source_bottom_right[2],
-                        }
+                        },
                     ],
                     dstSubresource: vk::ImageSubresourceLayers {
                         aspectMask: blit.aspect.to_vk_bits(),
                         mipLevel: blit.destination_mip_level,
-                        baseArrayLayer: blit.destination_base_array_layer + destination.first_layer as u32,
+                        baseArrayLayer: blit.destination_base_array_layer +
+                            destination.first_layer as u32,
                         layerCount: blit.layer_count,
                     },
                     dstOffsets: [
@@ -630,7 +645,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                             x: blit.destination_bottom_right[0],
                             y: blit.destination_bottom_right[1],
                             z: blit.destination_bottom_right[2],
-                        }
+                        },
                     ],
                 })
             })
@@ -642,9 +657,14 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdBlitImage(cmd, source.image.internal_object(), source_layout as u32,
-                        destination.image.internal_object(), destination_layout as u32,
-                        regions.len() as u32, regions.as_ptr(), filter as u32);
+        vk.CmdBlitImage(cmd,
+                        source.image.internal_object(),
+                        source_layout as u32,
+                        destination.image.internal_object(),
+                        destination_layout as u32,
+                        regions.len() as u32,
+                        regions.as_ptr(),
+                        filter as u32);
     }
 
     // TODO: missing structs
@@ -681,13 +701,12 @@ impl<P> UnsafeCommandBufferBuilder<P> {
               R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear>
     {
         debug_assert!(image.format().ty() == FormatTy::Float ||
-                      image.format().ty() == FormatTy::Uint ||
-                      image.format().ty() == FormatTy::Sint);
+                          image.format().ty() == FormatTy::Uint ||
+                          image.format().ty() == FormatTy::Sint);
 
         let image = image.inner();
         debug_assert!(image.image.usage_transfer_destination());
-        debug_assert!(layout == ImageLayout::General ||
-                      layout == ImageLayout::TransferDstOptimal);
+        debug_assert!(layout == ImageLayout::General || layout == ImageLayout::TransferDstOptimal);
 
         let color = match color {
             ClearValue::Float(val) => {
@@ -706,20 +725,22 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         let regions: SmallVec<[_; 8]> = regions
             .filter_map(|region| {
-                debug_assert!(region.layer_count + region.base_array_layer <= image.num_layers as u32);
-                debug_assert!(region.level_count + region.base_mip_level <= image.num_mipmap_levels as u32);
+                debug_assert!(region.layer_count + region.base_array_layer <=
+                                  image.num_layers as u32);
+                debug_assert!(region.level_count + region.base_mip_level <=
+                                  image.num_mipmap_levels as u32);
 
                 if region.layer_count == 0 || region.level_count == 0 {
                     return None;
                 }
 
                 Some(vk::ImageSubresourceRange {
-                    aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-                    baseMipLevel: region.base_mip_level + image.first_mipmap_level as u32,
-                    levelCount: region.level_count,
-                    baseArrayLayer: region.base_array_layer + image.first_layer as u32,
-                    layerCount: region.layer_count,
-                })
+                         aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
+                         baseMipLevel: region.base_mip_level + image.first_mipmap_level as u32,
+                         levelCount: region.level_count,
+                         baseArrayLayer: region.base_array_layer + image.first_layer as u32,
+                         layerCount: region.layer_count,
+                     })
             })
             .collect();
 
@@ -799,7 +820,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let destination = destination.inner();
         debug_assert!(destination.image.usage_transfer_destination());
         debug_assert!(destination_layout == ImageLayout::General ||
-                      destination_layout == ImageLayout::TransferDstOptimal);
+                          destination_layout == ImageLayout::TransferDstOptimal);
 
         let regions: SmallVec<[_; 8]> = regions
             .map(|copy| {
@@ -813,7 +834,8 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                     imageSubresource: vk::ImageSubresourceLayers {
                         aspectMask: copy.image_aspect.to_vk_bits(),
                         mipLevel: copy.image_mip_level + destination.first_mipmap_level as u32,
-                        baseArrayLayer: copy.image_base_array_layer + destination.first_layer as u32,
+                        baseArrayLayer: copy.image_base_array_layer +
+                            destination.first_layer as u32,
                         layerCount: copy.image_layer_count,
                     },
                     imageOffset: vk::Offset3D {
@@ -859,7 +881,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let source = source.inner();
         debug_assert!(source.image.usage_transfer_source());
         debug_assert!(source_layout == ImageLayout::General ||
-                      source_layout == ImageLayout::TransferSrcOptimal);
+                          source_layout == ImageLayout::TransferSrcOptimal);
 
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
@@ -911,20 +933,23 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     #[inline]
     pub unsafe fn copy_query_pool_results(&mut self, queries: UnsafeQueriesRange,
-                                          destination: &BufferAccess, stride: usize)
-    {
+                                          destination: &BufferAccess, stride: usize) {
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage_transfer_destination());
 
-        let flags = 0;      // FIXME:
+        let flags = 0; // FIXME:
 
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdCopyQueryPoolResults(cmd, queries.pool().internal_object(), queries.first_index(),
-                                   queries.count(), destination.buffer.internal_object(),
+        vk.CmdCopyQueryPoolResults(cmd,
+                                   queries.pool().internal_object(),
+                                   queries.first_index(),
+                                   queries.count(),
+                                   destination.buffer.internal_object(),
                                    destination.offset as vk::DeviceSize,
-                                   stride as vk::DeviceSize, flags);
+                                   stride as vk::DeviceSize,
+                                   flags);
     }
 
     /// Calls `vkCmdDispatch` on the builder.
@@ -1167,7 +1192,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn reset_query_pool(&mut self, queries: UnsafeQueriesRange) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdResetQueryPool(cmd, queries.pool().internal_object(), queries.first_index(),
+        vk.CmdResetQueryPool(cmd,
+                             queries.pool().internal_object(),
+                             queries.first_index(),
                              queries.count());
     }
 
@@ -1338,7 +1365,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn write_timestamp(&mut self, query: UnsafeQuery, stages: PipelineStages) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdWriteTimestamp(cmd, stages.into_vulkan_bits(), query.pool().internal_object(),
+        vk.CmdWriteTimestamp(cmd,
+                             stages.into_vulkan_bits(),
+                             query.pool().internal_object(),
                              query.index());
     }
 }
@@ -1706,7 +1735,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
                                      image: image.image.internal_object(),
                                      subresourceRange: vk::ImageSubresourceRange {
                                          aspectMask: aspect_mask,
-                                         baseMipLevel: mipmaps.start + image.first_mipmap_level as u32,
+                                         baseMipLevel: mipmaps.start +
+                                             image.first_mipmap_level as u32,
                                          levelCount: mipmaps.end - mipmaps.start,
                                          baseArrayLayer: layers.start + image.first_layer as u32,
                                          layerCount: layers.end - layers.start,

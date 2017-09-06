@@ -6,6 +6,7 @@
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
+
 use swapchain::Swapchain;
 use vk;
 
@@ -20,7 +21,9 @@ pub struct PresentRegion {
 impl PresentRegion {
     /// Returns true if this present region is compatible with swapchain.
     pub fn is_compatible_with(&self, swapchain: &Swapchain) -> bool {
-        self.rectangles.iter().all(|rect| rect.is_compatible_with(swapchain))
+        self.rectangles
+            .iter()
+            .all(|rect| rect.is_compatible_with(swapchain))
     }
 }
 
@@ -44,8 +47,8 @@ impl RectangleLayer {
         debug_assert!(self.offset[0] >= 0);
         debug_assert!(self.offset[1] >= 0);
         self.offset[0] as u32 + self.extent[0] <= swapchain.dimensions()[0] &&
-        self.offset[1] as u32 + self.extent[1] <= swapchain.dimensions()[1] &&
-        self.layer < swapchain.layers()
+            self.offset[1] as u32 + self.extent[1] <= swapchain.dimensions()[1] &&
+            self.layer < swapchain.layers()
     }
 
     pub(crate) fn to_vk(&self) -> vk::RectLayerKHR {

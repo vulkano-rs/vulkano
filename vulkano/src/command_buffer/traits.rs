@@ -54,8 +54,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ///
     /// If you call this function, then you should call `unlock` afterwards.
     // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
-                   -> Result<(), CommandBufferExecError>;
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
 
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
     ///
@@ -171,8 +170,7 @@ unsafe impl<T> CommandBuffer for T
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
-                   -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         (**self).lock_submit(future, queue)
     }
 
@@ -391,7 +389,7 @@ impl error::Error for CommandBufferExecError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             CommandBufferExecError::AccessError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }

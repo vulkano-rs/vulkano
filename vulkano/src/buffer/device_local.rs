@@ -31,14 +31,14 @@ use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
 use memory::DedicatedAlloc;
-use memory::pool::AllocLayout;
+use memory::DeviceMemoryAllocError;
 use memory::pool::AllocFromRequirementsFilter;
+use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
-use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -222,7 +222,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
             },
             &mut GpuAccess::Exclusive { .. } => {
                 Err(AccessError::AlreadyInUse)
-            }
+            },
         }
     }
 
@@ -238,7 +238,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
             GpuAccess::Exclusive { ref mut num } => {
                 debug_assert!(*num >= 1);
                 *num += 1;
-            }
+            },
         }
     }
 

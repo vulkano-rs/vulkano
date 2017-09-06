@@ -168,8 +168,8 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I, Ext>(phys: PhysicalDevice, requested_features: &Features,
-                           extensions: Ext, queue_families: I)
+    pub fn new<'a, I, Ext>(phys: PhysicalDevice, requested_features: &Features, extensions: Ext,
+                           queue_families: I)
                            -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
               Ext: Into<RawDeviceExtensions>
@@ -296,27 +296,27 @@ impl Device {
                                                   *const _
                                           });
 
-        let device = Arc::new(Device {
-                                  instance: phys.instance().clone(),
-                                  physical_device: phys.index(),
-                                  device: device,
-                                  vk: vk,
-                                  standard_pool: Mutex::new(Weak::new()),
-                                  standard_descriptor_pool: Mutex::new(Weak::new()),
-                                  standard_command_pools: Mutex::new(Default::default()),
-                                  features: Features {
-                                      // Always enabled ; see above
-                                      robust_buffer_access: true,
-                                      .. requested_features.clone()
-                                  },
-                                  extensions: (&extensions).into(),
-                                  active_queue_families: output_queues.iter()
-                                                                      .map(|&(q, _)| q).collect(),
-                                  allocation_count: Mutex::new(0),
-                                  fence_pool: Mutex::new(Vec::new()),
-                                  semaphore_pool: Mutex::new(Vec::new()),
-                                  event_pool: Mutex::new(Vec::new()),
-                              });
+        let device =
+            Arc::new(Device {
+                         instance: phys.instance().clone(),
+                         physical_device: phys.index(),
+                         device: device,
+                         vk: vk,
+                         standard_pool: Mutex::new(Weak::new()),
+                         standard_descriptor_pool: Mutex::new(Weak::new()),
+                         standard_command_pools: Mutex::new(Default::default()),
+                         features: Features {
+                             // Always enabled ; see above
+                             robust_buffer_access: true,
+                             ..requested_features.clone()
+                         },
+                         extensions: (&extensions).into(),
+                         active_queue_families: output_queues.iter().map(|&(q, _)| q).collect(),
+                         allocation_count: Mutex::new(0),
+                         fence_pool: Mutex::new(Vec::new()),
+                         semaphore_pool: Mutex::new(Vec::new()),
+                         event_pool: Mutex::new(Vec::new()),
+                     });
 
         // Iterator for the produced queues.
         let output_queues = QueuesIter {
@@ -367,10 +367,12 @@ impl Device {
     /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
     // TODO: ^
     #[inline]
-    pub fn active_queue_families<'a>(&'a self) -> Box<ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
+    pub fn active_queue_families<'a>(&'a self)
+                                     -> Box<ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
         let physical_device = self.physical_device();
-        Box::new(self.active_queue_families.iter()
-            .map(move |&id| physical_device.queue_family_by_id(id).unwrap()))
+        Box::new(self.active_queue_families
+                     .iter()
+                     .map(move |&id| physical_device.queue_family_by_id(id).unwrap()))
     }
 
     /// Returns the features that are enabled in the device.

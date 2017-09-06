@@ -131,9 +131,9 @@ pub fn present<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index
 /// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
 ///
 /// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
-pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize,
-                              present_region: PresentRegion)
-                  -> PresentFuture<F>
+pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>,
+                              index: usize, present_region: PresentRegion)
+                              -> PresentFuture<F>
     where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
@@ -809,14 +809,14 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 
     #[inline]
-    fn check_buffer_access(&self, _: &BufferAccess, _: bool, _: &Queue)
+    fn check_buffer_access(
+        &self, _: &BufferAccess, _: bool, _: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, _: bool,
-                          _: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, _: bool, _: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
@@ -854,7 +854,7 @@ impl Drop for SwapchainAcquireFuture {
     fn drop(&mut self) {
         if !*self.finished.get_mut() {
             if let Some(ref fence) = self.fence {
-                fence.wait(None).unwrap();     // TODO: handle error?
+                fence.wait(None).unwrap(); // TODO: handle error?
                 self.semaphore = None;
             }
 
@@ -863,9 +863,12 @@ impl Drop for SwapchainAcquireFuture {
             // validation layers about using a fence whose state hasn't been checked (even though
             // we know for sure that it must've been signalled).
             debug_assert!({
-                let dur = Some(Duration::new(0, 0));
-                self.fence.as_ref().map(|f| f.wait(dur).is_ok()).unwrap_or(true)
-            });
+                              let dur = Some(Duration::new(0, 0));
+                              self.fence
+                                  .as_ref()
+                                  .map(|f| f.wait(dur).is_ok())
+                                  .unwrap_or(true)
+                          });
         }
 
         // TODO: if this future is destroyed without being presented, then eventually acquiring
@@ -999,24 +1002,32 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
         Ok(match self.previous.build_submission()? {
                SubmitAnyBuilder::Empty => {
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::SemaphoresWait(sem) => {
                    let mut builder: SubmitPresentBuilder = sem.into();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::CommandBuffer(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::BindSparse(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32, self.present_region.as_ref());
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::QueuePresent(present) => {
@@ -1139,8 +1150,7 @@ pub struct AcquiredImage {
 ///   a new one.
 pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>,
                                      semaphore: Option<&Semaphore>, fence: Option<&Fence>)
-                                     -> Result<AcquiredImage, AcquireError>
-{
+                                     -> Result<AcquiredImage, AcquireError> {
     let vk = swapchain.device.pointers();
 
     let timeout_ns = if let Some(timeout) = timeout {
@@ -1153,12 +1163,13 @@ pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Dura
     };
 
     let mut out = mem::uninitialized();
-    let r = check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
-                                                swapchain.swapchain,
-                                                timeout_ns,
-                                                semaphore.map(|s| s.internal_object()).unwrap_or(0),
-                                                fence.map(|f| f.internal_object()).unwrap_or(0),
-                                                &mut out))?;
+    let r =
+        check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
+                                            swapchain.swapchain,
+                                            timeout_ns,
+                                            semaphore.map(|s| s.internal_object()).unwrap_or(0),
+                                            fence.map(|f| f.internal_object()).unwrap_or(0),
+                                            &mut out))?;
 
     let (id, suboptimal) = match r {
         Success::Success => (out as usize, false),

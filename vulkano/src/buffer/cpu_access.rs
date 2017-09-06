@@ -25,12 +25,12 @@ use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ptr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
@@ -117,8 +117,7 @@ impl<T> CpuAccessibleBuffer<T> {
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
     pub unsafe fn uninitialized(device: Arc<Device>, usage: BufferUsage)
-                                -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
-    {
+                                -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError> {
         CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())
     }
 }
@@ -127,14 +126,13 @@ impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
     pub fn from_iter<I>(device: Arc<Device>, usage: BufferUsage, data: I)
-                               -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
+                        -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
         where I: ExactSizeIterator<Item = T>,
-              T: Content + 'static,
+              T: Content + 'static
     {
         unsafe {
-            let uninitialized = CpuAccessibleBuffer::uninitialized_array(device,
-                                                                         data.len(),
-                                                                         usage)?;
+            let uninitialized =
+                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -154,9 +152,9 @@ impl<T> CpuAccessibleBuffer<[T]> {
 
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
-    pub unsafe fn uninitialized_array(device: Arc<Device>, len: usize, usage: BufferUsage)
-                                      -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
-    {
+    pub unsafe fn uninitialized_array(
+        device: Arc<Device>, len: usize, usage: BufferUsage)
+        -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError> {
         CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, iter::empty())
     }
 }
@@ -169,7 +167,8 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     /// You must ensure that the size that you pass is correct for `T`.
     ///
     pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
-                             queue_families: I) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
+                             queue_families: I)
+                             -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families
@@ -206,8 +205,8 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                         inner: buffer,
                         memory: mem,
                         access: RwLock::new(CurrentGpuAccess::NonExclusive {
-                            num: AtomicUsize::new(0)
-                        }),
+                                                num: AtomicUsize::new(0),
+                                            }),
                         queue_families: queue_families,
                         marker: PhantomData,
                     }))
@@ -233,7 +232,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A> {
 
 impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
     where T: Content + 'static,
-          A: MemoryPoolAlloc,
+          A: MemoryPoolAlloc
 {
     /// Locks the buffer in order to read its content from the CPU.
     ///
@@ -569,8 +568,6 @@ mod tests {
 
         const EMPTY: [i32; 0] = [];
 
-        let _ = CpuAccessibleBuffer::from_data(device,
-                                               BufferUsage::all(),
-                                               EMPTY.iter());
+        let _ = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), EMPTY.iter());
     }
 }

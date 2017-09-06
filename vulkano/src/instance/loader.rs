@@ -8,19 +8,20 @@
 // according to those terms.
 
 //! Vulkan implementation loading system.
-//! 
+//!
 //! Before vulkano can do anything, it first needs to find an implementation of Vulkan. A Vulkan
 //! implementation is defined as a single `vkGetInstanceProcAddr` function, which can be accessed
 //! through the `Loader` trait.
-//! 
+//!
 //! This module provides various implementations of the `Loader` trait.
-//! 
+//!
 //! Once you have a struct that implements `Loader`, you can create a `FunctionPointers` struct
 //! from it and use this `FunctionPointers` struct to build an `Instance`.
-//! 
+//!
 //! By default vulkano will use the `auto_loader()` function, which tries to automatically load
 //! a Vulkan implementation from the system.
 
+use shared_library;
 use std::error;
 use std::fmt;
 use std::mem;
@@ -28,7 +29,6 @@ use std::ops::Deref;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::path::Path;
-use shared_library;
 
 use SafeDeref;
 use vk;
@@ -57,7 +57,7 @@ unsafe impl<T> Loader for T
 pub struct DynamicLibraryLoader {
     vk_lib: shared_library::dynamic_library::DynamicLibrary,
     get_proc_addr: extern "system" fn(instance: vk::Instance, pName: *const c_char)
-                                        -> extern "system" fn() -> (),
+                                      -> extern "system" fn() -> (),
 }
 
 impl DynamicLibraryLoader {
@@ -75,23 +75,26 @@ impl DynamicLibraryLoader {
             .map_err(LoadingError::LibraryLoadFailure)?;
 
         let get_proc_addr = {
-            let ptr: *mut c_void = vk_lib
-                .symbol("vkGetInstanceProcAddr")
-                .map_err(|_| LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned()))?;
+            let ptr: *mut c_void =
+                vk_lib
+                    .symbol("vkGetInstanceProcAddr")
+                    .map_err(|_| {
+                                 LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned())
+                             })?;
             mem::transmute(ptr)
         };
 
         Ok(DynamicLibraryLoader {
-            vk_lib,
-            get_proc_addr,
-        })
+               vk_lib,
+               get_proc_addr,
+           })
     }
 }
 
 unsafe impl Loader for DynamicLibraryLoader {
     #[inline]
     fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                                -> extern "system" fn() -> () {
+                              -> extern "system" fn() -> () {
         (self.get_proc_addr)(instance, name)
     }
 }
@@ -107,11 +110,7 @@ impl<L> FunctionPointers<L> {
     pub fn new(loader: L) -> FunctionPointers<L>
         where L: Loader
     {
-        let entry_points = vk::EntryPoints::load(|name| {
-            unsafe {
-                mem::transmute(loader.get_instance_proc_addr(0, name.as_ptr()))
-            }
-        });
+        let entry_points = vk::EntryPoints::load(|name| unsafe { mem::transmute(loader.get_instance_proc_addr(0, name.as_ptr())) });
 
         FunctionPointers {
             loader,
@@ -169,7 +168,8 @@ macro_rules! statically_linked_vulkan_loader {
 /// This function tries to auto-guess where to find the Vulkan implementation, and loads it in a
 /// `lazy_static!`. The content of the lazy_static is then returned, or an error if we failed to
 /// load Vulkan.
-pub fn auto_loader()
+pub fn auto_loader(
+    )
     -> Result<&'static FunctionPointers<Box<Loader + Send + Sync>>, LoadingError>
 {
     #[cfg(any(target_os = "macos", target_os = "ios"))]
@@ -194,9 +194,7 @@ pub fn auto_loader()
             Path::new("libvulkan.so")
         }
 
-        let loader = unsafe {
-            DynamicLibraryLoader::new(get_path())?
-        };
+        let loader = unsafe { DynamicLibraryLoader::new(get_path())? };
 
         Ok(Box::new(loader))
     }
@@ -209,7 +207,7 @@ pub fn auto_loader()
 
     match DEFAULT_LOADER.deref() {
         &Ok(ref ptr) => Ok(ptr),
-        &Err(ref err) => Err(err.clone())
+        &Err(ref err) => Err(err.clone()),
     }
 }
 
@@ -263,7 +261,7 @@ mod tests {
         unsafe {
             match DynamicLibraryLoader::new("_non_existing_library.void") {
                 Err(LoadingError::LibraryLoadFailure(_)) => (),
-                _ => panic!()
+                _ => panic!(),
             }
         }
     }

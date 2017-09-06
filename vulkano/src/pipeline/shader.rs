@@ -100,10 +100,10 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I, output: O,
-                                                       layout: L, ty: GraphicsShaderType)
-                                                       -> GraphicsEntryPoint<'a, S, I, O, L>
-    {
+    pub unsafe fn graphics_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I,
+                                                       output: O, layout: L,
+                                                       ty: GraphicsShaderType)
+                                                       -> GraphicsEntryPoint<'a, S, I, O, L> {
         GraphicsEntryPoint {
             module: self,
             name: name,
@@ -189,7 +189,7 @@ unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, 
     where L: PipelineLayoutDesc,
           I: ShaderInterfaceDef,
           O: ShaderInterfaceDef,
-          S: SpecializationConstants,
+          S: SpecializationConstants
 {
     type PipelineLayout = L;
     type SpecializationConstants = S;
@@ -214,7 +214,7 @@ unsafe impl<'a, S, I, O, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a
     where L: PipelineLayoutDesc,
           I: ShaderInterfaceDef,
           O: ShaderInterfaceDef,
-          S: SpecializationConstants,
+          S: SpecializationConstants
 {
     type InputDefinition = I;
     type OutputDefinition = O;
@@ -305,7 +305,7 @@ pub struct ComputeEntryPoint<'a, S, L> {
 
 unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
     where L: PipelineLayoutDesc,
-          S: SpecializationConstants,
+          S: SpecializationConstants
 {
     type PipelineLayout = L;
     type SpecializationConstants = S;
@@ -513,7 +513,7 @@ impl fmt::Display for ShaderInterfaceMismatchError {
 /// `EntryPointAbstract`.
 ///
 /// # Example
-/// 
+///
 /// ```rust
 /// use vulkano::pipeline::shader::SpecializationConstants;
 /// use vulkano::pipeline::shader::SpecializationMapEntry;

@@ -69,11 +69,11 @@ impl<D> Fence<D>
                     check_errors(vk.ResetFences(device.internal_object(), 1, &raw_fence))?;
                 }
                 Ok(Fence {
-                    fence: raw_fence,
-                    device: device,
-                    signaled: AtomicBool::new(false),
-                    must_put_in_pool: true,
-                })
+                       fence: raw_fence,
+                       device: device,
+                       signaled: AtomicBool::new(false),
+                       must_put_in_pool: true,
+                   })
             },
             None => {
                 // Pool is empty, alloc new fence
@@ -249,10 +249,10 @@ impl<D> Fence<D>
     #[inline]
     pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
-             let vk = self.device.pointers();
-             check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence))?;
-             self.signaled.store(false, Ordering::Relaxed);
-             Ok(())
+            let vk = self.device.pointers();
+            check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence))?;
+            self.signaled.store(false, Ordering::Relaxed);
+            Ok(())
         }
     }
 
@@ -287,8 +287,8 @@ impl<D> Fence<D>
             unsafe {
                 let vk = device.pointers();
                 check_errors(vk.ResetFences(device.internal_object(),
-                               fences.len() as u32,
-                               fences.as_ptr()))?;
+                                            fences.len() as u32,
+                                            fences.as_ptr()))?;
             }
         }
         Ok(())
@@ -383,9 +383,9 @@ impl From<Error> for FenceWaitError {
 
 #[cfg(test)]
 mod tests {
+    use VulkanObject;
     use std::time::Duration;
     use sync::Fence;
-    use VulkanObject;
 
     #[test]
     fn fence_create() {

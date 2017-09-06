@@ -312,9 +312,12 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.blit_image(self.source.as_ref().unwrap(), self.source_layout,
-                               self.destination.as_ref().unwrap(), self.destination_layout,
-                               self.regions.take().unwrap(), self.filter);
+                out.blit_image(self.source.as_ref().unwrap(),
+                               self.source_layout,
+                               self.destination.as_ref().unwrap(),
+                               self.destination_layout,
+                               self.regions.take().unwrap(),
+                               self.filter);
             }
 
             fn into_final_command(mut self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
@@ -417,21 +420,26 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         impl<P, I, R> Command<P> for Cmd<I, R>
             where I: ImageAccess + Send + Sync + 'static,
-                  R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static
+                  R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear>
+                         + Send
+                         + Sync
+                         + 'static
         {
             fn name(&self) -> &'static str {
                 "vkCmdClearColorImage"
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.clear_color_image(self.image.as_ref().unwrap(), self.layout, self.color,
+                out.clear_color_image(self.image.as_ref().unwrap(),
+                                      self.layout,
+                                      self.color,
                                       self.regions.take().unwrap());
             }
 
             fn into_final_command(mut self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin<I>(I);
                 impl<I> FinalCommand for Fin<I>
-                    where I: ImageAccess + Send + Sync + 'static,
+                    where I: ImageAccess + Send + Sync + 'static
                 {
                     fn image(&self, num: usize) -> &ImageAccess {
                         assert_eq!(num, 0);
@@ -1661,7 +1669,8 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
                 for (set_num, set) in self.inner.iter().enumerate() {
                     if let Some(buf) = set.buffer(num) {
-                        return format!("Buffer bound to descriptor {} of set {}", buf.1, set_num).into();
+                        return format!("Buffer bound to descriptor {} of set {}", buf.1, set_num)
+                            .into();
                     }
                     num -= set.num_buffers();
                 }
@@ -1681,7 +1690,8 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             fn image_name(&self, mut num: usize) -> Cow<'static, str> {
                 for (set_num, set) in self.inner.iter().enumerate() {
                     if let Some(img) = set.image(num) {
-                        return format!("Image bound to descriptor {} of set {}", img.1, set_num).into();
+                        return format!("Image bound to descriptor {} of set {}", img.1, set_num)
+                            .into();
                     }
                     num -= set.num_images();
                 }
@@ -1693,7 +1703,8 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             let mut all_buffers = Vec::new();
             for ds in self.inner.iter() {
                 for buf_num in 0 .. ds.num_buffers() {
-                    let desc = ds.descriptor(ds.buffer(buf_num).unwrap().1 as usize).unwrap();
+                    let desc = ds.descriptor(ds.buffer(buf_num).unwrap().1 as usize)
+                        .unwrap();
                     let write = !desc.readonly;
                     let (stages, access) = desc.pipeline_stages_and_access();
                     all_buffers.push((write, stages, access));
@@ -1731,7 +1742,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                             ignore_me_hack = true;
                             image_view.descriptor_set_input_attachment_layout()
                         },
-                        _ => panic!("Tried to bind an image to a non-image descriptor")
+                        _ => panic!("Tried to bind an image to a non-image descriptor"),
                     };
                     all_images.push((write, stages, access, layout, ignore_me_hack));
                 }
@@ -1739,30 +1750,33 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             all_images
         };
 
-        self.builder
-            .append_command(Cmd {
-                               inner: self.inner,
-                               graphics,
-                               pipeline_layout,
-                               first_binding,
-                               dynamic_offsets: Some(dynamic_offsets),
-                           });
+        self.builder.append_command(Cmd {
+                                        inner: self.inner,
+                                        graphics,
+                                        pipeline_layout,
+                                        first_binding,
+                                        dynamic_offsets: Some(dynamic_offsets),
+                                    });
 
         for (n, (write, stages, access)) in all_buffers.into_iter().enumerate() {
             self.builder
                 .prev_cmd_resource(KeyTy::Buffer,
-                                   n, write, stages, access,
+                                   n,
+                                   write,
+                                   stages,
+                                   access,
                                    ImageLayout::Undefined,
                                    ImageLayout::Undefined)?;
         }
 
-        for (n, (write, stages, access, layout, ignore_me_hack)) in all_images.into_iter().enumerate() {
-            if ignore_me_hack { continue; }
+        for (n, (write, stages, access, layout, ignore_me_hack)) in
+            all_images.into_iter().enumerate()
+        {
+            if ignore_me_hack {
+                continue;
+            }
             self.builder
-                .prev_cmd_resource(KeyTy::Image,
-                                   n, write, stages, access,
-                                   layout,
-                                   layout)?;
+                .prev_cmd_resource(KeyTy::Image, n, write, stages, access, layout, layout)?;
         }
 
         Ok(())
@@ -1824,12 +1838,11 @@ impl<'a, P> SyncCommandBufferBuilderBindVertexBuffer<'a, P> {
 
         let num_buffers = self.buffers.len();
 
-        self.builder
-            .append_command(Cmd {
-                               first_binding,
-                               inner: Some(self.inner),
-                               buffers: self.buffers,
-                           });
+        self.builder.append_command(Cmd {
+                                        first_binding,
+                                        inner: Some(self.inner),
+                                        buffers: self.buffers,
+                                    });
 
         for n in 0 .. num_buffers {
             self.builder
@@ -1867,7 +1880,8 @@ impl<'a, P> SyncCommandBufferBuilderExecuteCommands<'a, P> {
         where C: CommandBuffer + Send + Sync + 'static
     {
         self.inner.add(&command_buffer);
-        self.command_buffers.push(Box::new(command_buffer) as Box<_>);
+        self.command_buffers
+            .push(Box::new(command_buffer) as Box<_>);
     }
 
     #[inline]
@@ -1894,11 +1908,10 @@ impl<'a, P> SyncCommandBufferBuilderExecuteCommands<'a, P> {
             }
         }
 
-        self.builder
-            .append_command(Cmd {
-                               inner: Some(self.inner),
-                               command_buffers: self.command_buffers,
-                           });
+        self.builder.append_command(Cmd {
+                                        inner: Some(self.inner),
+                                        command_buffers: self.command_buffers,
+                                    });
         Ok(())
     }
 }

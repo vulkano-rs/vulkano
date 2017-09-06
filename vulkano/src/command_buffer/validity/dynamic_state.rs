@@ -39,9 +39,9 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let Some(ref viewports) = state.viewports {
             if viewports.len() != pipeline.num_viewports() as usize {
                 return Err(CheckDynamicStateValidityError::ViewportsCountMismatch {
-                    expected: pipeline.num_viewports() as usize,
-                    obtained: viewports.len(),
-                });
+                               expected: pipeline.num_viewports() as usize,
+                               obtained: viewports.len(),
+                           });
             }
         } else {
             return Err(CheckDynamicStateValidityError::ViewportsMissing);
@@ -57,9 +57,9 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let Some(ref scissors) = state.scissors {
             if scissors.len() != pipeline.num_viewports() as usize {
                 return Err(CheckDynamicStateValidityError::ScissorsCountMismatch {
-                    expected: pipeline.num_viewports() as usize,
-                    obtained: scissors.len(),
-                });
+                               expected: pipeline.num_viewports() as usize,
+                               obtained: scissors.len(),
+                           });
             }
         } else {
             return Err(CheckDynamicStateValidityError::ScissorsMissing);

@@ -41,16 +41,16 @@ use descriptor::descriptor::DescriptorDesc;
 use image::ImageViewAccess;
 
 pub use self::collection::DescriptorSetsCollection;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
 pub use self::fixed_size_pool::FixedSizeDescriptorSet;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilder;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilderArray;
+pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
 pub use self::persistent::PersistentDescriptorSet;
+pub use self::persistent::PersistentDescriptorSetBuf;
+pub use self::persistent::PersistentDescriptorSetBufView;
 pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetBuilder;
 pub use self::persistent::PersistentDescriptorSetBuilderArray;
-pub use self::persistent::PersistentDescriptorSetBuf;
-pub use self::persistent::PersistentDescriptorSetBufView;
 pub use self::persistent::PersistentDescriptorSetError;
 pub use self::persistent::PersistentDescriptorSetImg;
 pub use self::persistent::PersistentDescriptorSetSampler;
@@ -83,7 +83,7 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
 
     /// Returns the number of buffers within this descriptor set.
     fn num_buffers(&self) -> usize;
-    
+
     /// Returns the `index`th buffer of this descriptor set, or `None` if out of range. Also
     /// returns the index of the descriptor that uses this buffer.
     ///
@@ -92,7 +92,7 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
 
     /// Returns the number of images within this descriptor set.
     fn num_images(&self) -> usize;
-    
+
     /// Returns the `index`th image of this descriptor set, or `None` if out of range. Also returns
     /// the index of the descriptor that uses this image.
     ///
@@ -113,7 +113,7 @@ unsafe impl<T> DescriptorSet for T
     fn num_buffers(&self) -> usize {
         (**self).num_buffers()
     }
-    
+
     #[inline]
     fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
         (**self).buffer(index)
@@ -123,7 +123,7 @@ unsafe impl<T> DescriptorSet for T
     fn num_images(&self) -> usize {
         (**self).num_images()
     }
-    
+
     #[inline]
     fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
         (**self).image(index)

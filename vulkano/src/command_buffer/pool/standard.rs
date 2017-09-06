@@ -126,15 +126,15 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             for _ in 0 .. count as usize {
                 if let Some(cmd) = existing.try_pop() {
                     output.push(StandardCommandPoolBuilder {
-                        inner: StandardCommandPoolAlloc {
-                            cmd: Some(cmd),
-                            pool: per_thread.clone(),
-                            pool_parent: self.clone(),
-                            secondary: secondary,
-                            device: self.device.clone(),
-                        },
-                        dummy_avoid_send_sync: PhantomData,
-                    });
+                                    inner: StandardCommandPoolAlloc {
+                                        cmd: Some(cmd),
+                                        pool: per_thread.clone(),
+                                        pool_parent: self.clone(),
+                                        secondary: secondary,
+                                        device: self.device.clone(),
+                                    },
+                                    dummy_avoid_send_sync: PhantomData,
+                                });
                 } else {
                     break;
                 }
@@ -148,15 +148,15 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
             for cmd in pool_lock.alloc_command_buffers(secondary, num_new)? {
                 output.push(StandardCommandPoolBuilder {
-                    inner: StandardCommandPoolAlloc {
-                        cmd: Some(cmd),
-                        pool: per_thread.clone(),
-                        pool_parent: self.clone(),
-                        secondary: secondary,
-                        device: self.device.clone(),
-                    },
-                    dummy_avoid_send_sync: PhantomData,
-                });
+                                inner: StandardCommandPoolAlloc {
+                                    cmd: Some(cmd),
+                                    pool: per_thread.clone(),
+                                    pool_parent: self.clone(),
+                                    secondary: secondary,
+                                    device: self.device.clone(),
+                                },
+                                dummy_avoid_send_sync: PhantomData,
+                            });
             }
         }
 
@@ -274,12 +274,12 @@ impl Drop for StandardCommandPoolAlloc {
 
 #[cfg(test)]
 mod tests {
+    use VulkanObject;
     use command_buffer::pool::CommandPool;
     use command_buffer::pool::CommandPoolBuilderAlloc;
     use command_buffer::pool::StandardCommandPool;
     use device::Device;
     use std::sync::Arc;
-    use VulkanObject;
 
     #[test]
     fn reuse_command_buffers() {

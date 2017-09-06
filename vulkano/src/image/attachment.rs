@@ -140,7 +140,7 @@ impl<F> AttachmentImage<F> {
     #[inline]
     pub fn multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
                                          format: F)
-                        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+                                         -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
@@ -184,7 +184,7 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn sampled(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
@@ -200,7 +200,7 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn sampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+                                    -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
@@ -219,9 +219,8 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn sampled_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
-                                  format: F)
-                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    pub fn sampled_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+                                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
@@ -237,9 +236,9 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn sampled_multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2],
-                                                   samples: u32, format: F)
-                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    pub fn sampled_multisampled_input_attachment(
+        device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
@@ -275,7 +274,7 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn transient_input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+                                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {
@@ -312,9 +311,9 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn transient_multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2],
-                                                   samples: u32, format: F)
-                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    pub fn transient_multisampled_input_attachment(
+        device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
+        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
         where F: FormatDesc
     {
         let base_usage = ImageUsage {

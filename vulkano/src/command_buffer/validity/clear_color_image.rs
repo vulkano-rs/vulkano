@@ -23,7 +23,7 @@ use image::ImageAccess;
 pub fn check_clear_color_image<I>(device: &Device, image: &I, first_layer: u32, num_layers: u32,
                                   first_mipmap: u32, num_mipmaps: u32)
                                   -> Result<(), CheckClearColorImageError>
-    where I: ?Sized + ImageAccess,
+    where I: ?Sized + ImageAccess
 {
     assert_eq!(image.inner().image.device().internal_object(),
                device.internal_object());

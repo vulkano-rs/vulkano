@@ -84,11 +84,16 @@ impl GraphicsPipeline<(), (), ()> {
     /// fill with the various parameters.
     pub fn start<'a>()
         -> GraphicsPipelineBuilder<SingleBufferDefinition<()>,
-                                   EmptyEntryPointDummy, (),
-                                   EmptyEntryPointDummy, (),
-                                   EmptyEntryPointDummy, (),
-                                   EmptyEntryPointDummy, (),
-                                   EmptyEntryPointDummy, (),
+                                   EmptyEntryPointDummy,
+                                   (),
+                                   EmptyEntryPointDummy,
+                                   (),
+                                   EmptyEntryPointDummy,
+                                   (),
+                                   EmptyEntryPointDummy,
+                                   (),
+                                   EmptyEntryPointDummy,
+                                   (),
                                    ()>
     {
         GraphicsPipelineBuilder::new()
@@ -316,41 +321,41 @@ impl Drop for Inner {
 /// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
 /// object.
 pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
-    /// Returns an opaque object that represents the inside of the graphics pipeline.
+/// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
-    /// Returns the index of the subpass this graphics pipeline is rendering to.
+/// Returns the index of the subpass this graphics pipeline is rendering to.
     fn subpass_index(&self) -> u32;
 
-    /// Returns the subpass this graphics pipeline is rendering to.
+/// Returns the subpass this graphics pipeline is rendering to.
     #[inline]
     fn subpass(self) -> Subpass<Self> where Self: Sized {
         let index = self.subpass_index();
         Subpass::from(self, index).expect("Wrong subpass index in GraphicsPipelineAbstract::subpass")
     }
 
-    /// Returns true if the line width used by this pipeline is dynamic.
+/// Returns true if the line width used by this pipeline is dynamic.
     fn has_dynamic_line_width(&self) -> bool;
 
-    /// Returns the number of viewports and scissors of this pipeline.
+/// Returns the number of viewports and scissors of this pipeline.
     fn num_viewports(&self) -> u32;
 
-    /// Returns true if the viewports used by this pipeline are dynamic.
+/// Returns true if the viewports used by this pipeline are dynamic.
     fn has_dynamic_viewports(&self) -> bool;
 
-    /// Returns true if the scissors used by this pipeline are dynamic.
+/// Returns true if the scissors used by this pipeline are dynamic.
     fn has_dynamic_scissors(&self) -> bool;
 
-    /// Returns true if the depth bounds used by this pipeline are dynamic.
+/// Returns true if the depth bounds used by this pipeline are dynamic.
     fn has_dynamic_depth_bounds(&self) -> bool;
 
-    /// Returns true if the stencil compare masks used by this pipeline are dynamic.
+/// Returns true if the stencil compare masks used by this pipeline are dynamic.
     fn has_dynamic_stencil_compare_mask(&self) -> bool;
 
-    /// Returns true if the stencil write masks used by this pipeline are dynamic.
+/// Returns true if the stencil write masks used by this pipeline are dynamic.
     fn has_dynamic_stencil_write_mask(&self) -> bool;
 
-    /// Returns true if the stencil references used by this pipeline are dynamic.
+/// Returns true if the stencil references used by this pipeline are dynamic.
     fn has_dynamic_stencil_reference(&self) -> bool;
 }
 

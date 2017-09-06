@@ -195,33 +195,31 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> (String,
 
     // We can only implement Clone if there's no unsized member in the struct.
     let (impl_text, derive_text) = if current_rust_offset.is_some() {
-        let i =
-            format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        {name} \
-                     {{\n{copies}\n        }}\n    }}\n}}\n",
-                    name = name,
-                    copies = rust_members
-                        .iter()
-                        .map(Member::copy_text)
-                        .collect::<Vec<_>>()
-                        .join(",\n"));
+        let i = format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        \
+                         {name} {{\n{copies}\n        }}\n    }}\n}}\n",
+                        name = name,
+                        copies = rust_members
+                            .iter()
+                            .map(Member::copy_text)
+                            .collect::<Vec<_>>()
+                            .join(",\n"));
         (i, "#[derive(Copy)]")
     } else {
         ("".to_owned(), "")
     };
 
-    let s = format!("#[repr(C)]\n\
-                     {derive_text}\n\
-                     #[allow(non_snake_case)]\n\
-                     pub struct {name} {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
-                    name = name,
-                    members = rust_members
-                        .iter()
-                        .map(Member::declaration_text)
-                        .collect::<Vec<_>>()
-                        .join(",\n"),
-                    t = spirv_req_total_size,
-                    impl_text = impl_text,
-                    derive_text = derive_text);
+    let s =
+        format!("#[repr(C)]\n{derive_text}\n#[allow(non_snake_case)]\npub struct {name} \
+                 {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
+                name = name,
+                members = rust_members
+                    .iter()
+                    .map(Member::declaration_text)
+                    .collect::<Vec<_>>()
+                    .join(",\n"),
+                t = spirv_req_total_size,
+                impl_text = impl_text,
+                derive_text = derive_text);
     (s,
      spirv_req_total_size
          .map(|sz| sz as usize)
