@@ -1367,7 +1367,7 @@ unsafe impl<P> DeviceOwned for AutoCommandBuffer<P> {
 }
 
 macro_rules! err_gen {
-    ($name:ident { $($err:ident),+ }) => (
+    ($name:ident { $($err:ident,)+ }) => (
         #[derive(Debug, Clone)]
         pub enum $name {
             $(
