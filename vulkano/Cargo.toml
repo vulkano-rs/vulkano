@@ -1,6 +1,6 @@
 [package]
 name = "vulkano"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
