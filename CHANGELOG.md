@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.6.2 (2017-09-06)
+
 - Added checking compatibility between the descriptor sets and the pipeline object when adding a
   draw or compute command.
 - Fixed several bugs in the validation checks of `blit_image`.
