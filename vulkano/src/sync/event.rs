@@ -35,7 +35,6 @@ pub struct Event {
 }
 
 impl Event {
-
     /// Takes an event from the vulkano-provided event pool.
     /// If the pool is empty, a new event will be allocated.
     /// Upon `drop`, the event is put back into the pool.
@@ -52,10 +51,10 @@ impl Event {
                     check_errors(vk.ResetEvent(device.internal_object(), raw_event))?;
                 }
                 Ok(Event {
-                    event: raw_event,
-                    device: device,
-                    must_put_in_pool: true,
-                })
+                       event: raw_event,
+                       device: device,
+                       must_put_in_pool: true,
+                   })
             },
             None => {
                 // Pool is empty, alloc new event
@@ -188,8 +187,8 @@ impl Drop for Event {
 
 #[cfg(test)]
 mod tests {
-    use sync::Event;
     use VulkanObject;
+    use sync::Event;
 
     #[test]
     fn event_create() {

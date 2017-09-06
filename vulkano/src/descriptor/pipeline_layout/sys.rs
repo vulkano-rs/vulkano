@@ -52,7 +52,7 @@ impl<L> PipelineLayout<L>
     pub fn new(device: Arc<Device>, desc: L)
                -> Result<PipelineLayout<L>, PipelineLayoutCreationError> {
         let vk = device.pointers();
-        
+
         desc.check_against_limits(&device)?;
 
         // Building the list of `UnsafeDescriptorSetLayout` objects.

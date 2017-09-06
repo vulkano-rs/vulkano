@@ -180,27 +180,28 @@ impl Drop for StdDescriptorPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
-    use std::sync::Arc;
     use descriptor::descriptor::DescriptorDesc;
     use descriptor::descriptor::DescriptorDescTy;
     use descriptor::descriptor::ShaderStages;
     use descriptor::descriptor_set::DescriptorPool;
     use descriptor::descriptor_set::StdDescriptorPool;
     use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use std::iter;
+    use std::sync::Arc;
 
     #[test]
     fn desc_pool_kept_alive() {
         // Test that the `StdDescriptorPool` is kept alive by its allocations.
         let (device, _) = gfx_dev_and_queue!();
-    
+
         let desc = DescriptorDesc {
             ty: DescriptorDescTy::Sampler,
             array_count: 1,
             stages: ShaderStages::all(),
             readonly: false,
         };
-        let layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc))).unwrap();
+        let layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc)))
+            .unwrap();
 
         let mut pool = Arc::new(StdDescriptorPool::new(device));
         let pool_weak = Arc::downgrade(&pool);

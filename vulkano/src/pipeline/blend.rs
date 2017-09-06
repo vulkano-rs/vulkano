@@ -81,7 +81,7 @@ pub struct AttachmentBlend {
 
     pub color_op: BlendOp,
     pub color_source: BlendFactor,
-    pub  color_destination: BlendFactor,
+    pub color_destination: BlendFactor,
 
     pub alpha_op: BlendOp,
     pub alpha_source: BlendFactor,

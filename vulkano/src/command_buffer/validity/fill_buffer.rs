@@ -70,19 +70,20 @@ impl fmt::Display for CheckFillBufferError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
-    use super::*;
 
     #[test]
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(),
-                                                    0u32).unwrap();
+        let buffer =
+            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(), 0u32)
+                .unwrap();
 
         match check_fill_buffer(&device, &buffer) {
             Err(CheckFillBufferError::BufferMissingUsage) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -93,7 +94,7 @@ mod tests {
         let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), 0u32).unwrap();
 
         assert_should_panic!({
-            let _ = check_fill_buffer(&dev2, &buffer);
-        });
+                                 let _ = check_fill_buffer(&dev2, &buffer);
+                             });
     }
 }

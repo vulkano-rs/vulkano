@@ -264,9 +264,7 @@ impl Iterator for UnsafeCommandPoolAllocIter {
 
     #[inline]
     fn next(&mut self) -> Option<UnsafeCommandPoolAlloc> {
-        self.list
-            .next()
-            .map(|cb| UnsafeCommandPoolAlloc(cb))
+        self.list.next().map(|cb| UnsafeCommandPoolAlloc(cb))
     }
 
     #[inline]

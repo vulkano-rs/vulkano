@@ -29,14 +29,14 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use memory::DedicatedAlloc;
-use memory::pool::AllocLayout;
+use memory::DeviceMemoryAllocError;
 use memory::pool::AllocFromRequirementsFilter;
+use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
-use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -286,9 +286,7 @@ impl<T, A> CpuBufferPool<T, A>
     /// > large enough, a new chunk of memory is automatically allocated.
     #[inline]
     pub fn next(&self, data: T) -> CpuBufferPoolSubbuffer<T, A> {
-        CpuBufferPoolSubbuffer {
-            chunk: self.chunk(iter::once(data))
-        }
+        CpuBufferPoolSubbuffer { chunk: self.chunk(iter::once(data)) }
     }
 
     /// Grants access to a new subbuffer and puts `data` in it.
@@ -317,10 +315,11 @@ impl<T, A> CpuBufferPool<T, A>
         };
 
         // TODO: choose the capacity better?
-        let next_capacity = cmp::max(data.len(), 1) * match *mutex {
-            Some(ref b) => b.capacity * 2,
-            None => 3,
-        };
+        let next_capacity = cmp::max(data.len(), 1) *
+            match *mutex {
+                Some(ref b) => b.capacity * 2,
+                None => 3,
+            };
 
         self.reset_buf(&mut mutex, next_capacity).unwrap(); /* FIXME: propagate error */
 
@@ -339,9 +338,9 @@ impl<T, A> CpuBufferPool<T, A>
     #[inline]
     pub fn try_next(&self, data: T) -> Option<CpuBufferPoolSubbuffer<T, A>> {
         let mut mutex = self.current_buffer.lock().unwrap();
-        self.try_next_impl(&mut mutex, iter::once(data)).map(|c| {
-            CpuBufferPoolSubbuffer { chunk: c }
-        }).ok()
+        self.try_next_impl(&mut mutex, iter::once(data))
+            .map(|c| CpuBufferPoolSubbuffer { chunk: c })
+            .ok()
     }
 
     // Creates a new buffer and sets it as current. The capacity is in number of elements.
@@ -354,7 +353,8 @@ impl<T, A> CpuBufferPool<T, A>
             let (buffer, mem_reqs) = {
                 let size_bytes = match mem::size_of::<T>().checked_mul(capacity) {
                     Some(s) => s,
-                    None => return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)),
+                    None =>
+                        return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)),
                 };
 
                 match UnsafeBuffer::new(self.device.clone(),
@@ -379,14 +379,13 @@ impl<T, A> CpuBufferPool<T, A>
             debug_assert!(mem.mapped_memory().is_some());
             buffer.bind_memory(mem.memory(), mem.offset())?;
 
-            **cur_buf_mutex =
-                Some(Arc::new(ActualBuffer {
-                                  inner: buffer,
-                                  memory: mem,
-                                  chunks_in_use: Mutex::new(vec![]),
-                                  next_index: AtomicUsize::new(0),
-                                  capacity: capacity,
-                              }));
+            **cur_buf_mutex = Some(Arc::new(ActualBuffer {
+                                                inner: buffer,
+                                                memory: mem,
+                                                chunks_in_use: Mutex::new(vec![]),
+                                                next_index: AtomicUsize::new(0),
+                                                capacity: capacity,
+                                            }));
 
             Ok(())
         }
@@ -403,7 +402,8 @@ impl<T, A> CpuBufferPool<T, A>
     // Panicks if the length of the iterator didn't match the actual number of element.
     //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
-                        mut data: I) -> Result<CpuBufferPoolChunk<T, A>, I>
+                        mut data: I)
+                        -> Result<CpuBufferPoolChunk<T, A>, I>
         where I: ExactSizeIterator<Item = T>
     {
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
@@ -424,13 +424,13 @@ impl<T, A> CpuBufferPool<T, A>
             assert!(data.next().is_none(),
                     "Expected iterator passed to CpuBufferPool::chunk to be empty");
             return Ok(CpuBufferPoolChunk {
-               // TODO: remove .clone() once non-lexical borrows land
-               buffer: current_buffer.clone(),
-               index: 0,
-               align_offset: 0,
-               requested_len: 0,
-               marker: PhantomData,
-            });
+                          // TODO: remove .clone() once non-lexical borrows land
+                          buffer: current_buffer.clone(),
+                          index: 0,
+                          align_offset: 0,
+                          requested_len: 0,
+                          marker: PhantomData,
+                      });
         }
 
         // Find a suitable offset and len, or returns if none available.
@@ -440,23 +440,30 @@ impl<T, A> CpuBufferPool<T, A>
                 // own a mutex lock to the buffer, it means that `next_index` can't be accessed
                 // concurrently.
                 // TODO: ^ eventually should be put inside the mutex
-                let idx = current_buffer
-                    .next_index
-                    .load(Ordering::SeqCst);
+                let idx = current_buffer.next_index.load(Ordering::SeqCst);
 
                 // Find the required alignment in bytes.
-                let align_bytes = cmp::max(
-                    if self.usage.uniform_buffer {
-                        self.device().physical_device().limits()
-                            .min_uniform_buffer_offset_alignment() as usize
-                    } else { 1 },
-                    if self.usage.storage_buffer {
-                        self.device().physical_device().limits()
-                            .min_storage_buffer_offset_alignment() as usize
-                    } else { 1 },
-                );
+                let align_bytes = cmp::max(if self.usage.uniform_buffer {
+                                               self.device()
+                                                   .physical_device()
+                                                   .limits()
+                                                   .min_uniform_buffer_offset_alignment() as
+                                                   usize
+                                           } else {
+                                               1
+                                           },
+                                           if self.usage.storage_buffer {
+                                               self.device()
+                                                   .physical_device()
+                                                   .limits()
+                                                   .min_storage_buffer_offset_alignment() as
+                                                   usize
+                                           } else {
+                                               1
+                                           });
 
-                let tentative_align_offset = (align_bytes - ((idx * mem::size_of::<T>()) % align_bytes)) % align_bytes;
+                let tentative_align_offset =
+                    (align_bytes - ((idx * mem::size_of::<T>()) % align_bytes)) % align_bytes;
                 let additional_len = if tentative_align_offset == 0 {
                     0
                 } else {
@@ -468,8 +475,12 @@ impl<T, A> CpuBufferPool<T, A>
 
             // Find out whether any chunk in use overlaps this range.
             if tentative_index + tentative_len <= current_buffer.capacity &&
-                !chunks_in_use.iter().any(|c| (c.index >= tentative_index && c.index < tentative_index + tentative_len) ||
-                    (c.index <= tentative_index && c.index + c.len > tentative_index))
+                !chunks_in_use.iter().any(|c| {
+                                              (c.index >= tentative_index &&
+                                                   c.index < tentative_index + tentative_len) ||
+                                                  (c.index <= tentative_index &&
+                                                       c.index + c.len > tentative_index)
+                                          })
             {
                 (tentative_index, tentative_len, tentative_align_offset)
             } else {
@@ -501,19 +512,22 @@ impl<T, A> CpuBufferPool<T, A>
                 ptr::write(o, i);
                 written += 1;
             }
-            assert_eq!(written, requested_len,
+            assert_eq!(written,
+                       requested_len,
                        "Iterator passed to CpuBufferPool::chunk has a mismatch between reported \
                         length and actual number of elements");
         }
 
         // Mark the chunk as in use.
-        current_buffer.next_index.store(index + occupied_len, Ordering::SeqCst);
+        current_buffer
+            .next_index
+            .store(index + occupied_len, Ordering::SeqCst);
         chunks_in_use.push(ActualBufferChunk {
-            index,
-            len: occupied_len,
-            num_cpu_accesses: 1,
-            num_gpu_accesses: 0,
-        });
+                               index,
+                               len: occupied_len,
+                               num_cpu_accesses: 1,
+                               num_gpu_accesses: 0,
+                           });
 
         Ok(CpuBufferPoolChunk {
                // TODO: remove .clone() once non-lexical borrows land
@@ -557,10 +571,15 @@ impl<T, A> Clone for CpuBufferPoolChunk<T, A>
 {
     fn clone(&self) -> CpuBufferPoolChunk<T, A> {
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         debug_assert!(chunk.num_cpu_accesses >= 1);
-        chunk.num_cpu_accesses = chunk.num_cpu_accesses.checked_add(1)
+        chunk.num_cpu_accesses = chunk
+            .num_cpu_accesses
+            .checked_add(1)
             .expect("Overflow in CPU accesses");
 
         CpuBufferPoolChunk {
@@ -601,7 +620,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
         }
 
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         if chunk.num_gpu_accesses != 0 {
             return Err(AccessError::AlreadyInUse);
@@ -618,10 +640,15 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
         }
 
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         debug_assert!(chunk.num_gpu_accesses >= 1);
-        chunk.num_gpu_accesses = chunk.num_gpu_accesses.checked_add(1)
+        chunk.num_gpu_accesses = chunk
+            .num_gpu_accesses
+            .checked_add(1)
             .expect("Overflow in GPU usages");
     }
 
@@ -632,7 +659,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
         }
 
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         debug_assert!(chunk.num_gpu_accesses >= 1);
         chunk.num_gpu_accesses -= 1;
@@ -649,7 +679,10 @@ impl<T, A> Drop for CpuBufferPoolChunk<T, A>
         }
 
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk_num = chunks_in_use_lock.iter_mut().position(|c| c.index == self.index).unwrap();
+        let chunk_num = chunks_in_use_lock
+            .iter_mut()
+            .position(|c| c.index == self.index)
+            .unwrap();
 
         if chunks_in_use_lock[chunk_num].num_cpu_accesses >= 2 {
             chunks_in_use_lock[chunk_num].num_cpu_accesses -= 1;
@@ -679,9 +712,7 @@ impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool
 {
     fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
-        CpuBufferPoolSubbuffer {
-            chunk: self.chunk.clone(),
-        }
+        CpuBufferPoolSubbuffer { chunk: self.chunk.clone() }
     }
 }
 

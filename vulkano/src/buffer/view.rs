@@ -384,10 +384,9 @@ mod tests {
             ..BufferUsage::none()
         };
 
-        let (buffer, _) = ImmutableBuffer::<[u32]>::from_iter((0 .. 128).map(|_| 0),
-                                                              usage,
-                                                              queue.clone())
-            .unwrap();
+        let (buffer, _) =
+            ImmutableBuffer::<[u32]>::from_iter((0 .. 128).map(|_| 0), usage, queue.clone())
+                .unwrap();
         let view = BufferView::new(buffer, format::R32Uint).unwrap();
 
         assert!(view.storage_texel_buffer());

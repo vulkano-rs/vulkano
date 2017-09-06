@@ -249,8 +249,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
     #[inline]
     fn then_swapchain_present_incremental(self, queue: Arc<Queue>, swapchain: Arc<Swapchain>,
-                              image_index: usize, present_region: PresentRegion)
-                              -> PresentFuture<Self>
+                                          image_index: usize, present_region: PresentRegion)
+                                          -> PresentFuture<Self>
         where Self: Sized
     {
         swapchain::present_incremental(swapchain, self, queue, image_index, present_region)

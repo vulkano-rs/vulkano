@@ -181,7 +181,7 @@ impl<'a> SubmitPresentBuilder<'a> {
 
             // TODO: AMD driver initially didn't write the results ; check that it's been fixed
             //for result in results {
-                //try!(check_errors(result));
+            //try!(check_errors(result));
             //}
 
             Ok(())

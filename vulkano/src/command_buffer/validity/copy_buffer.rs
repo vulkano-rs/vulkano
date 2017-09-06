@@ -26,7 +26,7 @@ pub fn check_copy_buffer<S, D, T>(device: &Device, source: &S, destination: &D)
                                   -> Result<CheckCopyBuffer, CheckCopyBufferError>
     where S: ?Sized + TypedBufferAccess<Content = T>,
           D: ?Sized + TypedBufferAccess<Content = T>,
-          T: ?Sized,
+          T: ?Sized
 {
     assert_eq!(source.inner().buffer.device().internal_object(),
                device.internal_object());

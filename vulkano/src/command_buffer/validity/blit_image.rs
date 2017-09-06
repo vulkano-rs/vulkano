@@ -27,10 +27,11 @@ use sampler::Filter;
 ///
 pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32; 3],
                               source_bottom_right: [i32; 3], source_base_array_layer: u32,
-                              source_mip_level: u32, destination: &D, destination_top_left: [i32; 3],
-                              destination_bottom_right: [i32; 3], destination_base_array_layer: u32,
-                              destination_mip_level: u32, layer_count: u32, filter: Filter)
-                           -> Result<(), CheckBlitImageError>
+                              source_mip_level: u32, destination: &D,
+                              destination_top_left: [i32; 3], destination_bottom_right: [i32; 3],
+                              destination_base_array_layer: u32, destination_mip_level: u32,
+                              layer_count: u32, filter: Filter)
+                              -> Result<(), CheckBlitImageError>
     where S: ?Sized + ImageAccess,
           D: ?Sized + ImageAccess
 {
@@ -77,12 +78,12 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
 
     let types_should_be_same =
         source_format_ty == FormatTy::Uint || destination_format_ty == FormatTy::Uint ||
-        source_format_ty == FormatTy::Sint || destination_format_ty == FormatTy::Sint;
-    if types_should_be_same && (source_format_ty != destination_format_ty) { 
+            source_format_ty == FormatTy::Sint || destination_format_ty == FormatTy::Sint;
+    if types_should_be_same && (source_format_ty != destination_format_ty) {
         return Err(CheckBlitImageError::IncompatibleFormatsTypes {
-            source_format_ty: source.format().ty(),
-            destination_format_ty: destination.format().ty()
-        });
+                       source_format_ty: source.format().ty(),
+                       destination_format_ty: destination.format().ty(),
+                   });
     }
 
     let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
@@ -90,7 +91,9 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         None => return Err(CheckBlitImageError::SourceCoordinatesOutOfRange),
     };
 
-    let destination_dimensions = match destination.dimensions().mipmap_dimensions(destination_mip_level) {
+    let destination_dimensions = match destination
+        .dimensions()
+        .mipmap_dimensions(destination_mip_level) {
         Some(d) => d,
         None => return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange),
     };
@@ -127,27 +130,39 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::SourceCoordinatesOutOfRange);
     }
 
-    if destination_top_left[0] < 0 || destination_top_left[0] > destination_dimensions.width() as i32 {
+    if destination_top_left[0] < 0 ||
+        destination_top_left[0] > destination_dimensions.width() as i32
+    {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_top_left[1] < 0 || destination_top_left[1] > destination_dimensions.height() as i32 {
+    if destination_top_left[1] < 0 ||
+        destination_top_left[1] > destination_dimensions.height() as i32
+    {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_top_left[2] < 0 || destination_top_left[2] > destination_dimensions.depth() as i32 {
+    if destination_top_left[2] < 0 ||
+        destination_top_left[2] > destination_dimensions.depth() as i32
+    {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_bottom_right[0] < 0 || destination_bottom_right[0] > destination_dimensions.width() as i32 {
+    if destination_bottom_right[0] < 0 ||
+        destination_bottom_right[0] > destination_dimensions.width() as i32
+    {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_bottom_right[1] < 0 || destination_bottom_right[1] > destination_dimensions.height() as i32 {
+    if destination_bottom_right[1] < 0 ||
+        destination_bottom_right[1] > destination_dimensions.height() as i32
+    {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_bottom_right[2] < 0 || destination_bottom_right[2] > destination_dimensions.depth() as i32 {
+    if destination_bottom_right[2] < 0 ||
+        destination_bottom_right[2] > destination_dimensions.depth() as i32
+    {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 

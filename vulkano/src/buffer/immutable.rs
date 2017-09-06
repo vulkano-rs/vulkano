@@ -41,6 +41,8 @@ use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
+use memory::DeviceMemoryAllocError;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
@@ -48,8 +50,6 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
-use memory::DedicatedAlloc;
-use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::NowFuture;
 use sync::Sharing;
@@ -90,7 +90,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// be finished before submitting your own operation.
     pub fn from_data(
         data: T, usage: BufferUsage, queue: Arc<Queue>)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
+                  DeviceMemoryAllocError>
         where T: 'static + Send + Sync + Sized
     {
         let source = CpuAccessibleBuffer::from_data(queue.device().clone(),
@@ -107,7 +108,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     /// be finished before submitting your own operation.
     pub fn from_buffer<B>(
         source: B, usage: BufferUsage, queue: Arc<Queue>)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture),
+                  DeviceMemoryAllocError>
         where B: BufferAccess + TypedBufferAccess<Content = T> + 'static + Clone + Send + Sync,
               T: 'static + Send + Sync
     {
@@ -126,7 +128,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
             let cb = AutoCommandBufferBuilder::new(source.device().clone(),
                                                    queue.family())?
                 .copy_buffer(source, init).unwrap()     // TODO: return error?
-                .build().unwrap();                      // TODO: return OomError
+                .build().unwrap(); // TODO: return OomError
 
             let future = match cb.execute(queue) {
                 Ok(f) => f,
@@ -158,9 +160,11 @@ impl<T> ImmutableBuffer<T> {
     #[inline]
     pub unsafe fn uninitialized(
         device: Arc<Device>, usage: BufferUsage)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
-    {
-        ImmutableBuffer::raw(device.clone(), mem::size_of::<T>(), usage,
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>),
+                  DeviceMemoryAllocError> {
+        ImmutableBuffer::raw(device.clone(),
+                             mem::size_of::<T>(),
+                             usage,
                              device.active_queue_families())
     }
 }
@@ -168,7 +172,8 @@ impl<T> ImmutableBuffer<T> {
 impl<T> ImmutableBuffer<[T]> {
     pub fn from_iter<D>(
         data: D, usage: BufferUsage, queue: Arc<Queue>)
-        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
+        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferFromBufferFuture),
+                  DeviceMemoryAllocError>
         where D: ExactSizeIterator<Item = T>,
               T: 'static + Send + Sync + Sized
     {
@@ -195,12 +200,14 @@ impl<T> ImmutableBuffer<[T]> {
     ///   data, otherwise the content is undefined.
     ///
     #[inline]
-    pub unsafe fn uninitialized_array(
-        device: Arc<Device>, len: usize, usage: BufferUsage)
-        -> Result<(Arc<ImmutableBuffer<[T]>>, ImmutableBufferInitialization<[T]>), DeviceMemoryAllocError>
-    {
-        ImmutableBuffer::raw(device.clone(), len * mem::size_of::<T>(),
-                             usage, device.active_queue_families())
+    pub unsafe fn uninitialized_array(device: Arc<Device>, len: usize, usage: BufferUsage)
+                                      -> Result<(Arc<ImmutableBuffer<[T]>>,
+                                                 ImmutableBufferInitialization<[T]>),
+                                                DeviceMemoryAllocError> {
+        ImmutableBuffer::raw(device.clone(),
+                             len * mem::size_of::<T>(),
+                             usage,
+                             device.active_queue_families())
     }
 }
 
@@ -223,7 +230,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     #[inline]
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: I)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>),
+                  DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
         let queue_families = queue_families.into_iter().map(|f| f.id()).collect();
@@ -234,7 +242,8 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     // inlined.
     unsafe fn raw_impl(
         device: Arc<Device>, size: usize, usage: BufferUsage, queue_families: SmallVec<[u32; 4]>)
-        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError> {
+        -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>),
+                  DeviceMemoryAllocError> {
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
@@ -436,14 +445,10 @@ mod tests {
     fn from_data_working() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let (buffer, _) = ImmutableBuffer::from_data(12u32,
-                                                     BufferUsage::all(),
-                                                     queue.clone())
+        let (buffer, _) = ImmutableBuffer::from_data(12u32, BufferUsage::all(), queue.clone())
             .unwrap();
 
-        let destination = CpuAccessibleBuffer::from_data(device.clone(),
-                                                  BufferUsage::all(),
-                                                  0)
+        let destination = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0)
             .unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
@@ -471,8 +476,8 @@ mod tests {
             .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(device.clone(),
-                                                  BufferUsage::all(),
-                                                  (0 .. 512).map(|_| 0u32))
+                                                         BufferUsage::all(),
+                                                         (0 .. 512).map(|_| 0u32))
             .unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
@@ -496,23 +501,23 @@ mod tests {
     fn writing_forbidden() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let (buffer, _) = ImmutableBuffer::from_data(12u32,
-                                                     BufferUsage::all(),
-                                                     queue.clone())
+        let (buffer, _) = ImmutableBuffer::from_data(12u32, BufferUsage::all(), queue.clone())
             .unwrap();
 
-        assert_should_panic!({ // TODO: check Result error instead of panicking
-            let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-                .unwrap()
-                .fill_buffer(buffer, 50)
-                .unwrap()
-                .build()
-                .unwrap()
-                .execute(queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap();
-        });
+        assert_should_panic!({
+                                 // TODO: check Result error instead of panicking
+                                 let _ = AutoCommandBufferBuilder::new(device.clone(),
+                                                                       queue.family())
+                                     .unwrap()
+                                     .fill_buffer(buffer, 50)
+                                     .unwrap()
+                                     .build()
+                                     .unwrap()
+                                     .execute(queue.clone())
+                                     .unwrap()
+                                     .then_signal_fence_and_flush()
+                                     .unwrap();
+                             });
     }
 
     #[test]
@@ -520,28 +525,25 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let (buffer, _) = unsafe {
-            ImmutableBuffer::<u32>::uninitialized(device.clone(),
-                                                  BufferUsage::all())
-                .unwrap()
+            ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(),
-                                                 BufferUsage::all(),
-                                                 0)
-            .unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
 
-        assert_should_panic!({ // TODO: check Result error instead of panicking
-            let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-                .unwrap()
-                .copy_buffer(source, buffer)
-                .unwrap()
-                .build()
-                .unwrap()
-                .execute(queue.clone())
-                .unwrap()
-                .then_signal_fence_and_flush()
-                .unwrap();
-        });
+        assert_should_panic!({
+                                 // TODO: check Result error instead of panicking
+                                 let _ = AutoCommandBufferBuilder::new(device.clone(),
+                                                                       queue.family())
+                                     .unwrap()
+                                     .copy_buffer(source, buffer)
+                                     .unwrap()
+                                     .build()
+                                     .unwrap()
+                                     .execute(queue.clone())
+                                     .unwrap()
+                                     .then_signal_fence_and_flush()
+                                     .unwrap();
+                             });
     }
 
     #[test]
@@ -549,15 +551,10 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let (buffer, init) = unsafe {
-            ImmutableBuffer::<u32>::uninitialized(device.clone(),
-                                                  BufferUsage::all())
-                .unwrap()
+            ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(),
-                                                 BufferUsage::all(),
-                                                 0)
-            .unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
@@ -579,15 +576,10 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         let (buffer, init) = unsafe {
-            ImmutableBuffer::<u32>::uninitialized(device.clone(),
-                                                  BufferUsage::all())
-                .unwrap()
+            ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(),
-                                                 BufferUsage::all(),
-                                                 0)
-            .unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
 
         let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
@@ -615,8 +607,7 @@ mod tests {
     fn create_buffer_zero_size_data() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ =
-            ImmutableBuffer::from_data((), BufferUsage::all(), queue.clone());
+        let _ = ImmutableBuffer::from_data((), BufferUsage::all(), queue.clone());
     }
 
     // TODO: write tons of tests that try to exploit loopholes

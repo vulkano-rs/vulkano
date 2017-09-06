@@ -166,14 +166,8 @@ pub enum Instruction {
         result_id: u32,
         data: Vec<u32>,
     },
-    SpecConstantTrue {
-        result_type_id: u32,
-        result_id: u32,
-    },
-    SpecConstantFalse {
-        result_type_id: u32,
-        result_id: u32,
-    },
+    SpecConstantTrue { result_type_id: u32, result_id: u32 },
+    SpecConstantFalse { result_type_id: u32, result_id: u32 },
     SpecConstant {
         result_type_id: u32,
         result_id: u32,
@@ -254,9 +248,9 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
                Instruction::ExecutionMode {
                    target_id: operands[0],
                    mode: ExecutionMode::from_num(operands[1])?,
-                   optional_literals: operands[2..].to_vec(),
+                   optional_literals: operands[2 ..].to_vec(),
                }
-           }
+           },
            17 => Instruction::Capability(Capability::from_num(operands[0])?),
            19 => Instruction::TypeVoid { result_id: operands[0] },
            20 => Instruction::TypeBool { result_id: operands[0] },

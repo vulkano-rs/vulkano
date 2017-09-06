@@ -94,8 +94,10 @@ pub struct Instance {
 }
 
 // TODO: fix the underlying cause instead
-impl ::std::panic::UnwindSafe for Instance {}
-impl ::std::panic::RefUnwindSafe for Instance {}
+impl ::std::panic::UnwindSafe for Instance {
+}
+impl ::std::panic::RefUnwindSafe for Instance {
+}
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
@@ -133,14 +135,16 @@ impl Instance {
             .map(|&layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos, extensions.into(), layers,
+        Instance::new_inner(app_infos,
+                            extensions.into(),
+                            layers,
                             OwnedOrRef::Ref(loader::auto_loader()?))
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.
     pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<Loader + Send + Sync>>,
-                                   app_infos: Option<&ApplicationInfo>, extensions: Ext,
-                                   layers: L) -> Result<Arc<Instance>, InstanceCreationError>
+                                   app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
+                                   -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a &'a str>,
               Ext: Into<RawInstanceExtensions>
     {
@@ -149,7 +153,9 @@ impl Instance {
             .map(|&layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos, extensions.into(), layers,
+        Instance::new_inner(app_infos,
+                            extensions.into(),
+                            layers,
                             OwnedOrRef::Owned(loader))
     }
 
@@ -516,7 +522,7 @@ impl<'a> ApplicationInfo<'a> {
     /// - Panics if the required environment variables are missing, which happens if the project
     ///   wasn't built by Cargo.
     ///
-    #[deprecated(note="Please use the `app_info_from_cargo_toml!` macro instead")]
+    #[deprecated(note = "Please use the `app_info_from_cargo_toml!` macro instead")]
     pub fn from_cargo_toml() -> ApplicationInfo<'a> {
         let version = Version {
             major: env!("CARGO_PKG_VERSION_MAJOR").parse().unwrap(),

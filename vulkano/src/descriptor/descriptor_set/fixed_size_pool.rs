@@ -7,27 +7,27 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
 use crossbeam::sync::SegQueue;
+use std::sync::Arc;
 
+use OomError;
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
 use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor_set::persistent::*;
-use descriptor::descriptor_set::DescriptorSet;
-use descriptor::descriptor_set::DescriptorSetDesc;
-use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::descriptor_set::UnsafeDescriptorPool;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::DescriptorPoolAlloc;
 use descriptor::descriptor_set::DescriptorPoolAllocError;
+use descriptor::descriptor_set::DescriptorSet;
+use descriptor::descriptor_set::DescriptorSetDesc;
+use descriptor::descriptor_set::UnsafeDescriptorPool;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
+use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::descriptor_set::persistent::*;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use image::ImageViewAccess;
 use sampler::Sampler;
-use OomError;
 
 /// Pool of descriptor sets of a specific capacity and that are automatically reclaimed.
 ///
@@ -55,7 +55,8 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
 
         let device = layout.device().clone();
 
-        let set_layout = layout.descriptor_set_layout(set_id)
+        let set_layout = layout
+            .descriptor_set_layout(set_id)
             .expect("Unable to get the descriptor set layout")
             .clone();
 
@@ -89,7 +90,7 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
 
 /// A descriptor set created from a `FixedSizeDescriptorSetsPool`.
 pub struct FixedSizeDescriptorSet<L, R> {
-    inner: PersistentDescriptorSet<L, R, LocalPoolAlloc>
+    inner: PersistentDescriptorSet<L, R, LocalPoolAlloc>,
 }
 
 unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
@@ -189,17 +190,17 @@ unsafe impl DescriptorPool for LocalPool {
             if let Some(ref mut current_pool) = self.current_pool {
                 if let Some(already_existing_set) = current_pool.reserve.try_pop() {
                     return Ok(LocalPoolAlloc {
-                        actual_alloc: Some(already_existing_set),
-                        pool: current_pool.clone(),
-                    });
+                                  actual_alloc: Some(already_existing_set),
+                                  pool: current_pool.clone(),
+                              });
                 }
             }
 
             // If we failed to grab an existing set, that means the current pool is full. Create a
             // new one of larger capacity.
             let count = *layout.descriptors_count() * self.next_capacity;
-            let mut new_pool = UnsafeDescriptorPool::new(self.device.clone(), &count,
-                                                         self.next_capacity, false)?;
+            let mut new_pool =
+                UnsafeDescriptorPool::new(self.device.clone(), &count, self.next_capacity, false)?;
             let alloc = unsafe {
                 match new_pool.alloc((0 .. self.next_capacity).map(|_| layout)) {
                     Ok(iter) => {
@@ -227,9 +228,9 @@ unsafe impl DescriptorPool for LocalPool {
 
             self.next_capacity = self.next_capacity.saturating_mul(2);
             self.current_pool = Some(Arc::new(LocalPoolInner {
-                actual_pool: new_pool,
-                reserve: alloc,
-            }));
+                                                  actual_pool: new_pool,
+                                                  reserve: alloc,
+                                              }));
         }
     }
 }
@@ -278,9 +279,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     #[inline]
     pub fn build(self) -> Result<FixedSizeDescriptorSet<L, R>, PersistentDescriptorSetBuildError> {
         let inner = self.inner.build_with_pool(&mut self.pool.pool)?;
-        Ok(FixedSizeDescriptorSet {
-            inner: inner,
-        })
+        Ok(FixedSizeDescriptorSet { inner: inner })
     }
 
     /// Call this function if the next element of the set is an array in order to set the value of
@@ -291,20 +290,24 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     /// This function can be called even if the descriptor isn't an array, and it is valid to enter
     /// the "array", add one element, then leave.
     #[inline]
-    pub fn enter_array(self) -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, R>, PersistentDescriptorSetError> {
+    pub fn enter_array(
+        self)
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, R>, PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilderArray {
-            pool: self.pool,
-            inner: self.inner.enter_array()?
-        })
+               pool: self.pool,
+               inner: self.inner.enter_array()?,
+           })
     }
 
     /// Skips the current descriptor if it is empty.
     #[inline]
-    pub fn add_empty(self) -> Result<FixedSizeDescriptorSetBuilder<'a, L, R>, PersistentDescriptorSetError> {
+    pub fn add_empty(
+        self)
+        -> Result<FixedSizeDescriptorSetBuilder<'a, L, R>, PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.add_empty()?
-        })
+               pool: self.pool,
+               inner: self.inner.add_empty()?,
+           })
     }
 
     /// Binds a buffer as the next descriptor.
@@ -317,13 +320,17 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     #[inline]
     pub fn add_buffer<T>(self, buffer: T)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, (R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
+                         -> Result<FixedSizeDescriptorSetBuilder<'a,
+                                                                 L,
+                                                                 (R,
+                                                                  PersistentDescriptorSetBuf<T>)>,
+                                   PersistentDescriptorSetError>
         where T: BufferAccess
     {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.add_buffer(buffer)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_buffer(buffer)?,
+           })
     }
 
     /// Binds a buffer view as the next descriptor.
@@ -339,9 +346,9 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
         where T: BufferViewRef
     {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.add_buffer_view(view)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_buffer_view(view)?,
+           })
     }
 
     /// Binds an image view as the next descriptor.
@@ -354,13 +361,16 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     #[inline]
     pub fn add_image<T>(self, image_view: T)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
+                        -> Result<FixedSizeDescriptorSetBuilder<'a,
+                                                                L,
+                                                                (R, PersistentDescriptorSetImg<T>)>,
+                                  PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.add_image(image_view)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_image(image_view)?,
+           })
     }
 
     /// Binds an image view with a sampler as the next descriptor.
@@ -377,9 +387,9 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.add_sampled_image(image_view, sampler)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_sampled_image(image_view, sampler)?,
+           })
     }
 
     /// Binds a sampler as the next descriptor.
@@ -392,12 +402,14 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     #[inline]
     pub fn add_sampler(self, sampler: Arc<Sampler>)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
-    {
+                       -> Result<FixedSizeDescriptorSetBuilder<'a,
+                                                               L,
+                                                               (R, PersistentDescriptorSetSampler)>,
+                                 PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.add_sampler(sampler)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_sampler(sampler)?,
+           })
     }
 }
 
@@ -407,13 +419,17 @@ pub struct FixedSizeDescriptorSetBuilderArray<'a, L: 'a, R> {
     inner: PersistentDescriptorSetBuilderArray<L, R>,
 }
 
-impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R> where L: PipelineLayoutAbstract {
+impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
+    where L: PipelineLayoutAbstract
+{
     /// Leaves the array. Call this once you added all the elements of the array.
-    pub fn leave_array(self) -> Result<FixedSizeDescriptorSetBuilder<'a, L, R>, PersistentDescriptorSetError> {
+    pub fn leave_array(
+        self)
+        -> Result<FixedSizeDescriptorSetBuilder<'a, L, R>, PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilder {
-            pool: self.pool,
-            inner: self.inner.leave_array()?
-        })
+               pool: self.pool,
+               inner: self.inner.leave_array()?,
+           })
     }
 
     /// Binds a buffer as the next element in the array.
@@ -429,9 +445,9 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R> where L: PipelineLay
         where T: BufferAccess
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
-            pool: self.pool,
-            inner: self.inner.add_buffer(buffer)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_buffer(buffer)?,
+           })
     }
 
     /// Binds a buffer view as the next element in the array.
@@ -447,9 +463,9 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R> where L: PipelineLay
         where T: BufferViewRef
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
-            pool: self.pool,
-            inner: self.inner.add_buffer_view(view)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_buffer_view(view)?,
+           })
     }
 
     /// Binds an image view as the next element in the array.
@@ -465,9 +481,9 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R> where L: PipelineLay
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
-            pool: self.pool,
-            inner: self.inner.add_image(image_view)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_image(image_view)?,
+           })
     }
 
     /// Binds an image view with a sampler as the next element in the array.
@@ -483,9 +499,9 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R> where L: PipelineLay
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
-            pool: self.pool,
-            inner: self.inner.add_sampled_image(image_view, sampler)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_sampled_image(image_view, sampler)?,
+           })
     }
 
     /// Binds a sampler as the next element in the array.
@@ -500,8 +516,8 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R> where L: PipelineLay
         -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
-            pool: self.pool,
-            inner: self.inner.add_sampler(sampler)?
-        })
+               pool: self.pool,
+               inner: self.inner.add_sampler(sampler)?,
+           })
     }
 }

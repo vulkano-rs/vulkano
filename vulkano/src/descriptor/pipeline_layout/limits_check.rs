@@ -55,10 +55,12 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
                     num_samplers.increment(descriptor.array_count, &descriptor.stages);
                     num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
                 },
-                DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
+                DescriptorType::SampledImage |
+                DescriptorType::UniformTexelBuffer => {
                     num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
                 },
-                DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
+                DescriptorType::StorageImage |
+                DescriptorType::StorageTexelBuffer => {
                     num_storage_images.increment(descriptor.array_count, &descriptor.stages);
                 },
                 DescriptorType::UniformBuffer => {
@@ -84,110 +86,106 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
 
     if desc.num_sets() > limits.max_bound_descriptor_sets() as usize {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
-            limit: limits.max_bound_descriptor_sets() as usize,
-            requested: desc.num_sets(),
-        });
+                       limit: limits.max_bound_descriptor_sets() as usize,
+                       requested: desc.num_sets(),
+                   });
     }
 
     if num_resources.max_per_stage() > limits.max_per_stage_resources() {
         return Err(PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded {
-            limit: limits.max_per_stage_resources(),
-            requested: num_resources.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_resources(),
+                       requested: num_resources.max_per_stage(),
+                   });
     }
 
     if num_samplers.max_per_stage() > limits.max_per_stage_descriptor_samplers() {
         return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
-            limit: limits.max_per_stage_descriptor_samplers(),
-            requested: num_samplers.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_descriptor_samplers(),
+                       requested: num_samplers.max_per_stage(),
+                   });
     }
     if num_uniform_buffers.max_per_stage() > limits.max_per_stage_descriptor_uniform_buffers() {
         return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
-            limit: limits.max_per_stage_descriptor_uniform_buffers(),
-            requested: num_uniform_buffers.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_descriptor_uniform_buffers(),
+                       requested: num_uniform_buffers.max_per_stage(),
+                   });
     }
     if num_storage_buffers.max_per_stage() > limits.max_per_stage_descriptor_storage_buffers() {
         return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
-            limit: limits.max_per_stage_descriptor_storage_buffers(),
-            requested: num_storage_buffers.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_descriptor_storage_buffers(),
+                       requested: num_storage_buffers.max_per_stage(),
+                   });
     }
     if num_sampled_images.max_per_stage() > limits.max_per_stage_descriptor_sampled_images() {
         return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
-            limit: limits.max_per_stage_descriptor_sampled_images(),
-            requested: num_sampled_images.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_descriptor_sampled_images(),
+                       requested: num_sampled_images.max_per_stage(),
+                   });
     }
     if num_storage_images.max_per_stage() > limits.max_per_stage_descriptor_storage_images() {
         return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
-            limit: limits.max_per_stage_descriptor_storage_images(),
-            requested: num_storage_images.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_descriptor_storage_images(),
+                       requested: num_storage_images.max_per_stage(),
+                   });
     }
     if num_input_attachments.max_per_stage() > limits.max_per_stage_descriptor_input_attachments() {
         return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-            limit: limits.max_per_stage_descriptor_input_attachments(),
-            requested: num_input_attachments.max_per_stage(),
-        });
+                       limit: limits.max_per_stage_descriptor_input_attachments(),
+                       requested: num_input_attachments.max_per_stage(),
+                   });
     }
 
     if num_samplers.total > limits.max_descriptor_set_samplers() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded {
-            limit: limits.max_descriptor_set_samplers(),
-            requested: num_samplers.total,
-        });
+                       limit: limits.max_descriptor_set_samplers(),
+                       requested: num_samplers.total,
+                   });
     }
     if num_uniform_buffers.total > limits.max_descriptor_set_uniform_buffers() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
-            limit: limits.max_descriptor_set_uniform_buffers(),
-            requested: num_uniform_buffers.total,
-        });
+                       limit: limits.max_descriptor_set_uniform_buffers(),
+                       requested: num_uniform_buffers.total,
+                   });
     }
     if num_uniform_buffers_dynamic > limits.max_descriptor_set_uniform_buffers_dynamic() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-            limit: limits.max_descriptor_set_uniform_buffers_dynamic(),
-            requested: num_uniform_buffers_dynamic,
-        });
+                       limit: limits.max_descriptor_set_uniform_buffers_dynamic(),
+                       requested: num_uniform_buffers_dynamic,
+                   });
     }
     if num_storage_buffers.total > limits.max_descriptor_set_storage_buffers() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
-            limit: limits.max_descriptor_set_storage_buffers(),
-            requested: num_storage_buffers.total,
-        });
+                       limit: limits.max_descriptor_set_storage_buffers(),
+                       requested: num_storage_buffers.total,
+                   });
     }
     if num_storage_buffers_dynamic > limits.max_descriptor_set_storage_buffers_dynamic() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-            limit: limits.max_descriptor_set_storage_buffers_dynamic(),
-            requested: num_storage_buffers_dynamic,
-        });
+                       limit: limits.max_descriptor_set_storage_buffers_dynamic(),
+                       requested: num_storage_buffers_dynamic,
+                   });
     }
     if num_sampled_images.total > limits.max_descriptor_set_sampled_images() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
-            limit: limits.max_descriptor_set_sampled_images(),
-            requested: num_sampled_images.total,
-        });
+                       limit: limits.max_descriptor_set_sampled_images(),
+                       requested: num_sampled_images.total,
+                   });
     }
     if num_storage_images.total > limits.max_descriptor_set_storage_images() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
-            limit: limits.max_descriptor_set_storage_images(),
-            requested: num_storage_images.total,
-        });
+                       limit: limits.max_descriptor_set_storage_images(),
+                       requested: num_storage_images.total,
+                   });
     }
     if num_input_attachments.total > limits.max_descriptor_set_input_attachments() {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
-            limit: limits.max_descriptor_set_input_attachments(),
-            requested: num_input_attachments.total,
-        });
+                       limit: limits.max_descriptor_set_input_attachments(),
+                       requested: num_input_attachments.total,
+                   });
     }
 
     for pc_id in 0 .. desc.num_push_constants_ranges() {
-        let PipelineLayoutDescPcRange {
-            offset,
-            size,
-            ..
-        } = {
+        let PipelineLayoutDescPcRange { offset, size, .. } = {
             match desc.push_constants_range(pc_id) {
                 Some(o) => o,
                 None => continue,
@@ -196,9 +194,9 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
 
         if offset + size > limits.max_push_constants_size() as usize {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
-                limit: limits.max_push_constants_size() as usize,
-                requested: offset + size,
-            });
+                           limit: limits.max_push_constants_size() as usize,
+                           requested: offset + size,
+                       });
         }
     }
 
@@ -279,7 +277,7 @@ pub enum PipelineLayoutLimitsError {
         /// What was requested.
         requested: u32,
     },
-    
+
     /// The `max_descriptor_set_samplers()` limit has been exceeded.
     MaxDescriptorSetSamplersLimitExceeded {
         /// The limit that must be fulfilled.
@@ -361,19 +359,29 @@ impl error::Error for PipelineLayoutLimitsError {
             PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded { .. } => {
                 "the `max_per_stage_descriptor_samplers()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
+                ..
+            } => {
                 "the `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
+                ..
+            } => {
                 "the `max_per_stage_descriptor_storage_buffers()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
+                ..
+            } => {
                 "the `max_per_stage_descriptor_sampled_images()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
+                ..
+            } => {
                 "the `max_per_stage_descriptor_storage_images()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
+                ..
+            } => {
                 "the `max_per_stage_descriptor_input_attachments()` limit has been exceeded"
             },
             PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded { .. } => {
@@ -382,13 +390,17 @@ impl error::Error for PipelineLayoutLimitsError {
             PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded { .. } => {
                 "the `max_descriptor_set_uniform_buffers()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
+                ..
+            } => {
                 "the `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded"
             },
             PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded { .. } => {
                 "the `max_descriptor_set_storage_buffers()` limit has been exceeded"
             },
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded { .. } => {
+            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
+                ..
+            } => {
                 "the `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded"
             },
             PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded { .. } => {
@@ -426,22 +438,46 @@ struct Counter {
 impl Counter {
     fn increment(&mut self, num: u32, stages: &ShaderStages) {
         self.total += num;
-        if stages.compute { self.compute += num; }
-        if stages.vertex { self.vertex += num; }
-        if stages.tessellation_control { self.tess_ctl += num; }
-        if stages.tessellation_evaluation { self.tess_eval += num; }
-        if stages.geometry { self.geometry += num; }
-        if stages.fragment { self.frag += num; }
+        if stages.compute {
+            self.compute += num;
+        }
+        if stages.vertex {
+            self.vertex += num;
+        }
+        if stages.tessellation_control {
+            self.tess_ctl += num;
+        }
+        if stages.tessellation_evaluation {
+            self.tess_eval += num;
+        }
+        if stages.geometry {
+            self.geometry += num;
+        }
+        if stages.fragment {
+            self.frag += num;
+        }
     }
 
     fn max_per_stage(&self) -> u32 {
         let mut max = 0;
-        if self.compute > max { max = self.compute; }
-        if self.vertex > max { max = self.vertex; }
-        if self.geometry > max { max = self.geometry; }
-        if self.tess_ctl > max { max = self.tess_ctl; }
-        if self.tess_eval > max { max = self.tess_eval; }
-        if self.frag > max { max = self.frag; }
+        if self.compute > max {
+            max = self.compute;
+        }
+        if self.vertex > max {
+            max = self.vertex;
+        }
+        if self.geometry > max {
+            max = self.geometry;
+        }
+        if self.tess_ctl > max {
+            max = self.tess_ctl;
+        }
+        if self.tess_eval > max {
+            max = self.tess_eval;
+        }
+        if self.frag > max {
+            max = self.frag;
+        }
         max
     }
 }

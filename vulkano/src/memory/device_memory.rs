@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::error;
 use std::fmt;
 use std::mem;
-use std::error;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
@@ -17,8 +17,8 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-use OomError;
 use Error;
+use OomError;
 use VulkanObject;
 use check_errors;
 use device::Device;
@@ -66,7 +66,7 @@ impl DeviceMemory {
                  -> Result<DeviceMemory, DeviceMemoryAllocError> {
         DeviceMemory::dedicated_alloc(device, memory_type, size, DedicatedAlloc::None)
     }
-                
+
     /// Same as `alloc`, but allows specifying a resource that will be bound to the memory.
     ///
     /// If a buffer or an image is specified in `resource`, then the returned memory must not be
@@ -93,7 +93,7 @@ impl DeviceMemory {
             let physical_device = device.physical_device();
             let mut allocation_count = device.allocation_count().lock().expect("Poisoned mutex");
             if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
-                return Err(DeviceMemoryAllocError::TooManyObjects)
+                return Err(DeviceMemoryAllocError::TooManyObjects);
             }
             let vk = device.pointers();
 
@@ -102,23 +102,23 @@ impl DeviceMemory {
                 match resource {
                     DedicatedAlloc::Buffer(buffer) => {
                         Some(vk::MemoryDedicatedAllocateInfoKHR {
-                            sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
-                            pNext: ptr::null(),
-                            image: 0,
-                            buffer: buffer.internal_object(),
-                        })
+                                 sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                                 pNext: ptr::null(),
+                                 image: 0,
+                                 buffer: buffer.internal_object(),
+                             })
                     },
                     DedicatedAlloc::Image(image) => {
                         Some(vk::MemoryDedicatedAllocateInfoKHR {
-                            sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
-                            pNext: ptr::null(),
-                            image: image.internal_object(),
-                            buffer: 0,
-                        })
+                                 sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                                 pNext: ptr::null(),
+                                 image: image.internal_object(),
+                                 buffer: 0,
+                             })
                     },
                     DedicatedAlloc::None => {
                         None
-                    }
+                    },
                 }
             } else {
                 None
@@ -126,7 +126,10 @@ impl DeviceMemory {
 
             let infos = vk::MemoryAllocateInfo {
                 sType: vk::STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                pNext: dedicated_alloc_info.as_ref().map(|i| i as *const vk::MemoryDedicatedAllocateInfoKHR).unwrap_or(ptr::null()) as *const _,
+                pNext: dedicated_alloc_info
+                    .as_ref()
+                    .map(|i| i as *const vk::MemoryDedicatedAllocateInfoKHR)
+                    .unwrap_or(ptr::null()) as *const _,
                 allocationSize: size as u64,
                 memoryTypeIndex: memory_type.id(),
             };
@@ -238,7 +241,10 @@ impl Drop for DeviceMemory {
         unsafe {
             let vk = self.device.pointers();
             vk.FreeMemory(self.device.internal_object(), self.memory, ptr::null());
-            let mut allocation_count = self.device.allocation_count().lock().expect("Poisoned mutex");
+            let mut allocation_count = self.device
+                .allocation_count()
+                .lock()
+                .expect("Poisoned mutex");
             *allocation_count -= 1;
         }
     }
@@ -467,7 +473,8 @@ impl error::Error for DeviceMemoryAllocError {
     fn description(&self) -> &str {
         match *self {
             DeviceMemoryAllocError::OomError(_) => "not enough memory available",
-            DeviceMemoryAllocError::TooManyObjects => "the maximum number of allocations has been exceeded",
+            DeviceMemoryAllocError::TooManyObjects =>
+                "the maximum number of allocations has been exceeded",
             DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
         }
     }
@@ -526,8 +533,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().next().unwrap();
         assert_should_panic!({
-            let _ = DeviceMemory::alloc(device.clone(), mem_ty, 0);
-        });
+                                 let _ = DeviceMemory::alloc(device.clone(), mem_ty, 0);
+                             });
     }
 
     #[test]

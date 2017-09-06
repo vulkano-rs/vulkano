@@ -34,13 +34,11 @@ fn basic_conflict() {
         let pool = Device::standard_command_pool(&device, queue.family());
         let mut sync = SyncCommandBufferBuilder::new(&pool, Kind::primary(), Flags::None).unwrap();
 
-        let buf = CpuAccessibleBuffer::from_data(device,
-                                                 BufferUsage::all(),
-                                                 0u32).unwrap();
+        let buf = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), 0u32).unwrap();
 
         match sync.copy_buffer(buf.clone(), buf.clone(), iter::once((0, 0, 4))) {
             Err(SyncCommandBufferBuilderError::Conflict { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         };
     }
 }

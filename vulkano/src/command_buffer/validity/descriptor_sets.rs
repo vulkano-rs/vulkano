@@ -17,7 +17,7 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 pub fn check_descriptor_sets_validity<Pl, D>(pipeline: &Pl, descriptor_sets: &D)
                                              -> Result<(), CheckDescriptorSetsValidityError>
     where Pl: ?Sized + PipelineLayoutDesc,
-          D: ?Sized + DescriptorSetsCollection,
+          D: ?Sized + DescriptorSetsCollection
 {
     // What's important is not that the pipeline layout and the descriptor sets *match*. Instead
     // what's important is that the descriptor sets are a superset of the pipeline layout. It's not
@@ -30,23 +30,24 @@ pub fn check_descriptor_sets_validity<Pl, D>(pipeline: &Pl, descriptor_sets: &D)
 
             let (set_desc, pipeline_desc) = match (set_desc, pipeline_desc) {
                 (Some(s), Some(p)) => (s, p),
-                (None, Some(_)) => return Err(CheckDescriptorSetsValidityError::MissingDescriptor {
-                    set_num: set_num,
-                    binding_num: binding_num,
-                }),
+                (None, Some(_)) =>
+                    return Err(CheckDescriptorSetsValidityError::MissingDescriptor {
+                                   set_num: set_num,
+                                   binding_num: binding_num,
+                               }),
                 (Some(_), None) => continue,
                 (None, None) => continue,
             };
 
             if !set_desc.is_superset_of(&pipeline_desc) {
                 return Err(CheckDescriptorSetsValidityError::IncompatibleDescriptor {
-                    set_num: set_num,
-                    binding_num: binding_num,
-                });
+                               set_num: set_num,
+                               binding_num: binding_num,
+                           });
             }
         }
     }
-    
+
     Ok(())
 }
 

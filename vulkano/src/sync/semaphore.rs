@@ -127,8 +127,8 @@ impl<D> Drop for Semaphore<D>
 
 #[cfg(test)]
 mod tests {
-    use sync::Semaphore;
     use VulkanObject;
+    use sync::Semaphore;
 
     #[test]
     fn semaphore_create() {

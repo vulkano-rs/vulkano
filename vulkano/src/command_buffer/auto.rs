@@ -12,9 +12,9 @@ use std::fmt;
 use std::iter;
 use std::mem;
 use std::slice;
+use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::sync::Arc;
 
 use OomError;
 use buffer::BufferAccess;
@@ -116,7 +116,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// executing the command buffer modifies it.
     #[inline]
     pub fn primary(device: Arc<Device>, queue_family: QueueFamily)
-               -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+                   -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         AutoCommandBufferBuilder::with_flags(device, queue_family, Kind::primary(), Flags::None)
     }
 
@@ -126,10 +126,12 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// destroyed. This makes it possible for the implementation to perform additional
     /// optimizations.
     #[inline]
-    pub fn primary_one_time_submit(device: Arc<Device>, queue_family: QueueFamily)
-                        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
-    {
-        AutoCommandBufferBuilder::with_flags(device, queue_family, Kind::primary(),
+    pub fn primary_one_time_submit(
+        device: Arc<Device>, queue_family: QueueFamily)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+        AutoCommandBufferBuilder::with_flags(device,
+                                             queue_family,
+                                             Kind::primary(),
                                              Flags::OneTimeSubmit)
     }
 
@@ -138,10 +140,12 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// Contrary to `primary`, the final command buffer can be executed multiple times in parallel
     /// in multiple different queues.
     #[inline]
-    pub fn primary_simultaneous_use(device: Arc<Device>, queue_family: QueueFamily)
-                      -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
-    {
-        AutoCommandBufferBuilder::with_flags(device, queue_family, Kind::primary(),
+    pub fn primary_simultaneous_use(
+        device: Arc<Device>, queue_family: QueueFamily)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+        AutoCommandBufferBuilder::with_flags(device,
+                                             queue_family,
+                                             Kind::primary(),
                                              Flags::SimultaneousUse)
     }
 
@@ -150,8 +154,9 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// The final command buffer can only be executed once at a time. In other words, it is as if
     /// executing the command buffer modifies it.
     #[inline]
-    pub fn secondary_compute(device: Arc<Device>, queue_family: QueueFamily)
-               -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+    pub fn secondary_compute(
+        device: Arc<Device>, queue_family: QueueFamily)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         let kind = Kind::secondary(KindOcclusionQuery::Forbidden,
                                    QueryPipelineStatisticFlags::none());
         AutoCommandBufferBuilder::with_flags(device, queue_family, kind, Flags::None)
@@ -163,9 +168,9 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// being destroyed. This makes it possible for the implementation to perform additional
     /// optimizations.
     #[inline]
-    pub fn secondary_compute_one_time_submit(device: Arc<Device>, queue_family: QueueFamily)
-                        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
-    {
+    pub fn secondary_compute_one_time_submit(
+        device: Arc<Device>, queue_family: QueueFamily)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         let kind = Kind::secondary(KindOcclusionQuery::Forbidden,
                                    QueryPipelineStatisticFlags::none());
         AutoCommandBufferBuilder::with_flags(device, queue_family, kind, Flags::OneTimeSubmit)
@@ -176,9 +181,9 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// Contrary to `secondary_compute`, the final command buffer can be executed multiple times in
     /// parallel in multiple different queues.
     #[inline]
-    pub fn secondary_compute_simultaneous_use(device: Arc<Device>, queue_family: QueueFamily)
-                      -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
-    {
+    pub fn secondary_compute_simultaneous_use(
+        device: Arc<Device>, queue_family: QueueFamily)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         let kind = Kind::secondary(KindOcclusionQuery::Forbidden,
                                    QueryPipelineStatisticFlags::none());
         AutoCommandBufferBuilder::with_flags(device, queue_family, kind, Flags::SimultaneousUse)
@@ -186,34 +191,30 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 
     /// Same as `secondary_compute`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_compute_inherit_queries(device: Arc<Device>, queue_family: QueueFamily,
-                                             occlusion_query: KindOcclusionQuery,
-                                             query_statistics_flags: QueryPipelineStatisticFlags)
-               -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
+    pub fn secondary_compute_inherit_queries(
+        device: Arc<Device>, queue_family: QueueFamily, occlusion_query: KindOcclusionQuery,
+        query_statistics_flags: QueryPipelineStatisticFlags)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         let kind = Kind::secondary(occlusion_query, query_statistics_flags);
         AutoCommandBufferBuilder::with_flags(device, queue_family, kind, Flags::None)
     }
 
     /// Same as `secondary_compute_one_time_submit`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_compute_one_time_submit_inherit_queries(device: Arc<Device>,
-                                                              queue_family: QueueFamily,
-                                                              occlusion_query: KindOcclusionQuery,
-                                                              query_statistics_flags: QueryPipelineStatisticFlags)
-                        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
-    {
+    pub fn secondary_compute_one_time_submit_inherit_queries(
+        device: Arc<Device>, queue_family: QueueFamily, occlusion_query: KindOcclusionQuery,
+        query_statistics_flags: QueryPipelineStatisticFlags)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         let kind = Kind::secondary(occlusion_query, query_statistics_flags);
         AutoCommandBufferBuilder::with_flags(device, queue_family, kind, Flags::OneTimeSubmit)
     }
 
     /// Same as `secondary_compute_simultaneous_use`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_compute_simultaneous_use_inherit_queries(device: Arc<Device>,
-                                                              queue_family: QueueFamily,
-                                                              occlusion_query: KindOcclusionQuery,
-                                                              query_statistics_flags: QueryPipelineStatisticFlags)
-                      -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
-    {
+    pub fn secondary_compute_simultaneous_use_inherit_queries(
+        device: Arc<Device>, queue_family: QueueFamily, occlusion_query: KindOcclusionQuery,
+        query_statistics_flags: QueryPipelineStatisticFlags)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError> {
         let kind = Kind::secondary(occlusion_query, query_statistics_flags);
         AutoCommandBufferBuilder::with_flags(device, queue_family, kind, Flags::SimultaneousUse)
     }
@@ -223,15 +224,18 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// The final command buffer can only be executed once at a time. In other words, it is as if
     /// executing the command buffer modifies it.
     #[inline]
-    pub fn secondary_graphics<R>(device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>)
-               -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    pub fn secondary_graphics<R>(
+        device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
         where R: RenderPassAbstract + Clone + Send + Sync + 'static
     {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
-                subpass,
-                framebuffer: None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-            }),
+                                  subpass,
+                                  framebuffer:
+                                      None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>,
+                                                         ()>>,
+                              }),
             occlusion_query: KindOcclusionQuery::Forbidden,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
         };
@@ -245,16 +249,18 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// before being destroyed. This makes it possible for the implementation to perform additional
     /// optimizations.
     #[inline]
-    pub fn secondary_graphics_one_time_submit<R>(device: Arc<Device>, queue_family: QueueFamily,
-                                                 subpass: Subpass<R>)
-                        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    pub fn secondary_graphics_one_time_submit<R>(
+        device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
         where R: RenderPassAbstract + Clone + Send + Sync + 'static
     {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
-                subpass,
-                framebuffer: None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-            }),
+                                  subpass,
+                                  framebuffer:
+                                      None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>,
+                                                         ()>>,
+                              }),
             occlusion_query: KindOcclusionQuery::Forbidden,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
         };
@@ -267,16 +273,18 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
     /// Contrary to `secondary_graphics`, the final command buffer can be executed multiple times
     /// in parallel in multiple different queues.
     #[inline]
-    pub fn secondary_graphics_simultaneous_use<R>(device: Arc<Device>, queue_family: QueueFamily,
-                                                  subpass: Subpass<R>)
-                      -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    pub fn secondary_graphics_simultaneous_use<R>(
+        device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
         where R: RenderPassAbstract + Clone + Send + Sync + 'static
     {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
-                subpass,
-                framebuffer: None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-            }),
+                                  subpass,
+                                  framebuffer:
+                                      None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>,
+                                                         ()>>,
+                              }),
             occlusion_query: KindOcclusionQuery::Forbidden,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
         };
@@ -286,18 +294,19 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 
     /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_inherit_queries<R>(device: Arc<Device>, queue_family: QueueFamily,
-                                                 subpass: Subpass<R>,
-                                                 occlusion_query: KindOcclusionQuery,
-                                                 query_statistics_flags: QueryPipelineStatisticFlags)
-               -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    pub fn secondary_graphics_inherit_queries<R>(
+        device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>,
+        occlusion_query: KindOcclusionQuery, query_statistics_flags: QueryPipelineStatisticFlags)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
         where R: RenderPassAbstract + Clone + Send + Sync + 'static
     {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
-                subpass,
-                framebuffer: None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-            }),
+                                  subpass,
+                                  framebuffer:
+                                      None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>,
+                                                         ()>>,
+                              }),
             occlusion_query,
             query_statistics_flags,
         };
@@ -307,18 +316,19 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 
     /// Same as `secondary_graphics_one_time_submit`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_one_time_submit_inherit_queries<R>(device: Arc<Device>,
-                                                              queue_family: QueueFamily, subpass: Subpass<R>,
-                                                              occlusion_query: KindOcclusionQuery,
-                                                              query_statistics_flags: QueryPipelineStatisticFlags)
-                        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    pub fn secondary_graphics_one_time_submit_inherit_queries<R>(
+        device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>,
+        occlusion_query: KindOcclusionQuery, query_statistics_flags: QueryPipelineStatisticFlags)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
         where R: RenderPassAbstract + Clone + Send + Sync + 'static
     {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
-                subpass,
-                framebuffer: None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-            }),
+                                  subpass,
+                                  framebuffer:
+                                      None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>,
+                                                         ()>>,
+                              }),
             occlusion_query,
             query_statistics_flags,
         };
@@ -328,18 +338,19 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 
     /// Same as `secondary_graphics_simultaneous_use`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_simultaneous_use_inherit_queries<R>(device: Arc<Device>,
-                                                               queue_family: QueueFamily, subpass: Subpass<R>,
-                                                               occlusion_query: KindOcclusionQuery,
-                                                               query_statistics_flags: QueryPipelineStatisticFlags)
-                      -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
+    pub fn secondary_graphics_simultaneous_use_inherit_queries<R>(
+        device: Arc<Device>, queue_family: QueueFamily, subpass: Subpass<R>,
+        occlusion_query: KindOcclusionQuery, query_statistics_flags: QueryPipelineStatisticFlags)
+        -> Result<AutoCommandBufferBuilder<StandardCommandPoolBuilder>, OomError>
         where R: RenderPassAbstract + Clone + Send + Sync + 'static
     {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
-                subpass,
-                framebuffer: None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>
-            }),
+                                  subpass,
+                                  framebuffer:
+                                      None::<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>,
+                                                         ()>>,
+                              }),
             occlusion_query,
             query_statistics_flags,
         };
@@ -398,8 +409,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     #[inline]
     fn ensure_inside_render_pass_secondary(&self)
-                                 -> Result<(), AutoCommandBufferBuilderContextError>
-    {
+                                           -> Result<(), AutoCommandBufferBuilderContextError> {
         if self.render_pass.is_some() {
             if self.subpass_secondary {
                 Ok(())
@@ -413,7 +423,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     #[inline]
     fn ensure_inside_render_pass_inline<Gp>(&self, pipeline: &Gp)
-                                 -> Result<(), AutoCommandBufferBuilderContextError>
+                                            -> Result<(), AutoCommandBufferBuilderContextError>
         where Gp: ?Sized + GraphicsPipelineAbstract
     {
         if self.render_pass.is_none() {
@@ -433,7 +443,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         if !RenderPassCompatible::is_compatible_with(pipeline, &local_render_pass.0) {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
-        
+
         Ok(())
     }
 
@@ -459,9 +469,9 @@ impl<P> AutoCommandBufferBuilder<P> {
         };
 
         Ok(AutoCommandBuffer {
-            inner: self.inner.build()?,
-            submit_state,
-        })
+               inner: self.inner.build()?,
+               submit_state,
+           })
     }
 
     /// Adds a command that enters a render pass.
@@ -489,8 +499,11 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
-            let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
-                           else { SubpassContents::Inline };
+            let contents = if secondary {
+                SubpassContents::SecondaryCommandBuffers
+            } else {
+                SubpassContents::Inline
+            };
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass = Some((Box::new(framebuffer) as Box<_>, 0));
@@ -530,12 +543,12 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// - Panics if the source or the destination was not created with `device`.
     ///
-    pub fn blit_image<S, D>(
-        mut self, source: S, source_top_left: [i32; 3], source_bottom_right: [i32; 3],
-        source_base_array_layer: u32, source_mip_level: u32, destination: D,
-        destination_top_left: [i32; 3], destination_bottom_right: [i32; 3],
-        destination_base_array_layer: u32, destination_mip_level: u32, layer_count: u32,
-        filter: Filter) -> Result<Self, BlitImageError>
+    pub fn blit_image<S, D>(mut self, source: S, source_top_left: [i32; 3],
+                            source_bottom_right: [i32; 3], source_base_array_layer: u32,
+                            source_mip_level: u32, destination: D, destination_top_left: [i32; 3],
+                            destination_bottom_right: [i32; 3], destination_base_array_layer: u32,
+                            destination_mip_level: u32, layer_count: u32, filter: Filter)
+                            -> Result<Self, BlitImageError>
         where S: ImageAccess + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static
     {
@@ -546,10 +559,18 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             self.ensure_outside_render_pass()?;
 
-            check_blit_image(self.device(), &source, source_top_left, source_bottom_right,
-                             source_base_array_layer, source_mip_level, &destination,
-                             destination_top_left, destination_bottom_right,
-                             destination_base_array_layer, destination_mip_level, layer_count,
+            check_blit_image(self.device(),
+                             &source,
+                             source_top_left,
+                             source_bottom_right,
+                             source_base_array_layer,
+                             source_mip_level,
+                             &destination,
+                             destination_top_left,
+                             destination_bottom_right,
+                             destination_base_array_layer,
+                             destination_mip_level,
+                             layer_count,
                              filter)?;
 
             let blit = UnsafeCommandBufferBuilderImageBlit {
@@ -574,8 +595,13 @@ impl<P> AutoCommandBufferBuilder<P> {
                 destination_bottom_right,
             };
 
-            self.inner.blit_image(source, ImageLayout::TransferSrcOptimal, destination,     // TODO: let choose layout
-                                  ImageLayout::TransferDstOptimal, iter::once(blit), filter)?;
+            self.inner
+                .blit_image(source,
+                            ImageLayout::TransferSrcOptimal,
+                            destination, // TODO: let choose layout
+                            ImageLayout::TransferDstOptimal,
+                            iter::once(blit),
+                            filter)?;
             Ok(self)
         }
     }
@@ -589,7 +615,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     pub fn clear_color_image<I>(self, image: I, color: ClearValue)
                                 -> Result<Self, ClearColorImageError>
-        where I: ImageAccess + Send + Sync + 'static,
+        where I: ImageAccess + Send + Sync + 'static
     {
         let layers = image.dimensions().array_layers();
         let levels = image.mipmap_levels();
@@ -606,7 +632,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn clear_color_image_dimensions<I>(mut self, image: I, first_layer: u32, num_layers: u32,
                                            first_mipmap: u32, num_mipmaps: u32, color: ClearValue)
                                            -> Result<Self, ClearColorImageError>
-        where I: ImageAccess + Send + Sync + 'static,
+        where I: ImageAccess + Send + Sync + 'static
     {
         unsafe {
             if !self.graphics_allowed && !self.compute_allowed {
@@ -614,14 +640,20 @@ impl<P> AutoCommandBufferBuilder<P> {
             }
 
             self.ensure_outside_render_pass()?;
-            check_clear_color_image(self.device(), &image, first_layer, num_layers,
-                                    first_mipmap, num_mipmaps)?;
+            check_clear_color_image(self.device(),
+                                    &image,
+                                    first_layer,
+                                    num_layers,
+                                    first_mipmap,
+                                    num_mipmaps)?;
 
             match color {
-                ClearValue::Float(_) | ClearValue::Int(_) | ClearValue::Uint(_) => {},
+                ClearValue::Float(_) |
+                ClearValue::Int(_) |
+                ClearValue::Uint(_) => {},
                 _ => panic!("The clear color is not a color value"),
             };
-    
+
             let region = UnsafeCommandBufferBuilderColorImageClear {
                 base_mip_level: first_mipmap,
                 level_count: num_mipmaps,
@@ -630,8 +662,11 @@ impl<P> AutoCommandBufferBuilder<P> {
             };
 
             // TODO: let choose layout
-            self.inner.clear_color_image(image, ImageLayout::TransferDstOptimal, color,
-                                         iter::once(region))?;
+            self.inner
+                .clear_color_image(image,
+                                   ImageLayout::TransferDstOptimal,
+                                   color,
+                                   iter::once(region))?;
             Ok(self)
         }
     }
@@ -641,25 +676,27 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// This command will copy from the source to the destination. If their size is not equal, then
     /// the amount of data copied is equal to the smallest of the two.
     #[inline]
-    pub fn copy_buffer<S, D, T>(mut self, source: S, destination: D) -> Result<Self, CopyBufferError>
+    pub fn copy_buffer<S, D, T>(mut self, source: S, destination: D)
+                                -> Result<Self, CopyBufferError>
         where S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
               D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
-              T: ?Sized,
+              T: ?Sized
     {
         unsafe {
             self.ensure_outside_render_pass()?;
             let infos = check_copy_buffer(self.device(), &source, &destination)?;
-            self.inner.copy_buffer(source, destination, iter::once((0, 0, infos.copy_size)))?;
+            self.inner
+                .copy_buffer(source, destination, iter::once((0, 0, infos.copy_size)))?;
             Ok(self)
         }
     }
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D, Px>(self, source: S, destination: D)
-                                      -> Result<Self, CopyBufferImageError>
+                                          -> Result<Self, CopyBufferImageError>
         where S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static,
-              Format: AcceptsPixels<Px>,
+              Format: AcceptsPixels<Px>
     {
         self.ensure_outside_render_pass()?;
 
@@ -668,19 +705,26 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that copies from a buffer to an image.
-    pub fn copy_buffer_to_image_dimensions<S, D, Px>(
-        mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
-        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
+    pub fn copy_buffer_to_image_dimensions<S, D, Px>(mut self, source: S, destination: D,
+                                                     offset: [u32; 3], size: [u32; 3],
+                                                     first_layer: u32, num_layers: u32, mipmap: u32)
+                                                     -> Result<Self, CopyBufferImageError>
         where S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
               D: ImageAccess + Send + Sync + 'static,
-              Format: AcceptsPixels<Px>,
+              Format: AcceptsPixels<Px>
     {
         unsafe {
             self.ensure_outside_render_pass()?;
 
-            check_copy_buffer_image(self.device(), &source, &destination,
-                                    CheckCopyBufferImageTy::BufferToImage, offset, size,
-                                    first_layer, num_layers, mipmap)?;
+            check_copy_buffer_image(self.device(),
+                                    &source,
+                                    &destination,
+                                    CheckCopyBufferImageTy::BufferToImage,
+                                    offset,
+                                    size,
+                                    first_layer,
+                                    num_layers,
+                                    mipmap)?;
 
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
                 buffer_offset: 0,
@@ -702,18 +746,21 @@ impl<P> AutoCommandBufferBuilder<P> {
                 image_extent: size,
             };
 
-            self.inner.copy_buffer_to_image(source, destination, ImageLayout::TransferDstOptimal,     // TODO: let choose layout
-                                            iter::once(copy))?;
+            self.inner
+                .copy_buffer_to_image(source,
+                                      destination,
+                                      ImageLayout::TransferDstOptimal, // TODO: let choose layout
+                                      iter::once(copy))?;
             Ok(self)
         }
     }
 
     /// Adds a command that copies from an image to a buffer.
     pub fn copy_image_to_buffer<S, D, Px>(self, source: S, destination: D)
-                                         -> Result<Self, CopyBufferImageError>
+                                          -> Result<Self, CopyBufferImageError>
         where S: ImageAccess + Send + Sync + 'static,
               D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-              Format: AcceptsPixels<Px>,
+              Format: AcceptsPixels<Px>
     {
         self.ensure_outside_render_pass()?;
 
@@ -722,19 +769,26 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that copies from an image to a buffer.
-    pub fn copy_image_to_buffer_dimensions<S, D, Px>(
-        mut self, source: S, destination: D, offset: [u32; 3], size: [u32; 3], first_layer: u32,
-        num_layers: u32, mipmap: u32) -> Result<Self, CopyBufferImageError>
+    pub fn copy_image_to_buffer_dimensions<S, D, Px>(mut self, source: S, destination: D,
+                                                     offset: [u32; 3], size: [u32; 3],
+                                                     first_layer: u32, num_layers: u32, mipmap: u32)
+                                                     -> Result<Self, CopyBufferImageError>
         where S: ImageAccess + Send + Sync + 'static,
               D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-              Format: AcceptsPixels<Px>,
+              Format: AcceptsPixels<Px>
     {
         unsafe {
             self.ensure_outside_render_pass()?;
 
-            check_copy_buffer_image(self.device(), &destination, &source,
-                                    CheckCopyBufferImageTy::ImageToBuffer, offset, size,
-                                    first_layer, num_layers, mipmap)?;
+            check_copy_buffer_image(self.device(),
+                                    &destination,
+                                    &source,
+                                    CheckCopyBufferImageTy::ImageToBuffer,
+                                    offset,
+                                    size,
+                                    first_layer,
+                                    num_layers,
+                                    mipmap)?;
 
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
                 buffer_offset: 0,
@@ -756,8 +810,11 @@ impl<P> AutoCommandBufferBuilder<P> {
                 image_extent: size,
             };
 
-            self.inner.copy_image_to_buffer(source, ImageLayout::TransferSrcOptimal, destination,     // TODO: let choose layout
-                                            iter::once(copy))?;
+            self.inner
+                .copy_image_to_buffer(source,
+                                      ImageLayout::TransferSrcOptimal,
+                                      destination, // TODO: let choose layout
+                                      iter::once(copy))?;
             Ok(self)
         }
     }
@@ -785,7 +842,11 @@ impl<P> AutoCommandBufferBuilder<P> {
             }
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            descriptor_sets(&mut self.inner, &mut self.state_cacher, false, pipeline.clone(), sets)?;
+            descriptor_sets(&mut self.inner,
+                            &mut self.state_cacher,
+                            false,
+                            pipeline.clone(),
+                            sets)?;
 
             self.inner.dispatch(dimensions);
             Ok(self)
@@ -794,7 +855,8 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     #[inline]
     pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
-                              constants: Pc) -> Result<Self, DrawError>
+                              constants: Pc)
+                              -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection
     {
@@ -817,22 +879,29 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
-            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
+            descriptor_sets(&mut self.inner,
+                            &mut self.state_cacher,
+                            true,
+                            pipeline.clone(),
+                            sets)?;
+            vertex_buffers(&mut self.inner,
+                           &mut self.state_cacher,
+                           vb_infos.vertex_buffers)?;
 
             debug_assert!(self.graphics_allowed);
 
-            self.inner
-                .draw(vb_infos.vertex_count as u32, vb_infos.instance_count as u32, 0, 0);
+            self.inner.draw(vb_infos.vertex_count as u32,
+                            vb_infos.instance_count as u32,
+                            0,
+                            0);
             Ok(self)
         }
     }
 
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
-        mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, index_buffer: Ib, sets: S,
-        constants: Pc)
-        -> Result<Self, DrawIndexedError>
+    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: DynamicState,
+                                             vertices: V, index_buffer: Ib, sets: S, constants: Pc)
+                                             -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
               Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
@@ -840,7 +909,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     {
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
-    
+
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, &dynamic)?;
@@ -864,13 +933,20 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
-            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
+            descriptor_sets(&mut self.inner,
+                            &mut self.state_cacher,
+                            true,
+                            pipeline.clone(),
+                            sets)?;
+            vertex_buffers(&mut self.inner,
+                           &mut self.state_cacher,
+                           vb_infos.vertex_buffers)?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
             debug_assert!(self.graphics_allowed);
 
-            self.inner.draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
+            self.inner
+                .draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
             Ok(self)
         }
     }
@@ -908,14 +984,21 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
             set_state(&mut self.inner, dynamic);
-            descriptor_sets(&mut self.inner, &mut self.state_cacher, true, pipeline.clone(), sets)?;
-            vertex_buffers(&mut self.inner, &mut self.state_cacher, vb_infos.vertex_buffers)?;
+            descriptor_sets(&mut self.inner,
+                            &mut self.state_cacher,
+                            true,
+                            pipeline.clone(),
+                            sets)?;
+            vertex_buffers(&mut self.inner,
+                           &mut self.state_cacher,
+                           vb_infos.vertex_buffers)?;
 
             debug_assert!(self.graphics_allowed);
 
-            self.inner.draw_indirect(indirect_buffer,
-                                     draw_count,
-                                     mem::size_of::<DrawIndirectCommand>() as u32)?;
+            self.inner
+                .draw_indirect(indirect_buffer,
+                               draw_count,
+                               mem::size_of::<DrawIndirectCommand>() as u32)?;
             Ok(self)
         }
     }
@@ -932,16 +1015,15 @@ impl<P> AutoCommandBufferBuilder<P> {
             }
 
             match self.render_pass {
-                Some((ref rp, index))
-                    if rp.num_subpasses() as u32 == index + 1 => (),
+                Some((ref rp, index)) if rp.num_subpasses() as u32 == index + 1 => (),
                 None => {
                     return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
                 },
                 Some((ref rp, index)) => {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.num_subpasses() as u32,
-                        current: index,
-                    });
+                                   actual: rp.num_subpasses() as u32,
+                                   current: index,
+                               });
                 },
             }
 
@@ -1006,14 +1088,14 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             match self.render_pass {
                 None => {
-                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
+                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
                 },
                 Some((ref rp, ref mut index)) => {
                     if *index + 1 >= rp.num_subpasses() as u32 {
                         return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                            actual: rp.num_subpasses() as u32,
-                            current: *index,
-                        });
+                                       actual: rp.num_subpasses() as u32,
+                                       current: *index,
+                                   });
                     } else {
                         *index += 1;
                     }
@@ -1024,8 +1106,11 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             debug_assert!(self.graphics_allowed);
 
-            let contents = if secondary { SubpassContents::SecondaryCommandBuffers }
-                           else { SubpassContents::Inline };
+            let contents = if secondary {
+                SubpassContents::SecondaryCommandBuffers
+            } else {
+                SubpassContents::Inline
+            };
             self.inner.next_subpass(contents);
             Ok(self)
         }
@@ -1084,10 +1169,10 @@ unsafe fn push_constants<P, Pl, Pc>(destination: &mut SyncCommandBufferBuilder<P
                                          range.size as usize);
 
         destination.push_constants::<_, [u8]>(pipeline.clone(),
-                                       range.stages,
-                                       range.offset as u32,
-                                       range.size as u32,
-                                       data);
+                                              range.stages,
+                                              range.offset as u32,
+                                              range.size as u32,
+                                              data);
     }
 }
 
@@ -1110,8 +1195,7 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: D
 unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
                             state_cacher: &mut StateCacher,
                             vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
-                            -> Result<(), SyncCommandBufferBuilderError>
-{
+                            -> Result<(), SyncCommandBufferBuilderError> {
     let binding_range = {
         let mut compare = state_cacher.bind_vertex_buffers();
         for vb in vertex_buffers.iter() {
@@ -1119,7 +1203,7 @@ unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
         }
         match compare.compare() {
             Some(r) => r,
-            None => return Ok(())
+            None => return Ok(()),
         }
     };
 
@@ -1127,7 +1211,11 @@ unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
     let num_bindings = binding_range.end - binding_range.start;
 
     let mut binder = destination.bind_vertex_buffers();
-    for vb in vertex_buffers.into_iter().skip(first_binding as usize).take(num_bindings as usize) {
+    for vb in vertex_buffers
+        .into_iter()
+        .skip(first_binding as usize)
+        .take(num_bindings as usize)
+    {
         binder.add(vb);
     }
     binder.submit(first_binding)?;
@@ -1135,8 +1223,8 @@ unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
 }
 
 unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P>,
-                                    state_cacher: &mut StateCacher,
-                                    gfx: bool, pipeline: Pl, sets: S)
+                                    state_cacher: &mut StateCacher, gfx: bool, pipeline: Pl,
+                                    sets: S)
                                     -> Result<(), SyncCommandBufferBuilderError>
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
           S: DescriptorSetsCollection
@@ -1160,7 +1248,8 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
     for set in sets.into_iter().skip(first_binding as usize) {
         sets_binder.add(set);
     }
-    sets_binder.submit(gfx, pipeline.clone(), first_binding, iter::empty())?;
+    sets_binder
+        .submit(gfx, pipeline.clone(), first_binding, iter::empty())?;
     Ok(())
 }
 
@@ -1201,8 +1290,7 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
-                   -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         match self.submit_state {
             SubmitState::OneTime { ref already_submitted } => {
                 let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
@@ -1279,7 +1367,7 @@ unsafe impl<P> DeviceOwned for AutoCommandBuffer<P> {
 }
 
 macro_rules! err_gen {
-    ($name:ident { $($err:ident),+ }) => (
+    ($name:ident { $($err:ident,)+ }) => (
         #[derive(Debug, Clone)]
         pub enum $name {
             $(
@@ -1328,89 +1416,89 @@ macro_rules! err_gen {
 }
 
 err_gen!(BuildError {
-    AutoCommandBufferBuilderContextError,
-    OomError
-});
+             AutoCommandBufferBuilderContextError,
+             OomError,
+         });
 
 err_gen!(BeginRenderPassError {
-    AutoCommandBufferBuilderContextError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(BlitImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckBlitImageError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckBlitImageError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(ClearColorImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckClearColorImageError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckClearColorImageError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(CopyBufferError {
-    AutoCommandBufferBuilderContextError,
-    CheckCopyBufferError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckCopyBufferError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(CopyBufferImageError {
-    AutoCommandBufferBuilderContextError,
-    CheckCopyBufferImageError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckCopyBufferImageError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(FillBufferError {
-    AutoCommandBufferBuilderContextError,
-    CheckFillBufferError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckFillBufferError,
+         });
 
 err_gen!(DispatchError {
-    AutoCommandBufferBuilderContextError,
-    CheckPushConstantsValidityError,
-    CheckDescriptorSetsValidityError,
-    CheckDispatchError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             CheckDispatchError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(DrawError {
-    AutoCommandBufferBuilderContextError,
-    CheckDynamicStateValidityError,
-    CheckPushConstantsValidityError,
-    CheckDescriptorSetsValidityError,
-    CheckVertexBufferError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckDynamicStateValidityError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             CheckVertexBufferError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(DrawIndexedError {
-    AutoCommandBufferBuilderContextError,
-    CheckDynamicStateValidityError,
-    CheckPushConstantsValidityError,
-    CheckDescriptorSetsValidityError,
-    CheckVertexBufferError,
-    CheckIndexBufferError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckDynamicStateValidityError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             CheckVertexBufferError,
+             CheckIndexBufferError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(DrawIndirectError {
-    AutoCommandBufferBuilderContextError,
-    CheckDynamicStateValidityError,
-    CheckPushConstantsValidityError,
-    CheckDescriptorSetsValidityError,
-    CheckVertexBufferError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckDynamicStateValidityError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             CheckVertexBufferError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(ExecuteCommandsError {
-    AutoCommandBufferBuilderContextError,
-    SyncCommandBufferBuilderError
-});
+             AutoCommandBufferBuilderContextError,
+             SyncCommandBufferBuilderError,
+         });
 
 err_gen!(UpdateBufferError {
-    AutoCommandBufferBuilderContextError,
-    CheckUpdateBufferError
-});
+             AutoCommandBufferBuilderContextError,
+             CheckUpdateBufferError,
+         });
 
 #[derive(Debug, Copy, Clone)]
 pub enum AutoCommandBufferBuilderContextError {

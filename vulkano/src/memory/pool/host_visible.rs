@@ -16,8 +16,8 @@ use device::Device;
 use instance::Instance;
 use instance::MemoryType;
 use memory::DeviceMemory;
-use memory::MappedDeviceMemory;
 use memory::DeviceMemoryAllocError;
+use memory::MappedDeviceMemory;
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]

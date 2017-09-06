@@ -85,10 +85,7 @@ impl UnsafeQueryPool {
     #[inline]
     pub fn query(&self, index: u32) -> Option<UnsafeQuery> {
         if index < self.num_slots() {
-            Some(UnsafeQuery {
-                pool: self,
-                index,
-            })
+            Some(UnsafeQuery { pool: self, index })
         } else {
             None
         }
@@ -104,10 +101,10 @@ impl UnsafeQueryPool {
 
         if first_index + count < self.num_slots() {
             Some(UnsafeQueriesRange {
-                pool: self,
-                first: first_index,
-                count,
-            })
+                     pool: self,
+                     first: first_index,
+                     count,
+                 })
         } else {
             None
         }

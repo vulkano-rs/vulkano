@@ -95,8 +95,8 @@ use vk;
 
 pub use self::device_memory::CpuAccess;
 pub use self::device_memory::DeviceMemory;
-pub use self::device_memory::MappedDeviceMemory;
 pub use self::device_memory::DeviceMemoryAllocError;
+pub use self::device_memory::MappedDeviceMemory;
 pub use self::pool::MemoryPool;
 
 mod device_memory;

@@ -41,7 +41,7 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
                                         -> Result<(), CheckCopyBufferImageError>
     where I: ?Sized + ImageAccess,
           B: ?Sized + TypedBufferAccess<Content = [P]>,
-          Format: AcceptsPixels<P>,     // TODO: use a trait on the image itself instead
+          Format: AcceptsPixels<P> // TODO: use a trait on the image itself instead
 {
     let buffer_inner = buffer.inner();
     let image_inner = image.inner();
@@ -102,9 +102,9 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
         let required_len = num_texels as usize * image.format().rate() as usize;
         if required_len > buffer.len() {
             return Err(CheckCopyBufferImageError::BufferTooSmall {
-                required_len: required_len,
-                actual_len: buffer.len(),
-            });
+                           required_len: required_len,
+                           actual_len: buffer.len(),
+                       });
         }
     }
 
@@ -170,7 +170,7 @@ impl error::Error for CheckCopyBufferImageError {
             CheckCopyBufferImageError::WrongPixelType(ref err) => {
                 Some(err)
             },
-            _ => None
+            _ => None,
         }
     }
 }

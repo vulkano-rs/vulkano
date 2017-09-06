@@ -37,10 +37,10 @@ pub fn check_vertex_buffers<P, V>(pipeline: &P, vertex_buffers: V)
     }
 
     Ok(CheckVertexBuffer {
-        vertex_buffers,
-        vertex_count: vertex_count as u32,
-        instance_count: instance_count as u32,
-    })
+           vertex_buffers,
+           vertex_count: vertex_count as u32,
+           instance_count: instance_count as u32,
+       })
 }
 
 /// Information returned if `check_vertex_buffer` succeeds.
