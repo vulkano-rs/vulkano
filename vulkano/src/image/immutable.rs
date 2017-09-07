@@ -293,7 +293,17 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.image.key()
     }
 
@@ -391,7 +401,17 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.image.image.key()
     }
 

@@ -1,4 +1,7 @@
-# Unreleased
+# Unreleased (major)
+
+- Changed `BufferAccess::conflict_*` and `ImageAccess::conflict_*` to forbid querying a specific
+  range of the resource.
 
 # Version 0.6.2 (2017-09-06)
 

@@ -18,6 +18,7 @@ use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::ImageAccess;
 use sync::AccessError;
 
 /// A subpart of a buffer.
@@ -194,22 +195,18 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
-                        other_offset: usize, other_size: usize)
-                        -> bool {
-        let self_offset = self.offset + self_offset;
-        // FIXME: spurious failures ; needs investigation
-        //debug_assert!(self_size + self_offset <= self.size);
-        self.resource
-            .conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.resource.conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
-        let self_offset = self.offset + self_offset;
-        // FIXME: spurious failures ; needs investigation
-        //debug_assert!(self_size + self_offset <= self.size);
-        self.resource.conflict_key(self_offset, self_size)
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.resource.conflicts_image(other)
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        self.resource.conflict_key()
     }
 
     #[inline]

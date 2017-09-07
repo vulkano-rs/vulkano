@@ -9,6 +9,7 @@
 
 use std::sync::Arc;
 
+use buffer::BufferAccess;
 use device::Queue;
 use format::ClearValue;
 use format::Format;
@@ -101,7 +102,17 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.my_image().image.key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.my_image().image.key()
     }
 

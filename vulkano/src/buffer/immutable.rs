@@ -40,6 +40,7 @@ use command_buffer::CommandBufferExecFuture;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::ImageAccess;
 use instance::QueueFamily;
 use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
@@ -327,7 +328,17 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn conflict_key(&self, _: usize, _: usize) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.inner.key()
     }
 
@@ -383,7 +394,17 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn conflict_key(&self, _: usize, _: usize) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.buffer.inner.key()
     }
 

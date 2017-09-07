@@ -28,6 +28,7 @@ use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::ImageAccess;
 use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
 use memory::pool::AllocFromRequirementsFilter;
@@ -609,7 +610,17 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: usize, _: usize) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.buffer.inner.key() + self.index as u64
     }
 
@@ -730,8 +741,18 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self, a: usize, b: usize) -> u64 {
-        self.chunk.conflict_key(a, b)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        self.chunk.conflict_key()
     }
 
     #[inline]

@@ -258,31 +258,31 @@ impl<P> BuilderKey<P> {
     }
 
     #[inline]
-    fn conflicts_buffer_all(&self, commands_lock: &Commands<P>, buf: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, commands_lock: &Commands<P>, buf: &BufferAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
                 let c = &commands_lock.commands[self.command_id];
-                c.buffer(self.resource_index).conflicts_buffer_all(buf)
+                c.buffer(self.resource_index).conflicts_buffer(buf)
             },
             KeyTy::Image => {
                 let c = &commands_lock.commands[self.command_id];
-                c.image(self.resource_index).conflicts_buffer_all(buf)
+                c.image(self.resource_index).conflicts_buffer(buf)
             },
         }
     }
 
     #[inline]
-    fn conflicts_image_all(&self, commands_lock: &Commands<P>, img: &ImageAccess) -> bool {
+    fn conflicts_image(&self, commands_lock: &Commands<P>, img: &ImageAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
                 let c = &commands_lock.commands[self.command_id];
-                c.buffer(self.resource_index).conflicts_image_all(img)
+                c.buffer(self.resource_index).conflicts_image(img)
             },
             KeyTy::Image => {
                 let c = &commands_lock.commands[self.command_id];
-                c.image(self.resource_index).conflicts_image_all(img)
+                c.image(self.resource_index).conflicts_image(img)
             },
         }
     }
@@ -297,11 +297,11 @@ impl<P> PartialEq for BuilderKey<P> {
         match other.resource_ty {
             KeyTy::Buffer => {
                 let c = &commands_lock.commands[other.command_id];
-                self.conflicts_buffer_all(&commands_lock, c.buffer(other.resource_index))
+                self.conflicts_buffer(&commands_lock, c.buffer(other.resource_index))
             },
             KeyTy::Image => {
                 let c = &commands_lock.commands[other.command_id];
-                self.conflicts_image_all(&commands_lock, c.image(other.resource_index))
+                self.conflicts_image(&commands_lock, c.image(other.resource_index))
             },
         }
     }
@@ -318,11 +318,11 @@ impl<P> Hash for BuilderKey<P> {
         match self.resource_ty {
             KeyTy::Buffer => {
                 let c = &commands_lock.commands[self.command_id];
-                c.buffer(self.resource_index).conflict_key_all()
+                c.buffer(self.resource_index).conflict_key()
             },
             KeyTy::Image => {
                 let c = &commands_lock.commands[self.command_id];
-                c.image(self.resource_index).conflict_key_all()
+                c.image(self.resource_index).conflict_key()
             },
         }.hash(state)
     }
@@ -867,9 +867,9 @@ unsafe impl<'a> Sync for CbKey<'a> {
 
 impl<'a> CbKey<'a> {
     #[inline]
-    fn conflicts_buffer_all(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
-                            buf: &BufferAccess)
-                            -> bool {
+    fn conflicts_buffer(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
+                        buf: &BufferAccess)
+                        -> bool {
         match *self {
             CbKey::Command {
                 ref commands,
@@ -888,24 +888,24 @@ impl<'a> CbKey<'a> {
                 match resource_ty {
                     KeyTy::Buffer => {
                         let c = &commands_lock[command_id];
-                        c.buffer(resource_index).conflicts_buffer_all(buf)
+                        c.buffer(resource_index).conflicts_buffer(buf)
                     },
                     KeyTy::Image => {
                         let c = &commands_lock[command_id];
-                        c.image(resource_index).conflicts_buffer_all(buf)
+                        c.image(resource_index).conflicts_buffer(buf)
                     },
                 }
             },
 
-            CbKey::BufferRef(b) => b.conflicts_buffer_all(buf),
-            CbKey::ImageRef(i) => i.conflicts_buffer_all(buf),
+            CbKey::BufferRef(b) => b.conflicts_buffer(buf),
+            CbKey::ImageRef(i) => i.conflicts_buffer(buf),
         }
     }
 
     #[inline]
-    fn conflicts_image_all(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
-                           img: &ImageAccess)
-                           -> bool {
+    fn conflicts_image(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
+                       img: &ImageAccess)
+                       -> bool {
         match *self {
             CbKey::Command {
                 ref commands,
@@ -924,17 +924,17 @@ impl<'a> CbKey<'a> {
                 match resource_ty {
                     KeyTy::Buffer => {
                         let c = &commands_lock[command_id];
-                        c.buffer(resource_index).conflicts_image_all(img)
+                        c.buffer(resource_index).conflicts_image(img)
                     },
                     KeyTy::Image => {
                         let c = &commands_lock[command_id];
-                        c.image(resource_index).conflicts_image_all(img)
+                        c.image(resource_index).conflicts_image(img)
                     },
                 }
             },
 
-            CbKey::BufferRef(b) => b.conflicts_image_all(img),
-            CbKey::ImageRef(i) => i.conflicts_image_all(img),
+            CbKey::BufferRef(b) => b.conflicts_image(img),
+            CbKey::ImageRef(i) => i.conflicts_image(img),
         }
     }
 }
@@ -944,10 +944,10 @@ impl<'a> PartialEq for CbKey<'a> {
     fn eq(&self, other: &CbKey) -> bool {
         match *self {
             CbKey::BufferRef(a) => {
-                other.conflicts_buffer_all(None, a)
+                other.conflicts_buffer(None, a)
             },
             CbKey::ImageRef(a) => {
-                other.conflicts_image_all(None, a)
+                other.conflicts_image(None, a)
             },
             CbKey::Command {
                 ref commands,
@@ -960,11 +960,11 @@ impl<'a> PartialEq for CbKey<'a> {
                 match resource_ty {
                     KeyTy::Buffer => {
                         let c = &commands_lock[command_id];
-                        other.conflicts_buffer_all(Some(&commands_lock), c.buffer(resource_index))
+                        other.conflicts_buffer(Some(&commands_lock), c.buffer(resource_index))
                     },
                     KeyTy::Image => {
                         let c = &commands_lock[command_id];
-                        other.conflicts_image_all(Some(&commands_lock), c.image(resource_index))
+                        other.conflicts_image(Some(&commands_lock), c.image(resource_index))
                     },
                 }
             },
@@ -990,17 +990,17 @@ impl<'a> Hash for CbKey<'a> {
                 match resource_ty {
                     KeyTy::Buffer => {
                         let c = &commands_lock[command_id];
-                        c.buffer(resource_index).conflict_key_all().hash(state)
+                        c.buffer(resource_index).conflict_key().hash(state)
                     },
                     KeyTy::Image => {
                         let c = &commands_lock[command_id];
-                        c.image(resource_index).conflict_key_all().hash(state)
+                        c.image(resource_index).conflict_key().hash(state)
                     },
                 }
             },
 
-            CbKey::BufferRef(buf) => buf.conflict_key_all().hash(state),
-            CbKey::ImageRef(img) => img.conflict_key_all().hash(state),
+            CbKey::BufferRef(buf) => buf.conflict_key().hash(state),
+            CbKey::ImageRef(img) => img.conflict_key().hash(state),
         }
     }
 }
