@@ -1287,7 +1287,13 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             return;
         }
 
-        // TODO: missing a debug assert for limits on the actual scissor values
+        debug_assert!(scissors.iter().all(|s| s.offset.x >= 0 && s.offset.y >= 0));
+        debug_assert!(scissors.iter().all(|s| {
+            s.extent.width < i32::max_value() as u32 &&
+                s.extent.height < i32::max_value() as u32 &&
+                s.offset.x.checked_add(s.extent.width as i32).is_some() &&
+                s.offset.y.checked_add(s.extent.height as i32).is_some()
+        }));
         debug_assert!((first_scissor == 0 && scissors.len() == 1) ||
                           self.device().enabled_features().multi_viewport);
         debug_assert!({
