@@ -94,7 +94,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
         // Get an appropriate `Arc<StandardCommandPoolPerThread>`.
         let per_thread = match hashmap.entry(thread::current().id()) {
-            Entry::Occupied(mut entry) => {
+            Entry::Occupied(entry) => {
                 // The `unwrap()` can't fail, since we retained only valid members earlier.
                 entry.get().upgrade().unwrap()
             },
