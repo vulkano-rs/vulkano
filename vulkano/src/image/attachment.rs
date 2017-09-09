@@ -461,8 +461,9 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
                     allowed: self.attachment_layout,
                 });
             } else {
-                return Err(AccessError::ImageNotInitialized {
+                return Err(AccessError::UnexpectedImageLayout {
                     requested: expected_layout,
+                    allowed: ImageLayout::Undefined,
                 });
             }
         }
