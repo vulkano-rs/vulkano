@@ -1,4 +1,7 @@
-# Unreleased
+# Unreleased (major)
+
+- Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
+  allocating or mapping memory.
 
 # Version 0.6.2 (2017-09-06)
 

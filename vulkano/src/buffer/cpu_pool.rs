@@ -81,7 +81,7 @@ use OomError;
 /// for n in 0 .. 25u32 {
 ///     // Each loop grabs a new entry from that ring buffer and stores ` data` in it.
 ///     let data: [f32; 4] = [1.0, 0.5, n as f32 / 24.0, 0.0];
-///     let sub_buffer = buffer.next(data);
+///     let sub_buffer = buffer.next(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
 ///     AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
@@ -285,8 +285,8 @@ impl<T, A> CpuBufferPool<T, A>
     /// > **Note**: You can think of it like a `Vec`. If you insert an element and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
     #[inline]
-    pub fn next(&self, data: T) -> CpuBufferPoolSubbuffer<T, A> {
-        CpuBufferPoolSubbuffer { chunk: self.chunk(iter::once(data)) }
+    pub fn next(&self, data: T) -> Result<CpuBufferPoolSubbuffer<T, A>, DeviceMemoryAllocError> {
+        Ok(CpuBufferPoolSubbuffer { chunk: self.chunk(iter::once(data))? })
     }
 
     /// Grants access to a new subbuffer and puts `data` in it.
@@ -301,7 +301,7 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// Panicks if the length of the iterator didn't match the actual number of element.
     ///
-    pub fn chunk<I>(&self, data: I) -> CpuBufferPoolChunk<T, A>
+    pub fn chunk<I>(&self, data: I) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = T>,
               I::IntoIter: ExactSizeIterator
     {
@@ -310,7 +310,7 @@ impl<T, A> CpuBufferPool<T, A>
         let mut mutex = self.current_buffer.lock().unwrap();
 
         let data = match self.try_next_impl(&mut mutex, data) {
-            Ok(n) => return n,
+            Ok(n) => return Ok(n),
             Err(d) => d,
         };
 
@@ -321,10 +321,10 @@ impl<T, A> CpuBufferPool<T, A>
                 None => 3,
             };
 
-        self.reset_buf(&mut mutex, next_capacity).unwrap(); /* FIXME: propagate error */
+        self.reset_buf(&mut mutex, next_capacity)?;
 
         match self.try_next_impl(&mut mutex, data) {
-            Ok(n) => n,
+            Ok(n) => Ok(n),
             Err(_) => unreachable!(),
         }
     }
@@ -799,7 +799,7 @@ mod tests {
         assert!(first_cap >= 1);
 
         for _ in 0 .. first_cap + 5 {
-            mem::forget(pool.next(12));
+            mem::forget(pool.next(12).unwrap());
         }
 
         assert!(pool.capacity() > first_cap);
@@ -814,7 +814,7 @@ mod tests {
 
         let mut capacity = None;
         for _ in 0 .. 64 {
-            pool.next(12);
+            pool.next(12).unwrap();
 
             let new_cap = pool.capacity();
             assert!(new_cap >= 1);
@@ -832,12 +832,12 @@ mod tests {
         let pool = CpuBufferPool::<u8>::upload(device);
         pool.reserve(5).unwrap();
 
-        let a = pool.chunk(vec![0, 0]);
-        let b = pool.chunk(vec![0, 0]);
+        let a = pool.chunk(vec![0, 0]).unwrap();
+        let b = pool.chunk(vec![0, 0]).unwrap();
         assert_eq!(b.index, 2);
         drop(a);
 
-        let c = pool.chunk(vec![0, 0]);
+        let c = pool.chunk(vec![0, 0]).unwrap();
         assert_eq!(c.index, 0);
 
         assert_eq!(pool.capacity(), 5);
@@ -849,7 +849,7 @@ mod tests {
 
         let pool = CpuBufferPool::<u8>::upload(device);
 
-        let _ = pool.chunk(vec![]);
-        let _ = pool.chunk(vec![0, 0]);
+        let _ = pool.chunk(vec![]).unwrap();
+        let _ = pool.chunk(vec![0, 0]).unwrap();
     }
 }
