@@ -83,8 +83,14 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<F> FinalCommand for Fin<F>
                     where F: FramebufferAbstract + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBeginRenderPass"
+                    }
                     fn image(&self, num: usize) -> &ImageAccess {
                         self.0.attached_image_view(num).unwrap().parent()
+                    }
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        format!("attachment {}", num).into()
                     }
                 }
                 Box::new(Fin(self.framebuffer))
@@ -157,9 +163,16 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<B> FinalCommand for Fin<B>
                     where B: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindIndexBuffer"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "index buffer".into()
                     }
                 }
                 Box::new(Fin(self.buffer))
@@ -218,6 +231,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<Gp> FinalCommand for Fin<Gp>
                     where Gp: Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindPipeline"
+                    }
                 }
                 Box::new(Fin(self.pipeline))
             }
@@ -251,6 +267,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<Cp> FinalCommand for Fin<Cp>
                     where Cp: Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindPipeline"
+                    }
                 }
                 Box::new(Fin(self.pipeline))
             }
@@ -326,11 +345,23 @@ impl<P> SyncCommandBufferBuilder<P> {
                     where S: ImageAccess + Send + Sync + 'static,
                           D: ImageAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBlitImage"
+                    }
                     fn image(&self, num: usize) -> &ImageAccess {
                         if num == 0 {
                             &self.0
                         } else if num == 1 {
                             &self.1
+                        } else {
+                            panic!()
+                        }
+                    }
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        if num == 0 {
+                            "source".into()
+                        } else if num == 1 {
+                            "destination".into()
                         } else {
                             panic!()
                         }
@@ -441,9 +472,16 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<I> FinalCommand for Fin<I>
                     where I: ImageAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdClearColorImage"
+                    }
                     fn image(&self, num: usize) -> &ImageAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "target".into()
                     }
                 }
 
@@ -522,10 +560,20 @@ impl<P> SyncCommandBufferBuilder<P> {
                     where S: BufferAccess + Send + Sync + 'static,
                           D: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdCopyBuffer"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         match num {
                             0 => &self.0,
                             1 => &self.1,
+                            _ => panic!(),
+                        }
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        match num {
+                            0 => "source".into(),
+                            1 => "destination".into(),
                             _ => panic!(),
                         }
                     }
@@ -628,14 +676,24 @@ impl<P> SyncCommandBufferBuilder<P> {
                     where S: BufferAccess + Send + Sync + 'static,
                           D: ImageAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdCopyBufferToImage"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
                     }
-
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "source".into()
+                    }
                     fn image(&self, num: usize) -> &ImageAccess {
                         assert_eq!(num, 0);
                         &self.1
+                    }
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "destination".into()
                     }
                 }
 
@@ -742,14 +800,24 @@ impl<P> SyncCommandBufferBuilder<P> {
                     where S: ImageAccess + Send + Sync + 'static,
                           D: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdCopyImageToBuffer"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.1
                     }
-
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "destination".into()
+                    }
                     fn image(&self, num: usize) -> &ImageAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "source".into()
                     }
                 }
 
@@ -832,7 +900,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdDispatch")
             }
         }
 
@@ -865,9 +933,16 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<B> FinalCommand for Fin<B>
                     where B: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdDispatchIndirect"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "indirect buffer".into()
                     }
                 }
                 Box::new(Fin(self.buffer))
@@ -925,7 +1000,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdDraw")
             }
         }
 
@@ -964,7 +1039,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdDrawIndexed")
             }
         }
 
@@ -1005,9 +1080,16 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<B> FinalCommand for Fin<B>
                     where B: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdDrawIndirect"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "indirect buffer".into()
                     }
                 }
                 Box::new(Fin(self.buffer))
@@ -1073,9 +1155,16 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<B> FinalCommand for Fin<B>
                     where B: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdDrawIndexedIndirect"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "indirect buffer".into()
                     }
                 }
                 Box::new(Fin(self.buffer))
@@ -1128,7 +1217,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdEndRenderPass")
             }
         }
 
@@ -1173,9 +1262,15 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<B> FinalCommand for Fin<B>
                     where B: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdFillBuffer"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn buffer_name(&self, _: usize) -> Cow<'static, str> {
+                        "destination".into()
                     }
                 }
                 Box::new(Fin(self.buffer))
@@ -1225,7 +1320,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdNextSubpass")
             }
         }
 
@@ -1267,6 +1362,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<Pl> FinalCommand for Fin<Pl>
                     where Pl: Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdPushConstants"
+                    }
                 }
                 Box::new(Fin(self.pipeline_layout))
             }
@@ -1309,6 +1407,9 @@ impl<P> SyncCommandBufferBuilder<P> {
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(Arc<Event>);
                 impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdResetEvent"
+                    }
                 }
                 Box::new(Fin(self.event))
             }
@@ -1334,7 +1435,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdSetBlendConstants")
             }
         }
 
@@ -1360,7 +1461,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdSetDepthBias")
             }
         }
 
@@ -1389,7 +1490,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdSetDepthBounds")
             }
         }
 
@@ -1416,6 +1517,9 @@ impl<P> SyncCommandBufferBuilder<P> {
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(Arc<Event>);
                 impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdSetEvent"
+                    }
                 }
                 Box::new(Fin(self.event))
             }
@@ -1441,7 +1545,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdSetLineWidth")
             }
         }
 
@@ -1474,7 +1578,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdSetScissor")
             }
         }
 
@@ -1508,7 +1612,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
-                Box::new(())
+                Box::new("vkCmdSetViewport")
             }
         }
 
@@ -1546,9 +1650,15 @@ impl<P> SyncCommandBufferBuilder<P> {
                 impl<B> FinalCommand for Fin<B>
                     where B: BufferAccess + Send + Sync + 'static
                 {
+                    fn name(&self) -> &'static str {
+                        "vkCmdUpdateBuffer"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         assert_eq!(num, 0);
                         &self.0
+                    }
+                    fn buffer_name(&self, _: usize) -> Cow<'static, str> {
+                        "destination".into()
                     }
                 }
                 Box::new(Fin(self.buffer))
@@ -1634,6 +1744,9 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(SmallVec<[Box<DescriptorSet + Send + Sync>; 12]>);
                 impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindDescriptorSets"
+                    }
                     fn buffer(&self, mut num: usize) -> &BufferAccess {
                         for set in self.0.iter() {
                             if let Some(buf) = set.buffer(num) {
@@ -1643,10 +1756,30 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                         }
                         panic!()
                     }
+                    fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
+                        for (set_num, set) in self.0.iter().enumerate() {
+                            if let Some(buf) = set.buffer(num) {
+                                return format!("Buffer bound to descriptor {} of set {}", buf.1, set_num)
+                                    .into();
+                            }
+                            num -= set.num_buffers();
+                        }
+                        panic!()
+                    }
                     fn image(&self, mut num: usize) -> &ImageAccess {
                         for set in self.0.iter() {
                             if let Some(img) = set.image(num) {
                                 return img.0.parent();
+                            }
+                            num -= set.num_images();
+                        }
+                        panic!()
+                    }
+                    fn image_name(&self, mut num: usize) -> Cow<'static, str> {
+                        for (set_num, set) in self.0.iter().enumerate() {
+                            if let Some(img) = set.image(num) {
+                                return format!("Image bound to descriptor {} of set {}", img.1, set_num)
+                                    .into();
                             }
                             num -= set.num_images();
                         }
@@ -1820,8 +1953,14 @@ impl<'a, P> SyncCommandBufferBuilderBindVertexBuffer<'a, P> {
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(Vec<Box<BufferAccess + Send + Sync>>);
                 impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindVertexBuffers"
+                    }
                     fn buffer(&self, num: usize) -> &BufferAccess {
                         &self.0[num]
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        format!("Buffer #{}", num).into()
                     }
                 }
                 Box::new(Fin(self.buffers))
@@ -1903,6 +2042,9 @@ impl<'a, P> SyncCommandBufferBuilderExecuteCommands<'a, P> {
             fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
                 struct Fin(Vec<Box<Any + Send + Sync>>);
                 impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdExecuteCommands"
+                    }
                 }
                 Box::new(Fin(self.command_buffers))
             }

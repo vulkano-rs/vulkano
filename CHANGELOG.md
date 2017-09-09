@@ -6,6 +6,7 @@
   range of the resource.
 - Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
   allocating or mapping memory.
+- Changed `CommandBufferExecError::AccessError` to provide a hint of where the error occurs.
 
 # Version 0.6.2 (2017-09-06)
 
