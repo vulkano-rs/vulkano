@@ -29,13 +29,17 @@ use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use image::ImageAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
+use memory::DeviceMemoryAllocError;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
-use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -48,7 +52,7 @@ use sync::Sharing;
 /// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
 /// device-local memory.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = StdMemoryPoolAlloc> {
+pub struct DeviceLocalBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
     inner: UnsafeBuffer,
 
@@ -128,25 +132,16 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             }
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
                                     AllocLayout::Linear,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Buffer(&buffer),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         buffer.bind_memory(mem.memory(), mem.offset())?;
 
@@ -201,7 +196,17 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.inner.key()
     }
 
@@ -226,9 +231,9 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
                     Ok(())
                 }
             },
-            &mut GpuAccess::Exclusive { ref mut num } => {
+            &mut GpuAccess::Exclusive { .. } => {
                 Err(AccessError::AlreadyInUse)
-            }
+            },
         }
     }
 
@@ -244,7 +249,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
             GpuAccess::Exclusive { ref mut num } => {
                 debug_assert!(*num >= 1);
                 *num += 1;
-            }
+            },
         }
     }
 

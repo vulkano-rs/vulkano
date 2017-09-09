@@ -133,6 +133,7 @@ pub struct Device {
         Mutex<HashMap<u32, Weak<StandardCommandPool>, BuildHasherDefault<FnvHasher>>>,
     features: Features,
     extensions: DeviceExtensions,
+    active_queue_families: SmallVec<[u32; 8]>,
     allocation_count: Mutex<u32>,
     fence_pool: Mutex<Vec<vk::Fence>>,
     semaphore_pool: Mutex<Vec<vk::Semaphore>>,
@@ -167,8 +168,8 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I, Ext>(phys: PhysicalDevice, requested_features: &Features,
-                           extensions: Ext, queue_families: I)
+    pub fn new<'a, I, Ext>(phys: PhysicalDevice, requested_features: &Features, extensions: Ext,
+                           queue_families: I)
                            -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
         where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
               Ext: Into<RawDeviceExtensions>
@@ -295,25 +296,27 @@ impl Device {
                                                   *const _
                                           });
 
-        let device = Arc::new(Device {
-                                  instance: phys.instance().clone(),
-                                  physical_device: phys.index(),
-                                  device: device,
-                                  vk: vk,
-                                  standard_pool: Mutex::new(Weak::new()),
-                                  standard_descriptor_pool: Mutex::new(Weak::new()),
-                                  standard_command_pools: Mutex::new(Default::default()),
-                                  features: Features {
-                                      // Always enabled ; see above
-                                      robust_buffer_access: true,
-                                      .. requested_features.clone()
-                                  },
-                                  extensions: (&extensions).into(),
-                                  allocation_count: Mutex::new(0),
-                                  fence_pool: Mutex::new(Vec::new()),
-                                  semaphore_pool: Mutex::new(Vec::new()),
-                                  event_pool: Mutex::new(Vec::new()),
-                              });
+        let device =
+            Arc::new(Device {
+                         instance: phys.instance().clone(),
+                         physical_device: phys.index(),
+                         device: device,
+                         vk: vk,
+                         standard_pool: Mutex::new(Weak::new()),
+                         standard_descriptor_pool: Mutex::new(Weak::new()),
+                         standard_command_pools: Mutex::new(Default::default()),
+                         features: Features {
+                             // Always enabled ; see above
+                             robust_buffer_access: true,
+                             ..requested_features.clone()
+                         },
+                         extensions: (&extensions).into(),
+                         active_queue_families: output_queues.iter().map(|&(q, _)| q).collect(),
+                         allocation_count: Mutex::new(0),
+                         fence_pool: Mutex::new(Vec::new()),
+                         semaphore_pool: Mutex::new(Vec::new()),
+                         event_pool: Mutex::new(Vec::new()),
+                     });
 
         // Iterator for the produced queues.
         let output_queues = QueuesIter {
@@ -357,6 +360,19 @@ impl Device {
     #[inline]
     pub fn physical_device(&self) -> PhysicalDevice {
         PhysicalDevice::from_index(&self.instance, self.physical_device).unwrap()
+    }
+
+    /// Returns an iterator to the list of queues families that this device uses.
+    ///
+    /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
+    // TODO: ^
+    #[inline]
+    pub fn active_queue_families<'a>(&'a self)
+                                     -> Box<ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
+        let physical_device = self.physical_device();
+        Box::new(self.active_queue_families
+                     .iter()
+                     .map(move |&id| physical_device.queue_family_by_id(id).unwrap()))
     }
 
     /// Returns the features that are enabled in the device.
@@ -480,7 +496,6 @@ impl Drop for Device {
             for &raw_event in self.event_pool.lock().unwrap().iter() {
                 self.vk.DestroyEvent(self.device, raw_event, ptr::null());
             }
-            self.vk.DeviceWaitIdle(self.device);
             self.vk.DestroyDevice(self.device, ptr::null());
         }
     }
@@ -512,6 +527,12 @@ pub struct QueuesIter {
     next_queue: usize,
     device: Arc<Device>,
     families_and_ids: SmallVec<[(u32, u32); 8]>,
+}
+
+unsafe impl DeviceOwned for QueuesIter {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 impl Iterator for QueuesIter {
@@ -681,6 +702,13 @@ impl Queue {
             check_errors(vk.QueueWaitIdle(*queue))?;
             Ok(())
         }
+    }
+}
+
+
+unsafe impl DeviceOwned for Queue {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

@@ -102,8 +102,8 @@
 //! // TODO: storage formats
 //!
 
+use std::{error, fmt, mem};
 use std::vec::IntoIter as VecIntoIter;
-use std::{mem, error, fmt};
 
 use half::f16;
 
@@ -141,7 +141,9 @@ pub struct IncompatiblePixelsType;
 
 impl error::Error for IncompatiblePixelsType {
     #[inline]
-    fn description(&self) -> &str { "supplied pixels' type is incompatible with this format" }
+    fn description(&self) -> &str {
+        "supplied pixels' type is incompatible with this format"
+    }
 }
 
 impl fmt::Display for IncompatiblePixelsType {
@@ -166,7 +168,9 @@ pub unsafe trait AcceptsPixels<T> {
     /// # Panics
     ///
     /// May panic if `ensure_accepts` would not return `Ok(())`.
-    fn rate(&self) -> u32 { 1 }
+    fn rate(&self) -> u32 {
+        1
+    }
 }
 
 macro_rules! formats {
@@ -780,7 +784,7 @@ impl FormatTy {
             FormatTy::Depth => true,
             FormatTy::Stencil => true,
             FormatTy::DepthStencil => true,
-            _ => false
+            _ => false,
         }
     }
 }

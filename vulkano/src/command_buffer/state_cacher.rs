@@ -11,10 +11,11 @@ use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::DynamicState;
 use descriptor::DescriptorSet;
-use pipeline::input_assembly::IndexType;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
+use pipeline::input_assembly::IndexType;
 use smallvec::SmallVec;
+use std::ops::Range;
 use vk;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
@@ -38,6 +39,10 @@ pub struct StateCacher {
     // comparing sets, and is set to false when we end up comparing. If it was true when we start
     // comparing, we know that something bad happened and we flush the cache.
     poisonned_descriptor_sets: bool,
+    // The vertex buffers currently bound.
+    vertex_buffers: SmallVec<[(vk::Buffer, vk::DeviceSize); 12]>,
+    // Same as `poisonned_descriptor_sets` but for vertex buffers.
+    poisonned_vertex_buffers: bool,
     // The index buffer, offset, and index type currently bound. `None` if nothing bound.
     index_buffer: Option<(vk::Buffer, usize, IndexType)>,
 }
@@ -62,6 +67,8 @@ impl StateCacher {
             compute_descriptor_sets: SmallVec::new(),
             graphics_descriptor_sets: SmallVec::new(),
             poisonned_descriptor_sets: false,
+            vertex_buffers: SmallVec::new(),
+            poisonned_vertex_buffers: false,
             index_buffer: None,
         }
     }
@@ -75,6 +82,7 @@ impl StateCacher {
         self.graphics_pipeline = 0;
         self.compute_descriptor_sets = SmallVec::new();
         self.graphics_descriptor_sets = SmallVec::new();
+        self.vertex_buffers = SmallVec::new();
         self.index_buffer = None;
     }
 
@@ -167,6 +175,32 @@ impl StateCacher {
         }
     }
 
+    /// Starts the process of comparing a list of vertex buffers to the vertex buffers currently
+    /// in cache.
+    ///
+    /// After calling this function, call `add` for each set one by one. Then call `compare` in
+    /// order to get the range of the vertex buffers to bind, or `None` if the sets were identical
+    /// to what is in cache.
+    ///
+    /// This process also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after the `compare` function returns.
+    #[inline]
+    pub fn bind_vertex_buffers(&mut self) -> StateCacherVertexBuffers {
+        if self.poisonned_vertex_buffers {
+            self.vertex_buffers = SmallVec::new();
+        }
+
+        self.poisonned_vertex_buffers = true;
+
+        StateCacherVertexBuffers {
+            poisonned: &mut self.poisonned_vertex_buffers,
+            state: &mut self.vertex_buffers,
+            offset: 0,
+            first_diff: None,
+            last_diff: 0,
+        }
+    }
+
     /// Checks whether we need to bind an index buffer. Returns `StateCacherOutcome::AlreadyOk`
     /// if the index buffer was already bound earlier, and `StateCacherOutcome::NeedChange` if you
     /// need to actually bind the buffer.
@@ -192,8 +226,8 @@ impl StateCacher {
 
 /// Helper struct for comparing descriptor sets.
 ///
-/// > **Note**: For safety reasons, if you drop/leak this struct before calling `compare` then the
-/// > cache of the currently bound descriptor sets will be reset.
+/// > **Note**: For reliability reasons, if you drop/leak this struct before calling `compare` then
+/// > the cache of the currently bound descriptor sets will be reset.
 pub struct StateCacherDescriptorSets<'s> {
     // Reference to the parent's `poisonned_descriptor_sets`.
     poisonned: &'s mut bool,
@@ -215,6 +249,7 @@ impl<'s> StateCacherDescriptorSets<'s> {
 
         if self.offset < self.state.len() {
             if self.state[self.offset] == raw {
+                self.offset += 1;
                 return;
             }
 
@@ -227,6 +262,7 @@ impl<'s> StateCacherDescriptorSets<'s> {
         if self.found_diff.is_none() {
             self.found_diff = Some(self.offset as u32);
         }
+        self.offset += 1;
     }
 
     /// Compares your list to the list in cache, and returns the offset of the first set to bind.
@@ -236,15 +272,196 @@ impl<'s> StateCacherDescriptorSets<'s> {
     #[inline]
     pub fn compare(self) -> Option<u32> {
         *self.poisonned = false;
-
         // Removing from the cache any set that wasn't added with `add`.
+        self.state.truncate(self.offset);
+        self.found_diff
+    }
+}
+
+/// Helper struct for comparing vertex buffers.
+///
+/// > **Note**: For reliability reasons, if you drop/leak this struct before calling `compare` then
+/// > the cache of the currently bound vertex buffers will be reset.
+pub struct StateCacherVertexBuffers<'s> {
+    // Reference to the parent's `poisonned_vertex_buffers`.
+    poisonned: &'s mut bool,
+    // Reference to the vertex buffers list to compare to.
+    state: &'s mut SmallVec<[(vk::Buffer, vk::DeviceSize); 12]>,
+    // Next offset within the list to compare to.
+    offset: usize,
+    // Contains the offet of the first vertex buffer that differs.
+    first_diff: Option<u32>,
+    // Offset of the last vertex buffer that differs.
+    last_diff: u32,
+}
+
+impl<'s> StateCacherVertexBuffers<'s> {
+    /// Adds a vertex buffer to the list to compare.
+    #[inline]
+    pub fn add<B>(&mut self, buffer: &B)
+        where B: ?Sized + BufferAccess
+    {
+        let raw = {
+            let inner = buffer.inner();
+            let raw = inner.buffer.internal_object();
+            let offset = inner.offset as vk::DeviceSize;
+            (raw, offset)
+        };
+
         if self.offset < self.state.len() {
-            // TODO: SmallVec doesn't provide any method for this
-            for _ in self.offset .. self.state.len() {
-                self.state.remove(self.offset);
+            if self.state[self.offset] == raw {
+                self.offset += 1;
+                return;
             }
+
+            self.state[self.offset] = raw;
+
+        } else {
+            self.state.push(raw);
         }
 
-        self.found_diff
+        self.last_diff = self.offset as u32;
+        if self.first_diff.is_none() {
+            self.first_diff = Some(self.offset as u32);
+        }
+        self.offset += 1;
+    }
+
+    /// Compares your list to the list in cache, and returns the range of the vertex buffers to
+    /// bind. Returns `None` if the two lists were identical.
+    ///
+    /// After this function returns, the cache will be updated to match your list.
+    ///
+    /// > **Note**: Keep in mind that `range.end` is *after* the last element. For example the
+    /// > range `1 .. 2` only contains one element.
+    #[inline]
+    pub fn compare(self) -> Option<Range<u32>> {
+        *self.poisonned = false;
+
+        // Removing from the cache any set that wasn't added with `add`.
+        self.state.truncate(self.offset);
+
+        self.first_diff.map(|first| {
+                                debug_assert!(first <= self.last_diff);
+                                first .. (self.last_diff + 1)
+                            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use buffer::BufferUsage;
+    use buffer::CpuAccessibleBuffer;
+    use command_buffer::state_cacher::StateCacher;
+
+    #[test]
+    fn vb_caching_single() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+        let buf =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), EMPTY.iter())
+                .unwrap();
+
+        let mut cacher = StateCacher::new();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+
+        for _ in 0 .. 3 {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), None);
+        }
+    }
+
+    #[test]
+    fn vb_caching_invalidated() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+        let buf =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), EMPTY.iter())
+                .unwrap();
+
+        let mut cacher = StateCacher::new();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), None);
+        }
+
+        cacher.invalidate();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
+    }
+
+    #[test]
+    fn vb_caching_multi() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        const EMPTY: [i32; 0] = [];
+        let buf1 = CpuAccessibleBuffer::from_data(device.clone(),
+                                                  BufferUsage::vertex_buffer(),
+                                                  EMPTY.iter())
+            .unwrap();
+        let buf2 = CpuAccessibleBuffer::from_data(device.clone(),
+                                                  BufferUsage::vertex_buffer(),
+                                                  EMPTY.iter())
+            .unwrap();
+        let buf3 =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), EMPTY.iter())
+                .unwrap();
+
+        let mut cacher = StateCacher::new();
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            bind_vb.add(&buf2);
+            assert_eq!(bind_vb.compare(), Some(0 .. 2));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            bind_vb.add(&buf2);
+            bind_vb.add(&buf3);
+            assert_eq!(bind_vb.compare(), Some(2 .. 3));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            assert_eq!(bind_vb.compare(), None);
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf1);
+            bind_vb.add(&buf3);
+            assert_eq!(bind_vb.compare(), Some(1 .. 2));
+        }
+
+        {
+            let mut bind_vb = cacher.bind_vertex_buffers();
+            bind_vb.add(&buf2);
+            bind_vb.add(&buf3);
+            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+        }
     }
 }

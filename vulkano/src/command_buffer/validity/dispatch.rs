@@ -14,13 +14,16 @@ use device::Device;
 
 /// Checks whether the dispatch dimensions are supported by the device.
 pub fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), CheckDispatchError> {
-    let max = device.physical_device().limits().max_compute_work_group_count();
+    let max = device
+        .physical_device()
+        .limits()
+        .max_compute_work_group_count();
 
     if dimensions[0] > max[0] || dimensions[1] > max[1] || dimensions[2] > max[2] {
         return Err(CheckDispatchError::UnsupportedDimensions {
-            requested: dimensions,
-            max_supported: max,
-        });
+                       requested: dimensions,
+                       max_supported: max,
+                   });
     }
 
     Ok(())
@@ -67,7 +70,11 @@ mod tests {
         let attempted = [u32::max_value(), u32::max_value(), u32::max_value()];
 
         // Just in case the device is some kind of software implementation.
-        if device.physical_device().limits().max_compute_work_group_count() == attempted {
+        if device
+            .physical_device()
+            .limits()
+            .max_compute_work_group_count() == attempted
+        {
             return;
         }
 
@@ -75,7 +82,7 @@ mod tests {
             Err(validity::CheckDispatchError::UnsupportedDimensions { requested, .. }) => {
                 assert_eq!(requested, attempted);
             },
-            _ => panic!()
+            _ => panic!(),
         }
     }
 }

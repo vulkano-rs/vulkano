@@ -20,12 +20,11 @@ use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
-use pipeline::shader::ComputeShaderEntryPoint;
+use pipeline::shader::EntryPointAbstract;
 use pipeline::shader::SpecializationConstants;
 
 use Error;
@@ -56,11 +55,11 @@ struct Inner {
 
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Css, Csl>(
-        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css)
-        -> Result<ComputePipeline<PipelineLayout<Csl>>, ComputePipelineCreationError>
-        where Csl: PipelineLayoutDescNames + Clone,
-              Css: SpecializationConstants
+    pub fn new<Cs>(
+        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants)
+        -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
+        where Cs::PipelineLayout: Clone,
+              Cs: EntryPointAbstract
     {
         unsafe {
             let pipeline_layout = shader.layout().clone().build(device.clone())?;
@@ -77,12 +76,12 @@ impl<Pl> ComputePipeline<Pl> {
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
     /// uses.
-    pub fn with_pipeline_layout<Css, Csl>(
-        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css,
-        pipeline_layout: Pl)
-        -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
-        where Csl: PipelineLayoutDescNames + Clone,
-              Css: SpecializationConstants,
+    pub fn with_pipeline_layout<Cs>(device: Arc<Device>, shader: &Cs,
+                                    specialization: &Cs::SpecializationConstants,
+                                    pipeline_layout: Pl)
+                                    -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+        where Cs::PipelineLayout: Clone,
+              Cs: EntryPointAbstract,
               Pl: PipelineLayoutAbstract
     {
         unsafe {
@@ -96,23 +95,23 @@ impl<Pl> ComputePipeline<Pl> {
 
     /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
     /// superset of what the shader expects.
-    pub unsafe fn with_unchecked_pipeline_layout<Css, Csl>(
-        device: Arc<Device>, shader: &ComputeShaderEntryPoint<Css, Csl>, specialization: &Css,
+    pub unsafe fn with_unchecked_pipeline_layout<Cs>(
+        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl)
         -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
-        where Csl: PipelineLayoutDescNames + Clone,
-              Css: SpecializationConstants,
+        where Cs::PipelineLayout: Clone,
+              Cs: EntryPointAbstract,
               Pl: PipelineLayoutAbstract
     {
         let vk = device.pointers();
 
         let pipeline = {
-            let spec_descriptors = <Css as SpecializationConstants>::descriptors();
+            let spec_descriptors = Cs::SpecializationConstants::descriptors();
             let specialization = vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
                 dataSize: mem::size_of_val(specialization),
-                pData: specialization as *const Css as *const _,
+                pData: specialization as *const Cs::SpecializationConstants as *const _,
             };
 
             let stage = vk::PipelineShaderStageCreateInfo {
@@ -262,15 +261,6 @@ unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl>
     }
 }
 
-unsafe impl<Pl> PipelineLayoutDescNames for ComputePipeline<Pl>
-    where Pl: PipelineLayoutDescNames
-{
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        self.pipeline_layout.descriptor_by_name(name)
-    }
-}
-
 unsafe impl<Pl> DeviceOwned for ComputePipeline<Pl> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -376,6 +366,627 @@ impl From<Error> for ComputePipelineCreationError {
 
 #[cfg(test)]
 mod tests {
+    use buffer::BufferUsage;
+    use buffer::CpuAccessibleBuffer;
+    use command_buffer::AutoCommandBufferBuilder;
+    use descriptor::descriptor::DescriptorBufferDesc;
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::descriptor::DescriptorDescTy;
+    use descriptor::descriptor::ShaderStages;
+    use descriptor::descriptor_set::PersistentDescriptorSet;
+    use descriptor::pipeline_layout::PipelineLayoutDesc;
+    use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+    use pipeline::ComputePipeline;
+    use pipeline::shader::ShaderModule;
+    use pipeline::shader::SpecializationConstants;
+    use pipeline::shader::SpecializationMapEntry;
+    use std::ffi::CStr;
+    use std::sync::Arc;
+    use sync::GpuFuture;
+    use sync::now;
+
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
+
+    #[test]
+    fn spec_constants() {
+        // This test checks whether specialization constants work.
+        // It executes a single compute shader (one invocation) that writes the value of a spec.
+        // constant to a buffer. The buffer content is then checked for the right value.
+
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let module = unsafe {
+            /*
+            #version 450
+
+            layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+
+            layout(constant_id = 83) const int VALUE = 0xdeadbeef;
+
+            layout(set = 0, binding = 0) buffer Output {
+                int write;
+            } write;
+
+            void main() {
+                write.write = VALUE;
+            }
+            */
+            const MODULE: [u8; 480] = [
+                3,
+                2,
+                35,
+                7,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                8,
+                0,
+                14,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                17,
+                0,
+                2,
+                0,
+                1,
+                0,
+                0,
+                0,
+                11,
+                0,
+                6,
+                0,
+                1,
+                0,
+                0,
+                0,
+                71,
+                76,
+                83,
+                76,
+                46,
+                115,
+                116,
+                100,
+                46,
+                52,
+                53,
+                48,
+                0,
+                0,
+                0,
+                0,
+                14,
+                0,
+                3,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                15,
+                0,
+                5,
+                0,
+                5,
+                0,
+                0,
+                0,
+                4,
+                0,
+                0,
+                0,
+                109,
+                97,
+                105,
+                110,
+                0,
+                0,
+                0,
+                0,
+                16,
+                0,
+                6,
+                0,
+                4,
+                0,
+                0,
+                0,
+                17,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                3,
+                0,
+                3,
+                0,
+                2,
+                0,
+                0,
+                0,
+                194,
+                1,
+                0,
+                0,
+                5,
+                0,
+                4,
+                0,
+                4,
+                0,
+                0,
+                0,
+                109,
+                97,
+                105,
+                110,
+                0,
+                0,
+                0,
+                0,
+                5,
+                0,
+                4,
+                0,
+                7,
+                0,
+                0,
+                0,
+                79,
+                117,
+                116,
+                112,
+                117,
+                116,
+                0,
+                0,
+                6,
+                0,
+                5,
+                0,
+                7,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                119,
+                114,
+                105,
+                116,
+                101,
+                0,
+                0,
+                0,
+                5,
+                0,
+                4,
+                0,
+                9,
+                0,
+                0,
+                0,
+                119,
+                114,
+                105,
+                116,
+                101,
+                0,
+                0,
+                0,
+                5,
+                0,
+                4,
+                0,
+                11,
+                0,
+                0,
+                0,
+                86,
+                65,
+                76,
+                85,
+                69,
+                0,
+                0,
+                0,
+                72,
+                0,
+                5,
+                0,
+                7,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                35,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                71,
+                0,
+                3,
+                0,
+                7,
+                0,
+                0,
+                0,
+                3,
+                0,
+                0,
+                0,
+                71,
+                0,
+                4,
+                0,
+                9,
+                0,
+                0,
+                0,
+                34,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                71,
+                0,
+                4,
+                0,
+                9,
+                0,
+                0,
+                0,
+                33,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                71,
+                0,
+                4,
+                0,
+                11,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                83,
+                0,
+                0,
+                0,
+                19,
+                0,
+                2,
+                0,
+                2,
+                0,
+                0,
+                0,
+                33,
+                0,
+                3,
+                0,
+                3,
+                0,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                21,
+                0,
+                4,
+                0,
+                6,
+                0,
+                0,
+                0,
+                32,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                30,
+                0,
+                3,
+                0,
+                7,
+                0,
+                0,
+                0,
+                6,
+                0,
+                0,
+                0,
+                32,
+                0,
+                4,
+                0,
+                8,
+                0,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                7,
+                0,
+                0,
+                0,
+                59,
+                0,
+                4,
+                0,
+                8,
+                0,
+                0,
+                0,
+                9,
+                0,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                43,
+                0,
+                4,
+                0,
+                6,
+                0,
+                0,
+                0,
+                10,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                50,
+                0,
+                4,
+                0,
+                6,
+                0,
+                0,
+                0,
+                11,
+                0,
+                0,
+                0,
+                239,
+                190,
+                173,
+                222,
+                32,
+                0,
+                4,
+                0,
+                12,
+                0,
+                0,
+                0,
+                2,
+                0,
+                0,
+                0,
+                6,
+                0,
+                0,
+                0,
+                54,
+                0,
+                5,
+                0,
+                2,
+                0,
+                0,
+                0,
+                4,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                3,
+                0,
+                0,
+                0,
+                248,
+                0,
+                2,
+                0,
+                5,
+                0,
+                0,
+                0,
+                65,
+                0,
+                5,
+                0,
+                12,
+                0,
+                0,
+                0,
+                13,
+                0,
+                0,
+                0,
+                9,
+                0,
+                0,
+                0,
+                10,
+                0,
+                0,
+                0,
+                62,
+                0,
+                3,
+                0,
+                13,
+                0,
+                0,
+                0,
+                11,
+                0,
+                0,
+                0,
+                253,
+                0,
+                1,
+                0,
+                56,
+                0,
+                1,
+                0,
+            ];
+            ShaderModule::new(device.clone(), &MODULE).unwrap()
+        };
+
+        let shader = unsafe {
+            #[derive(Debug, Copy, Clone)]
+            struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                fn num_sets(&self) -> usize {
+                    1
+                }
+                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                    match set {
+                        0 => Some(1),
+                        _ => None,
+                    }
+                }
+                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                    match (set, binding) {
+                        (0, 0) => Some(DescriptorDesc {
+                                           ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                                                                            dynamic: Some(false),
+                                                                            storage: true,
+                                                                        }),
+                                           array_count: 1,
+                                           stages: ShaderStages {
+                                               compute: true,
+                                               ..ShaderStages::none()
+                                           },
+                                           readonly: true,
+                                       }),
+                        _ => None,
+                    }
+                }
+                fn num_push_constants_ranges(&self) -> usize {
+                    0
+                }
+                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+                    None
+                }
+            }
+
+            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
+            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+        };
+
+        #[derive(Debug, Copy, Clone)]
+        #[allow(non_snake_case)]
+        #[repr(C)]
+        struct SpecConsts {
+            VALUE: i32,
+        }
+        unsafe impl SpecializationConstants for SpecConsts {
+            fn descriptors() -> &'static [SpecializationMapEntry] {
+                static DESCRIPTORS: [SpecializationMapEntry; 1] = [
+                    SpecializationMapEntry {
+                        constant_id: 83,
+                        offset: 0,
+                        size: 4,
+                    },
+                ];
+                &DESCRIPTORS
+            }
+        }
+
+        let pipeline = Arc::new(ComputePipeline::new(device.clone(),
+                                                     &shader,
+                                                     &SpecConsts { VALUE: 0x12345678 })
+                                    .unwrap());
+
+        let data_buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0)
+            .unwrap();
+        let set = PersistentDescriptorSet::start(pipeline.clone(), 0)
+            .add_buffer(data_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(),
+                                                                               queue.family())
+            .unwrap()
+            .dispatch([1, 1, 1], pipeline, set, ())
+            .unwrap()
+            .build()
+            .unwrap();
+
+        let future = now(device.clone())
+            .then_execute(queue.clone(), command_buffer)
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap();
+        future.wait(None).unwrap();
+
+        let data_buffer_content = data_buffer.read().unwrap();
+        assert_eq!(*data_buffer_content, 0x12345678);
+    }
 }

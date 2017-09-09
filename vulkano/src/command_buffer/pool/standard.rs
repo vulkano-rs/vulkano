@@ -31,6 +31,9 @@ use device::DeviceOwned;
 
 /// Standard implementation of a command pool.
 ///
+/// It is guaranteed that the allocated command buffers keep the `Arc<StandardCommandPool>` alive.
+/// This is desirable so that we can store a `Weak<StandardCommandPool>`.
+///
 /// Will use one Vulkan pool per thread in order to avoid locking. Will try to reuse command
 /// buffers. Command buffers can't be moved between threads during the building process, but
 /// finished command buffers can.
@@ -91,21 +94,9 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
         // Get an appropriate `Arc<StandardCommandPoolPerThread>`.
         let per_thread = match hashmap.entry(thread::current().id()) {
-            Entry::Occupied(mut entry) => {
-                if let Some(entry) = entry.get().upgrade() {
-                    entry
-                } else {
-                    let new_pool =
-                        UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
-                    let pt = Arc::new(StandardCommandPoolPerThread {
-                                          pool: Mutex::new(new_pool),
-                                          available_primary_command_buffers: MsQueue::new(),
-                                          available_secondary_command_buffers: MsQueue::new(),
-                                      });
-
-                    entry.insert(Arc::downgrade(&pt));
-                    pt
-                }
+            Entry::Occupied(entry) => {
+                // The `unwrap()` can't fail, since we retained only valid members earlier.
+                entry.get().upgrade().unwrap()
             },
             Entry::Vacant(entry) => {
                 let new_pool =
@@ -135,14 +126,15 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             for _ in 0 .. count as usize {
                 if let Some(cmd) = existing.try_pop() {
                     output.push(StandardCommandPoolBuilder {
-                        inner: StandardCommandPoolAlloc {
-                            cmd: Some(cmd),
-                            pool: per_thread.clone(),
-                            secondary: secondary,
-                            device: self.device.clone(),
-                        },
-                        dummy_avoid_send_sync: PhantomData,
-                    });
+                                    inner: StandardCommandPoolAlloc {
+                                        cmd: Some(cmd),
+                                        pool: per_thread.clone(),
+                                        pool_parent: self.clone(),
+                                        secondary: secondary,
+                                        device: self.device.clone(),
+                                    },
+                                    dummy_avoid_send_sync: PhantomData,
+                                });
                 } else {
                     break;
                 }
@@ -156,14 +148,15 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
             for cmd in pool_lock.alloc_command_buffers(secondary, num_new)? {
                 output.push(StandardCommandPoolBuilder {
-                    inner: StandardCommandPoolAlloc {
-                        cmd: Some(cmd),
-                        pool: per_thread.clone(),
-                        secondary: secondary,
-                        device: self.device.clone(),
-                    },
-                    dummy_avoid_send_sync: PhantomData,
-                });
+                                inner: StandardCommandPoolAlloc {
+                                    cmd: Some(cmd),
+                                    pool: per_thread.clone(),
+                                    pool_parent: self.clone(),
+                                    secondary: secondary,
+                                    device: self.device.clone(),
+                                },
+                                dummy_avoid_send_sync: PhantomData,
+                            });
             }
         }
 
@@ -228,6 +221,8 @@ pub struct StandardCommandPoolAlloc {
     cmd: Option<UnsafeCommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
     pool: Arc<StandardCommandPoolPerThread>,
+    // Keep alive the `StandardCommandPool`, otherwise it would be destroyed.
+    pool_parent: Arc<StandardCommandPool>,
     // True if secondary command buffer.
     secondary: bool,
     // The device we belong to. Necessary because of the `DeviceOwned` trait implementation.
@@ -279,10 +274,12 @@ impl Drop for StandardCommandPoolAlloc {
 
 #[cfg(test)]
 mod tests {
+    use VulkanObject;
     use command_buffer::pool::CommandPool;
     use command_buffer::pool::CommandPoolBuilderAlloc;
+    use command_buffer::pool::StandardCommandPool;
     use device::Device;
-    use VulkanObject;
+    use std::sync::Arc;
 
     #[test]
     fn reuse_command_buffers() {
@@ -297,5 +294,20 @@ mod tests {
 
         let cb2 = pool.alloc(false, 1).unwrap().next().unwrap();
         assert_eq!(raw, cb2.inner().internal_object());
+    }
+
+    #[test]
+    fn pool_kept_alive_by_allocs() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let pool = Arc::new(StandardCommandPool::new(device, queue.family()));
+        let pool_weak = Arc::downgrade(&pool);
+
+        let cb = pool.alloc(false, 1).unwrap().next().unwrap();
+        drop(pool);
+        assert!(pool_weak.upgrade().is_some());
+
+        drop(cb);
+        assert!(pool_weak.upgrade().is_none());
     }
 }

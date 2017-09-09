@@ -37,6 +37,7 @@
 /// State of the multisampling.
 ///
 /// See the documentation in this module.
+#[derive(Debug, Copy, Clone)]
 pub struct Multisample {
     pub rasterization_samples: u32,
     pub sample_mask: [u32; 4],

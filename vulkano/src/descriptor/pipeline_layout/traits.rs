@@ -21,12 +21,12 @@ use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::pipeline_layout::limits_check;
 use device::Device;
 use device::DeviceOwned;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
-// TODO: meh for PipelineLayoutDescNames ; the `Names` thing shouldn't be mandatory
-pub unsafe trait PipelineLayoutAbstract: PipelineLayoutDescNames + DeviceOwned {
+pub unsafe trait PipelineLayoutAbstract: PipelineLayoutDesc + DeviceOwned {
     /// Returns an opaque object that allows internal access to the pipeline layout.
     ///
     /// Can be obtained by calling `PipelineLayoutAbstract::sys()` on the pipeline layout.
@@ -75,7 +75,7 @@ pub unsafe trait PipelineLayoutDesc {
     /// If the `PipelineLayoutDesc` implementation is able to provide an existing
     /// `UnsafeDescriptorSetLayout` for a given set, it can do so by returning it here.
     #[inline]
-    fn provided_set_layout(&self, set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
+    fn provided_set_layout(&self, _set: usize) -> Option<Arc<UnsafeDescriptorSetLayout>> {
         None
     }
 
@@ -98,6 +98,13 @@ pub unsafe trait PipelineLayoutDesc {
         where Self: Sized
     {
         PipelineLayoutDescUnion::new(self, other)
+    }
+
+    /// Checks whether this description fulfills the device limits requirements.
+    #[inline]
+    fn check_against_limits(&self, device: &Device)
+                            -> Result<(), limits_check::PipelineLayoutLimitsError> {
+        limits_check::check_desc_against_limits(self, device.physical_device().limits())
     }
 
     /// Turns the layout description into a `PipelineLayout` object that can be used by Vulkan.
@@ -151,24 +158,6 @@ unsafe impl<T> PipelineLayoutDesc for T
     #[inline]
     fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
         (**self).push_constants_range(num)
-    }
-}
-
-/// Extension trait for `PipelineLayoutDesc`. Allows retreiving a descriptor by its name.
-pub unsafe trait PipelineLayoutDescNames: PipelineLayoutDesc {
-    /// Returns the set ID and descriptor ID within set of the descriptor with the given name.
-    ///
-    /// Returns `None` if the name was not found.
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)>;
-}
-
-unsafe impl<T> PipelineLayoutDescNames for T
-    where T: SafeDeref,
-          T::Target: PipelineLayoutDescNames
-{
-    #[inline]
-    fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {
-        (**self).descriptor_by_name(name)
     }
 }
 

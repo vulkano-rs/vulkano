@@ -135,18 +135,20 @@ impl UnsafeBuffer {
 
                 let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
                     Some(vk::MemoryDedicatedRequirementsKHR {
-                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-                        pNext: ptr::null(),
-                        prefersDedicatedAllocation: mem::uninitialized(),
-                        requiresDedicatedAllocation: mem::uninitialized(),
-                    })
+                             sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+                             pNext: ptr::null(),
+                             prefersDedicatedAllocation: mem::uninitialized(),
+                             requiresDedicatedAllocation: mem::uninitialized(),
+                         })
                 } else {
                     None
                 };
 
                 let mut output = vk::MemoryRequirements2KHR {
                     sType: vk::STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-                    pNext: output2.as_mut().map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
+                    pNext: output2
+                        .as_mut()
+                        .map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
                         .unwrap_or(ptr::null_mut()) as *mut _,
                     memoryRequirements: mem::uninitialized(),
                 };
@@ -416,8 +418,10 @@ impl From<Error> for BufferCreationError {
     #[inline]
     fn from(err: Error) -> BufferCreationError {
         match err {
-            err @ Error::OutOfHostMemory => BufferCreationError::AllocError(DeviceMemoryAllocError::from(err)),
-            err @ Error::OutOfDeviceMemory => BufferCreationError::AllocError(DeviceMemoryAllocError::from(err)),
+            err @ Error::OutOfHostMemory =>
+                BufferCreationError::AllocError(DeviceMemoryAllocError::from(err)),
+            err @ Error::OutOfDeviceMemory =>
+                BufferCreationError::AllocError(DeviceMemoryAllocError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -462,15 +466,16 @@ mod tests {
         };
 
         assert_should_panic!("Can't enable sparse residency without enabling sparse \
-                              binding as well", {
-            let _ = unsafe {
-                UnsafeBuffer::new(device,
-                                128,
-                                BufferUsage::all(),
-                                Sharing::Exclusive::<Empty<_>>,
-                                sparse)
-            };
-        });
+                              binding as well",
+                             {
+                                 let _ = unsafe {
+                                     UnsafeBuffer::new(device,
+                                                       128,
+                                                       BufferUsage::all(),
+                                                       Sharing::Exclusive::<Empty<_>>,
+                                                       sparse)
+                                 };
+                             });
     }
 
     #[test]
@@ -483,15 +488,16 @@ mod tests {
         };
 
         assert_should_panic!("Can't enable sparse aliasing without enabling sparse \
-                              binding as well", {
-            let _ = unsafe {
-                UnsafeBuffer::new(device,
-                                128,
-                                BufferUsage::all(),
-                                Sharing::Exclusive::<Empty<_>>,
-                                sparse)
-            };
-        });
+                              binding as well",
+                             {
+                                 let _ = unsafe {
+                                     UnsafeBuffer::new(device,
+                                                       128,
+                                                       BufferUsage::all(),
+                                                       Sharing::Exclusive::<Empty<_>>,
+                                                       sparse)
+                                 };
+                             });
     }
 
     #[test]

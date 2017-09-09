@@ -87,63 +87,66 @@ impl fmt::Display for CheckUpdateBufferError {
 
 #[cfg(test)]
 mod tests {
-    use std::iter;
+    use super::*;
     use buffer::BufferAccess;
     use buffer::BufferUsage;
     use buffer::CpuAccessibleBuffer;
-    use super::*;
 
     #[test]
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(),
-                                                    iter::once(queue.family()), 0u32).unwrap();
+        let buffer =
+            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(), 0u32)
+                .unwrap();
 
         match check_update_buffer(&device, &buffer, &0) {
             Err(CheckUpdateBufferError::BufferMissingUsage) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn data_too_large() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
-                                                    iter::once(queue.family()),
-                                                    0 .. 65536).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
+                                                    BufferUsage::transfer_destination(),
+                                                    0 .. 65536)
+            .unwrap();
         let data = (0 .. 65536).collect::<Vec<u32>>();
 
         match check_update_buffer(&device, &buffer, &data[..]) {
             Err(CheckUpdateBufferError::DataTooLarge) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn data_just_large_enough() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
-                                                    iter::once(queue.family()),
-                                                    (0 .. 100000).map(|_| 0)).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
+                                                    BufferUsage::transfer_destination(),
+                                                    (0 .. 100000).map(|_| 0))
+            .unwrap();
         let data = (0 .. 65536).map(|_| 0).collect::<Vec<u8>>();
 
         match check_update_buffer(&device, &buffer, &data[..]) {
             Ok(_) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
     #[test]
     fn wrong_alignment() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_destination(),
-                                                    iter::once(queue.family()),
-                                                    0 .. 100).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
+                                                    BufferUsage::transfer_destination(),
+                                                    0 .. 100)
+            .unwrap();
         let data = (0 .. 30).collect::<Vec<u8>>();
 
         match check_update_buffer(&device, &buffer.slice(1 .. 50).unwrap(), &data[..]) {
             Err(CheckUpdateBufferError::WrongAlignment) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -151,11 +154,10 @@ mod tests {
     fn wrong_device() {
         let (dev1, queue) = gfx_dev_and_queue!();
         let (dev2, _) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(),
-                                                    iter::once(queue.family()), 0u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), 0u32).unwrap();
 
         assert_should_panic!({
-            let _ = check_update_buffer(&dev2, &buffer, &0);
-        });
+                                 let _ = check_update_buffer(&dev2, &buffer, &0);
+                             });
     }
 }

@@ -26,7 +26,7 @@ pub fn check_copy_buffer<S, D, T>(device: &Device, source: &S, destination: &D)
                                   -> Result<CheckCopyBuffer, CheckCopyBufferError>
     where S: ?Sized + TypedBufferAccess<Content = T>,
           D: ?Sized + TypedBufferAccess<Content = T>,
-          T: ?Sized,
+          T: ?Sized
 {
     assert_eq!(source.inner().buffer.device().internal_object(),
                device.internal_object());
@@ -43,10 +43,10 @@ pub fn check_copy_buffer<S, D, T>(device: &Device, source: &S, destination: &D)
 
     let copy_size = cmp::min(source.size(), destination.size());
 
-    if source.conflicts_buffer(0, copy_size, &destination, 0, copy_size) {
+    if source.conflicts_buffer(&destination) {
         return Err(CheckCopyBufferError::OverlappingRanges);
     } else {
-        debug_assert!(!destination.conflicts_buffer(0, copy_size, &source, 0, copy_size));
+        debug_assert!(!destination.conflicts_buffer(&source));
     }
 
     Ok(CheckCopyBuffer { copy_size })

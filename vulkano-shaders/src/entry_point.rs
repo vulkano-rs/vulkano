@@ -54,92 +54,115 @@ pub fn write_entry_point(doc: &parse::Spirv, instruction: &parse::Instruction) -
                                     _ => false,
                                 });
 
-    let (ty, f_call) = match *execution {
-        enums::ExecutionModel::ExecutionModelVertex => {
-            let t = format!("::vulkano::pipeline::shader::VertexShaderEntryPoint<(), {0}Input, \
-                             {0}Output, Layout>",
-                            capitalized_ep_name);
-            let f = format!("vertex_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() \
-                             as *const _), {0}Input, {0}Output, Layout(ShaderStages {{ vertex: \
-                             true, .. ShaderStages::none() }}))",
-                            capitalized_ep_name);
-            (t, f)
-        },
+    let spec_consts_struct = if ::spec_consts::has_specialization_constants(doc) {
+        "SpecializationConstants"
+    } else {
+        "()"
+    };
 
-        enums::ExecutionModel::ExecutionModelTessellationControl => {
-            let t = format!("::vulkano::pipeline::shader::TessControlShaderEntryPoint<(), \
-                             {0}Input, {0}Output, Layout>",
-                            capitalized_ep_name);
-            let f = format!("tess_control_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.\
-                             as_ptr() as *const _), {0}Input, {0}Output, Layout(ShaderStages {{ \
-                             tessellation_control: true, .. ShaderStages::none() }}))",
-                            capitalized_ep_name);
-            (t, f)
-        },
+    let (ty, f_call) = {
+        if let enums::ExecutionModel::ExecutionModelGLCompute = *execution {
+            (format!("::vulkano::pipeline::shader::ComputeEntryPoint<{}, Layout>",
+                     spec_consts_struct),
+             format!("compute_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _), \
+                      Layout(ShaderStages {{ compute: true, .. ShaderStages::none() }}))"))
 
-        enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
-            let t = format!("::vulkano::pipeline::shader::TessEvaluationShaderEntryPoint<(), \
-                             {0}Input, {0}Output, Layout>",
-                            capitalized_ep_name);
-            let f = format!("tess_evaluation_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.\
-                             as_ptr() as *const _), {0}Input, {0}Output, Layout(ShaderStages {{ \
-                             tessellation_evaluation: true, .. ShaderStages::none() }}))",
-                            capitalized_ep_name);
-            (t, f)
-        },
+        } else {
+            let ty = match *execution {
+                enums::ExecutionModel::ExecutionModelVertex => {
+                    "::vulkano::pipeline::shader::GraphicsShaderType::Vertex".to_owned()
+                },
 
-        enums::ExecutionModel::ExecutionModelGeometry => {
-            let mut execution_mode = None;
-            
-            for instruction in doc.instructions.iter() {
-                if let &parse::Instruction::ExecutionMode { target_id, ref mode, .. } = instruction {
-                    if target_id != id {
-                        continue;
+                enums::ExecutionModel::ExecutionModelTessellationControl => {
+                    "::vulkano::pipeline::shader::GraphicsShaderType::TessellationControl"
+                        .to_owned()
+                },
+
+                enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
+                    "::vulkano::pipeline::shader::GraphicsShaderType::TessellationEvaluation"
+                        .to_owned()
+                },
+
+                enums::ExecutionModel::ExecutionModelGeometry => {
+                    let mut execution_mode = None;
+
+                    for instruction in doc.instructions.iter() {
+                        if let &parse::Instruction::ExecutionMode {
+                            target_id,
+                            ref mode,
+                            ..
+                        } = instruction
+                        {
+                            if target_id != id {
+                                continue;
+                            }
+                            execution_mode = match mode {
+                                &enums::ExecutionMode::ExecutionModeInputPoints => Some("Points"),
+                                &enums::ExecutionMode::ExecutionModeInputLines => Some("Lines"),
+                                &enums::ExecutionMode::ExecutionModeInputLinesAdjacency =>
+                                    Some("LinesWithAdjacency"),
+                                &enums::ExecutionMode::ExecutionModeTriangles => Some("Triangles"),
+                                &enums::ExecutionMode::ExecutionModeInputTrianglesAdjacency =>
+                                    Some("TrianglesWithAdjacency"),
+                                _ => continue,
+                            };
+                            break;
+                        }
                     }
-                    execution_mode = match mode {
-                        &enums::ExecutionMode::ExecutionModeInputPoints => Some("Points"),
-                        &enums::ExecutionMode::ExecutionModeInputLines => Some("Lines"),
-                        &enums::ExecutionMode::ExecutionModeInputLinesAdjacency => Some("LinesWithAdjacency"),
-                        &enums::ExecutionMode::ExecutionModeTriangles => Some("Triangles"),
-                        &enums::ExecutionMode::ExecutionModeInputTrianglesAdjacency => Some("TrianglesWithAdjacency"),
-                        _ => continue,
-                    };
-                    break;
-                }
-            }
 
-            let execution_mode = format!("::vulkano::pipeline::shader::GeometryShaderExecutionMode::{0}", execution_mode.unwrap());
-            
-            let t = format!("::vulkano::pipeline::shader::GeometryShaderEntryPoint<(), {0}Input, \
-                             {0}Output, Layout>",
+                    format!(
+                        "::vulkano::pipeline::shader::GraphicsShaderType::Geometry(
+                        \
+                         ::vulkano::pipeline::shader::GeometryShaderExecutionMode::{0}
+                    \
+                         )",
+                        execution_mode.unwrap()
+                    )
+                },
+
+                enums::ExecutionModel::ExecutionModelFragment => {
+                    "::vulkano::pipeline::shader::GraphicsShaderType::Fragment".to_owned()
+                },
+
+                enums::ExecutionModel::ExecutionModelGLCompute => {
+                    unreachable!()
+                },
+
+                enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
+            };
+
+            let stage = match *execution {
+                enums::ExecutionModel::ExecutionModelVertex => {
+                    "ShaderStages { vertex: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelTessellationControl => {
+                    "ShaderStages { tessellation_control: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelTessellationEvaluation => {
+                    "ShaderStages { tessellation_evaluation: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelGeometry => {
+                    "ShaderStages { geometry: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelFragment => {
+                    "ShaderStages { fragment: true, .. ShaderStages::none() }"
+                },
+                enums::ExecutionModel::ExecutionModelGLCompute => unreachable!(),
+                enums::ExecutionModel::ExecutionModelKernel => unreachable!(),
+            };
+
+            let t = format!("::vulkano::pipeline::shader::GraphicsEntryPoint<{0}, {1}Input, \
+                                {1}Output, Layout>",
+                            spec_consts_struct,
                             capitalized_ep_name);
-            let f = format!("geometry_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.\
-                             as_ptr() as *const _), {1}, {0}Input, {0}Output, Layout(ShaderStages {{ \
-                             geometry: true, .. ShaderStages::none() }}))",
+            let f = format!("graphics_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() \
+                                as *const _), {0}Input, {0}Output, Layout({2}), {1})",
                             capitalized_ep_name,
-                            execution_mode);
+                            ty,
+                            stage);
+
             (t, f)
-        },
-
-        enums::ExecutionModel::ExecutionModelFragment => {
-            let t = format!("::vulkano::pipeline::shader::FragmentShaderEntryPoint<(), {0}Input, \
-                             {0}Output, Layout>",
-                            capitalized_ep_name);
-            let f = format!("fragment_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.\
-                             as_ptr() as *const _), {0}Input, {0}Output, Layout(ShaderStages {{ \
-                             fragment: true, .. ShaderStages::none() }}))",
-                            capitalized_ep_name);
-            (t, f)
-        },
-
-        enums::ExecutionModel::ExecutionModelGLCompute => {
-            (format!("::vulkano::pipeline::shader::ComputeShaderEntryPoint<(), Layout>"),
-             format!("compute_shader_entry_point(::std::ffi::CStr::from_ptr(NAME.as_ptr() as \
-                      *const _), Layout(ShaderStages {{ compute: true, .. ShaderStages::none() \
-                      }}))"))
-        },
-
-        enums::ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
+        }
     };
 
     let entry_point = format!(

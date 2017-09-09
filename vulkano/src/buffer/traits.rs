@@ -18,7 +18,6 @@ use memory::Content;
 use sync::AccessError;
 
 use SafeDeref;
-use VulkanObject;
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
@@ -88,52 +87,30 @@ pub unsafe trait BufferAccess: DeviceOwned {
         self.slice(index .. (index + 1))
     }
 
-    /// Returns true if an access to `self` (as defined by `self_offset` and `self_size`)
-    /// potentially overlaps the same memory as an access to `other` (as defined by `other_offset`
-    /// and `other_size`).
+    /// Returns true if an access to `self` potentially overlaps the same memory as an access to
+    /// `other`.
     ///
-    /// If this function returns `false`, this means that we are allowed to access the offset/size
-    /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    ///
-    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
-    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
-                        other_offset: usize, other_size: usize)
-                        -> bool {
-        // TODO: should we really provide a default implementation?
-
-        debug_assert!(self_size <= self.size());
-
-        if self.inner().buffer.internal_object() != other.inner().buffer.internal_object() {
-            return false;
-        }
-
-        true
-    }
-
-    /// Returns true if an access to `self` (as defined by `self_offset` and `self_size`)
-    /// potentially overlaps the same memory as an access to `other` (as defined by
-    /// `other_first_layer`, `other_num_layers`, `other_first_mipmap` and `other_num_mipmaps`).
-    ///
-    /// If this function returns `false`, this means that we are allowed to access the offset/size
-    /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    /// If this function returns `false`, this means that we are allowed to mutably access the
+    /// content of `self` at the same time as the content of `other` without causing a data
+    /// race.
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, self_offset: usize, self_size: usize, other: &ImageAccess,
-                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32)
-                       -> bool {
-        let other_key = other.conflict_key(other_first_layer,
-                                           other_num_layers,
-                                           other_first_mipmap,
-                                           other_num_mipmaps);
-        self.conflict_key(self_offset, self_size) == other_key
-    }
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool;
 
-    /// Returns a key that uniquely identifies the range given by offset/size.
+    /// Returns true if an access to `self` potentially overlaps the same memory as an access to
+    /// `other`.
     ///
-    /// Two ranges that potentially overlap in memory should return the same key.
+    /// If this function returns `false`, this means that we are allowed to mutably access the
+    /// content of `self` at the same time as the content of `other` without causing a data
+    /// race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
+    fn conflicts_image(&self, other: &ImageAccess) -> bool;
+
+    /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
+    /// overlap in memory must return the same key.
     ///
     /// The key is shared amongst all buffers and images, which means that you can make several
     /// different buffer objects share the same memory, or make some buffer objects share memory
@@ -142,34 +119,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
-        // FIXME: remove implementation
-        unimplemented!()
-    }
-
-    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
-    #[inline]
-    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
-        self.conflicts_buffer(0, self.size(), other, 0, other.size())
-    }
-
-    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
-    #[inline]
-    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
-        self.conflicts_image(0,
-                             self.size(),
-                             other,
-                             0,
-                             other.dimensions().array_layers(),
-                             0,
-                             other.mipmap_levels())
-    }
-
-    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
-    #[inline]
-    fn conflict_key_all(&self) -> u64 {
-        self.conflict_key(0, self.size())
-    }
+    fn conflict_key(&self) -> u64;
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -224,15 +174,18 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn conflicts_buffer(&self, self_offset: usize, self_size: usize, other: &BufferAccess,
-                        other_offset: usize, other_size: usize)
-                        -> bool {
-        (**self).conflicts_buffer(self_offset, self_size, other, other_offset, other_size)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        (**self).conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflict_key(&self, self_offset: usize, self_size: usize) -> u64 {
-        (**self).conflict_key(self_offset, self_size)
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        (**self).conflicts_image(other)
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        (**self).conflict_key()
     }
 
     #[inline]

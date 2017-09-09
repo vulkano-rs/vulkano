@@ -11,107 +11,88 @@
 // to avoid duplicating code, so we hide the warnings for now
 #![allow(deprecated)]
 
-use descriptor::pipeline_layout::EmptyPipelineDesc;
+use smallvec::SmallVec;
+use std::mem;
+use std::ptr;
+use std::sync::Arc;
+use std::u32;
+
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use descriptor::pipeline_layout::PipelineLayoutDescNames;
 use device::Device;
 use framebuffer::RenderPassAbstract;
-use framebuffer::RenderPassSubpassInterface;
 use framebuffer::Subpass;
 use pipeline::blend::AttachmentBlend;
 use pipeline::blend::AttachmentsBlend;
 use pipeline::blend::Blend;
 use pipeline::blend::LogicOp;
+use pipeline::depth_stencil::Compare;
+use pipeline::depth_stencil::DepthBounds;
 use pipeline::depth_stencil::DepthStencil;
 use pipeline::graphics_pipeline::GraphicsPipeline;
 use pipeline::graphics_pipeline::GraphicsPipelineCreationError;
-use pipeline::graphics_pipeline::GraphicsPipelineParams;
-use pipeline::graphics_pipeline::GraphicsPipelineParamsTess;
+use pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::input_assembly::PrimitiveTopology;
 use pipeline::multisample::Multisample;
 use pipeline::raster::CullMode;
+use pipeline::raster::DepthBiasControl;
 use pipeline::raster::FrontFace;
 use pipeline::raster::PolygonMode;
 use pipeline::raster::Rasterization;
-use pipeline::shader::EmptyShaderInterfaceDef;
-use pipeline::shader::FragmentShaderEntryPoint;
-use pipeline::shader::GeometryShaderEntryPoint;
-use pipeline::shader::ShaderInterfaceDef;
+use pipeline::shader::EmptyEntryPointDummy;
+use pipeline::shader::GraphicsEntryPointAbstract;
+use pipeline::shader::GraphicsShaderType;
 use pipeline::shader::ShaderInterfaceDefMatch;
-use pipeline::shader::TessControlShaderEntryPoint;
-use pipeline::shader::TessEvaluationShaderEntryPoint;
-use pipeline::shader::VertexShaderEntryPoint;
+use pipeline::shader::SpecializationConstants;
 use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::ViewportsState;
-use std::sync::Arc;
+
+use VulkanObject;
+use check_errors;
+use descriptor::pipeline_layout::PipelineLayoutDesc;
+use descriptor::pipeline_layout::PipelineLayoutSuperset;
+use framebuffer::RenderPassSubpassInterface;
+use vk;
 
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
-pub struct GraphicsPipelineBuilder<'a,
- Vdef,
- Vsp,
- Vi,
- Vo,
- Vl,
- Tcs,
- Tci,
- Tco,
- Tcl,
- Tes,
- Tei,
- Teo,
- Tel,
- Gs,
- Gi,
- Go,
- Gl,
- Fs,
- Fi,
- Fo,
- Fl,
- Rp>
-{
+pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
     vertex_input: Vdef,
-    vertex_shader: Option<VertexShaderEntryPoint<'a, Vsp, Vi, Vo, Vl>>,
+    vertex_shader: Option<(Vs, Vss)>,
     input_assembly: InputAssembly,
-    tessellation: Option<GraphicsPipelineParamsTess<'a, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel>>,
-    geometry_shader: Option<GeometryShaderEntryPoint<'a, Gs, Gi, Go, Gl>>,
+    tessellation: Option<TessInfo<Tcs, Tcss, Tes, Tess>>,
+    geometry_shader: Option<(Gs, Gss)>,
     viewport: Option<ViewportsState>,
     raster: Rasterization,
     multisample: Multisample,
-    fragment_shader: Option<FragmentShaderEntryPoint<'a, Fs, Fi, Fo, Fl>>,
+    fragment_shader: Option<(Fs, Fss)>,
     depth_stencil: DepthStencil,
     blend: Blend,
     render_pass: Option<Subpass<Rp>>,
 }
 
-impl<'a>
-    GraphicsPipelineBuilder<'a,
-                            SingleBufferDefinition<()>,
+// Additional parameters if tessellation is used.
+#[derive(Copy, Clone)]
+struct TessInfo<Tcs, Tcss, Tes, Tess> {
+    tessellation_control_shader: (Tcs, Tcss),
+    tessellation_evaluation_shader: (Tes, Tess),
+}
+
+impl
+    GraphicsPipelineBuilder<SingleBufferDefinition<()>,
+                            EmptyEntryPointDummy,
                             (),
+                            EmptyEntryPointDummy,
                             (),
+                            EmptyEntryPointDummy,
                             (),
+                            EmptyEntryPointDummy,
                             (),
+                            EmptyEntryPointDummy,
                             (),
-                            EmptyShaderInterfaceDef,
-                            EmptyShaderInterfaceDef,
-                            EmptyPipelineDesc,
-                            (),
-                            EmptyShaderInterfaceDef,
-                            EmptyShaderInterfaceDef,
-                            EmptyPipelineDesc,
-                            (),
-                            EmptyShaderInterfaceDef,
-                            EmptyShaderInterfaceDef,
-                            EmptyPipelineDesc,
-                            (),
-                            EmptyShaderInterfaceDef,
-                            EmptyShaderInterfaceDef,
-                            EmptyPipelineDesc,
                             ()> {
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
@@ -132,187 +113,994 @@ impl<'a>
     }
 }
 
-impl<'a,
-     Vdef,
-     Vsp,
-     Vi,
-     Vo,
-     Vl,
-     Tcs,
-     Tci,
-     Tco,
-     Tcl,
-     Tes,
-     Tei,
-     Teo,
-     Tel,
-     Gs,
-     Gi,
-     Go,
-     Gl,
-     Fs,
-     Fi,
-     Fo,
-     Fl,
-     Rp>
-    GraphicsPipelineBuilder<'a,
-                            Vdef,
-                            Vsp,
-                            Vi,
-                            Vo,
-                            Vl,
-                            Tcs,
-                            Tci,
-                            Tco,
-                            Tcl,
-                            Tes,
-                            Tei,
-                            Teo,
-                            Tel,
-                            Gs,
-                            Gi,
-                            Go,
-                            Gl,
-                            Fs,
-                            Fi,
-                            Fo,
-                            Fl,
-                            Rp>
-    where Vdef: VertexDefinition<Vi>,
-          Vl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Fl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Tcl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Tel: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Gl: PipelineLayoutDescNames + Clone + 'static + Send + Sync, // TODO: Clone + 'static + Send + Sync shouldn't be required
-          Tci: ShaderInterfaceDefMatch<Vo>,
-          Tei: ShaderInterfaceDefMatch<Tco>,
-          Gi: ShaderInterfaceDefMatch<Teo> + ShaderInterfaceDefMatch<Vo>,
-          Vo: ShaderInterfaceDef,
-          Tco: ShaderInterfaceDef,
-          Teo: ShaderInterfaceDef,
-          Go: ShaderInterfaceDef,
-          Fi: ShaderInterfaceDefMatch<Go>
-                  + ShaderInterfaceDefMatch<Teo>
-                  + ShaderInterfaceDefMatch<Vo>,
-          Fo: ShaderInterfaceDef,
-          Rp: RenderPassAbstract + RenderPassSubpassInterface<Fo>
+impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+    where Vdef: VertexDefinition<Vs::InputDefinition>,
+          Vs: GraphicsEntryPointAbstract,
+          Fs: GraphicsEntryPointAbstract,
+          Gs: GraphicsEntryPointAbstract,
+          Tcs: GraphicsEntryPointAbstract,
+          Tes: GraphicsEntryPointAbstract,
+          Vss: SpecializationConstants,
+          Tcss: SpecializationConstants,
+          Tess: SpecializationConstants,
+          Gss: SpecializationConstants,
+          Fss: SpecializationConstants,
+          Vs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+          Fs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+          Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+          Tes::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+          Gs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+          Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+          Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
+          Gs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition>
+                                   + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+          Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition>
+                                   + ShaderInterfaceDefMatch<Tes::OutputDefinition>
+                                   + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+          Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>
 {
     /// Builds the graphics pipeline.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
-    pub fn build(self, device: Arc<Device>)
+    pub fn build(mut self, device: Arc<Device>)
                  -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
                            GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
-        GraphicsPipeline::with_tessellation_and_geometry(device,
-                                                         GraphicsPipelineParams {
-                                                             vertex_input: self.vertex_input,
-                                                             vertex_shader:
-                                                                 self.vertex_shader
-                                                                     .expect("Vertex shader not \
-                                                                              specified in the \
-                                                                              builder"),
-                                                             input_assembly: self.input_assembly,
-                                                             tessellation: self.tessellation,
-                                                             geometry_shader: self.geometry_shader,
-                                                             viewport:
-                                                                 self.viewport
-                                                                     .expect("Viewport state not \
-                                                                              specified in the \
-                                                                              builder"),
-                                                             raster: self.raster,
-                                                             multisample: self.multisample,
-                                                             fragment_shader:
-                                                                 self.fragment_shader
-                                                                     .expect("Fragment shader not \
-                                                                              specified in the \
-                                                                              builder"),
-                                                             depth_stencil: self.depth_stencil,
-                                                             blend: self.blend,
-                                                             render_pass:
-                                                                 self.render_pass
-                                                                     .expect("Render pass not \
-                                                                              specified in the \
-                                                                              builder"),
-                                                         })
+
+        let vk = device.pointers();
+
+        let pipeline_layout;
+
+        if let Some(ref tess) = self.tessellation {
+            if let Some(ref gs) = self.geometry_shader {
+                if let Err(err) = tess.tessellation_control_shader
+                    .0
+                    .input()
+                    .matches(self.vertex_shader.as_ref().unwrap().0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                }
+                if let Err(err) = tess.tessellation_evaluation_shader
+                    .0
+                    .input()
+                    .matches(tess.tessellation_control_shader.0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                }
+                if let Err(err) = gs.0
+                    .input()
+                    .matches(tess.tessellation_evaluation_shader.0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(err));
+                }
+                if let Err(err) = self.fragment_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .input()
+                    .matches(gs.0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+                }
+
+                pipeline_layout = Box::new(self.vertex_shader.as_ref().unwrap().0.layout().clone()
+                    .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                    .union(self.tessellation.as_ref().unwrap().tessellation_control_shader.0.layout().clone())    // FIXME: unwrap()
+                    .union(self.tessellation.as_ref().unwrap().tessellation_evaluation_shader.0.layout().clone())    // FIXME: unwrap()
+                    .union(self.geometry_shader.as_ref().unwrap().0.layout().clone())    // FIXME: unwrap()
+                    .build(device.clone()).unwrap()) as Box<_>; // TODO: error
+
+            } else {
+                if let Err(err) = tess.tessellation_control_shader
+                    .0
+                    .input()
+                    .matches(self.vertex_shader.as_ref().unwrap().0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                }
+                if let Err(err) = tess.tessellation_evaluation_shader
+                    .0
+                    .input()
+                    .matches(tess.tessellation_control_shader.0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                }
+                if let Err(err) = self.fragment_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .input()
+                    .matches(tess.tessellation_evaluation_shader.0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(err));
+                }
+
+                pipeline_layout = Box::new(self.vertex_shader.as_ref().unwrap().0.layout().clone()
+                    .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                    .union(self.tessellation.as_ref().unwrap().tessellation_control_shader.0.layout().clone())    // FIXME: unwrap()
+                    .union(self.tessellation.as_ref().unwrap().tessellation_evaluation_shader.0.layout().clone())    // FIXME: unwrap()
+                    .build(device.clone()).unwrap()) as Box<_>; // TODO: error
+            }
+
+        } else {
+            if let Some(ref geometry_shader) = self.geometry_shader {
+                if let Err(err) = geometry_shader
+                    .0
+                    .input()
+                    .matches(self.vertex_shader.as_ref().unwrap().0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::VertexGeometryStagesMismatch(err));
+                }
+                if let Err(err) = self.fragment_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .input()
+                    .matches(geometry_shader.0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
+                }
+
+                pipeline_layout = Box::new(self.vertex_shader.as_ref().unwrap().0.layout().clone()
+                    .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                    .union(self.geometry_shader.as_ref().unwrap().0.layout().clone())    // FIXME: unwrap()
+                    .build(device.clone()).unwrap()) as Box<_>; // TODO: error
+
+            } else {
+                if let Err(err) = self.fragment_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .input()
+                    .matches(self.vertex_shader.as_ref().unwrap().0.output())
+                {
+                    return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+                }
+
+                pipeline_layout =
+                    Box::new(self.vertex_shader
+                                 .as_ref()
+                                 .unwrap()
+                                 .0
+                                 .layout()
+                                 .clone()
+                                 .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                                 .build(device.clone())
+                                 .unwrap()) as Box<_>; // TODO: error
+            }
+        }
+
+        // Checking that the pipeline layout matches the shader stages.
+        // TODO: more details in the errors
+        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                   self.vertex_shader
+                                                       .as_ref()
+                                                       .unwrap()
+                                                       .0
+                                                       .layout())?;
+        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                   self.fragment_shader
+                                                       .as_ref()
+                                                       .unwrap()
+                                                       .0
+                                                       .layout())?;
+        if let Some(ref geometry_shader) = self.geometry_shader {
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                       geometry_shader.0.layout())?;
+        }
+        if let Some(ref tess) = self.tessellation {
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                       tess.tessellation_control_shader
+                                                           .0
+                                                           .layout())?;
+            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
+                                                       tess.tessellation_evaluation_shader
+                                                           .0
+                                                           .layout())?;
+        }
+
+        // Check that the subpass can accept the output of the fragment shader.
+        if !RenderPassSubpassInterface::is_compatible_with(&self.render_pass
+                                                               .as_ref()
+                                                               .unwrap()
+                                                               .render_pass(),
+                                                           self.render_pass
+                                                               .as_ref()
+                                                               .unwrap()
+                                                               .index(),
+                                                           self.fragment_shader
+                                                               .as_ref()
+                                                               .unwrap()
+                                                               .0
+                                                               .output())
+        {
+            return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
+        }
+
+        // Will contain the list of dynamic states. Filled throughout this function.
+        let mut dynamic_states: SmallVec<[vk::DynamicState; 8]> = SmallVec::new();
+
+        // Creating the specialization constants of the various stages.
+        let vertex_shader_specialization = {
+            let spec_descriptors = Vss::descriptors();
+            let constants = &self.vertex_shader.as_ref().unwrap().1;
+            vk::SpecializationInfo {
+                mapEntryCount: spec_descriptors.len() as u32,
+                pMapEntries: spec_descriptors.as_ptr() as *const _,
+                dataSize: mem::size_of_val(constants),
+                pData: constants as *const Vss as *const _,
+            }
+        };
+        let tess_shader_specialization = if let Some(ref tess) = self.tessellation {
+            let tcs_spec = {
+                let spec_descriptors = Tcss::descriptors();
+                let constants = &tess.tessellation_control_shader.1;
+                vk::SpecializationInfo {
+                    mapEntryCount: spec_descriptors.len() as u32,
+                    pMapEntries: spec_descriptors.as_ptr() as *const _,
+                    dataSize: mem::size_of_val(constants),
+                    pData: constants as *const Tcss as *const _,
+                }
+            };
+            let tes_spec = {
+                let spec_descriptors = Tess::descriptors();
+                let constants = &tess.tessellation_evaluation_shader.1;
+                vk::SpecializationInfo {
+                    mapEntryCount: spec_descriptors.len() as u32,
+                    pMapEntries: spec_descriptors.as_ptr() as *const _,
+                    dataSize: mem::size_of_val(constants),
+                    pData: constants as *const Tess as *const _,
+                }
+            };
+            Some((tcs_spec, tes_spec))
+        } else {
+            None
+        };
+        let geometry_shader_specialization = if let Some(ref gs) = self.geometry_shader {
+            let spec_descriptors = Gss::descriptors();
+            let constants = &gs.1;
+            Some(vk::SpecializationInfo {
+                     mapEntryCount: spec_descriptors.len() as u32,
+                     pMapEntries: spec_descriptors.as_ptr() as *const _,
+                     dataSize: mem::size_of_val(constants),
+                     pData: constants as *const Gss as *const _,
+                 })
+        } else {
+            None
+        };
+        let fragment_shader_specialization = {
+            let spec_descriptors = Fss::descriptors();
+            let constants = &self.fragment_shader.as_ref().unwrap().1;
+            vk::SpecializationInfo {
+                mapEntryCount: spec_descriptors.len() as u32,
+                pMapEntries: spec_descriptors.as_ptr() as *const _,
+                dataSize: mem::size_of_val(constants),
+                pData: constants as *const Fss as *const _,
+            }
+        };
+
+        // List of shader stages.
+        let stages = {
+            let mut stages = SmallVec::<[_; 5]>::new();
+
+            match self.vertex_shader.as_ref().unwrap().0.ty() {
+                GraphicsShaderType::Vertex => {},
+                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+            };
+
+            stages.push(vk::PipelineShaderStageCreateInfo {
+                            sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                            pNext: ptr::null(),
+                            flags: 0, // reserved
+                            stage: vk::SHADER_STAGE_VERTEX_BIT,
+                            module: self.vertex_shader
+                                .as_ref()
+                                .unwrap()
+                                .0
+                                .module()
+                                .internal_object(),
+                            pName: self.vertex_shader.as_ref().unwrap().0.name().as_ptr(),
+                            pSpecializationInfo: &vertex_shader_specialization as *const _,
+                        });
+
+            match self.fragment_shader.as_ref().unwrap().0.ty() {
+                GraphicsShaderType::Fragment => {},
+                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+            };
+
+            stages.push(vk::PipelineShaderStageCreateInfo {
+                            sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                            pNext: ptr::null(),
+                            flags: 0, // reserved
+                            stage: vk::SHADER_STAGE_FRAGMENT_BIT,
+                            module: self.fragment_shader
+                                .as_ref()
+                                .unwrap()
+                                .0
+                                .module()
+                                .internal_object(),
+                            pName: self.fragment_shader.as_ref().unwrap().0.name().as_ptr(),
+                            pSpecializationInfo: &fragment_shader_specialization as *const _,
+                        });
+
+            if let Some(ref gs) = self.geometry_shader {
+                if !device.enabled_features().geometry_shader {
+                    return Err(GraphicsPipelineCreationError::GeometryShaderFeatureNotEnabled);
+                }
+
+                stages.push(vk::PipelineShaderStageCreateInfo {
+                                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                                pNext: ptr::null(),
+                                flags: 0, // reserved
+                                stage: vk::SHADER_STAGE_GEOMETRY_BIT,
+                                module: gs.0.module().internal_object(),
+                                pName: gs.0.name().as_ptr(),
+                                pSpecializationInfo: geometry_shader_specialization
+                                    .as_ref()
+                                    .unwrap() as
+                                    *const _,
+                            });
+            }
+
+            if let Some(ref tess) = self.tessellation {
+                // FIXME: must check that the control shader and evaluation shader are compatible
+
+                if !device.enabled_features().tessellation_shader {
+                    return Err(GraphicsPipelineCreationError::TessellationShaderFeatureNotEnabled);
+                }
+
+                match tess.tessellation_control_shader.0.ty() {
+                    GraphicsShaderType::TessellationControl => {},
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                };
+
+                match tess.tessellation_evaluation_shader.0.ty() {
+                    GraphicsShaderType::TessellationControl => {},
+                    _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+                };
+
+                stages.push(vk::PipelineShaderStageCreateInfo {
+                                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                                pNext: ptr::null(),
+                                flags: 0, // reserved
+                                stage: vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                                module: tess.tessellation_control_shader
+                                    .0
+                                    .module()
+                                    .internal_object(),
+                                pName: tess.tessellation_control_shader.0.name().as_ptr(),
+                                pSpecializationInfo: &tess_shader_specialization
+                                    .as_ref()
+                                    .unwrap()
+                                    .0 as
+                                    *const _,
+                            });
+
+                stages.push(vk::PipelineShaderStageCreateInfo {
+                                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                                pNext: ptr::null(),
+                                flags: 0, // reserved
+                                stage: vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                                module: tess.tessellation_evaluation_shader
+                                    .0
+                                    .module()
+                                    .internal_object(),
+                                pName: tess.tessellation_evaluation_shader.0.name().as_ptr(),
+                                pSpecializationInfo: &tess_shader_specialization
+                                    .as_ref()
+                                    .unwrap()
+                                    .1 as
+                                    *const _,
+                            });
+            }
+
+            stages
+        };
+
+        // Vertex bindings.
+        let (binding_descriptions, attribute_descriptions) = {
+            let (buffers_iter, attribs_iter) =
+                self.vertex_input
+                    .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
+
+            let mut binding_descriptions = SmallVec::<[_; 8]>::new();
+            for (num, stride, rate) in buffers_iter {
+                if stride >
+                    device
+                        .physical_device()
+                        .limits()
+                        .max_vertex_input_binding_stride() as usize
+                {
+                    return Err(GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
+                        binding: num as usize,
+                        max: device.physical_device().limits().max_vertex_input_binding_stride() as usize,
+                        obtained: stride,
+                    });
+                }
+
+                binding_descriptions.push(vk::VertexInputBindingDescription {
+                                              binding: num as u32,
+                                              stride: stride as u32,
+                                              inputRate: rate as u32,
+                                          });
+            }
+
+            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
+            for (loc, binding, info) in attribs_iter {
+                // TODO: check attribute format support
+
+                if info.offset >
+                    device
+                        .physical_device()
+                        .limits()
+                        .max_vertex_input_attribute_offset() as usize
+                {
+                    return Err(GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                        max: device.physical_device().limits().max_vertex_input_attribute_offset() as usize,
+                        obtained: info.offset,
+                    });
+                }
+
+                debug_assert!(binding_descriptions
+                                  .iter()
+                                  .find(|b| b.binding == binding)
+                                  .is_some());
+
+                attribute_descriptions.push(vk::VertexInputAttributeDescription {
+                                                location: loc as u32,
+                                                binding: binding as u32,
+                                                format: info.format as u32,
+                                                offset: info.offset as u32,
+                                            });
+            }
+
+            (binding_descriptions, attribute_descriptions)
+        };
+
+        if binding_descriptions.len() >
+            device
+                .physical_device()
+                .limits()
+                .max_vertex_input_bindings() as usize
+        {
+            return Err(GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                           max: device
+                               .physical_device()
+                               .limits()
+                               .max_vertex_input_bindings() as
+                               usize,
+                           obtained: binding_descriptions.len(),
+                       });
+        }
+
+        if attribute_descriptions.len() >
+            device
+                .physical_device()
+                .limits()
+                .max_vertex_input_attributes() as usize
+        {
+            return Err(GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
+                           max: device
+                               .physical_device()
+                               .limits()
+                               .max_vertex_input_attributes() as
+                               usize,
+                           obtained: attribute_descriptions.len(),
+                       });
+        }
+
+        let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0, // reserved
+            vertexBindingDescriptionCount: binding_descriptions.len() as u32,
+            pVertexBindingDescriptions: binding_descriptions.as_ptr(),
+            vertexAttributeDescriptionCount: attribute_descriptions.len() as u32,
+            pVertexAttributeDescriptions: attribute_descriptions.as_ptr(),
+        };
+
+        if self.input_assembly.primitive_restart_enable &&
+            !self.input_assembly.topology.supports_primitive_restart()
+        {
+            return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
+                           primitive: self.input_assembly.topology,
+                       });
+        }
+
+        // TODO: should check from the tess eval shader instead of the input assembly
+        if let Some(ref gs) = self.geometry_shader {
+            match gs.0.ty() {
+                GraphicsShaderType::Geometry(primitives) => {
+                    if !primitives.matches(self.input_assembly.topology) {
+                        return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
+                    }
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
+            }
+        }
+
+        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0, // reserved
+            topology: self.input_assembly.topology.into(),
+            primitiveRestartEnable: if self.input_assembly.primitive_restart_enable {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+        };
+
+        let tessellation = match self.input_assembly.topology {
+            PrimitiveTopology::PatchList { vertices_per_patch } => {
+                if self.tessellation.is_none() {
+                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
+                }
+                if vertices_per_patch >
+                    device
+                        .physical_device()
+                        .limits()
+                        .max_tessellation_patch_size()
+                {
+                    return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
+                }
+
+                Some(vk::PipelineTessellationStateCreateInfo {
+                         sType: vk::STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
+                         pNext: ptr::null(),
+                         flags: 0, // reserved,
+                         patchControlPoints: vertices_per_patch,
+                     })
+            },
+            _ => {
+                if self.tessellation.is_some() {
+                    return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
+                }
+
+                None
+            },
+        };
+
+        let (vp_vp, vp_sc, vp_num) = match *self.viewport.as_ref().unwrap() {
+            ViewportsState::Fixed { ref data } => (data.iter()
+                                                       .map(|e| e.0.clone().into_vulkan_viewport())
+                                                       .collect::<SmallVec<[vk::Viewport; 4]>>(),
+                                                   data.iter()
+                                                       .map(|e| e.1.clone().into_vulkan_rect())
+                                                       .collect::<SmallVec<[vk::Rect2D; 4]>>(),
+                                                   data.len() as u32),
+            ViewportsState::DynamicViewports { ref scissors } => {
+                let num = scissors.len() as u32;
+                let scissors = scissors
+                    .iter()
+                    .map(|e| e.clone().into_vulkan_rect())
+                    .collect::<SmallVec<[vk::Rect2D; 4]>>();
+                dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
+                (SmallVec::new(), scissors, num)
+            },
+            ViewportsState::DynamicScissors { ref viewports } => {
+                let num = viewports.len() as u32;
+                let viewports = viewports
+                    .iter()
+                    .map(|e| e.clone().into_vulkan_viewport())
+                    .collect::<SmallVec<[vk::Viewport; 4]>>();
+                dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
+                (viewports, SmallVec::new(), num)
+            },
+            ViewportsState::Dynamic { num } => {
+                dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
+                dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
+                (SmallVec::new(), SmallVec::new(), num)
+            },
+        };
+
+        if vp_num > 1 && !device.enabled_features().multi_viewport {
+            return Err(GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled);
+        }
+
+        if vp_num > device.physical_device().limits().max_viewports() {
+            return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
+                           obtained: vp_num,
+                           max: device.physical_device().limits().max_viewports(),
+                       });
+        }
+
+        for vp in vp_vp.iter() {
+            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32 ||
+                vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32
+            {
+                return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
+            }
+
+            if vp.x < device.physical_device().limits().viewport_bounds_range()[0] ||
+                vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1] ||
+                vp.y < device.physical_device().limits().viewport_bounds_range()[0] ||
+                vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1]
+            {
+                return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
+            }
+        }
+
+        let viewport_info = vk::PipelineViewportStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0, // reserved
+            viewportCount: vp_num,
+            pViewports: if vp_vp.is_empty() {
+                ptr::null()
+            } else {
+                vp_vp.as_ptr()
+            }, // validation layer crashes if you just pass the pointer
+            scissorCount: vp_num,
+            pScissors: if vp_sc.is_empty() {
+                ptr::null()
+            } else {
+                vp_sc.as_ptr()
+            }, // validation layer crashes if you just pass the pointer
+        };
+
+        if let Some(line_width) = self.raster.line_width {
+            if line_width != 1.0 && !device.enabled_features().wide_lines {
+                return Err(GraphicsPipelineCreationError::WideLinesFeatureNotEnabled);
+            }
+        } else {
+            dynamic_states.push(vk::DYNAMIC_STATE_LINE_WIDTH);
+        }
+
+        let (db_enable, db_const, db_clamp, db_slope) = match self.raster.depth_bias {
+            DepthBiasControl::Dynamic => {
+                dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BIAS);
+                (vk::TRUE, 0.0, 0.0, 0.0)
+            },
+            DepthBiasControl::Disabled => {
+                (vk::FALSE, 0.0, 0.0, 0.0)
+            },
+            DepthBiasControl::Static(bias) => {
+                if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
+                    return Err(GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled);
+                }
+
+                (vk::TRUE, bias.constant_factor, bias.clamp, bias.slope_factor)
+            },
+        };
+
+        if self.raster.depth_clamp && !device.enabled_features().depth_clamp {
+            return Err(GraphicsPipelineCreationError::DepthClampFeatureNotEnabled);
+        }
+
+        if self.raster.polygon_mode != PolygonMode::Fill &&
+            !device.enabled_features().fill_mode_non_solid
+        {
+            return Err(GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled);
+        }
+
+        let rasterization = vk::PipelineRasterizationStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0, // reserved
+            depthClampEnable: if self.raster.depth_clamp {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            rasterizerDiscardEnable: if self.raster.rasterizer_discard {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            polygonMode: self.raster.polygon_mode as u32,
+            cullMode: self.raster.cull_mode as u32,
+            frontFace: self.raster.front_face as u32,
+            depthBiasEnable: db_enable,
+            depthBiasConstantFactor: db_const,
+            depthBiasClamp: db_clamp,
+            depthBiasSlopeFactor: db_slope,
+            lineWidth: self.raster.line_width.unwrap_or(1.0),
+        };
+
+        assert!(self.multisample.rasterization_samples >= 1);
+        // FIXME: check that rasterization_samples is equal to what's in the renderpass
+        if let Some(s) = self.multisample.sample_shading {
+            assert!(s >= 0.0 && s <= 1.0);
+        }
+        let multisample = vk::PipelineMultisampleStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0, // reserved
+            rasterizationSamples: self.multisample.rasterization_samples,
+            sampleShadingEnable: if self.multisample.sample_shading.is_some() {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            minSampleShading: self.multisample.sample_shading.unwrap_or(1.0),
+            pSampleMask: ptr::null(), //self.multisample.sample_mask.as_ptr(),     // FIXME:
+            alphaToCoverageEnable: if self.multisample.alpha_to_coverage {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            alphaToOneEnable: if self.multisample.alpha_to_one {
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+        };
+
+        let depth_stencil = {
+            let db = match self.depth_stencil.depth_bounds_test {
+                DepthBounds::Disabled => (vk::FALSE, 0.0, 0.0),
+                DepthBounds::Fixed(ref range) => {
+                    if !device.enabled_features().depth_bounds {
+                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
+                    }
+
+                    (vk::TRUE, range.start, range.end)
+                },
+                DepthBounds::Dynamic => {
+                    if !device.enabled_features().depth_bounds {
+                        return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
+                    }
+
+                    dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BOUNDS);
+
+                    (vk::TRUE, 0.0, 1.0)
+                },
+            };
+
+            match (self.depth_stencil.stencil_front.compare_mask,
+                     self.depth_stencil.stencil_back.compare_mask) {
+                (Some(_), Some(_)) => (),
+                (None, None) => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_COMPARE_MASK);
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            match (self.depth_stencil.stencil_front.write_mask,
+                     self.depth_stencil.stencil_back.write_mask) {
+                (Some(_), Some(_)) => (),
+                (None, None) => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_WRITE_MASK);
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            match (self.depth_stencil.stencil_front.reference,
+                     self.depth_stencil.stencil_back.reference) {
+                (Some(_), Some(_)) => (),
+                (None, None) => {
+                    dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_REFERENCE);
+                },
+                _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
+            };
+
+            if self.depth_stencil.depth_write &&
+                !self.render_pass.as_ref().unwrap().has_writable_depth()
+            {
+                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+            }
+
+            if self.depth_stencil.depth_compare != Compare::Always &&
+                !self.render_pass.as_ref().unwrap().has_depth()
+            {
+                return Err(GraphicsPipelineCreationError::NoDepthAttachment);
+            }
+
+            if (!self.depth_stencil.stencil_front.always_keep() ||
+                    !self.depth_stencil.stencil_back.always_keep()) &&
+                !self.render_pass.as_ref().unwrap().has_stencil()
+            {
+                return Err(GraphicsPipelineCreationError::NoStencilAttachment);
+            }
+
+            // FIXME: stencil writability
+
+            vk::PipelineDepthStencilStateCreateInfo {
+                sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0, // reserved
+                depthTestEnable: if !self.depth_stencil.depth_write &&
+                    self.depth_stencil.depth_compare == Compare::Always
+                {
+                    vk::FALSE
+                } else {
+                    vk::TRUE
+                },
+                depthWriteEnable: if self.depth_stencil.depth_write {
+                    vk::TRUE
+                } else {
+                    vk::FALSE
+                },
+                depthCompareOp: self.depth_stencil.depth_compare as u32,
+                depthBoundsTestEnable: db.0,
+                stencilTestEnable: if self.depth_stencil.stencil_front.always_keep() &&
+                    self.depth_stencil.stencil_back.always_keep()
+                {
+                    vk::FALSE
+                } else {
+                    vk::TRUE
+                },
+                front: vk::StencilOpState {
+                    failOp: self.depth_stencil.stencil_front.fail_op as u32,
+                    passOp: self.depth_stencil.stencil_front.pass_op as u32,
+                    depthFailOp: self.depth_stencil.stencil_front.depth_fail_op as u32,
+                    compareOp: self.depth_stencil.stencil_front.compare as u32,
+                    compareMask: self.depth_stencil
+                        .stencil_front
+                        .compare_mask
+                        .unwrap_or(u32::MAX),
+                    writeMask: self.depth_stencil
+                        .stencil_front
+                        .write_mask
+                        .unwrap_or(u32::MAX),
+                    reference: self.depth_stencil.stencil_front.reference.unwrap_or(0),
+                },
+                back: vk::StencilOpState {
+                    failOp: self.depth_stencil.stencil_back.fail_op as u32,
+                    passOp: self.depth_stencil.stencil_back.pass_op as u32,
+                    depthFailOp: self.depth_stencil.stencil_back.depth_fail_op as u32,
+                    compareOp: self.depth_stencil.stencil_back.compare as u32,
+                    compareMask: self.depth_stencil
+                        .stencil_back
+                        .compare_mask
+                        .unwrap_or(u32::MAX),
+                    writeMask: self.depth_stencil
+                        .stencil_back
+                        .write_mask
+                        .unwrap_or(u32::MAX),
+                    reference: self.depth_stencil.stencil_back.reference.unwrap_or(0),
+                },
+                minDepthBounds: db.1,
+                maxDepthBounds: db.2,
+            }
+        };
+
+        let blend_atch: SmallVec<[vk::PipelineColorBlendAttachmentState; 8]> = {
+            let num_atch = self.render_pass.as_ref().unwrap().num_color_attachments();
+
+            match self.blend.attachments {
+                AttachmentsBlend::Collective(blend) => {
+                    (0 .. num_atch)
+                        .map(|_| blend.clone().into_vulkan_state())
+                        .collect()
+                },
+                AttachmentsBlend::Individual(blend) => {
+                    if blend.len() != num_atch as usize {
+                        return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+                    }
+
+                    if !device.enabled_features().independent_blend {
+                        return Err(GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled);
+                    }
+
+                    blend
+                        .iter()
+                        .map(|b| b.clone().into_vulkan_state())
+                        .collect()
+                },
+            }
+        };
+
+        let blend = vk::PipelineColorBlendStateCreateInfo {
+            sType: vk::STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO,
+            pNext: ptr::null(),
+            flags: 0, // reserved
+            logicOpEnable: if self.blend.logic_op.is_some() {
+                if !device.enabled_features().logic_op {
+                    return Err(GraphicsPipelineCreationError::LogicOpFeatureNotEnabled);
+                }
+                vk::TRUE
+            } else {
+                vk::FALSE
+            },
+            logicOp: self.blend.logic_op.unwrap_or(Default::default()) as u32,
+            attachmentCount: blend_atch.len() as u32,
+            pAttachments: blend_atch.as_ptr(),
+            blendConstants: if let Some(c) = self.blend.blend_constants {
+                c
+            } else {
+                dynamic_states.push(vk::DYNAMIC_STATE_BLEND_CONSTANTS);
+                [0.0, 0.0, 0.0, 0.0]
+            },
+        };
+
+        let dynamic_states = if !dynamic_states.is_empty() {
+            Some(vk::PipelineDynamicStateCreateInfo {
+                     sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+                     pNext: ptr::null(),
+                     flags: 0, // reserved
+                     dynamicStateCount: dynamic_states.len() as u32,
+                     pDynamicStates: dynamic_states.as_ptr(),
+                 })
+        } else {
+            None
+        };
+
+        let pipeline = unsafe {
+            let infos = vk::GraphicsPipelineCreateInfo {
+                sType: vk::STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0, // TODO: some flags are available but none are critical
+                stageCount: stages.len() as u32,
+                pStages: stages.as_ptr(),
+                pVertexInputState: &vertex_input_state,
+                pInputAssemblyState: &input_assembly,
+                pTessellationState: tessellation
+                    .as_ref()
+                    .map(|t| t as *const _)
+                    .unwrap_or(ptr::null()),
+                pViewportState: &viewport_info,
+                pRasterizationState: &rasterization,
+                pMultisampleState: &multisample,
+                pDepthStencilState: &depth_stencil,
+                pColorBlendState: &blend,
+                pDynamicState: dynamic_states
+                    .as_ref()
+                    .map(|s| s as *const _)
+                    .unwrap_or(ptr::null()),
+                layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
+                renderPass: self.render_pass
+                    .as_ref()
+                    .unwrap()
+                    .render_pass()
+                    .inner()
+                    .internal_object(),
+                subpass: self.render_pass.as_ref().unwrap().index(),
+                basePipelineHandle: 0, // TODO:
+                basePipelineIndex: -1, // TODO:
+            };
+
+            let mut output = mem::uninitialized();
+            check_errors(vk.CreateGraphicsPipelines(device.internal_object(),
+                                                    0,
+                                                    1,
+                                                    &infos,
+                                                    ptr::null(),
+                                                    &mut output))?;
+            output
+        };
+
+        let (render_pass, render_pass_subpass) = self.render_pass.take().unwrap().into();
+
+        Ok(GraphicsPipeline {
+               inner: GraphicsPipelineInner {
+                   device: device.clone(),
+                   pipeline: pipeline,
+               },
+               layout: pipeline_layout,
+
+               vertex_definition: self.vertex_input,
+
+               render_pass: render_pass,
+               render_pass_subpass: render_pass_subpass,
+
+               dynamic_line_width: self.raster.line_width.is_none(),
+               dynamic_viewport: self.viewport.as_ref().unwrap().dynamic_viewports(),
+               dynamic_scissor: self.viewport.as_ref().unwrap().dynamic_scissors(),
+               dynamic_depth_bias: self.raster.depth_bias.is_dynamic(),
+               dynamic_depth_bounds: self.depth_stencil.depth_bounds_test.is_dynamic(),
+               dynamic_stencil_compare_mask: self.depth_stencil.stencil_back.compare_mask.is_none(),
+               dynamic_stencil_write_mask: self.depth_stencil.stencil_back.write_mask.is_none(),
+               dynamic_stencil_reference: self.depth_stencil.stencil_back.reference.is_none(),
+               dynamic_blend_constants: self.blend.blend_constants.is_none(),
+
+               num_viewports: self.viewport.as_ref().unwrap().num_viewports(),
+           })
     }
 
     // TODO: add build_with_cache method
 }
 
-impl<'a,
-     Vdef,
-     Vsp,
-     Vi,
-     Vo,
-     Vl,
-     Tcs,
-     Tci,
-     Tco,
-     Tcl,
-     Tes,
-     Tei,
-     Teo,
-     Tel,
-     Gs,
-     Gi,
-     Go,
-     Gl,
-     Fs,
-     Fi,
-     Fo,
-     Fl,
-     Rp>
-    GraphicsPipelineBuilder<'a,
-                            Vdef,
-                            Vsp,
-                            Vi,
-                            Vo,
-                            Vl,
-                            Tcs,
-                            Tci,
-                            Tco,
-                            Tcl,
-                            Tes,
-                            Tei,
-                            Teo,
-                            Tel,
-                            Gs,
-                            Gi,
-                            Go,
-                            Gl,
-                            Fs,
-                            Fi,
-                            Fo,
-                            Fl,
-                            Rp> {
+impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
     // TODO: add pipeline derivate system
 
     /// Sets the vertex input.
     #[inline]
-    pub fn vertex_input<T>(self, vertex_input: T)
-                           -> GraphicsPipelineBuilder<'a,
-                                                      T,
-                                                      Vsp,
-                                                      Vi,
-                                                      Vo,
-                                                      Vl,
-                                                      Tcs,
-                                                      Tci,
-                                                      Tco,
-                                                      Tcl,
-                                                      Tes,
-                                                      Tei,
-                                                      Teo,
-                                                      Tel,
-                                                      Gs,
-                                                      Gi,
-                                                      Go,
-                                                      Gl,
-                                                      Fs,
-                                                      Fi,
-                                                      Fo,
-                                                      Fl,
-                                                      Rp> {
+    pub fn vertex_input<T>(
+        self, vertex_input: T)
+        -> GraphicsPipelineBuilder<T, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
         GraphicsPipelineBuilder {
             vertex_input: vertex_input,
             vertex_shader: self.vertex_shader,
@@ -335,28 +1123,17 @@ impl<'a,
     /// vertex.
     #[inline]
     pub fn vertex_input_single_buffer<V>(self)
-                                         -> GraphicsPipelineBuilder<'a,
-                                                                    SingleBufferDefinition<V>,
-                                                                    Vsp,
-                                                                    Vi,
-                                                                    Vo,
-                                                                    Vl,
+                                         -> GraphicsPipelineBuilder<SingleBufferDefinition<V>,
+                                                                    Vs,
+                                                                    Vss,
                                                                     Tcs,
-                                                                    Tci,
-                                                                    Tco,
-                                                                    Tcl,
+                                                                    Tcss,
                                                                     Tes,
-                                                                    Tei,
-                                                                    Teo,
-                                                                    Tel,
+                                                                    Tess,
                                                                     Gs,
-                                                                    Gi,
-                                                                    Go,
-                                                                    Gl,
+                                                                    Gss,
                                                                     Fs,
-                                                                    Fi,
-                                                                    Fo,
-                                                                    Fl,
+                                                                    Fss,
                                                                     Rp> {
         self.vertex_input(SingleBufferDefinition::<V>::new())
     }
@@ -364,35 +1141,15 @@ impl<'a,
     /// Sets the vertex shader to use.
     // TODO: correct specialization constants
     #[inline]
-    pub fn vertex_shader<Vi2, Vo2, Vl2>(self,
-                                        shader: VertexShaderEntryPoint<'a, (), Vi2, Vo2, Vl2>,
-                                        specialization_constants: ())
-                                        -> GraphicsPipelineBuilder<'a,
-                                                                   Vdef,
-                                                                   (),
-                                                                   Vi2,
-                                                                   Vo2,
-                                                                   Vl2,
-                                                                   Tcs,
-                                                                   Tci,
-                                                                   Tco,
-                                                                   Tcl,
-                                                                   Tes,
-                                                                   Tei,
-                                                                   Teo,
-                                                                   Tel,
-                                                                   Gs,
-                                                                   Gi,
-                                                                   Go,
-                                                                   Gl,
-                                                                   Fs,
-                                                                   Fi,
-                                                                   Fo,
-                                                                   Fl,
-                                                                   Rp> {
+    pub fn vertex_shader<Vs2, Vss2>(
+        self, shader: Vs2, specialization_constants: Vss2)
+        -> GraphicsPipelineBuilder<Vdef, Vs2, Vss2, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+        where Vs2: GraphicsEntryPointAbstract<SpecializationConstants = Vss2>,
+              Vss2: SpecializationConstants
+    {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
-            vertex_shader: Some(shader),
+            vertex_shader: Some((shader, specialization_constants)),
             input_assembly: self.input_assembly,
             tessellation: self.tessellation,
             geometry_shader: self.geometry_shader,
@@ -523,21 +1280,27 @@ impl<'a,
     /// Sets the tessellation shaders to use.
     // TODO: correct specialization constants
     #[inline]
-    pub fn tessellation_shaders<Tci2, Tco2, Tcl2, Tei2, Teo2, Tel2>(self,
-        tessellation_control_shader: TessControlShaderEntryPoint<'a, (), Tci2, Tco2, Tcl2>,
-        tessellation_control_shader_spec_constants: (),
-        tessellation_evaluation_shader: TessEvaluationShaderEntryPoint<'a, (), Tei2, Teo2, Tel2>,
-        tessellation_evaluation_shader_spec_constants: ())
-        -> GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, (), Tci2, Tco2,
-                                   Tcl2, (), Tei2, Teo2, Tel2, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
+    pub fn tessellation_shaders<Tcs2, Tcss2, Tes2, Tess2>(
+        self, tessellation_control_shader: Tcs2,
+        tessellation_control_shader_spec_constants: Tcss2, tessellation_evaluation_shader: Tes2,
+        tessellation_evaluation_shader_spec_constants: Tess2)
+        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs2, Tcss2, Tes2, Tess2, Gs, Gss, Fs, Fss, Rp>
+        where Tcs2: GraphicsEntryPointAbstract<SpecializationConstants = Tcss2>,
+              Tes2: GraphicsEntryPointAbstract<SpecializationConstants = Tess2>,
+              Tcss2: SpecializationConstants,
+              Tess2: SpecializationConstants
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
-            tessellation: Some(GraphicsPipelineParamsTess {
-                                   tessellation_control_shader: tessellation_control_shader,
-                                   tessellation_evaluation_shader: tessellation_evaluation_shader,
+            tessellation: Some(TessInfo {
+                                   tessellation_control_shader:
+                                       (tessellation_control_shader,
+                                        tessellation_control_shader_spec_constants),
+                                   tessellation_evaluation_shader:
+                                       (tessellation_evaluation_shader,
+                                        tessellation_evaluation_shader_spec_constants),
                                }),
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
@@ -560,38 +1323,18 @@ impl<'a,
     /// Sets the geometry shader to use.
     // TODO: correct specialization constants
     #[inline]
-    pub fn geometry_shader<Gi2, Go2, Gl2>(self,
-                                          shader: GeometryShaderEntryPoint<'a, (), Gi2, Go2, Gl2>,
-                                          specialization_constants: ())
-                                          -> GraphicsPipelineBuilder<'a,
-                                                                     Vdef,
-                                                                     Vsp,
-                                                                     Vi,
-                                                                     Vo,
-                                                                     Vl,
-                                                                     Tcs,
-                                                                     Tci,
-                                                                     Tco,
-                                                                     Tcl,
-                                                                     Tes,
-                                                                     Tei,
-                                                                     Teo,
-                                                                     Tel,
-                                                                     (),
-                                                                     Gi2,
-                                                                     Go2,
-                                                                     Gl2,
-                                                                     Fs,
-                                                                     Fi,
-                                                                     Fo,
-                                                                     Fl,
-                                                                     Rp> {
+    pub fn geometry_shader<Gs2, Gss2>(
+        self, shader: Gs2, specialization_constants: Gss2)
+        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs2, Gss2, Fs, Fss, Rp>
+        where Gs2: GraphicsEntryPointAbstract<SpecializationConstants = Gss2>,
+              Gss2: SpecializationConstants
+    {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             tessellation: self.tessellation,
-            geometry_shader: Some(shader),
+            geometry_shader: Some((shader, specialization_constants)),
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
@@ -782,32 +1525,12 @@ impl<'a,
     /// The fragment shader is run once for each pixel that is covered by each primitive.
     // TODO: correct specialization constants
     #[inline]
-    pub fn fragment_shader<Fi2, Fo2, Fl2>(self,
-                                          shader: FragmentShaderEntryPoint<'a, (), Fi2, Fo2, Fl2>,
-                                          specialization_constants: ())
-                                          -> GraphicsPipelineBuilder<'a,
-                                                                     Vdef,
-                                                                     Vsp,
-                                                                     Vi,
-                                                                     Vo,
-                                                                     Vl,
-                                                                     Tcs,
-                                                                     Tci,
-                                                                     Tco,
-                                                                     Tcl,
-                                                                     Tes,
-                                                                     Tei,
-                                                                     Teo,
-                                                                     Tel,
-                                                                     Gs,
-                                                                     Gi,
-                                                                     Go,
-                                                                     Gl,
-                                                                     (),
-                                                                     Fi2,
-                                                                     Fo2,
-                                                                     Fl2,
-                                                                     Rp> {
+    pub fn fragment_shader<Fs2, Fss2>(
+        self, shader: Fs2, specialization_constants: Fss2)
+        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs2, Fss2, Rp>
+        where Fs2: GraphicsEntryPointAbstract<SpecializationConstants = Fss2>,
+              Fss2: SpecializationConstants
+    {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
@@ -817,7 +1540,7 @@ impl<'a,
             viewport: self.viewport,
             raster: self.raster,
             multisample: self.multisample,
-            fragment_shader: Some(shader),
+            fragment_shader: Some((shader, specialization_constants)),
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: self.render_pass,
@@ -920,30 +1643,9 @@ impl<'a,
 
     /// Sets the render pass subpass to use.
     #[inline]
-    pub fn render_pass<Rp2>(self, subpass: Subpass<Rp2>)
-                            -> GraphicsPipelineBuilder<'a,
-                                                       Vdef,
-                                                       Vsp,
-                                                       Vi,
-                                                       Vo,
-                                                       Vl,
-                                                       Tcs,
-                                                       Tci,
-                                                       Tco,
-                                                       Tcl,
-                                                       Tes,
-                                                       Tei,
-                                                       Teo,
-                                                       Tel,
-                                                       Gs,
-                                                       Gi,
-                                                       Go,
-                                                       Gl,
-                                                       Fs,
-                                                       Fi,
-                                                       Fo,
-                                                       Fl,
-                                                       Rp2> {
+    pub fn render_pass<Rp2>(
+        self, subpass: Subpass<Rp2>)
+        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp2> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
@@ -961,35 +1663,35 @@ impl<'a,
     }
 }
 
-// TODO:
-/*impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
-     Fo, Fl, Rp> Copy for
-    GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                            Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    where Vdef: Copy, Rp: Copy
-{
-}
-
-impl<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo, Tel, Gs, Gi, Go, Gl, Fs, Fi,
-     Fo, Fl, Rp> Clone for
-    GraphicsPipelineBuilder<'a, Vdef, Vsp, Vi, Vo, Vl, Tcs, Tci, Tco, Tcl, Tes, Tei, Teo,
-                            Tel, Gs, Gi, Go, Gl, Fs, Fi, Fo, Fl, Rp>
-    where Vdef: Clone, Rp: Clone
+impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> Clone
+    for GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+    where Vdef: Clone,
+          Vs: Clone,
+          Vss: Clone,
+          Tcs: Clone,
+          Tcss: Clone,
+          Tes: Clone,
+          Tess: Clone,
+          Gs: Clone,
+          Gss: Clone,
+          Fs: Clone,
+          Fss: Clone,
+          Rp: Clone
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input.clone(),
-            vertex_shader: self.vertex_shader,
-            input_assembly: self.input_assembly,
-            tessellation: self.tessellation,
-            geometry_shader: self.geometry_shader,
-            viewport: self.viewport,
-            raster: self.raster,
-            multisample: self.multisample,
-            fragment_shader: self.fragment_shader,
-            depth_stencil: self.depth_stencil,
-            blend: self.blend,
-            render_pass: self.render_pass,
+            vertex_shader: self.vertex_shader.clone(),
+            input_assembly: self.input_assembly.clone(),
+            tessellation: self.tessellation.clone(),
+            geometry_shader: self.geometry_shader.clone(),
+            viewport: self.viewport.clone(),
+            raster: self.raster.clone(),
+            multisample: self.multisample.clone(),
+            fragment_shader: self.fragment_shader.clone(),
+            depth_stencil: self.depth_stencil.clone(),
+            blend: self.blend.clone(),
+            render_pass: self.render_pass.clone(),
         }
     }
-}*/
+}

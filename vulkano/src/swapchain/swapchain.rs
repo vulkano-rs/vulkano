@@ -37,6 +37,7 @@ use swapchain::CapabilitiesError;
 use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
 use swapchain::PresentMode;
+use swapchain::PresentRegion;
 use swapchain::Surface;
 use swapchain::SurfaceSwapchainLock;
 use swapchain::SurfaceTransform;
@@ -118,6 +119,38 @@ pub fn present<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index
         queue: queue,
         swapchain: swapchain,
         image_id: index,
+        present_region: None,
+        flushed: AtomicBool::new(false),
+        finished: AtomicBool::new(false),
+    }
+}
+
+/// Same as `swapchain::present`, except it allows specifying a present region.
+/// Areas outside the present region may be ignored by vulkan in order to optimize presentation.
+///
+/// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
+///
+/// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
+pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>,
+                              index: usize, present_region: PresentRegion)
+                              -> PresentFuture<F>
+    where F: GpuFuture
+{
+    assert!(index < swapchain.images.len());
+
+    // TODO: restore this check with a dummy ImageAccess implementation
+    /*let swapchain_image = me.images.lock().unwrap().get(index).unwrap().0.upgrade().unwrap();       // TODO: return error instead
+    // Normally if `check_image_access` returns false we're supposed to call the `gpu_access`
+    // function on the image instead. But since we know that this method on `SwapchainImage`
+    // always returns false anyway (by design), we don't need to do it.
+    assert!(before.check_image_access(&swapchain_image, ImageLayout::PresentSrc, true, &queue).is_ok());         // TODO: return error instead*/
+
+    PresentFuture {
+        previous: before,
+        queue: queue,
+        swapchain: swapchain,
+        image_id: index,
+        present_region: Some(present_region),
         flushed: AtomicBool::new(false),
         finished: AtomicBool::new(false),
     }
@@ -135,7 +168,7 @@ pub struct Swapchain {
     // The images of this swapchain.
     images: Vec<ImageEntry>,
 
-    // If true, that means we have used this swapchain to recreate a new swapchain. The current
+    // If true, that means we have tried to use this swapchain to recreate a new swapchain. The current
     // swapchain can no longer be used for anything except presenting already-acquired images.
     //
     // We use a `Mutex` instead of an `AtomicBool` because we want to keep that locked while
@@ -311,7 +344,21 @@ impl Swapchain {
         assert_ne!(usage, ImageUsage::none());
 
         if let Some(ref old_swapchain) = old_swapchain {
-            *old_swapchain.stale.lock().unwrap() = false;
+            let mut stale = old_swapchain.stale.lock().unwrap();
+
+            // The swapchain has already been used to create a new one.
+            if *stale {
+                return Err(SwapchainCreationError::OldSwapchainAlreadyUsed);
+            } else {
+                // According to the documentation of VkSwapchainCreateInfoKHR:
+                //
+                // > Upon calling vkCreateSwapchainKHR with a oldSwapchain that is not VK_NULL_HANDLE,
+                // > any images not acquired by the application may be freed by the implementation,
+                // > which may occur even if creation of the new swapchain fails.
+                //
+                // Therefore, we set stale to true and keep it to true even if the call to `vkCreateSwapchainKHR` below fails.
+                *stale = true;
+            }
         }
 
         let vk = device.pointers();
@@ -378,8 +425,7 @@ impl Swapchain {
 
         let images = image_handles
             .into_iter()
-            .enumerate()
-            .map(|(id, image)| unsafe {
+            .map(|image| unsafe {
                 let dims = ImageDimensions::Dim2d {
                     width: dimensions[0],
                     height: dimensions[1],
@@ -520,6 +566,12 @@ unsafe impl VulkanObject for Swapchain {
     }
 }
 
+unsafe impl DeviceOwned for Swapchain {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 impl fmt::Debug for Swapchain {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -555,6 +607,8 @@ pub enum SwapchainCreationError {
     MissingExtension,
     /// Surface mismatch between old and new swapchain.
     OldSwapchainSurfaceMismatch,
+    /// The old swapchain has already been used to recreate another one.
+    OldSwapchainAlreadyUsed,
     /// The requested number of swapchain images is not supported by the surface.
     UnsupportedMinImagesCount,
     /// The requested number of swapchain images is not supported by the surface.
@@ -599,6 +653,9 @@ impl error::Error for SwapchainCreationError {
             },
             SwapchainCreationError::OldSwapchainSurfaceMismatch => {
                 "surface mismatch between old and new swapchain"
+            },
+            SwapchainCreationError::OldSwapchainAlreadyUsed => {
+                "old swapchain has already been used to recreate a new one"
             },
             SwapchainCreationError::UnsupportedMinImagesCount => {
                 "the requested number of swapchain images is not supported by the surface"
@@ -656,13 +713,13 @@ impl From<Error> for SwapchainCreationError {
             err @ Error::OutOfDeviceMemory => {
                 SwapchainCreationError::OomError(OomError::from(err))
             },
-            err @ Error::DeviceLost => {
+            Error::DeviceLost => {
                 SwapchainCreationError::DeviceLost
             },
-            err @ Error::SurfaceLost => {
+            Error::SurfaceLost => {
                 SwapchainCreationError::SurfaceLost
             },
-            err @ Error::NativeWindowInUse => {
+            Error::NativeWindowInUse => {
                 SwapchainCreationError::NativeWindowInUse
             },
             _ => panic!("unexpected error: {:?}", err),
@@ -753,14 +810,13 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, _: &BufferAccess, _: bool, _: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
+    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, _: bool, _: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
@@ -798,7 +854,7 @@ impl Drop for SwapchainAcquireFuture {
     fn drop(&mut self) {
         if !*self.finished.get_mut() {
             if let Some(ref fence) = self.fence {
-                fence.wait(None).unwrap();     // TODO: handle error?
+                fence.wait(None).unwrap(); // TODO: handle error?
                 self.semaphore = None;
             }
 
@@ -807,9 +863,12 @@ impl Drop for SwapchainAcquireFuture {
             // validation layers about using a fence whose state hasn't been checked (even though
             // we know for sure that it must've been signalled).
             debug_assert!({
-                let dur = Some(Duration::new(0, 0));
-                self.fence.as_ref().map(|f| f.wait(dur).is_ok()).unwrap_or(true)
-            });
+                              let dur = Some(Duration::new(0, 0));
+                              self.fence
+                                  .as_ref()
+                                  .map(|f| f.wait(dur).is_ok())
+                                  .unwrap_or(true)
+                          });
         }
 
         // TODO: if this future is destroyed without being presented, then eventually acquiring
@@ -896,6 +955,7 @@ pub struct PresentFuture<P>
     queue: Arc<Queue>,
     swapchain: Arc<Swapchain>,
     image_id: usize,
+    present_region: Option<PresentRegion>,
     // True if `flush()` has been called on the future, which means that the present command has
     // been submitted.
     flushed: AtomicBool,
@@ -942,24 +1002,32 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
         Ok(match self.previous.build_submission()? {
                SubmitAnyBuilder::Empty => {
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::SemaphoresWait(sem) => {
                    let mut builder: SubmitPresentBuilder = sem.into();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::CommandBuffer(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::BindSparse(cb) => {
                    cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
                    let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain, self.image_id as u32);
+                   builder.add_swapchain(&self.swapchain,
+                                         self.image_id as u32,
+                                         self.present_region.as_ref());
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::QueuePresent(present) => {
@@ -1082,8 +1150,7 @@ pub struct AcquiredImage {
 ///   a new one.
 pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>,
                                      semaphore: Option<&Semaphore>, fence: Option<&Fence>)
-                                     -> Result<AcquiredImage, AcquireError>
-{
+                                     -> Result<AcquiredImage, AcquireError> {
     let vk = swapchain.device.pointers();
 
     let timeout_ns = if let Some(timeout) = timeout {
@@ -1096,12 +1163,13 @@ pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Dura
     };
 
     let mut out = mem::uninitialized();
-    let r = check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
-                                                swapchain.swapchain,
-                                                timeout_ns,
-                                                semaphore.map(|s| s.internal_object()).unwrap_or(0),
-                                                fence.map(|f| f.internal_object()).unwrap_or(0),
-                                                &mut out))?;
+    let r =
+        check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
+                                            swapchain.swapchain,
+                                            timeout_ns,
+                                            semaphore.map(|s| s.internal_object()).unwrap_or(0),
+                                            fence.map(|f| f.internal_object()).unwrap_or(0),
+                                            &mut out))?;
 
     let (id, suboptimal) = match r {
         Success::Success => (out as usize, false),

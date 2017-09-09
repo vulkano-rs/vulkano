@@ -104,17 +104,104 @@
 //!  - How the alpha of the final output will be interpreted.
 //!  - How to perform the cycling between images in regard to vsync.
 //!
-//! You can query the supported values of all these properties with `Surface::get_capabilities()`.
+//! You can query the supported values of all these properties with
+//! [`Surface::capabilities()]`](struct.Surface.html#method.capabilities).
 //!
 //! ## Creating a swapchain
 //!
 //! In order to create a swapchain, you will first have to enable the `VK_KHR_swapchain` extension
-//! on the device (and not on the instance like `VK_KHR_surface`).
+//! on the device (and not on the instance like `VK_KHR_surface`):
 //!
-//! Then, you should query the capabilities of the surface with `Surface::get_capabilities()` and
-//! choose which values you are going to use. Then, call `Swapchain::new`.
+//! ```no_run
+//! # use vulkano::instance::DeviceExtensions;
+//! let ext = DeviceExtensions {
+//!     khr_swapchain: true,
+//!     .. DeviceExtensions::none()
+//! };
+//! ```
 //!
-//! TODO: add example here
+//! Then, query the capabilities of the surface with
+//! [`Surface::capabilities()`](struct.Surface.html#method.capabilities)
+//! and choose which values you are going to use.
+//!
+//! ```no_run
+//! # use std::sync::Arc;
+//! # use vulkano::device::Device;
+//! # use vulkano::swapchain::Surface;
+//! # use std::cmp::{max, min};
+//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface>) -> Result<(), Box<std::error::Error>> {
+//! let caps = surface.capabilities(device.physical_device())?;
+//!
+//! // Use the current window size or some fixed resolution.
+//! let dimensions = caps.current_extent.unwrap_or([640, 480]);
+//!
+//! // Try to use double-buffering.
+//! let buffers_count = max(min(2, caps.min_image_count), caps.max_image_count.unwrap_or(2));
+//!
+//! // Preserve the current surface transform.
+//! let transform = caps.current_transform;
+//!
+//! // Use the first available format.
+//! let (format, color_space) = caps.supported_formats[0];
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Then, call [`Swapchain::new()`](struct.Swapchain.html#method.new).
+//!
+//! ```no_run
+//! # use std::sync::Arc;
+//! # use vulkano::device::{Device, Queue};
+//! # use vulkano::image::ImageUsage;
+//! # use vulkano::sync::SharingMode;
+//! # use vulkano::format::Format;
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha};
+//! # fn create_swapchain(
+//! #     device: Arc<Device>, surface: Arc<Surface>, present_queue: Arc<Queue>,
+//! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
+//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
+//! # ) -> Result<(), Box<std::error::Error>> {
+//! // The created swapchain will be used as a color attachment for rendering.
+//! let usage = ImageUsage {
+//!     color_attachment: true,
+//!     .. ImageUsage::none()
+//! };
+//!
+//! let sharing_mode = SharingMode::Exclusive(present_queue.family().id());
+//!
+//! // Create the swapchain and its buffers.
+//! let (swapchain, buffers) = Swapchain::new(
+//!     // Create the swapchain in this `device`'s memory.
+//!     device,
+//!     // The surface where the images will be presented.
+//!     surface,
+//!     // How many buffers to use in the swapchain.
+//!     buffers_count,
+//!     // The format of the images.
+//!     format,
+//!     // The size of each image.
+//!     dimensions,
+//!     // How many layers each image has.
+//!     1,
+//!     // What the images are going to be used for.
+//!     usage,
+//!     // Describes which queues will interact with the swapchain.
+//!     sharing_mode,
+//!     // What transformation to use with the surface.
+//!     surface_transform,
+//!     // How to handle the alpha channel.
+//!     composite_alpha,
+//!     // How to present images.
+//!     present_mode,
+//!     // Clip the parts of the buffer which aren't visible.
+//!     true,
+//!     // No previous swapchain.
+//!     None
+//! )?;
+//!
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! Creating a swapchain not only returns the swapchain object, but also all the images that belong
 //! to it.
@@ -204,11 +291,13 @@ pub use self::capabilities::SupportedPresentModesIter;
 pub use self::capabilities::SupportedSurfaceTransforms;
 pub use self::capabilities::SupportedSurfaceTransformsIter;
 pub use self::capabilities::SurfaceTransform;
+pub use self::present_region::PresentRegion;
+pub use self::present_region::RectangleLayer;
 pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
-pub use self::swapchain::AcquiredImage;
 pub use self::swapchain::AcquireError;
+pub use self::swapchain::AcquiredImage;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::SwapchainAcquireFuture;
@@ -216,9 +305,11 @@ pub use self::swapchain::SwapchainCreationError;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;
 pub use self::swapchain::present;
+pub use self::swapchain::present_incremental;
 
 mod capabilities;
 pub mod display;
+mod present_region;
 mod surface;
 mod swapchain;
 

@@ -244,7 +244,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let pipeline = PipelineCache::empty(device).unwrap();
         assert_should_panic!({
-            pipeline.merge(&[&pipeline]).unwrap();
-        });
+                                 pipeline.merge(&[&pipeline]).unwrap();
+                             });
     }
 }

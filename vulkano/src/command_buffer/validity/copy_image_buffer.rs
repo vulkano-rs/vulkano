@@ -41,7 +41,7 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
                                         -> Result<(), CheckCopyBufferImageError>
     where I: ?Sized + ImageAccess,
           B: ?Sized + TypedBufferAccess<Content = [P]>,
-          Format: AcceptsPixels<P>,     // TODO: use a trait on the image itself instead
+          Format: AcceptsPixels<P> // TODO: use a trait on the image itself instead
 {
     let buffer_inner = buffer.inner();
     let image_inner = image.inner();
@@ -74,14 +74,12 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
         return Err(CheckCopyBufferImageError::UnexpectedMultisampled);
     }
 
-    if image_mipmap >= image.mipmap_levels() {
-        return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
-    }
+    let image_dimensions = match image.dimensions().mipmap_dimensions(image_mipmap) {
+        Some(d) => d,
+        None => return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange),
+    };
 
-    // TODO: wrong because we don't take the mipmap level into account for the dimensions
-    let image_dimensions = image.dimensions();
-
-    if image_first_layer + image_num_layers >= image_dimensions.array_layers() {
+    if image_first_layer + image_num_layers > image_dimensions.array_layers() {
         return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
     }
 
@@ -99,8 +97,15 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
 
     image.format().ensure_accepts()?;
 
-    if image_dimensions.num_texels() as usize * image.format().rate() as usize >= buffer.len() {
-        return Err(CheckCopyBufferImageError::BufferTooSmall);
+    {
+        let num_texels = image_size[0] * image_size[1] * image_size[2] * image_num_layers;
+        let required_len = num_texels as usize * image.format().rate() as usize;
+        if required_len > buffer.len() {
+            return Err(CheckCopyBufferImageError::BufferTooSmall {
+                           required_len: required_len,
+                           actual_len: buffer.len(),
+                       });
+        }
     }
 
     // TODO: check memory overlap?
@@ -124,7 +129,12 @@ pub enum CheckCopyBufferImageError {
     /// The type of pixels in the buffer isn't compatible with the image format.
     WrongPixelType(IncompatiblePixelsType),
     /// The buffer is too small for the copy operation.
-    BufferTooSmall,
+    BufferTooSmall {
+        /// Required number of elements in the buffer.
+        required_len: usize,
+        /// Actual number of elements in the buffer.
+        actual_len: usize,
+    },
 }
 
 impl error::Error for CheckCopyBufferImageError {
@@ -149,7 +159,7 @@ impl error::Error for CheckCopyBufferImageError {
             CheckCopyBufferImageError::WrongPixelType(_) => {
                 "the type of pixels in the buffer isn't compatible with the image format"
             },
-            CheckCopyBufferImageError::BufferTooSmall => {
+            CheckCopyBufferImageError::BufferTooSmall { .. } => {
                 "the buffer is too small for the copy operation"
             },
         }
@@ -160,7 +170,7 @@ impl error::Error for CheckCopyBufferImageError {
             CheckCopyBufferImageError::WrongPixelType(ref err) => {
                 Some(err)
             },
-            _ => None
+            _ => None,
         }
     }
 }

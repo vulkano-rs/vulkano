@@ -8,11 +8,11 @@
 // according to those terms.
 
 use smallvec::SmallVec;
-use std::iter::Empty;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
+use buffer::BufferAccess;
 use device::Device;
 use device::Queue;
 use format::ClearValue;
@@ -30,10 +30,13 @@ use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
 use sync::AccessError;
 use sync::Sharing;
@@ -51,7 +54,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
     view: UnsafeImageView,
 
     // Memory used to back the image.
-    memory: A::Alloc,
+    memory: PotentialDedicatedAllocation<A::Alloc>,
 
     // Dimensions of the image view.
     dimensions: Dimensions,
@@ -68,6 +71,7 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
 
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
+    #[inline]
     pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
         where F: FormatDesc,
@@ -92,6 +96,16 @@ impl<F> StorageImage<F> {
             transient_attachment: false,
         };
 
+        StorageImage::with_usage(device, dimensions, format, usage, queue_families)
+    }
+
+    /// Same as `new`, but allows specifying the usage.
+    pub fn with_usage<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F,
+                             usage: ImageUsage, queue_families: I)
+                             -> Result<Arc<StorageImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>
+    {
         let queue_families = queue_families
             .into_iter()
             .map(|f| f.id())
@@ -110,30 +124,21 @@ impl<F> StorageImage<F> {
                              dimensions.to_image_dimensions(),
                              1,
                              1,
-                             Sharing::Exclusive::<Empty<u32>>,
+                             sharing,
                              false,
                              false)?
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
                                     AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
@@ -194,7 +199,17 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.image.key()
     }
 

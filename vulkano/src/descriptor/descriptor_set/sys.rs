@@ -35,7 +35,7 @@ use vk;
 /// A pool from which descriptor sets can be allocated.
 ///
 /// Since the destructor of `Alloc` must free the descriptor set, this trait is usually implemented
-/// on `Arc<T>` or `&'a T` and not `T` directly so that the `Alloc` object can hold the pool.
+/// on `Arc<T>` or `&'a T` and not `T` directly, so that the `Alloc` object can hold the pool.
 pub unsafe trait DescriptorPool: DeviceOwned {
     /// Object that represented an allocated descriptor set.
     ///
@@ -43,7 +43,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
     type Alloc: DescriptorPoolAlloc;
 
     /// Allocates a descriptor set.
-    fn alloc(&self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError>;
+    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError>;
 }
 
 /// An allocated descriptor set.
@@ -829,8 +829,7 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32,
-                                          view: &BufferView<F, B>)
+    pub fn uniform_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &BufferView<F, B>)
                                           -> DescriptorWrite
         where B: BufferAccess
     {
@@ -844,8 +843,7 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32,
-                                          view: &BufferView<F, B>)
+    pub fn storage_texel_buffer<'a, F, B>(binding: u32, array_element: u32, view: &BufferView<F, B>)
                                           -> DescriptorWrite
         where B: BufferAccess
     {
@@ -865,10 +863,20 @@ impl DescriptorWrite {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
 
-        debug_assert_eq!(offset % buffer.device().physical_device().limits()
-                            .min_uniform_buffer_offset_alignment() as usize, 0);
-        debug_assert!(size <= buffer.device().physical_device().limits()
-                            .max_uniform_buffer_range() as usize);
+        debug_assert_eq!(offset %
+                             buffer
+                                 .device()
+                                 .physical_device()
+                                 .limits()
+                                 .min_uniform_buffer_offset_alignment() as
+                                 usize,
+                         0);
+        debug_assert!(size <=
+                          buffer
+                              .device()
+                              .physical_device()
+                              .limits()
+                              .max_uniform_buffer_range() as usize);
 
         DescriptorWrite {
             binding: binding,
@@ -888,10 +896,20 @@ impl DescriptorWrite {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
 
-        debug_assert_eq!(offset % buffer.device().physical_device().limits()
-                            .min_storage_buffer_offset_alignment() as usize, 0);
-        debug_assert!(size <= buffer.device().physical_device().limits()
-                            .max_storage_buffer_range() as usize);
+        debug_assert_eq!(offset %
+                             buffer
+                                 .device()
+                                 .physical_device()
+                                 .limits()
+                                 .min_storage_buffer_offset_alignment() as
+                                 usize,
+                         0);
+        debug_assert!(size <=
+                          buffer
+                              .device()
+                              .physical_device()
+                              .limits()
+                              .max_storage_buffer_range() as usize);
 
         DescriptorWrite {
             binding: binding,
@@ -912,10 +930,20 @@ impl DescriptorWrite {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
 
-        debug_assert_eq!(offset % buffer.device().physical_device().limits()
-                            .min_uniform_buffer_offset_alignment() as usize, 0);
-        debug_assert!(size <= buffer.device().physical_device().limits()
-                            .max_uniform_buffer_range() as usize);
+        debug_assert_eq!(offset %
+                             buffer
+                                 .device()
+                                 .physical_device()
+                                 .limits()
+                                 .min_uniform_buffer_offset_alignment() as
+                                 usize,
+                         0);
+        debug_assert!(size <=
+                          buffer
+                              .device()
+                              .physical_device()
+                              .limits()
+                              .max_uniform_buffer_range() as usize);
 
         DescriptorWrite {
             binding: binding,
@@ -934,10 +962,20 @@ impl DescriptorWrite {
         let size = buffer.size();
         let BufferInner { buffer, offset } = buffer.inner();
 
-        debug_assert_eq!(offset % buffer.device().physical_device().limits()
-                            .min_storage_buffer_offset_alignment() as usize, 0);
-        debug_assert!(size <= buffer.device().physical_device().limits()
-                            .max_storage_buffer_range() as usize);
+        debug_assert_eq!(offset %
+                             buffer
+                                 .device()
+                                 .physical_device()
+                                 .limits()
+                                 .min_storage_buffer_offset_alignment() as
+                                 usize,
+                         0);
+        debug_assert!(size <=
+                          buffer
+                              .device()
+                              .physical_device()
+                              .limits()
+                              .max_storage_buffer_range() as usize);
 
         DescriptorWrite {
             binding: binding,
@@ -1084,13 +1122,14 @@ mod tests {
 
         assert_should_panic!("Tried to allocate from a pool with a set layout \
                               of a different device",
-        {
-            let mut pool = UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
+                             {
+                                 let mut pool =
+                                     UnsafeDescriptorPool::new(device2, &desc, 10, false).unwrap();
 
-            unsafe {
-                let _ = pool.alloc(iter::once(&set_layout));
-            }
-        });
+                                 unsafe {
+                                     let _ = pool.alloc(iter::once(&set_layout));
+                                 }
+                             });
     }
 
     #[test]

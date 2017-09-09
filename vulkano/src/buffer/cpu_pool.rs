@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
 use std::cmp;
 use std::iter;
 use std::marker::PhantomData;
@@ -29,13 +28,16 @@ use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use instance::QueueFamily;
+use image::ImageAccess;
+use memory::DedicatedAlloc;
+use memory::DeviceMemoryAllocError;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
-use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -45,9 +47,10 @@ use OomError;
 //       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
 //       a buffer is locked.
 
-/// Buffer from which "sub-buffers" can be individually allocated.
+/// Ring buffer from which "sub-buffers" can be individually allocated.
 ///
-/// This buffer is especially suitable when you want to upload or download some data at each frame.
+/// This buffer is especially suitable when you want to upload or download some data regularly
+/// (for example, at each frame for a video game).
 ///
 /// # Usage
 ///
@@ -56,12 +59,45 @@ use OomError;
 /// in size.
 ///
 /// Contrary to a `Vec`, elements automatically free themselves when they are dropped (ie. usually
-/// when they are no longer in use by the GPU).
+/// when you call `cleanup_finished()` on a future, or when you drop that future).
 ///
 /// # Arc-like
 ///
 /// The `CpuBufferPool` struct internally contains an `Arc`. You can clone the `CpuBufferPool` for
 /// a cheap cost, and all the clones will share the same underlying buffer.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::buffer::CpuBufferPool;
+/// use vulkano::command_buffer::AutoCommandBufferBuilder;
+/// use vulkano::command_buffer::CommandBuffer;
+/// use vulkano::sync::GpuFuture;
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// # let queue: std::sync::Arc<vulkano::device::Queue> = return;
+///
+/// // Create the ring buffer.
+/// let buffer = CpuBufferPool::upload(device.clone());
+///
+/// for n in 0 .. 25u32 {
+///     // Each loop grabs a new entry from that ring buffer and stores ` data` in it.
+///     let data: [f32; 4] = [1.0, 0.5, n as f32 / 24.0, 0.0];
+///     let sub_buffer = buffer.next(data).unwrap();
+///
+///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
+///     AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+///         .unwrap()
+///         // For the sake of the example we just call `update_buffer` on the buffer, even though
+///         // it is pointless to do that.
+///         .update_buffer(sub_buffer.clone(), [0.2, 0.3, 0.4, 0.5])
+///         .unwrap()
+///         .build().unwrap()
+///         .execute(queue.clone())
+///         .unwrap()
+///         .then_signal_fence_and_flush()
+///         .unwrap();
+/// }
+/// ```
 ///
 pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
     where A: MemoryPool
@@ -78,9 +114,6 @@ pub struct CpuBufferPool<T, A = Arc<StdMemoryPool>>
     // Buffer usage.
     usage: BufferUsage,
 
-    // Queue families allowed to access this buffer.
-    queue_families: SmallVec<[u32; 4]>,
-
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
 }
@@ -93,7 +126,7 @@ struct ActualBuffer<A>
     inner: UnsafeBuffer,
 
     // The memory held by the buffer.
-    memory: A::Alloc,
+    memory: PotentialDedicatedAllocation<A::Alloc>,
 
     // List of the chunks that are reserved.
     chunks_in_use: Mutex<Vec<ActualBufferChunk>>,
@@ -138,6 +171,7 @@ pub struct CpuBufferPoolChunk<T, A>
     align_offset: usize,
 
     // Size of the subbuffer in number of elements, as requested by the user.
+    // If this is 0, then no entry was added to `chunks_in_use`.
     requested_len: usize,
 
     // Necessary to make it compile.
@@ -157,15 +191,7 @@ pub struct CpuBufferPoolSubbuffer<T, A>
 impl<T> CpuBufferPool<T> {
     /// Builds a `CpuBufferPool`.
     #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> CpuBufferPool<T>
-        where I: IntoIterator<Item = QueueFamily<'a>>
-    {
-        let queue_families = queue_families
-            .into_iter()
-            .map(|f| f.id())
-            .collect::<SmallVec<[u32; 4]>>();
-
+    pub fn new(device: Arc<Device>, usage: BufferUsage) -> CpuBufferPool<T> {
         let pool = Device::standard_pool(&device);
 
         CpuBufferPool {
@@ -173,7 +199,6 @@ impl<T> CpuBufferPool<T> {
             pool: pool,
             current_buffer: Mutex::new(None),
             usage: usage.clone(),
-            queue_families: queue_families,
             marker: PhantomData,
         }
     }
@@ -184,7 +209,7 @@ impl<T> CpuBufferPool<T> {
     /// family accesses.
     #[inline]
     pub fn upload(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_source(), iter::empty())
+        CpuBufferPool::new(device, BufferUsage::transfer_source())
     }
 
     /// Builds a `CpuBufferPool` meant for simple downloads.
@@ -193,7 +218,34 @@ impl<T> CpuBufferPool<T> {
     /// family accesses.
     #[inline]
     pub fn download(device: Arc<Device>) -> CpuBufferPool<T> {
-        CpuBufferPool::new(device, BufferUsage::transfer_destination(), iter::empty())
+        CpuBufferPool::new(device, BufferUsage::transfer_destination())
+    }
+
+    /// Builds a `CpuBufferPool` meant for usage as a uniform buffer.
+    ///
+    /// Shortcut for a pool that can only be used as uniform buffer and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn uniform_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::uniform_buffer())
+    }
+
+    /// Builds a `CpuBufferPool` meant for usage as a vertex buffer.
+    ///
+    /// Shortcut for a pool that can only be used as vertex buffer and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn vertex_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::vertex_buffer())
+    }
+
+    /// Builds a `CpuBufferPool` meant for usage as a indirect buffer.
+    ///
+    /// Shortcut for a pool that can only be used as indirect buffer and with exclusive queue
+    /// family accesses.
+    #[inline]
+    pub fn indirect_buffer(device: Arc<Device>) -> CpuBufferPool<T> {
+        CpuBufferPool::new(device, BufferUsage::indirect_buffer())
     }
 }
 
@@ -234,10 +286,8 @@ impl<T, A> CpuBufferPool<T, A>
     /// > **Note**: You can think of it like a `Vec`. If you insert an element and the `Vec` is not
     /// > large enough, a new chunk of memory is automatically allocated.
     #[inline]
-    pub fn next(&self, data: T) -> CpuBufferPoolSubbuffer<T, A> {
-        CpuBufferPoolSubbuffer {
-            chunk: self.chunk(iter::once(data))
-        }
+    pub fn next(&self, data: T) -> Result<CpuBufferPoolSubbuffer<T, A>, DeviceMemoryAllocError> {
+        Ok(CpuBufferPoolSubbuffer { chunk: self.chunk(iter::once(data))? })
     }
 
     /// Grants access to a new subbuffer and puts `data` in it.
@@ -252,7 +302,7 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// Panicks if the length of the iterator didn't match the actual number of element.
     ///
-    pub fn chunk<I>(&self, data: I) -> CpuBufferPoolChunk<T, A>
+    pub fn chunk<I>(&self, data: I) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = T>,
               I::IntoIter: ExactSizeIterator
     {
@@ -261,20 +311,21 @@ impl<T, A> CpuBufferPool<T, A>
         let mut mutex = self.current_buffer.lock().unwrap();
 
         let data = match self.try_next_impl(&mut mutex, data) {
-            Ok(n) => return n,
+            Ok(n) => return Ok(n),
             Err(d) => d,
         };
 
         // TODO: choose the capacity better?
-        let next_capacity = data.len() * match *mutex {
-            Some(ref b) => b.capacity * 2,
-            None => 3,
-        };
+        let next_capacity = cmp::max(data.len(), 1) *
+            match *mutex {
+                Some(ref b) => b.capacity * 2,
+                None => 3,
+            };
 
-        self.reset_buf(&mut mutex, next_capacity).unwrap(); /* FIXME: propagate error */
+        self.reset_buf(&mut mutex, next_capacity)?;
 
         match self.try_next_impl(&mut mutex, data) {
-            Ok(n) => n,
+            Ok(n) => Ok(n),
             Err(_) => unreachable!(),
         }
     }
@@ -288,9 +339,9 @@ impl<T, A> CpuBufferPool<T, A>
     #[inline]
     pub fn try_next(&self, data: T) -> Option<CpuBufferPoolSubbuffer<T, A>> {
         let mut mutex = self.current_buffer.lock().unwrap();
-        self.try_next_impl(&mut mutex, iter::once(data)).map(|c| {
-            CpuBufferPoolSubbuffer { chunk: c }
-        }).ok()
+        self.try_next_impl(&mut mutex, iter::once(data))
+            .map(|c| CpuBufferPoolSubbuffer { chunk: c })
+            .ok()
     }
 
     // Creates a new buffer and sets it as current. The capacity is in number of elements.
@@ -301,21 +352,16 @@ impl<T, A> CpuBufferPool<T, A>
                  -> Result<(), DeviceMemoryAllocError> {
         unsafe {
             let (buffer, mem_reqs) = {
-                let sharing = if self.queue_families.len() >= 2 {
-                    Sharing::Concurrent(self.queue_families.iter().cloned())
-                } else {
-                    Sharing::Exclusive
-                };
-
                 let size_bytes = match mem::size_of::<T>().checked_mul(capacity) {
                     Some(s) => s,
-                    None => return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)),
+                    None =>
+                        return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)),
                 };
 
                 match UnsafeBuffer::new(self.device.clone(),
                                           size_bytes,
                                           self.usage,
-                                          sharing,
+                                          Sharing::Exclusive::<iter::Empty<_>>,
                                           SparseLevel::none()) {
                     Ok(b) => b,
                     Err(BufferCreationError::AllocError(err)) => return Err(err),
@@ -324,32 +370,23 @@ impl<T, A> CpuBufferPool<T, A>
                 }
             };
 
-            let mem_ty = self.device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_host_visible())
-                .next()
-                .unwrap(); // Vk specs guarantee that this can't fail
-
-            let mem = MemoryPool::alloc(&self.pool,
-                                        mem_ty,
-                                        mem_reqs.size,
-                                        mem_reqs.alignment,
+            let mem = MemoryPool::alloc_from_requirements(&self.pool,
+                                        &mem_reqs,
                                         AllocLayout::Linear,
-                                        MappingRequirement::Map)?;
+                                        MappingRequirement::Map,
+                                        DedicatedAlloc::Buffer(&buffer),
+                                        |_| AllocFromRequirementsFilter::Allowed)?;
             debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
             debug_assert!(mem.mapped_memory().is_some());
             buffer.bind_memory(mem.memory(), mem.offset())?;
 
-            **cur_buf_mutex =
-                Some(Arc::new(ActualBuffer {
-                                  inner: buffer,
-                                  memory: mem,
-                                  chunks_in_use: Mutex::new(vec![]),
-                                  next_index: AtomicUsize::new(0),
-                                  capacity: capacity,
-                              }));
+            **cur_buf_mutex = Some(Arc::new(ActualBuffer {
+                                                inner: buffer,
+                                                memory: mem,
+                                                chunks_in_use: Mutex::new(vec![]),
+                                                next_index: AtomicUsize::new(0),
+                                                capacity: capacity,
+                                            }));
 
             Ok(())
         }
@@ -366,7 +403,8 @@ impl<T, A> CpuBufferPool<T, A>
     // Panicks if the length of the iterator didn't match the actual number of element.
     //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
-                        data: I) -> Result<CpuBufferPoolChunk<T, A>, I>
+                        mut data: I)
+                        -> Result<CpuBufferPoolChunk<T, A>, I>
         where I: ExactSizeIterator<Item = T>
     {
         // Grab the current buffer. Return `Err` if the pool wasn't "initialized" yet.
@@ -376,9 +414,25 @@ impl<T, A> CpuBufferPool<T, A>
         };
 
         let mut chunks_in_use = current_buffer.chunks_in_use.lock().unwrap();
+        debug_assert!(!chunks_in_use.iter().any(|c| c.len == 0));
 
         // Number of elements requested by the user.
         let requested_len = data.len();
+
+        // We special case when 0 elements are requested. Polluting the list of allocated chunks
+        // with chunks of length 0 means that we will have troubles deallocating.
+        if requested_len == 0 {
+            assert!(data.next().is_none(),
+                    "Expected iterator passed to CpuBufferPool::chunk to be empty");
+            return Ok(CpuBufferPoolChunk {
+                          // TODO: remove .clone() once non-lexical borrows land
+                          buffer: current_buffer.clone(),
+                          index: 0,
+                          align_offset: 0,
+                          requested_len: 0,
+                          marker: PhantomData,
+                      });
+        }
 
         // Find a suitable offset and len, or returns if none available.
         let (index, occupied_len, align_offset) = {
@@ -387,23 +441,30 @@ impl<T, A> CpuBufferPool<T, A>
                 // own a mutex lock to the buffer, it means that `next_index` can't be accessed
                 // concurrently.
                 // TODO: ^ eventually should be put inside the mutex
-                let idx = current_buffer
-                    .next_index
-                    .load(Ordering::SeqCst);
+                let idx = current_buffer.next_index.load(Ordering::SeqCst);
 
                 // Find the required alignment in bytes.
-                let align_bytes = cmp::max(
-                    if self.usage.uniform_buffer {
-                        self.device().physical_device().limits()
-                            .min_uniform_buffer_offset_alignment() as usize
-                    } else { 1 },
-                    if self.usage.storage_buffer {
-                        self.device().physical_device().limits()
-                            .min_storage_buffer_offset_alignment() as usize
-                    } else { 1 },
-                );
+                let align_bytes = cmp::max(if self.usage.uniform_buffer {
+                                               self.device()
+                                                   .physical_device()
+                                                   .limits()
+                                                   .min_uniform_buffer_offset_alignment() as
+                                                   usize
+                                           } else {
+                                               1
+                                           },
+                                           if self.usage.storage_buffer {
+                                               self.device()
+                                                   .physical_device()
+                                                   .limits()
+                                                   .min_storage_buffer_offset_alignment() as
+                                                   usize
+                                           } else {
+                                               1
+                                           });
 
-                let tentative_align_offset = (align_bytes - ((idx * mem::size_of::<T>()) % align_bytes)) % align_bytes;
+                let tentative_align_offset =
+                    (align_bytes - ((idx * mem::size_of::<T>()) % align_bytes)) % align_bytes;
                 let additional_len = if tentative_align_offset == 0 {
                     0
                 } else {
@@ -415,8 +476,12 @@ impl<T, A> CpuBufferPool<T, A>
 
             // Find out whether any chunk in use overlaps this range.
             if tentative_index + tentative_len <= current_buffer.capacity &&
-                !chunks_in_use.iter().any(|c| (c.index >= tentative_index && c.index < tentative_index + tentative_len) ||
-                    (c.index <= tentative_index && c.index + c.len > tentative_index))
+                !chunks_in_use.iter().any(|c| {
+                                              (c.index >= tentative_index &&
+                                                   c.index < tentative_index + tentative_len) ||
+                                                  (c.index <= tentative_index &&
+                                                       c.index + c.len > tentative_index)
+                                          })
             {
                 (tentative_index, tentative_len, tentative_align_offset)
             } else {
@@ -448,19 +513,22 @@ impl<T, A> CpuBufferPool<T, A>
                 ptr::write(o, i);
                 written += 1;
             }
-            assert_eq!(written, requested_len,
+            assert_eq!(written,
+                       requested_len,
                        "Iterator passed to CpuBufferPool::chunk has a mismatch between reported \
                         length and actual number of elements");
         }
 
         // Mark the chunk as in use.
-        current_buffer.next_index.store(index + occupied_len, Ordering::SeqCst);
+        current_buffer
+            .next_index
+            .store(index + occupied_len, Ordering::SeqCst);
         chunks_in_use.push(ActualBufferChunk {
-            index,
-            len: occupied_len,
-            num_cpu_accesses: 1,
-            num_gpu_accesses: 0,
-        });
+                               index,
+                               len: occupied_len,
+                               num_cpu_accesses: 1,
+                               num_gpu_accesses: 0,
+                           });
 
         Ok(CpuBufferPoolChunk {
                // TODO: remove .clone() once non-lexical borrows land
@@ -485,7 +553,6 @@ impl<T, A> Clone for CpuBufferPool<T, A>
             pool: self.pool.clone(),
             current_buffer: Mutex::new(buf.clone()),
             usage: self.usage.clone(),
-            queue_families: self.queue_families.clone(),
             marker: PhantomData,
         }
     }
@@ -505,10 +572,15 @@ impl<T, A> Clone for CpuBufferPoolChunk<T, A>
 {
     fn clone(&self) -> CpuBufferPoolChunk<T, A> {
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         debug_assert!(chunk.num_cpu_accesses >= 1);
-        chunk.num_cpu_accesses = chunk.num_cpu_accesses.checked_add(1)
+        chunk.num_cpu_accesses = chunk
+            .num_cpu_accesses
+            .checked_add(1)
             .expect("Overflow in CPU accesses");
 
         CpuBufferPoolChunk {
@@ -538,14 +610,31 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: usize, _: usize) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.buffer.inner.key() + self.index as u64
     }
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+        if self.requested_len == 0 {
+            return Ok(());
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         if chunk.num_gpu_accesses != 0 {
             return Err(AccessError::AlreadyInUse);
@@ -557,18 +646,34 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 
     #[inline]
     unsafe fn increase_gpu_lock(&self) {
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         debug_assert!(chunk.num_gpu_accesses >= 1);
-        chunk.num_gpu_accesses = chunk.num_gpu_accesses.checked_add(1)
+        chunk.num_gpu_accesses = chunk
+            .num_gpu_accesses
+            .checked_add(1)
             .expect("Overflow in GPU usages");
     }
 
     #[inline]
     unsafe fn unlock(&self) {
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock.iter_mut().find(|c| c.index == self.index).unwrap();
+        let chunk = chunks_in_use_lock
+            .iter_mut()
+            .find(|c| c.index == self.index)
+            .unwrap();
 
         debug_assert!(chunk.num_gpu_accesses >= 1);
         chunk.num_gpu_accesses -= 1;
@@ -579,8 +684,16 @@ impl<T, A> Drop for CpuBufferPoolChunk<T, A>
     where A: MemoryPool
 {
     fn drop(&mut self) {
+        // If `requested_len` is 0, then no entry was added in the chunks.
+        if self.requested_len == 0 {
+            return;
+        }
+
         let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk_num = chunks_in_use_lock.iter_mut().position(|c| c.index == self.index).unwrap();
+        let chunk_num = chunks_in_use_lock
+            .iter_mut()
+            .position(|c| c.index == self.index)
+            .unwrap();
 
         if chunks_in_use_lock[chunk_num].num_cpu_accesses >= 2 {
             chunks_in_use_lock[chunk_num].num_cpu_accesses -= 1;
@@ -610,9 +723,7 @@ impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool
 {
     fn clone(&self) -> CpuBufferPoolSubbuffer<T, A> {
-        CpuBufferPoolSubbuffer {
-            chunk: self.chunk.clone(),
-        }
+        CpuBufferPoolSubbuffer { chunk: self.chunk.clone() }
     }
 }
 
@@ -630,8 +741,18 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self, a: usize, b: usize) -> u64 {
-        self.chunk.conflict_key(a, b)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        self.chunk.conflict_key()
     }
 
     #[inline]
@@ -699,7 +820,7 @@ mod tests {
         assert!(first_cap >= 1);
 
         for _ in 0 .. first_cap + 5 {
-            mem::forget(pool.next(12));
+            mem::forget(pool.next(12).unwrap());
         }
 
         assert!(pool.capacity() > first_cap);
@@ -714,7 +835,7 @@ mod tests {
 
         let mut capacity = None;
         for _ in 0 .. 64 {
-            pool.next(12);
+            pool.next(12).unwrap();
 
             let new_cap = pool.capacity();
             assert!(new_cap >= 1);
@@ -732,14 +853,24 @@ mod tests {
         let pool = CpuBufferPool::<u8>::upload(device);
         pool.reserve(5).unwrap();
 
-        let a = pool.chunk(vec![0, 0]);
-        let b = pool.chunk(vec![0, 0]);
+        let a = pool.chunk(vec![0, 0]).unwrap();
+        let b = pool.chunk(vec![0, 0]).unwrap();
         assert_eq!(b.index, 2);
         drop(a);
 
-        let c = pool.chunk(vec![0, 0]);
+        let c = pool.chunk(vec![0, 0]).unwrap();
         assert_eq!(c.index, 0);
 
         assert_eq!(pool.capacity(), 5);
+    }
+
+    #[test]
+    fn chunk_0_elems_doesnt_pollute() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        let pool = CpuBufferPool::<u8>::upload(device);
+
+        let _ = pool.chunk(vec![]).unwrap();
+        let _ = pool.chunk(vec![0, 0]).unwrap();
     }
 }

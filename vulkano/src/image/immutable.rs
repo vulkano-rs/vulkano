@@ -11,7 +11,6 @@ use smallvec::SmallVec;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
-use std::iter;
 
 use buffer::BufferAccess;
 use buffer::BufferUsage;
@@ -38,20 +37,23 @@ use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
+use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
-use sync::Sharing;
 use sync::NowFuture;
+use sync::Sharing;
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it.
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F, A = StdMemoryPoolAlloc> {
+pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
     view: UnsafeImageView,
     dimensions: Dimensions,
@@ -62,7 +64,7 @@ pub struct ImmutableImage<F, A = StdMemoryPoolAlloc> {
 }
 
 // Must not implement Clone, as that would lead to multiple `used` values.
-pub struct ImmutableImageInitialization<F, A = StdMemoryPoolAlloc> {
+pub struct ImmutableImageInitialization<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: Arc<ImmutableImage<F, A>>,
     used: AtomicBool,
 }
@@ -88,9 +90,9 @@ impl<F> ImmutableImage<F> {
     pub fn with_mipmaps<'a, I, M>(device: Arc<Device>, dimensions: Dimensions, format: F,
                                   mipmaps: M, queue_families: I)
                                   -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
-         where F: FormatDesc,
-               I: IntoIterator<Item = QueueFamily<'a>>,
-               M: Into<MipmapsCount>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>,
+              M: Into<MipmapsCount>
     {
         let usage = ImageUsage {
             transfer_source: true, // for blits
@@ -99,7 +101,13 @@ impl<F> ImmutableImage<F> {
             ..ImageUsage::none()
         };
 
-        let (image, _) = ImmutableImage::uninitialized(device, dimensions, format, mipmaps, usage, ImageLayout::ShaderReadOnlyOptimal, queue_families)?;
+        let (image, _) = ImmutableImage::uninitialized(device,
+                                                       dimensions,
+                                                       format,
+                                                       mipmaps,
+                                                       usage,
+                                                       ImageLayout::ShaderReadOnlyOptimal,
+                                                       queue_families)?;
         image.initialized.store(true, Ordering::Relaxed); // Allow uninitialized access for backwards compatibility
         Ok(image)
     }
@@ -107,9 +115,10 @@ impl<F> ImmutableImage<F> {
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
-    pub fn uninitialized<'a, I, M>(device: Arc<Device>, dimensions: Dimensions, format: F,
-                                   mipmaps: M, usage: ImageUsage, layout: ImageLayout, queue_families: I)
-                                   -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
+    pub fn uninitialized<'a, I, M>(
+        device: Arc<Device>, dimensions: Dimensions, format: F, mipmaps: M, usage: ImageUsage,
+        layout: ImageLayout, queue_families: I)
+        -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
         where F: FormatDesc,
               I: IntoIterator<Item = QueueFamily<'a>>,
               M: Into<MipmapsCount>
@@ -137,25 +146,16 @@ impl<F> ImmutableImage<F> {
                              false)?
         };
 
-        let mem_ty = {
-            let device_local = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|t| t.is_device_local());
-            let any = device
-                .physical_device()
-                .memory_types()
-                .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = MemoryPool::alloc(&Device::standard_pool(&device),
-                                    mem_ty,
-                                    mem_reqs.size,
-                                    mem_reqs.alignment,
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
                                     AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap)?;
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Image(&image),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
@@ -169,14 +169,14 @@ impl<F> ImmutableImage<F> {
         };
 
         let image = Arc::new(ImmutableImage {
-            image: image,
-            view: view,
-            memory: mem,
-            dimensions: dimensions,
-            format: format,
-            initialized: AtomicBool::new(false),
-            layout: layout,
-        });
+                                 image: image,
+                                 view: view,
+                                 memory: mem,
+                                 dimensions: dimensions,
+                                 format: format,
+                                 initialized: AtomicBool::new(false),
+                                 layout: layout,
+                             });
 
         let init = ImmutableImageInitialization {
             image: image.clone(),
@@ -190,45 +190,60 @@ impl<F> ImmutableImage<F> {
     ///
     /// TODO: Support mipmaps
     #[inline]
-    pub fn from_iter<'a, P, I, J>(iter: I, dimensions: Dimensions, format: F, queue_families: J, queue: Arc<Queue>)
-                                  -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
-                                            ImageCreationError>
+    pub fn from_iter<P, I>(iter: I, dimensions: Dimensions, format: F, queue: Arc<Queue>)
+                           -> Result<(Arc<Self>,
+                                      CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
+                                     ImageCreationError>
         where P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
               I: ExactSizeIterator<Item = P>,
-              J: IntoIterator<Item = QueueFamily<'a>>,
-              Format: AcceptsPixels<P>,
+              Format: AcceptsPixels<P>
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
-                                                    iter::once(queue.family()),
                                                     iter)?;
-        ImmutableImage::from_buffer(source, dimensions, format, queue_families, queue)
+        ImmutableImage::from_buffer(source, dimensions, format, queue)
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     ///
     /// TODO: Support mipmaps
-    pub fn from_buffer<'a, B, P, I>(source: B, dimensions: Dimensions, format: F, queue_families: I, queue: Arc<Queue>)
-                                    -> Result<(Arc<Self>, CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
-                                              ImageCreationError>
+    pub fn from_buffer<B, P>(source: B, dimensions: Dimensions, format: F, queue: Arc<Queue>)
+                             -> Result<(Arc<Self>,
+                                        CommandBufferExecFuture<NowFuture, AutoCommandBuffer>),
+                                       ImageCreationError>
         where B: BufferAccess + TypedBufferAccess<Content = [P]> + 'static + Clone + Send + Sync,
               P: Send + Sync + Clone + 'static,
               F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
-              I: IntoIterator<Item = QueueFamily<'a>>,
-              Format: AcceptsPixels<P>,
+              Format: AcceptsPixels<P>
     {
-        let usage = ImageUsage { transfer_destination: true, sampled: true, ..ImageUsage::none() };
+        let usage = ImageUsage {
+            transfer_destination: true,
+            sampled: true,
+            ..ImageUsage::none()
+        };
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 
-        let (buffer, init) = ImmutableImage::uninitialized(source.device().clone(),
-                                                           dimensions, format,
-                                                           MipmapsCount::One, usage, layout,
-                                                           queue_families)?;
+        let (buffer, init) =
+            ImmutableImage::uninitialized(source.device().clone(),
+                                          dimensions,
+                                          format,
+                                          MipmapsCount::One,
+                                          usage,
+                                          layout,
+                                          source.device().active_queue_families())?;
 
         let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
-            .copy_buffer_to_image_dimensions(source, init, [0, 0, 0], dimensions.width_height_depth(), 0, dimensions.array_layers_with_cube(), 0).unwrap()
-            .build().unwrap();
+            .copy_buffer_to_image_dimensions(source,
+                                             init,
+                                             [0, 0, 0],
+                                             dimensions.width_height_depth(),
+                                             0,
+                                             dimensions.array_layers_with_cube(),
+                                             0)
+            .unwrap()
+            .build()
+            .unwrap();
 
         let future = match cb.execute(queue) {
             Ok(f) => f,
@@ -254,7 +269,7 @@ impl<F, A> ImmutableImage<F, A> {
 }
 
 unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -278,12 +293,22 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.image.key()
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
         if exclusive_access {
             return Err(AccessError::ExclusiveDenied);
         }
@@ -296,14 +321,16 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {}
+    unsafe fn increase_gpu_lock(&self) {
+    }
 
     #[inline]
-    unsafe fn unlock(&self) {}
+    unsafe fn unlock(&self) {
+    }
 }
 
 unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -312,7 +339,7 @@ unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
 }
 
 unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn parent(&self) -> &ImageAccess {
@@ -356,7 +383,7 @@ unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
 }
 
 unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
-    where F: 'static + Send + Sync,
+    where F: 'static + Send + Sync
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -374,12 +401,22 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.image.image.key()
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
         if self.image.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }

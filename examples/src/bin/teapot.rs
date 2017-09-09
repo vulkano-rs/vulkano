@@ -76,15 +76,15 @@ fn main() {
     let mut depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
 
     let vertex_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::VERTICES.iter().cloned())
+                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), examples::VERTICES.iter().cloned())
                                 .expect("failed to create buffer");
 
     let normals_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::NORMALS.iter().cloned())
+                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), examples::NORMALS.iter().cloned())
                                 .expect("failed to create buffer");
 
     let index_buffer = vulkano::buffer::cpu_access::CpuAccessibleBuffer
-                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()), examples::INDICES.iter().cloned())
+                                ::from_iter(device.clone(), vulkano::buffer::BufferUsage::all(), examples::INDICES.iter().cloned())
                                 .expect("failed to create buffer");
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
@@ -94,7 +94,7 @@ fn main() {
     let scale = cgmath::Matrix4::from_scale(0.01);
 
     let uniform_buffer = vulkano::buffer::cpu_pool::CpuBufferPool::<vs::ty::Data>
-                               ::new(device.clone(), vulkano::buffer::BufferUsage::all(), Some(queue.family()));
+                               ::new(device.clone(), vulkano::buffer::BufferUsage::all());
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
@@ -190,7 +190,7 @@ fn main() {
                 proj : proj.into(),
             };
 
-            uniform_buffer.next(uniform_data)
+            uniform_buffer.next(uniform_data).unwrap()
         };
 
         let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)

@@ -81,15 +81,16 @@
 //! behavior for your application alone through a control panel.
 //!
 //! ```no_run
-//! use vulkano::instance::ApplicationInfo;
-//! use vulkano::instance::Instance;
-//! use vulkano::instance::InstanceExtensions;
+//! # #[macro_use] extern crate vulkano;
+//! # fn main() {
+//! use vulkano::instance::{Instance, InstanceExtensions};
 //!
 //! // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
 //! // compile-time.
-//! let app_infos = ApplicationInfo::from_cargo_toml();
+//! let app_infos = app_info_from_cargo_toml!();
 //!
 //! let _instance = Instance::new(Some(&app_infos), &InstanceExtensions::none(), None).unwrap();
+//! # }
 //! ```
 //!
 //! # Enumerating physical devices and creating a device
@@ -112,7 +113,6 @@ pub use self::extensions::RawInstanceExtensions;
 pub use self::instance::ApplicationInfo;
 pub use self::instance::Instance;
 pub use self::instance::InstanceCreationError;
-pub use self::instance::Limits;
 pub use self::instance::MemoryHeap;
 pub use self::instance::MemoryHeapsIter;
 pub use self::instance::MemoryType;
@@ -126,6 +126,7 @@ pub use self::layers::LayerProperties;
 pub use self::layers::LayersIterator;
 pub use self::layers::LayersListError;
 pub use self::layers::layers_list;
+pub use self::limits::Limits;
 pub use self::loader::LoadingError;
 pub use features::Features;
 pub use version::Version;
@@ -136,3 +137,4 @@ pub mod loader;
 mod extensions;
 mod instance;
 mod layers;
+mod limits;

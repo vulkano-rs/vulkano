@@ -50,12 +50,12 @@
 //! TODO: write this section
 
 pub use self::empty::EmptyPipelineDesc;
+pub use self::limits_check::PipelineLayoutLimitsError;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;
 pub use self::sys::PipelineLayoutSys;
 pub use self::traits::PipelineLayoutAbstract;
 pub use self::traits::PipelineLayoutDesc;
-pub use self::traits::PipelineLayoutDescNames;
 pub use self::traits::PipelineLayoutDescPcRange;
 pub use self::traits::PipelineLayoutNotSupersetError;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
@@ -64,6 +64,7 @@ pub use self::traits::PipelineLayoutSuperset;
 pub use self::union::PipelineLayoutDescUnion;
 
 mod empty;
+mod limits_check;
 mod sys;
 mod traits;
 mod union;

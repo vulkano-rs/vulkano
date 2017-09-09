@@ -11,9 +11,9 @@ use std::collections::HashSet;
 use std::error;
 use std::ffi::{CStr, CString};
 use std::fmt;
+use std::iter::FromIterator;
 use std::ptr;
 use std::str;
-use std::iter::FromIterator;
 
 use Error;
 use OomError;
@@ -320,7 +320,7 @@ macro_rules! device_extensions {
             pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
                 match $rawname::supported_by_device_raw(physical_device) {
                     Ok(l) => l,
-                    Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
+                    Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }
@@ -361,7 +361,7 @@ macro_rules! device_extensions {
             pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
                 match $sname::supported_by_device_raw(physical_device) {
                     Ok(l) => l,
-                    Err(SupportedExtensionsError::LoadingError(e)) => unreachable!(),
+                    Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }
@@ -398,6 +398,7 @@ device_extensions! {
     khr_maintenance1 => b"VK_KHR_maintenance1",
     khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
+    khr_incremental_present => b"VK_KHR_incremental_present",
 }
 
 /// Error that can happen when loading the list of layers.

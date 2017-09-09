@@ -195,31 +195,31 @@ fn write_struct(doc: &parse::Spirv, struct_id: u32, members: &[u32]) -> (String,
 
     // We can only implement Clone if there's no unsized member in the struct.
     let (impl_text, derive_text) = if current_rust_offset.is_some() {
-        let i =
-            format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        {name} \
-                     {{\n{copies}\n        }}\n    }}\n}}\n",
-                    name = name,
-                    copies = rust_members
-                        .iter()
-                        .map(Member::copy_text)
-                        .collect::<Vec<_>>()
-                        .join(",\n"));
+        let i = format!("\nimpl Clone for {name} {{\n    fn clone(&self) -> Self {{\n        \
+                         {name} {{\n{copies}\n        }}\n    }}\n}}\n",
+                        name = name,
+                        copies = rust_members
+                            .iter()
+                            .map(Member::copy_text)
+                            .collect::<Vec<_>>()
+                            .join(",\n"));
         (i, "#[derive(Copy)]")
     } else {
         ("".to_owned(), "")
     };
 
-    let s = format!("#[repr(C)]{derive_text}\npub struct {name} {{\n{members}\n}} /* total_size: \
-                     {t:?} */\n{impl_text}",
-                    name = name,
-                    members = rust_members
-                        .iter()
-                        .map(Member::declaration_text)
-                        .collect::<Vec<_>>()
-                        .join(",\n"),
-                    t = spirv_req_total_size,
-                    impl_text = impl_text,
-                    derive_text = derive_text);
+    let s =
+        format!("#[repr(C)]\n{derive_text}\n#[allow(non_snake_case)]\npub struct {name} \
+                 {{\n{members}\n}} /* total_size: {t:?} */\n{impl_text}",
+                name = name,
+                members = rust_members
+                    .iter()
+                    .map(Member::declaration_text)
+                    .collect::<Vec<_>>()
+                    .join(",\n"),
+                t = spirv_req_total_size,
+                impl_text = impl_text,
+                derive_text = derive_text);
     (s,
      spirv_req_total_size
          .map(|sz| sz as usize)
@@ -252,13 +252,7 @@ pub fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>
     for instruction in doc.instructions.iter() {
         match instruction {
             &parse::Instruction::TypeBool { result_id } if result_id == searched => {
-                #[repr(C)]
-                struct Foo {
-                    data: bool,
-                    after: u8,
-                }
-                let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                return ("bool".to_owned(), Some(size), mem::align_of::<Foo>());
+                panic!("Can't put booleans in structs")
             },
             &parse::Instruction::TypeInt {
                 result_id,

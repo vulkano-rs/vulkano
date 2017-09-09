@@ -18,7 +18,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
     struct Descriptor {
-        name: String,
         set: u32,
         binding: u32,
         desc_ty: String,
@@ -70,7 +69,6 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                              pointed_ty));
 
         descriptors.push(Descriptor {
-                             name: name,
                              desc_ty: desc_ty,
                              set: descriptor_set,
                              binding: binding,
@@ -120,34 +118,21 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         .collect::<Vec<_>>()
         .concat();
 
-    let num_sets = 1 + descriptors.iter().fold(0, |s, d| cmp::max(s, d.set));
+    let num_sets = descriptors.iter().fold(0, |s, d| cmp::max(s, d.set + 1));
 
     // Writing the body of the `num_bindings_in_set` method.
     let num_bindings_in_set_body = {
         (0 .. num_sets)
             .map(|set| {
-                     let num = 1 +
-                         descriptors
-                             .iter()
-                             .filter(|d| d.set == set)
-                             .fold(0, |s, d| cmp::max(s, d.binding));
+                     let num = descriptors
+                         .iter()
+                         .filter(|d| d.set == set)
+                         .fold(0, |s, d| cmp::max(s, 1 + d.binding));
                      format!("{set} => Some({num}),", set = set, num = num)
                  })
             .collect::<Vec<_>>()
             .concat()
     };
-
-    // Writing the body of the `descriptor_by_name_body` method.
-    let descriptor_by_name_body = descriptors
-        .iter()
-        .map(|d| {
-                 format!(r#"{name:?} => Some(({set}, {binding})),"#,
-                         name = d.name,
-                         set = d.set,
-                         binding = d.binding)
-             })
-        .collect::<Vec<_>>()
-        .concat();
 
     // Writing the body of the `num_push_constants_ranges` method.
     let num_push_constants_ranges_body = {
@@ -170,7 +155,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
     format!(
         r#"
         #[derive(Debug, Clone)]
-        pub struct Layout(ShaderStages);
+        pub struct Layout(pub ShaderStages);
 
         #[allow(unsafe_code)]
         unsafe impl PipelineLayoutDesc for Layout {{
@@ -200,20 +185,9 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                 {push_constants_range_body}
             }}
         }}
-
-        #[allow(unsafe_code)]
-        unsafe impl PipelineLayoutDescNames for Layout {{
-            fn descriptor_by_name(&self, name: &str) -> Option<(usize, usize)> {{
-                match name {{
-                    {descriptor_by_name_body}
-                    _ => None
-                }}
-            }}
-        }}
         "#,
         num_sets = num_sets,
         num_bindings_in_set_body = num_bindings_in_set_body,
-        descriptor_by_name_body = descriptor_by_name_body,
         descriptor_body = descriptor_body,
         num_push_constants_ranges_body = num_push_constants_ranges_body,
         push_constants_range_body = push_constants_range_body

@@ -23,6 +23,9 @@ use device::DeviceOwned;
 
 /// Standard implementation of a descriptor pool.
 ///
+/// It is guaranteed that the `Arc<StdDescriptorPool>` is kept alive by its allocations. This is
+/// desirable so that we can store a `Weak<StdDescriptorPool>`.
+///
 /// Whenever a set is allocated, this implementation will try to find a pool that has some space
 /// for it. If there is one, allocate from it. If there is none, create a new pool whose capacity
 /// is 40 sets and 40 times the requested descriptors. This number is arbitrary.
@@ -54,13 +57,15 @@ pub struct StdDescriptorPoolAlloc {
     set: Option<UnsafeDescriptorSet>,
     // We need to keep track of this count in order to add it back to the capacity when freeing.
     descriptors: DescriptorsCount,
+    // We keep the parent of the pool alive, otherwise it would be destroyed.
+    pool_parent: Arc<StdDescriptorPool>,
 }
 
 unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
     // TODO: eventually use a lock-free algorithm?
-    fn alloc(&self, layout: &UnsafeDescriptorSetLayout)
+    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout)
              -> Result<StdDescriptorPoolAlloc, OomError> {
         let mut pools = self.pools.lock().unwrap();
 
@@ -96,6 +101,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                           pool: pool_arc.clone(),
                           set: Some(alloc),
                           descriptors: *layout.descriptors_count(),
+                          pool_parent: self.clone(),
                       });
         }
 
@@ -135,6 +141,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                pool: pool_obj,
                set: Some(alloc),
                descriptors: *layout.descriptors_count(),
+               pool_parent: self.clone(),
            })
     }
 }
@@ -168,5 +175,38 @@ impl Drop for StdDescriptorPoolAlloc {
             pool.remaining_sets_count += 1;
             pool.remaining_capacity += self.descriptors;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::descriptor::DescriptorDescTy;
+    use descriptor::descriptor::ShaderStages;
+    use descriptor::descriptor_set::DescriptorPool;
+    use descriptor::descriptor_set::StdDescriptorPool;
+    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use std::iter;
+    use std::sync::Arc;
+
+    #[test]
+    fn desc_pool_kept_alive() {
+        // Test that the `StdDescriptorPool` is kept alive by its allocations.
+        let (device, _) = gfx_dev_and_queue!();
+
+        let desc = DescriptorDesc {
+            ty: DescriptorDescTy::Sampler,
+            array_count: 1,
+            stages: ShaderStages::all(),
+            readonly: false,
+        };
+        let layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc)))
+            .unwrap();
+
+        let mut pool = Arc::new(StdDescriptorPool::new(device));
+        let pool_weak = Arc::downgrade(&pool);
+        let alloc = pool.alloc(&layout);
+        drop(pool);
+        assert!(pool_weak.upgrade().is_some());
     }
 }

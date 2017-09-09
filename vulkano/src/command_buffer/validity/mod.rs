@@ -9,18 +9,19 @@
 
 //! Functions that check the validity of commands.
 
-pub use self::blit_image::{check_blit_image, CheckBlitImageError};
-pub use self::clear_color_image::{check_clear_color_image, CheckClearColorImageError};
-pub use self::copy_buffer::{CheckCopyBufferError, check_copy_buffer, CheckCopyBuffer};
-pub use self::copy_image_buffer::{CheckCopyBufferImageError, check_copy_buffer_image, CheckCopyBufferImageTy};
-pub use self::descriptor_sets::{check_descriptor_sets_validity, CheckDescriptorSetsValidityError};
-pub use self::dispatch::{check_dispatch, CheckDispatchError};
+pub use self::blit_image::{CheckBlitImageError, check_blit_image};
+pub use self::clear_color_image::{CheckClearColorImageError, check_clear_color_image};
+pub use self::copy_buffer::{CheckCopyBuffer, CheckCopyBufferError, check_copy_buffer};
+pub use self::copy_image_buffer::{CheckCopyBufferImageError, CheckCopyBufferImageTy,
+                                  check_copy_buffer_image};
+pub use self::descriptor_sets::{CheckDescriptorSetsValidityError, check_descriptor_sets_validity};
+pub use self::dispatch::{CheckDispatchError, check_dispatch};
 pub use self::dynamic_state::{CheckDynamicStateValidityError, check_dynamic_state_validity};
 pub use self::fill_buffer::{CheckFillBufferError, check_fill_buffer};
-pub use self::index_buffer::{check_index_buffer, CheckIndexBuffer, CheckIndexBufferError};
-pub use self::push_constants::{check_push_constants_validity, CheckPushConstantsValidityError};
+pub use self::index_buffer::{CheckIndexBuffer, CheckIndexBufferError, check_index_buffer};
+pub use self::push_constants::{CheckPushConstantsValidityError, check_push_constants_validity};
 pub use self::update_buffer::{CheckUpdateBufferError, check_update_buffer};
-pub use self::vertex_buffers::{check_vertex_buffers, CheckVertexBuffer, CheckVertexBufferError};
+pub use self::vertex_buffers::{CheckVertexBuffer, CheckVertexBufferError, check_vertex_buffers};
 
 mod blit_image;
 mod clear_color_image;

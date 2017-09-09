@@ -1,4 +1,10 @@
-# [Vulkano](http://vulkano.rs)
+<img align="left" alt="" src="logo.png" height="150" />
+
+# [Vulkano](https://vulkano.rs)
+
+[![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
+[![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
+[![Build Status](https://travis-ci.org/vulkano-rs/vulkano.svg?branch=master)](https://travis-ci.org/vulkano-rs/vulkano)
 
 See also [vulkano.rs](http://vulkano.rs).
 
@@ -35,10 +41,9 @@ will likely be straight-forward to fix in user code.
 
 ## [Documentation](https://docs.rs/vulkano)
 
-[![](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
-
-To get started you are encouraged to read the examples in `examples/src/bin`, starting with
-the `triangle` example.
+To get started you are encouraged to read the examples in
+[the `vulkano-examples` repository](https://github.com/vulkano-rs/vulkano-examples), starting with
+[the `triangle` example](https://github.com/vulkano-rs/vulkano-examples/blob/master/triangle/main.rs).
 
 ## Donate
 

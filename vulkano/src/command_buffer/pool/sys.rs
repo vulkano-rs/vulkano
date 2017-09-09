@@ -160,7 +160,7 @@ impl UnsafeCommandPool {
     pub fn alloc_command_buffers(&self, secondary: bool, count: usize)
                                  -> Result<UnsafeCommandPoolAllocIter, OomError> {
         if count == 0 {
-            return Ok(UnsafeCommandPoolAllocIter { list: None });
+            return Ok(UnsafeCommandPoolAllocIter { list: vec![].into_iter() });
         }
 
         let infos = vk::CommandBufferAllocateInfo {
@@ -184,7 +184,7 @@ impl UnsafeCommandPool {
 
             out.set_len(count);
 
-            Ok(UnsafeCommandPoolAllocIter { list: Some(out.into_iter()) })
+            Ok(UnsafeCommandPoolAllocIter { list: out.into_iter() })
         }
     }
 
@@ -256,7 +256,7 @@ unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
 /// Iterator for newly-allocated command buffers.
 #[derive(Debug)]
 pub struct UnsafeCommandPoolAllocIter {
-    list: Option<VecIntoIter<vk::CommandBuffer>>,
+    list: VecIntoIter<vk::CommandBuffer>,
 }
 
 impl Iterator for UnsafeCommandPoolAllocIter {
@@ -264,18 +264,12 @@ impl Iterator for UnsafeCommandPoolAllocIter {
 
     #[inline]
     fn next(&mut self) -> Option<UnsafeCommandPoolAlloc> {
-        self.list
-            .as_mut()
-            .and_then(|i| i.next())
-            .map(|cb| UnsafeCommandPoolAlloc(cb))
+        self.list.next().map(|cb| UnsafeCommandPoolAlloc(cb))
     }
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.list
-            .as_ref()
-            .map(|i| i.size_hint())
-            .unwrap_or((0, Some(0)))
+        self.list.size_hint()
     }
 }
 

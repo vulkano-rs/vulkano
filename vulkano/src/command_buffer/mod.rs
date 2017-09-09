@@ -92,7 +92,6 @@ pub use self::auto::UpdateBufferError;
 pub use self::state_cacher::StateCacher;
 pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
-pub use self::traits::CommandBufferBuild;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 

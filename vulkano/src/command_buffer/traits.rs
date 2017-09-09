@@ -53,16 +53,13 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// the given queue, and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
-    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
-                   -> Result<(), CommandBufferExecError>;
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
 
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
     ///
     /// # Safety
     ///
     /// Must not be called if you haven't called `lock_submit` before.
-    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
     unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
@@ -148,17 +145,6 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     // FIXME: lots of other methods
 }
 
-/// Turns a command buffer builder into a real command buffer.
-pub unsafe trait CommandBufferBuild {
-    /// The type of the built command buffer.
-    type Out;
-    /// Error that can be returned when building.
-    type Err;
-
-    /// Builds the command buffer.
-    fn build(self) -> Result<Self::Out, Self::Err>;
-}
-
 unsafe impl<T> CommandBuffer for T
     where T: SafeDeref,
           T::Target: CommandBuffer
@@ -171,8 +157,7 @@ unsafe impl<T> CommandBuffer for T
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
-                   -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         (**self).lock_submit(future, queue)
     }
 
@@ -391,7 +376,7 @@ impl error::Error for CommandBufferExecError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             CommandBufferExecError::AccessError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }

@@ -29,8 +29,8 @@ use image::ImageUsage;
 use image::MipmapsCount;
 use image::ViewType;
 use memory::DeviceMemory;
-use memory::MemoryRequirements;
 use memory::DeviceMemoryAllocError;
+use memory::MemoryRequirements;
 use sync::Sharing;
 
 use Error;
@@ -191,33 +191,11 @@ impl UnsafeImage {
         // check for additional image capabilities (section 31.4 of the specs).
         let mut capabilities_error = None;
 
-        // Compute the maximum number of mipmaps.
-        // TODO: only compte if necessary?
-        let max_mipmaps = {
-            let smallest_dim: u32 = match dimensions {
-                ImageDimensions::Dim1d { width, .. } => width,
-                ImageDimensions::Dim2d { width, height, .. } => {
-                    if width < height { width } else { height }
-                },
-                ImageDimensions::Dim3d {
-                    width,
-                    height,
-                    depth,
-                } => {
-                    if width < height {
-                        if depth < width { depth } else { width }
-                    } else {
-                        if depth < height { depth } else { height }
-                    }
-                },
-            };
-
-            32 - smallest_dim.leading_zeros()
-        };
-
         // Compute the number of mipmaps.
         let mipmaps = match mipmaps.into() {
             MipmapsCount::Specific(num) => {
+                let max_mipmaps = dimensions.max_mipmaps();
+                debug_assert!(max_mipmaps >= 1);
                 if num < 1 {
                     return Err(ImageCreationError::InvalidMipmapsCount {
                                    obtained: num,
@@ -232,7 +210,7 @@ impl UnsafeImage {
 
                 num
             },
-            MipmapsCount::Log2 => max_mipmaps,
+            MipmapsCount::Log2 => dimensions.max_mipmaps(),
             MipmapsCount::One => 1,
         };
 
@@ -528,18 +506,20 @@ impl UnsafeImage {
 
             let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
                 Some(vk::MemoryDedicatedRequirementsKHR {
-                    sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-                    pNext: ptr::null(),
-                    prefersDedicatedAllocation: mem::uninitialized(),
-                    requiresDedicatedAllocation: mem::uninitialized(),
-                })
+                         sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+                         pNext: ptr::null(),
+                         prefersDedicatedAllocation: mem::uninitialized(),
+                         requiresDedicatedAllocation: mem::uninitialized(),
+                     })
             } else {
                 None
             };
 
             let mut output = vk::MemoryRequirements2KHR {
                 sType: vk::STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-                pNext: output2.as_mut().map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
+                pNext: output2
+                    .as_mut()
+                    .map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
                     .unwrap_or(ptr::null_mut()) as *mut _,
                 memoryRequirements: mem::uninitialized(),
             };

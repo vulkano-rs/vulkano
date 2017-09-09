@@ -43,10 +43,10 @@
 
 use format::Format;
 use image::Dimensions;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
 use std::cmp;
 use std::ops::BitOr;
+use sync::AccessFlagBits;
+use sync::PipelineStages;
 use vk;
 
 /// Contains the exact description of a single descriptor.
@@ -114,24 +114,25 @@ impl DescriptorDesc {
 
         let access = match self.ty {
             DescriptorDescTy::Sampler => panic!(),
-            DescriptorDescTy::CombinedImageSampler(_) | DescriptorDescTy::Image(_) => {
+            DescriptorDescTy::CombinedImageSampler(_) |
+            DescriptorDescTy::Image(_) => {
                 AccessFlagBits {
                     shader_read: true,
                     shader_write: !self.readonly,
-                    .. AccessFlagBits::none()
+                    ..AccessFlagBits::none()
                 }
             },
             DescriptorDescTy::TexelBuffer { .. } => {
                 AccessFlagBits {
                     shader_read: true,
                     shader_write: !self.readonly,
-                    .. AccessFlagBits::none()
+                    ..AccessFlagBits::none()
                 }
             },
             DescriptorDescTy::InputAttachment { .. } => {
                 AccessFlagBits {
                     input_attachment_read: true,
-                    .. AccessFlagBits::none()
+                    ..AccessFlagBits::none()
                 }
             },
             DescriptorDescTy::Buffer(ref buf) => {
@@ -139,12 +140,12 @@ impl DescriptorDesc {
                     AccessFlagBits {
                         shader_read: true,
                         shader_write: !self.readonly,
-                        .. AccessFlagBits::none()
+                        ..AccessFlagBits::none()
                     }
                 } else {
                     AccessFlagBits {
                         uniform_read: true,
-                        .. AccessFlagBits::none()
+                        ..AccessFlagBits::none()
                     }
                 }
             },
@@ -545,7 +546,7 @@ impl From<ShaderStages> for PipelineStages {
             geometry_shader: stages.geometry,
             fragment_shader: stages.fragment,
             compute_shader: stages.compute,
-            .. PipelineStages::none()
+            ..PipelineStages::none()
         }
     }
 }

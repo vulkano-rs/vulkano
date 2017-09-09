@@ -181,6 +181,7 @@ pub const STRUCTURE_TYPE_SPARSE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059007;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1000059008;
 pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: u32 = 1000080000;
+pub const STRUCTURE_TYPE_PRESENT_REGIONS_KHR: u32 = 1000084000;
 pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
 pub const STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR: u32 = 1000127000;
 pub const STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR: u32 = 1000127001;
@@ -2619,6 +2620,27 @@ pub struct MemoryRequirements2KHR {
     pub sType: StructureType,
     pub pNext: *mut c_void,
     pub memoryRequirements: MemoryRequirements,
+}
+
+#[repr(C)]
+pub struct RectLayerKHR {
+    pub offset: Offset2D,
+    pub extent: Extent2D,
+    pub layer: u32,
+}
+
+#[repr(C)]
+pub struct PresentRegionKHR {
+    pub rectangleCount: u32,
+    pub pRectangles: *const RectLayerKHR,
+}
+
+#[repr(C)]
+pub struct PresentRegionsKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub swapchainCount: u32,
+    pub pRegions: *const PresentRegionKHR,
 }
 
 macro_rules! ptrs {
