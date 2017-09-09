@@ -1106,7 +1106,7 @@ impl<P> SyncCommandBuffer<P> {
 
         // If we are going to return an error, we have to unlock all the resources we locked above.
         if let Err(_) = ret_value {
-            for (key, val) in self.resources.iter().take(locked_resources) {
+            for key in self.resources.keys().take(locked_resources) {
                 let (command_id, resource_ty, resource_index) = match *key {
                     CbKey::Command {
                         command_id,
@@ -1131,13 +1131,8 @@ impl<P> SyncCommandBuffer<P> {
                     KeyTy::Image => {
                         let cmd = &commands_lock[command_id];
                         let img = cmd.image(resource_index);
-                        let trans = if val.final_layout != val.initial_layout {
-                            Some(val.final_layout)
-                        } else {
-                            None
-                        };
                         unsafe {
-                            img.unlock(trans);
+                            img.unlock(None);
                         }
                     },
                 }
