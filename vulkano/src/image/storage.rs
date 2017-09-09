@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
+use buffer::BufferAccess;
 use device::Device;
 use device::Queue;
 use format::ClearValue;
@@ -198,7 +199,17 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
     }
 
     #[inline]
-    fn conflict_key(&self, _: u32, _: u32, _: u32, _: u32) -> u64 {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
         self.image.key()
     }
 

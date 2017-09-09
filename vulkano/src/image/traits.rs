@@ -26,7 +26,6 @@ use sampler::Sampler;
 use sync::AccessError;
 
 use SafeDeref;
-use VulkanObject;
 
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {
@@ -127,53 +126,28 @@ pub unsafe trait ImageAccess {
         }
     }
 
-    /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
-    /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
-    /// access to `other` (as defined by `other_offset` and `other_size`).
+    /// Returns true if an access to `self` potentially overlaps the same memory as an
+    /// access to `other`.
     ///
-    /// If this function returns `false`, this means that we are allowed to access the offset/size
-    /// of `self` at the same time as the offset/size of `other` without causing a data race.
-    ///
-    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
-    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, self_first_layer: u32, self_num_layers: u32,
-                        self_first_mipmap: u32, self_num_mipmaps: u32, other: &BufferAccess,
-                        other_offset: usize, other_size: usize)
-                        -> bool {
-        // TODO: should we really provide a default implementation?
-        false
-    }
-
-    /// Returns true if an access to `self` (as defined by `self_first_layer`, `self_num_layers`,
-    /// `self_first_mipmap` and `self_num_mipmaps`) potentially overlaps the same memory as an
-    /// access to `other` (as defined by `other_first_layer`, `other_num_layers`,
-    /// `other_first_mipmap` and `other_num_mipmaps`).
-    ///
-    /// If this function returns `false`, this means that we are allowed to access the offset/size
-    /// of `self` at the same time as the offset/size of `other` without causing a data race.
+    /// If this function returns `false`, this means that we are allowed to access the content
+    /// of `self` at the same time as the content of `other` without causing a data race.
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, self_first_layer: u32, self_num_layers: u32,
-                       self_first_mipmap: u32, self_num_mipmaps: u32, other: &ImageAccess,
-                       other_first_layer: u32, other_num_layers: u32, other_first_mipmap: u32,
-                       other_num_mipmaps: u32)
-                       -> bool {
-        // TODO: should we really provide a default implementation?
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool;
 
-        // TODO: debug asserts to check for ranges
-
-        if self.inner().image.internal_object() != other.inner().image.internal_object() {
-            return false;
-        }
-
-        true
-    }
-
-    /// Returns a key that uniquely identifies the range given by
-    /// first_layer/num_layers/first_mipmap/num_mipmaps.
+    /// Returns true if an access to `self` potentially overlaps the same memory as an
+    /// access to `other`.
     ///
-    /// Two ranges that potentially overlap in memory should return the same key.
+    /// If this function returns `false`, this means that we are allowed to access the content
+    /// of `self` at the same time as the content of `other` without causing a data race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
+    fn conflicts_image(&self, other: &ImageAccess) -> bool;
+
+    /// Returns a key that uniquely identifies the memory content of the image.
+    /// Two ranges that potentially overlap in memory must return the same key.
     ///
     /// The key is shared amongst all buffers and images, which means that you can make several
     /// different image objects share the same memory, or make some image objects share memory
@@ -182,40 +156,7 @@ pub unsafe trait ImageAccess {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_image` or `conflicts_buffer` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64;
-
-    /// Shortcut for `conflicts_buffer` that compares the whole buffer to another.
-    #[inline]
-    fn conflicts_buffer_all(&self, other: &BufferAccess) -> bool {
-        self.conflicts_buffer(0,
-                              self.dimensions().array_layers(),
-                              0,
-                              self.mipmap_levels(),
-                              other,
-                              0,
-                              other.size())
-    }
-
-    /// Shortcut for `conflicts_image` that compares the whole buffer to a whole image.
-    #[inline]
-    fn conflicts_image_all(&self, other: &ImageAccess) -> bool {
-        self.conflicts_image(0,
-                             self.dimensions().array_layers(),
-                             0,
-                             self.mipmap_levels(),
-                             other,
-                             0,
-                             other.dimensions().array_layers(),
-                             0,
-                             other.mipmap_levels())
-    }
-
-    /// Shortcut for `conflict_key` that grabs the key of the whole buffer.
-    #[inline]
-    fn conflict_key_all(&self) -> u64 {
-        self.conflict_key(0, self.dimensions().array_layers(), 0, self.mipmap_levels())
-    }
+    fn conflict_key(&self) -> u64;
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -284,9 +225,18 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64 {
-        (**self).conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        (**self).conflicts_buffer(other)
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        (**self).conflicts_image(other)
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        (**self).conflict_key()
     }
 
     #[inline]
@@ -336,10 +286,18 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn conflict_key(&self, first_layer: u32, num_layers: u32, first_mipmap: u32, num_mipmaps: u32)
-                    -> u64 {
-        self.image
-            .conflict_key(first_layer, num_layers, first_mipmap, num_mipmaps)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.image.conflicts_buffer(other)
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.image.conflicts_image(other)
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        self.image.conflict_key()
     }
 
     #[inline]

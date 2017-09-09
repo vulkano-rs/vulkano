@@ -1,5 +1,7 @@
 # Unreleased (major)
 
+- Changed `BufferAccess::conflict_*` and `ImageAccess::conflict_*` to forbid querying a specific
+  range of the resource.
 - Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
   allocating or mapping memory.
 
