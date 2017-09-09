@@ -308,7 +308,16 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
+                    -> Result<(), AccessError>
+    {
+        if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
+            return Err(AccessError::UnexpectedImageLayout {
+                requested: expected_layout,
+                allowed: self.layout,
+            });
+        }
+
         if exclusive_access {
             return Err(AccessError::ExclusiveDenied);
         }
@@ -325,7 +334,8 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        debug_assert!(new_layout.is_none());
     }
 }
 
@@ -416,7 +426,14 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+        if expected_layout != ImageLayout::Undefined {
+            return Err(AccessError::UnexpectedImageLayout {
+                requested: expected_layout,
+                allowed: ImageLayout::Undefined,
+            });
+        }
+
         if self.image.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }
@@ -435,7 +452,8 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        assert_eq!(new_layout, Some(self.image.layout));
         self.image.initialized.store(true, Ordering::Relaxed);
     }
 }

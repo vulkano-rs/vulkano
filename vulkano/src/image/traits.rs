@@ -8,7 +8,6 @@
 // according to those terms.
 
 use buffer::BufferAccess;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::PossibleDepthFormatDesc;
@@ -205,6 +204,8 @@ pub unsafe trait ImageAccess {
     /// - Must only be called once per previous lock.
     /// - The transitionned layout must be supported by the image (eg. the layout shouldn't be
     ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
+    /// - The transitionned layout must not be `Undefined`.
+    ///
     unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>);
 }
 
@@ -325,8 +326,10 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        self.image.try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
+                    -> Result<(), AccessError>
+    {
+        self.image.try_gpu_lock(exclusive_access, expected_layout)
     }
 
     #[inline]
@@ -335,8 +338,8 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        self.image.unlock()
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        self.image.unlock(new_layout)
     }
 }
 

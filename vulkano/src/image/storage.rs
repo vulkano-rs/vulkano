@@ -14,7 +14,6 @@ use std::sync::atomic::Ordering;
 
 use buffer::BufferAccess;
 use device::Device;
-use device::Queue;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
@@ -214,7 +213,15 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+        // TODO: handle initial layout transition
+        if expected_layout != ImageLayout::General && expected_layout != ImageLayout::Undefined {
+            return Err(AccessError::UnexpectedImageLayout {
+                requested: expected_layout,
+                allowed: ImageLayout::General,
+            });
+        }
+
         let val = self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst);
         if val == 0 {
             Ok(())
@@ -230,7 +237,8 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        assert!(new_layout.is_none() || new_layout == Some(ImageLayout::General));
         self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
     }
 }

@@ -9,12 +9,12 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use buffer::BufferAccess;
 use device::Device;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
@@ -489,7 +489,12 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        if let Some(new_layout) = new_layout {
+            debug_assert_eq!(new_layout, self.attachment_layout);
+            self.initialized.store(true, Ordering::SeqCst);
+        }
+
         let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_val >= 1);
     }

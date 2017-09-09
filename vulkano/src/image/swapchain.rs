@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use buffer::BufferAccess;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
@@ -128,6 +127,7 @@ unsafe impl ImageAccess for SwapchainImage {
 
     #[inline]
     unsafe fn unlock(&self, _: Option<ImageLayout>) {
+        // TODO: store that the image was initialized
     }
 }
 
