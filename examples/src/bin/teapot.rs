@@ -190,7 +190,7 @@ fn main() {
                 proj : proj.into(),
             };
 
-            uniform_buffer.next(uniform_data)
+            uniform_buffer.next(uniform_data).unwrap()
         };
 
         let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)

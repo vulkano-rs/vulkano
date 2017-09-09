@@ -500,7 +500,7 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                 let entry_key_resource_index = entry.key().resource_index;
                 let entry_key_resource_ty = entry.key().resource_ty;
-                let mut entry = entry.into_mut();
+                let entry = entry.into_mut();
 
                 // Find out if we have a collision with the pending commands.
                 if exclusive || entry.exclusive || entry.current_layout != start_layout {
@@ -706,7 +706,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 // TODO: this could be optimized by merging the barrier with the barrier above?
                 let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
 
-                for (key, mut state) in &mut self.resources {
+                for (key, state) in &mut self.resources {
                     if key.resource_ty != KeyTy::Image {
                         continue;
                     }

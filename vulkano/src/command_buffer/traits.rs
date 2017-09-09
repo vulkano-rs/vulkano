@@ -53,7 +53,6 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// the given queue, and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
-    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
     fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
 
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
@@ -61,7 +60,6 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// # Safety
     ///
     /// Must not be called if you haven't called `lock_submit` before.
-    // TODO: require `&mut self` instead, but this has some consequences on other parts of the lib
     unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
@@ -145,17 +143,6 @@ pub unsafe trait CommandBuffer: DeviceOwned {
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     // FIXME: lots of other methods
-}
-
-/// Turns a command buffer builder into a real command buffer.
-pub unsafe trait CommandBufferBuild {
-    /// The type of the built command buffer.
-    type Out;
-    /// Error that can be returned when building.
-    type Err;
-
-    /// Builds the command buffer.
-    fn build(self) -> Result<Self::Out, Self::Err>;
 }
 
 unsafe impl<T> CommandBuffer for T

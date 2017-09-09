@@ -440,7 +440,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// Panics if the buffer doesn't have the same device as the pipeline layout.
     ///
-    pub fn add_buffer<T>(mut self, buffer: T)
+    pub fn add_buffer<T>(self, buffer: T)
         -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
         where T: BufferAccess
     {
@@ -458,7 +458,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// Panics if the buffer view doesn't have the same device as the pipeline layout.
     ///
-    pub fn add_buffer_view<T>(mut self, view: T)
+    pub fn add_buffer_view<T>(self, view: T)
         -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
         where T: BufferViewRef
     {
@@ -476,7 +476,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// Panics if the image view doesn't have the same device as the pipeline layout.
     ///
-    pub fn add_image<T>(mut self, image_view: T)
+    pub fn add_image<T>(self, image_view: T)
         -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
@@ -494,7 +494,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// Panics if the image or the sampler doesn't have the same device as the pipeline layout.
     ///
-    pub fn add_sampled_image<T>(mut self, image_view: T, sampler: Arc<Sampler>)
+    pub fn add_sampled_image<T>(self, image_view: T, sampler: Arc<Sampler>)
         -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
@@ -512,7 +512,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// Panics if the sampler doesn't have the same device as the pipeline layout.
     ///
-    pub fn add_sampler(mut self, sampler: Arc<Sampler>)
+    pub fn add_sampler(self, sampler: Arc<Sampler>)
         -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
