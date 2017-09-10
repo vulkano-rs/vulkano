@@ -4,6 +4,7 @@
   range of the resource.
 - Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
   allocating or mapping memory.
+- Fixed `layers` argument validation in `Swapchain::new_inner`.
 
 # Version 0.6.2 (2017-09-06)
 

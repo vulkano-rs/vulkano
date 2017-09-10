@@ -303,7 +303,7 @@ impl Swapchain {
         if dimensions[1] > capabilities.max_image_extent[1] {
             return Err(SwapchainCreationError::UnsupportedDimensions);
         }
-        if layers < 1 && layers > capabilities.max_image_array_layers {
+        if layers < 1 || layers > capabilities.max_image_array_layers {
             return Err(SwapchainCreationError::UnsupportedArrayLayers);
         }
         if (usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) !=
