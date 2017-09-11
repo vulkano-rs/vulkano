@@ -5,6 +5,7 @@
 - Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
   allocating or mapping memory.
 - Fixed `layers` argument validation in `Swapchain::new_inner`.
+- Provide 32-bit word constructor for `ShaderModule` (`ShaderModule::from_words`).
 
 # Version 0.6.2 (2017-09-06)
 
