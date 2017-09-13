@@ -22,9 +22,18 @@ use buffer::BufferAccess;
 /// `gl_VertexIndex`
 pub struct BufferlessDefinition;
 
-unsafe impl VertexSource<usize> for BufferlessDefinition {
-    fn decode(&self, n: usize) -> (Vec<Box<BufferAccess + Sync + Send + 'static>>, usize, usize) {
-        (Vec::new(), n, 1)
+/// Value to be passed as the vertex source for bufferless draw commands.
+///
+/// Note that the concrete type of the graphics pipeline using `BufferlessDefinition` must be
+/// visible to the command buffer builder for this to be usable.
+pub struct BufferlessVertices {
+    vertices: usize,
+    instances: usize,
+}
+
+unsafe impl VertexSource<BufferlessVertices> for BufferlessDefinition {
+    fn decode(&self, n: BufferlessVertices) -> (Vec<Box<BufferAccess + Sync + Send + 'static>>, usize, usize) {
+        (Vec::new(), n.vertices, n.instances)
     }
 }
 
