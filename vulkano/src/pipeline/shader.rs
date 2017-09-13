@@ -53,7 +53,7 @@ pub struct ShaderModule {
 }
 
 impl ShaderModule {
-    /// Builds a new shader module from SPIR-V.
+    /// Builds a new shader module from SPIR-V bytes.
     ///
     /// # Safety
     ///
@@ -63,14 +63,37 @@ impl ShaderModule {
     ///
     pub unsafe fn new(device: Arc<Device>, spirv: &[u8]) -> Result<Arc<ShaderModule>, OomError> {
         debug_assert!((spirv.len() % 4) == 0);
+        Self::from_ptr(device, spirv.as_ptr() as *const _, spirv.len())
+    }
 
+    /// Builds a new shader module from SPIR-V 32-bit words.
+    ///
+    /// # Safety
+    ///
+    /// - The SPIR-V code is not validated.
+    /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
+    ///   this function either.
+    ///
+    pub unsafe fn from_words(device: Arc<Device>, spirv: &[u32]) -> Result<Arc<ShaderModule>, OomError> {
+        Self::from_ptr(device, spirv.as_ptr(), spirv.len() * mem::size_of::<u32>())
+    }
+
+    /// Builds a new shader module from SPIR-V.
+    ///
+    /// # Safety
+    ///
+    /// - The SPIR-V code is not validated.
+    /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
+    ///   this function either.
+    ///
+    unsafe fn from_ptr(device: Arc<Device>, spirv: *const u32, spirv_len: usize) -> Result<Arc<ShaderModule>, OomError> {
         let module = {
             let infos = vk::ShaderModuleCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0, // reserved
-                codeSize: spirv.len(),
-                pCode: spirv.as_ptr() as *const _,
+                codeSize: spirv_len,
+                pCode: spirv,
             };
 
             let vk = device.pointers();
