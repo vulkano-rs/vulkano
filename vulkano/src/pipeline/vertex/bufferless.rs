@@ -27,8 +27,8 @@ pub struct BufferlessDefinition;
 /// Note that the concrete type of the graphics pipeline using `BufferlessDefinition` must be
 /// visible to the command buffer builder for this to be usable.
 pub struct BufferlessVertices {
-    vertices: usize,
-    instances: usize,
+    pub vertices: usize,
+    pub instances: usize,
 }
 
 unsafe impl VertexSource<BufferlessVertices> for BufferlessDefinition {

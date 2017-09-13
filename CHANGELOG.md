@@ -6,8 +6,7 @@
   allocating or mapping memory.
 - Fixed `layers` argument validation in `Swapchain::new_inner`.
 - Added `vulkano::pipeline::vertex::BufferlessDefinition` and `BufferlessVertices` to enable
-  bufferless drawing, which is useful when drawing with shaders that compute their vertices
-  internally.
+  bufferless drawing.
 
 # Version 0.6.2 (2017-09-06)
 
