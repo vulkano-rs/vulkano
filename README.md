@@ -49,6 +49,16 @@ To get started you are encouraged to read the examples in
 
 [![Become a patron](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/tomaka)
 
+## Contributing
+
+Contributions are welcome! Feel free to submit pull requests.
+
+Pull requests that fix bugs or improve documentation are likely to be quickly reviewed, while pull
+requests that add features or change the API may be more controversial and take more time.
+
+If your change adds, removes or modifies a trait or a function, please add an entry to the
+`CHANGELOG.md` file as part of your pull request.
+
 ## Structure
 
 This repository contains six libraries:

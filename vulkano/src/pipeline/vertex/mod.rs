@@ -75,6 +75,8 @@ pub use self::two::TwoBuffersDefinition;
 pub use self::vertex::Vertex;
 pub use self::vertex::VertexMemberInfo;
 pub use self::vertex::VertexMemberTy;
+pub use self::bufferless::BufferlessDefinition;
+pub use self::bufferless::BufferlessVertices;
 
 mod definition;
 mod impl_vertex;
@@ -82,3 +84,4 @@ mod one_one;
 mod single;
 mod two;
 mod vertex;
+mod bufferless;
