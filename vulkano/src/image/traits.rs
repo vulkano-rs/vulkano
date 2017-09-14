@@ -8,7 +8,6 @@
 // according to those terms.
 
 use buffer::BufferAccess;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::PossibleDepthFormatDesc;
@@ -160,13 +159,23 @@ pub unsafe trait ImageAccess {
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
+    /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
+    /// GPU operation requires an exclusive access to the image (which includes image layout
+    /// transitions) then `exlusive_access` should be true.
+    ///
+    /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
+    /// actual layout doesn't match this expected layout, then an error should be returned. If
+    /// `Undefined` is passed, that means that the caller doesn't care about the actual layout,
+    /// and that a layout mismatch shouldn't return an error.
+    ///
     /// This function exists to prevent the user from causing a data race by reading and writing
     /// to the same resource at the same time.
     ///
     /// If you call this function, you should call `unlock()` once the resource is no longer in use
     /// by the GPU. The implementation is not expected to automatically perform any unlocking and
     /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
+    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
+                    -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -180,10 +189,24 @@ pub unsafe trait ImageAccess {
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
+    /// If the GPU operation that we unlock from transitionned the image to another layout, then
+    /// it should be passed as parameter.
+    ///
+    /// A layout transition requires exclusive access to the image, which means two things:
+    ///
+    /// - The implementation can panic if it finds out that the layout is not the same as it
+    ///   currently is and that it is not locked in exclusive mode.
+    /// - There shouldn't be any possible race between `unlock` and `try_gpu_lock`, since
+    ///   `try_gpu_lock` should fail if the image is already locked in exclusive mode.
+    ///
     /// # Safety
     ///
-    /// Must only be called once per previous lock.
-    unsafe fn unlock(&self);
+    /// - Must only be called once per previous lock.
+    /// - The transitionned layout must be supported by the image (eg. the layout shouldn't be
+    ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
+    /// - The transitionned layout must not be `Undefined`.
+    ///
+    unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>);
 }
 
 /// Inner information about an image.
@@ -240,8 +263,10 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
+                    -> Result<(), AccessError>
+    {
+        (**self).try_gpu_lock(exclusive_access, expected_layout)
     }
 
     #[inline]
@@ -250,8 +275,8 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        (**self).unlock()
+    unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>) {
+        (**self).unlock(transitionned_layout)
     }
 }
 
@@ -301,8 +326,10 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        self.image.try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
+                    -> Result<(), AccessError>
+    {
+        self.image.try_gpu_lock(exclusive_access, expected_layout)
     }
 
     #[inline]
@@ -311,8 +338,8 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        self.image.unlock()
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        self.image.unlock(new_layout)
     }
 }
 

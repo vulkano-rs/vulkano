@@ -1,9 +1,12 @@
 # Unreleased (major)
 
+- Changed `ImageAccess::try_gpu_lock` and `unlock()` to verify whether the image layout is correct,
+  especially at the first usage of an image.
 - Changed `BufferAccess::conflict_*` and `ImageAccess::conflict_*` to forbid querying a specific
   range of the resource.
 - Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
   allocating or mapping memory.
+- Changed `CommandBufferExecError::AccessError` to provide a hint of where the error occurs.
 - Fixed `layers` argument validation in `Swapchain::new_inner`.
 - Added `vulkano::pipeline::vertex::BufferlessDefinition` and `BufferlessVertices` to enable
   bufferless drawing.

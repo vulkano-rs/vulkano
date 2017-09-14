@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::borrow::Cow;
 use std::error;
 use std::fmt;
 use std::sync::Arc;
@@ -340,7 +341,12 @@ impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CommandBufferExecError {
     /// Access to a resource has been denied.
-    AccessError(AccessError),
+    AccessError {
+        error: AccessError,
+        command_name: Cow<'static, str>,
+        command_param: Cow<'static, str>,
+        command_offset: usize,
+    },
 
     /// The command buffer or one of the secondary command buffers it executes was created with the
     /// "one time submit" flag, but has already been submitted it the past.
@@ -357,7 +363,7 @@ impl error::Error for CommandBufferExecError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            CommandBufferExecError::AccessError(_) => {
+            CommandBufferExecError::AccessError { .. } => {
                 "access to a resource has been denied"
             },
             CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
@@ -375,7 +381,7 @@ impl error::Error for CommandBufferExecError {
     #[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
-            CommandBufferExecError::AccessError(ref err) => Some(err),
+            CommandBufferExecError::AccessError { ref error, .. } => Some(error),
             _ => None,
         }
     }
@@ -385,12 +391,5 @@ impl fmt::Display for CommandBufferExecError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "{}", error::Error::description(self))
-    }
-}
-
-impl From<AccessError> for CommandBufferExecError {
-    #[inline]
-    fn from(err: AccessError) -> CommandBufferExecError {
-        CommandBufferExecError::AccessError(err)
     }
 }

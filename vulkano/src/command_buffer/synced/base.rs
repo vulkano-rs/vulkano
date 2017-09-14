@@ -811,6 +811,9 @@ struct ResourceFinalState {
 /// Equivalent to `Command`, but with less methods. Typically contains less things than the
 /// `Command` it comes from.
 pub trait FinalCommand {
+    // Returns a user-friendly name for the command, for error reporting purposes.
+    fn name(&self) -> &'static str;
+
     // Gives access to the `num`th buffer used by the command.
     fn buffer(&self, _num: usize) -> &BufferAccess {
         panic!()
@@ -820,9 +823,24 @@ pub trait FinalCommand {
     fn image(&self, _num: usize) -> &ImageAccess {
         panic!()
     }
+
+    // Returns a user-friendly name for the `num`th buffer used by the command, for error
+    // reporting purposes.
+    fn buffer_name(&self, _num: usize) -> Cow<'static, str> {
+        panic!()
+    }
+
+    // Returns a user-friendly name for the `num`th image used by the command, for error
+    // reporting purposes.
+    fn image_name(&self, _num: usize) -> Cow<'static, str> {
+        panic!()
+    }
 }
 
-impl FinalCommand for () {
+impl FinalCommand for &'static str {
+    fn name(&self) -> &'static str {
+        *self
+    }
 }
 
 // Equivalent of `BuilderKey` for a finished command buffer.
@@ -1059,12 +1077,13 @@ impl<P> SyncCommandBuffer<P> {
 
                     match (buf.try_gpu_lock(entry.exclusive, queue), prev_err) {
                         (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) => {
-                            ret_value = Err(err.into());
-                            break;
-                        },
-                        (_, AccessCheckError::Denied(err)) => {
-                            ret_value = Err(err.into());
+                        (Err(err), AccessCheckError::Unknown) | (_, AccessCheckError::Denied(err)) => {
+                            ret_value = Err(CommandBufferExecError::AccessError {
+                                error: err,
+                                command_name: cmd.name().into(),
+                                command_param: cmd.buffer_name(resource_index),
+                                command_offset: command_id,
+                            });
                             break;
                         },
                     };
@@ -1087,14 +1106,15 @@ impl<P> SyncCommandBuffer<P> {
                         Err(err) => err
                     };
 
-                    match (img.try_gpu_lock(entry.exclusive, queue), prev_err) {
+                    match (img.try_gpu_lock(entry.exclusive, entry.initial_layout), prev_err) {
                         (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) => {
-                            ret_value = Err(err.into());
-                            break;
-                        },
-                        (_, AccessCheckError::Denied(err)) => {
-                            ret_value = Err(err.into());
+                        (Err(err), AccessCheckError::Unknown) | (_, AccessCheckError::Denied(err)) => {
+                            ret_value = Err(CommandBufferExecError::AccessError {
+                                error: err,
+                                command_name: cmd.name().into(),
+                                command_param: cmd.image_name(resource_index),
+                                command_offset: command_id,
+                            });
                             break;
                         },
                     };
@@ -1132,7 +1152,7 @@ impl<P> SyncCommandBuffer<P> {
                         let cmd = &commands_lock[command_id];
                         let img = cmd.image(resource_index);
                         unsafe {
-                            img.unlock();
+                            img.unlock(None);
                         }
                     },
                 }
@@ -1155,7 +1175,7 @@ impl<P> SyncCommandBuffer<P> {
     pub unsafe fn unlock(&self) {
         let commands_lock = self.commands.lock().unwrap();
 
-        for key in self.resources.keys() {
+        for (key, val) in self.resources.iter() {
             let (command_id, resource_ty, resource_index) = match *key {
                 CbKey::Command {
                     command_id,
@@ -1177,7 +1197,12 @@ impl<P> SyncCommandBuffer<P> {
                 KeyTy::Image => {
                     let cmd = &commands_lock[command_id];
                     let img = cmd.image(resource_index);
-                    img.unlock();
+                    let trans = if val.final_layout != val.initial_layout {
+                        Some(val.final_layout)
+                    } else {
+                        None
+                    };
+                    img.unlock(trans);
                 },
             }
         }

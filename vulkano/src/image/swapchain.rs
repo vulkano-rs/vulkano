@@ -10,7 +10,6 @@
 use std::sync::Arc;
 
 use buffer::BufferAccess;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
@@ -117,7 +116,7 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
         // Swapchain image are only accessible after being acquired.
         Err(AccessError::SwapchainImageAcquireOnly)
     }
@@ -127,7 +126,8 @@ unsafe impl ImageAccess for SwapchainImage {
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, _: Option<ImageLayout>) {
+        // TODO: store that the image was initialized
     }
 }
 

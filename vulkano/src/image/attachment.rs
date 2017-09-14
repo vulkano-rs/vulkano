@@ -9,12 +9,12 @@
 
 use std::iter::Empty;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use buffer::BufferAccess;
 use device::Device;
-use device::Queue;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
@@ -89,6 +89,10 @@ pub struct AttachmentImage<F = Format, A = PotentialDedicatedAllocation<StdMemor
     // Layout to use when the image is used as a framebuffer attachment.
     // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: ImageLayout,
+
+    // If true, then the image is in the layout of `attachment_layout` (above). If false, then it
+    // is still `Undefined`.
+    initialized: AtomicBool,
 
     // Number of times this image is locked on the GPU side.
     gpu_lock: AtomicUsize,
@@ -394,6 +398,7 @@ impl<F> AttachmentImage<F> {
                         } else {
                             ImageLayout::ColorAttachmentOptimal
                         },
+                        initialized: AtomicBool::new(false),
                         gpu_lock: AtomicUsize::new(0),
                     }))
     }
@@ -448,7 +453,29 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+        if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
+            if self.initialized.load(Ordering::SeqCst) {
+                return Err(AccessError::UnexpectedImageLayout {
+                    requested: expected_layout,
+                    allowed: self.attachment_layout,
+                });
+            } else {
+                return Err(AccessError::UnexpectedImageLayout {
+                    requested: expected_layout,
+                    allowed: ImageLayout::Undefined,
+                });
+            }
+        }
+
+        if expected_layout != ImageLayout::Undefined {
+            if !self.initialized.load(Ordering::SeqCst) {
+                return Err(AccessError::ImageNotInitialized {
+                    requested: expected_layout,
+                });
+            }
+        }
+
         if self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0 {
             Ok(())
         } else {
@@ -463,7 +490,12 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        if let Some(new_layout) = new_layout {
+            debug_assert_eq!(new_layout, self.attachment_layout);
+            self.initialized.store(true, Ordering::SeqCst);
+        }
+
         let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_val >= 1);
     }
