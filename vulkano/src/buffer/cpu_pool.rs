@@ -815,7 +815,7 @@ mod tests {
         let pool = CpuBufferPool::upload(device);
         assert_eq!(pool.capacity(), 0);
 
-        pool.next(12);
+        pool.next(12).unwrap();
         let first_cap = pool.capacity();
         assert!(first_cap >= 1);
 
