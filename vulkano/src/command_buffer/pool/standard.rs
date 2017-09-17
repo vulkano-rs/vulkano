@@ -11,6 +11,8 @@ use crossbeam::sync::MsQueue;
 use fnv::FnvHashMap;
 use std::collections::hash_map::Entry;
 use std::marker::PhantomData;
+use std::mem::ManuallyDrop;
+use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::Weak;
@@ -127,7 +129,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                 if let Some(cmd) = existing.try_pop() {
                     output.push(StandardCommandPoolBuilder {
                                     inner: StandardCommandPoolAlloc {
-                                        cmd: Some(cmd),
+                                        cmd: ManuallyDrop::new(cmd),
                                         pool: per_thread.clone(),
                                         pool_parent: self.clone(),
                                         secondary: secondary,
@@ -149,7 +151,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             for cmd in pool_lock.alloc_command_buffers(secondary, num_new)? {
                 output.push(StandardCommandPoolBuilder {
                                 inner: StandardCommandPoolAlloc {
-                                    cmd: Some(cmd),
+                                    cmd: ManuallyDrop::new(cmd),
                                     pool: per_thread.clone(),
                                     pool_parent: self.clone(),
                                     secondary: secondary,
@@ -217,8 +219,8 @@ unsafe impl DeviceOwned for StandardCommandPoolBuilder {
 
 /// Command buffer allocated from a `StandardCommandPool`.
 pub struct StandardCommandPoolAlloc {
-    // The actual command buffer. Must always be `Some`. Value extracted in the destructor.
-    cmd: Option<UnsafeCommandPoolAlloc>,
+    // The actual command buffer. Extracted in the `Drop` implementation.
+    cmd: ManuallyDrop<UnsafeCommandPoolAlloc>,
     // We hold a reference to the command pool for our destructor.
     pool: Arc<StandardCommandPoolPerThread>,
     // Keep alive the `StandardCommandPool`, otherwise it would be destroyed.
@@ -237,7 +239,7 @@ unsafe impl Sync for StandardCommandPoolAlloc {
 unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeCommandPoolAlloc {
-        self.cmd.as_ref().unwrap()
+        &*self.cmd
     }
 
     #[inline]
@@ -262,7 +264,8 @@ unsafe impl DeviceOwned for StandardCommandPoolAlloc {
 
 impl Drop for StandardCommandPoolAlloc {
     fn drop(&mut self) {
-        let cmd = self.cmd.take().unwrap();
+        // Safe because `self.cmd` is wrapped in a `ManuallyDrop`.
+        let cmd: UnsafeCommandPoolAlloc = unsafe { ptr::read(&*self.cmd) };
 
         if self.secondary {
             self.pool.available_secondary_command_buffers.push(cmd);
