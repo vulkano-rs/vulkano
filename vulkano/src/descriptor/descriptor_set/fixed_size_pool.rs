@@ -34,7 +34,44 @@ use sampler::Sampler;
 /// You are encouraged to use this type when you need a different descriptor set at each frame, or
 /// regularly during the execution.
 ///
-// TODO: add example
+/// # Example
+///
+/// At initialization, create a `FixedSizeDescriptorSetsPool`. The first parameter of the `new`
+/// function can be a graphics pipeline, a compute pipeline, or anything that represents a pipeline
+/// layout.
+///
+/// ```rust
+/// use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
+/// # use vulkano::pipeline::GraphicsPipelineAbstract;
+/// # use std::sync::Arc;
+/// # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
+/// // use vulkano::pipeline::GraphicsPipelineAbstract;
+/// // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
+/// 
+/// let pool = FixedSizeDescriptorSetsPool::new(graphics_pipeline.clone(), 0);
+/// ```
+///
+/// You would then typically store the pool in a struct for later. Its type is
+/// `FixedSizeDescriptorSetsPool<T>` where `T` is the type of what was passed to `new()`. In the
+/// example above, it would be `FixedSizeDescriptorSetsPool<Arc<GraphicsPipelineAbstract>>`.
+///
+/// Then whenever you need a descriptor set, call `pool.next()` to start the process of building
+/// it.
+///
+/// ```rust
+/// # use std::sync::Arc;
+/// # use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
+/// # use vulkano::pipeline::GraphicsPipelineAbstract;
+/// # let mut pool: FixedSizeDescriptorSetsPool<Arc<GraphicsPipelineAbstract>> = return;
+/// let descriptor_set = pool.next()
+///     //.add_buffer(...)
+///     //.add_sampled_image(...)
+///     .build().unwrap();
+/// ```
+///
+/// Note that `next()` requires exclusive (`mut`) access to the pool. You can use a `Mutex` around
+/// the pool if you can't provide this.
+///
 #[derive(Clone)]
 pub struct FixedSizeDescriptorSetsPool<L> {
     pipeline_layout: L,
