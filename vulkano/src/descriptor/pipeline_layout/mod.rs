@@ -51,6 +51,8 @@
 
 pub use self::empty::EmptyPipelineDesc;
 pub use self::limits_check::PipelineLayoutLimitsError;
+pub use self::runtime_desc::RuntimePipelineDesc;
+pub use self::runtime_desc::RuntimePipelineDescError;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;
 pub use self::sys::PipelineLayoutSys;
@@ -65,6 +67,7 @@ pub use self::union::PipelineLayoutDescUnion;
 
 mod empty;
 mod limits_check;
+mod runtime_desc;
 mod sys;
 mod traits;
 mod union;
