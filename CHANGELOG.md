@@ -1,5 +1,7 @@
 # Unreleased (major)
 
+- Added `RuntimePipelineDesc`, an implementation of `PipelineLayoutDesc` that makes creating custom
+  layouts easier.
 - Changed `ImageAccess::try_gpu_lock` and `unlock()` to verify whether the image layout is correct,
   especially at the first usage of an image.
 - Changed `BufferAccess::conflict_*` and `ImageAccess::conflict_*` to forbid querying a specific
