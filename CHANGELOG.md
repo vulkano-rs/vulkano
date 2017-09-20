@@ -13,6 +13,7 @@
 - Added `vulkano::pipeline::vertex::BufferlessDefinition` and `BufferlessVertices` to enable
   bufferless drawing.
 - Provide 32-bit word constructor for `ShaderModule` (`ShaderModule::from_words`).
+- Changed the various `is_superset_of` functions to return a `Result` instead of a `bool`.
 
 # Version 0.6.2 (2017-09-06)
 

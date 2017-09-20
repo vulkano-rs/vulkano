@@ -10,6 +10,7 @@
 use std::error;
 use std::fmt;
 
+use descriptor::descriptor::DescriptorDescSupersetError;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 
@@ -39,8 +40,9 @@ pub fn check_descriptor_sets_validity<Pl, D>(pipeline: &Pl, descriptor_sets: &D)
                 (None, None) => continue,
             };
 
-            if !set_desc.is_superset_of(&pipeline_desc) {
+            if let Err(err) = set_desc.is_superset_of(&pipeline_desc) {
                 return Err(CheckDescriptorSetsValidityError::IncompatibleDescriptor {
+                               error: err,
                                set_num: set_num,
                                binding_num: binding_num,
                            });
@@ -52,7 +54,7 @@ pub fn check_descriptor_sets_validity<Pl, D>(pipeline: &Pl, descriptor_sets: &D)
 }
 
 /// Error that can happen when checking descriptor sets validity.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum CheckDescriptorSetsValidityError {
     /// A descriptor is missing in the descriptor sets that were provided.
     MissingDescriptor {
@@ -64,6 +66,8 @@ pub enum CheckDescriptorSetsValidityError {
 
     /// A descriptor in the provided sets is not compatible with what is expected.
     IncompatibleDescriptor {
+        /// The reason why the two descriptors aren't compatible.
+        error: DescriptorDescSupersetError,
         /// The index of the set of the descriptor.
         set_num: usize,
         /// The binding number of the descriptor.
@@ -81,6 +85,16 @@ impl error::Error for CheckDescriptorSetsValidityError {
             CheckDescriptorSetsValidityError::IncompatibleDescriptor { .. } => {
                 "a descriptor in the provided sets is not compatible with what is expected"
             },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            CheckDescriptorSetsValidityError::IncompatibleDescriptor { ref error, .. } => {
+                Some(error)
+            },
+            _ => None
         }
     }
 }
