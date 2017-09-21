@@ -106,14 +106,7 @@ fn main() {
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-
-    // Get the dimensions of the viewport. These variables need to be mutable since the viewport
-    // can change size.
-    let mut dimensions = {
-        let (width, height) = window.window().get_inner_size_pixels().unwrap();
-        [width, height]
-    };
-
+    
     // The next step is to choose which GPU queue will execute our draw commands.
     //
     // Devices can provide multiple queues to run commands in parallel (for example a draw queue
@@ -163,6 +156,10 @@ fn main() {
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
+    // The dimensions of the surface.
+    // This variable needs to be mutable since the viewport can change size.
+    let mut dimensions;
+
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately
     // be visible on the screen. These images are returned alongside with the swapchain.
@@ -171,11 +168,12 @@ fn main() {
         // pass values that are allowed by the capabilities.
         let caps = window.surface().capabilities(physical)
                          .expect("failed to get surface capabilities");
+        
+        dimensions = caps.current_extent.unwrap();
 
-        // We choose the dimensions of the swapchain to match the current dimensions of the window.
+        // We choose the dimensions of the swapchain to match the current extent of the surface.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
         // by the dimensions of the swapchain, in which case we just use the width and height defined above.
-        //let dimensions = caps.current_extent.unwrap_or([width, height]);
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
@@ -339,10 +337,9 @@ void main() {
         // If the swapchain needs to be recreated, recreate it
         if recreate_swapchain {
             // Get the new dimensions for the viewport/framebuffers.
-            dimensions = {
-                let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
-                [new_width, new_height]
-            };
+            dimensions = window.surface().capabilities(physical)
+                        .expect("failed to get surface capabilities")
+                        .current_extent.unwrap();
             
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,

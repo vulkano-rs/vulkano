@@ -188,8 +188,10 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: &winit::Window)
     layer.remove_all_animations();
 
     let view = wnd.contentView();
-    view.setWantsLayer(YES);
+
+    layer.set_contents_scale(view.backingScaleFactor());
     view.setLayer(mem::transmute(layer.0)); // Bombs here with out of memory
+    view.setWantsLayer(YES);
 
     Surface::from_macos_moltenvk(instance, win.get_nsview() as *const ())
 }
