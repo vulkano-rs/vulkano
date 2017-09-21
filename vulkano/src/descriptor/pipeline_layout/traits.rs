@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use SafeDeref;
 use descriptor::descriptor::DescriptorDesc;
+use descriptor::descriptor::DescriptorDescSupersetError;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
@@ -192,11 +193,11 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
             for desc_num in 0 .. other_num_bindings {
                 match (self.descriptor(set_num, desc_num), other.descriptor(set_num, desc_num)) {
                     (Some(mine), Some(other)) => {
-                        if !mine.is_superset_of(&other) {
+                        if let Err(err) = mine.is_superset_of(&other) {
                             return Err(PipelineLayoutNotSupersetError::IncompatibleDescriptors {
+                                error: err,
                                 set_num: set_num as u32,
                                 descriptor: desc_num as u32,
-                                // TODO: child error
                             });
                         }
                     },
@@ -231,9 +232,9 @@ pub enum PipelineLayoutNotSupersetError {
 
     /// Two descriptors are incompatible.
     IncompatibleDescriptors {
+        error: DescriptorDescSupersetError,
         set_num: u32,
         descriptor: u32,
-        // TODO: child error here
     },
 }
 
@@ -250,6 +251,16 @@ impl error::Error for PipelineLayoutNotSupersetError {
             PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
                 "two descriptors are incompatible"
             },
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&error::Error> {
+        match *self {
+            PipelineLayoutNotSupersetError::IncompatibleDescriptors { ref error, .. } => {
+                Some(error)
+            },
+            _ => None
         }
     }
 }

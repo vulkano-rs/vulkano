@@ -44,6 +44,8 @@
 use format::Format;
 use image::Dimensions;
 use std::cmp;
+use std::error;
+use std::fmt;
 use std::ops::BitOr;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
@@ -77,11 +79,25 @@ impl DescriptorDesc {
     /// Returns true if `self` is the same descriptor as `other`, or if `self` is the same as
     /// `other` but with a larger array elements count and/or more shader stages.
     // TODO: add example
-    // TODO: return Result instead of bool
     #[inline]
-    pub fn is_superset_of(&self, other: &DescriptorDesc) -> bool {
-        self.ty.is_superset_of(&other.ty) && self.array_count >= other.array_count &&
-            self.stages.is_superset_of(&other.stages) && (!self.readonly || other.readonly)
+    pub fn is_superset_of(&self, other: &DescriptorDesc)
+                          -> Result<(), DescriptorDescSupersetError>
+    {
+        self.ty.is_superset_of(&other.ty)?;
+        self.stages.is_superset_of(&other.stages)?;
+
+        if self.array_count < other.array_count {
+            return Err(DescriptorDescSupersetError::ArrayTooSmall {
+                len: self.array_count,
+                required: other.array_count,
+            });
+        }
+
+        if self.readonly && !other.readonly {
+            return Err(DescriptorDescSupersetError::MutabilityRequired);
+        }
+
+        Ok(())
     }
 
     /// Builds a `DescriptorDesc` that is the union of `self` and `other`, if possible.
@@ -221,9 +237,11 @@ impl DescriptorDescTy {
     /// Checks whether we are a superset of another descriptor type.
     // TODO: add example
     #[inline]
-    pub fn is_superset_of(&self, other: &DescriptorDescTy) -> bool {
+    pub fn is_superset_of(&self, other: &DescriptorDescTy)
+                          -> Result<(), DescriptorDescSupersetError>
+    {
         match (self, other) {
-            (&DescriptorDescTy::Sampler, &DescriptorDescTy::Sampler) => true,
+            (&DescriptorDescTy::Sampler, &DescriptorDescTy::Sampler) => Ok(()),
 
             (&DescriptorDescTy::CombinedImageSampler(ref me),
              &DescriptorDescTy::CombinedImageSampler(ref other)) => me.is_superset_of(other),
@@ -239,19 +257,37 @@ impl DescriptorDescTy {
                  multisampled: other_multisampled,
                  array_layers: other_array_layers,
              }) => {
-                me_multisampled == other_multisampled && me_array_layers == other_array_layers
+                if me_multisampled != other_multisampled {
+                    return Err(DescriptorDescSupersetError::MultisampledMismatch {
+                        provided: me_multisampled,
+                        expected: other_multisampled,
+                    });
+                }
+
+                if me_array_layers != other_array_layers {
+                    return Err(DescriptorDescSupersetError::IncompatibleArrayLayers {
+                        provided: me_array_layers,
+                        required: other_array_layers,
+                    });
+                }
+
+                Ok(())
             },
 
             (&DescriptorDescTy::Buffer(ref me), &DescriptorDescTy::Buffer(ref other)) => {
                 if me.storage != other.storage {
-                    return false;
+                    return Err(DescriptorDescSupersetError::TypeMismatch);
                 }
 
                 match (me.dynamic, other.dynamic) {
-                    (Some(_), None) => true,
-                    (Some(m), Some(o)) => m == o,
-                    (None, None) => true,
-                    (None, Some(_)) => false,
+                    (Some(_), None) => Ok(()),
+                    (Some(m), Some(o)) => if m == o {
+                        Ok(())
+                    } else {
+                        Err(DescriptorDescSupersetError::TypeMismatch)
+                    },
+                    (None, None) => Ok(()),
+                    (None, Some(_)) => Err(DescriptorDescSupersetError::TypeMismatch),
                 }
             },
 
@@ -264,19 +300,29 @@ impl DescriptorDescTy {
                  format: other_format,
              }) => {
                 if me_storage != other_storage {
-                    return false;
+                    return Err(DescriptorDescSupersetError::TypeMismatch);
                 }
 
                 match (me_format, other_format) {
-                    (Some(_), None) => true,
-                    (Some(m), Some(o)) => m == o,
-                    (None, None) => true,
-                    (None, Some(_)) => false,
+                    (Some(_), None) => Ok(()),
+                    (Some(m), Some(o)) => if m == o {
+                        Ok(())
+                    } else {
+                        Err(DescriptorDescSupersetError::FormatMismatch {
+                            provided: Some(m),
+                            expected: o,
+                        })
+                    },
+                    (None, None) => Ok(()),
+                    (None, Some(a)) => Err(DescriptorDescSupersetError::FormatMismatch {
+                        provided: Some(a),
+                        expected: a,
+                    }),
                 }
             },
 
             // Any other combination is invalid.
-            _ => false,
+            _ => Err(DescriptorDescSupersetError::TypeMismatch),
         }
     }
 }
@@ -302,22 +348,36 @@ impl DescriptorImageDesc {
     /// Checks whether we are a superset of another image.
     // TODO: add example
     #[inline]
-    pub fn is_superset_of(&self, other: &DescriptorImageDesc) -> bool {
+    pub fn is_superset_of(&self, other: &DescriptorImageDesc) -> Result<(), DescriptorDescSupersetError> {
         if self.dimensions != other.dimensions {
-            return false;
+            return Err(DescriptorDescSupersetError::DimensionsMismatch {
+                provided: self.dimensions,
+                expected: other.dimensions,
+            });
         }
 
         if self.multisampled != other.multisampled {
-            return false;
+            return Err(DescriptorDescSupersetError::MultisampledMismatch {
+                provided: self.multisampled,
+                expected: other.multisampled,
+            });
         }
 
         match (self.format, other.format) {
             (Some(a), Some(b)) => if a != b {
-                return false;
+                return Err(DescriptorDescSupersetError::FormatMismatch {
+                    provided: Some(a),
+                    expected: b,
+                });
             },
             (Some(_), None) => (),
             (None, None) => (),
-            (None, Some(_)) => return false,
+            (None, Some(a)) => {
+                return Err(DescriptorDescSupersetError::FormatMismatch {
+                    provided: None,
+                    expected: a,
+                });
+            }
         };
 
         match (self.array_layers, other.array_layers) {
@@ -326,17 +386,28 @@ impl DescriptorImageDesc {
              DescriptorImageDescArray::Arrayed { max_layers: other_max }) => {
                 match (my_max, other_max) {
                     (Some(m), Some(o)) => if m < o {
-                        return false;
+                        return Err(DescriptorDescSupersetError::IncompatibleArrayLayers {
+                            provided: DescriptorImageDescArray::Arrayed { max_layers: my_max },
+                            required: DescriptorImageDescArray::Arrayed { max_layers: other_max },
+                        });
                     },
                     (Some(_), None) => (),
-                    (None, Some(_)) => return false,
+                    (None, Some(m)) => {
+                        return Err(DescriptorDescSupersetError::IncompatibleArrayLayers {
+                            provided: DescriptorImageDescArray::Arrayed { max_layers: my_max },
+                            required: DescriptorImageDescArray::Arrayed { max_layers: other_max },
+                        });
+                    },
                     (None, None) => (),     // TODO: is this correct?
                 };
             },
-            _ => return false,
+            (a, b) => return Err(DescriptorDescSupersetError::IncompatibleArrayLayers {
+                provided: a,
+                required: b,
+            }),
         };
 
-        true
+        Ok(())
     }
 }
 
@@ -396,6 +467,95 @@ pub enum DescriptorType {
     UniformBufferDynamic = vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
     StorageBufferDynamic = vk::DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
     InputAttachment = vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+}
+
+/// Error when checking whether a descriptor is a superset of another one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescriptorDescSupersetError {
+    /// The number of array elements of the descriptor is smaller than expected.
+    ArrayTooSmall {
+        len: u32,
+        required: u32,
+    },
+
+    /// The descriptor type doesn't match the type of the other descriptor.
+    TypeMismatch,
+
+    /// The descriptor is marked as read-only, but the other is not.
+    MutabilityRequired,
+
+    /// The shader stages are not a superset of one another.
+    ShaderStagesNotSuperset,
+
+    DimensionsMismatch {
+        provided: DescriptorImageDescDimensions,
+        expected: DescriptorImageDescDimensions,
+    },
+
+    FormatMismatch {
+        provided: Option<Format>,
+        expected: Format,
+    },
+
+    MultisampledMismatch {
+        provided: bool,
+        expected: bool,
+    },
+
+    IncompatibleArrayLayers {
+        provided: DescriptorImageDescArray,
+        required: DescriptorImageDescArray,
+    },
+}
+
+impl error::Error for DescriptorDescSupersetError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            DescriptorDescSupersetError::ArrayTooSmall { .. } => {
+                "the number of array elements of the descriptor is smaller than expected"
+            },
+            DescriptorDescSupersetError::TypeMismatch => {
+                "the descriptor type doesn't match the type of the other descriptor"
+            },
+            DescriptorDescSupersetError::MutabilityRequired => {
+                "the descriptor is marked as read-only, but the other is not"
+            },
+            DescriptorDescSupersetError::ShaderStagesNotSuperset => {
+                "the shader stages are not a superset of one another"
+            },
+            DescriptorDescSupersetError::DimensionsMismatch { .. } => {
+                "mismatch between the dimensions of the two descriptors"
+            },
+            DescriptorDescSupersetError::FormatMismatch { .. } => {
+                "mismatch between the format of the two descriptors"
+            },
+            DescriptorDescSupersetError::MultisampledMismatch { .. } => {
+                "mismatch between whether the descriptors are multisampled"
+            },
+            DescriptorDescSupersetError::IncompatibleArrayLayers { .. } => {
+                "the array layers of the descriptors aren't compatible"
+            },
+        }
+    }
+}
+
+impl fmt::Display for DescriptorDescSupersetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<ShaderStagesSupersetError> for DescriptorDescSupersetError {
+    #[inline]
+    fn from(err: ShaderStagesSupersetError) -> DescriptorDescSupersetError {
+        match err {
+            ShaderStagesSupersetError::NotSuperset => {
+                DescriptorDescSupersetError::ShaderStagesNotSuperset
+            }
+        }
+    }
 }
 
 /// Describes which shader stages have access to a descriptor.
@@ -476,12 +636,17 @@ impl ShaderStages {
     /// Checks whether we have more stages enabled than `other`.
     // TODO: add example
     #[inline]
-    pub fn is_superset_of(&self, other: &ShaderStages) -> bool {
-        (self.vertex || !other.vertex) &&
+    pub fn is_superset_of(&self, other: &ShaderStages) -> Result<(), ShaderStagesSupersetError> {
+        if (self.vertex || !other.vertex) &&
             (self.tessellation_control || !other.tessellation_control) &&
             (self.tessellation_evaluation || !other.tessellation_evaluation) &&
             (self.geometry || !other.geometry) && (self.fragment || !other.fragment) &&
             (self.compute || !other.compute)
+        {
+            Ok(())
+        } else {
+            Err(ShaderStagesSupersetError::NotSuperset)
+        }
     }
 
     /// Checks whether any of the stages in `self` are also present in `other`.
@@ -548,5 +713,29 @@ impl From<ShaderStages> for PipelineStages {
             compute_shader: stages.compute,
             ..PipelineStages::none()
         }
+    }
+}
+
+/// Error when checking whether some shader stages are superset of others.
+#[derive(Debug, Clone)]
+pub enum ShaderStagesSupersetError {
+    NotSuperset,
+}
+
+impl error::Error for ShaderStagesSupersetError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            ShaderStagesSupersetError::NotSuperset => {
+                "shader stages not a superset"
+            },
+        }
+    }
+}
+
+impl fmt::Display for ShaderStagesSupersetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
     }
 }
