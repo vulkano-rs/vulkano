@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed an HiDPI scaling issue on macOS in vulkano-win.
+
 # Version 0.7.0 (2017-09-21)
 
 - Added `RuntimePipelineDesc`, an implementation of `PipelineLayoutDesc` that makes creating custom
