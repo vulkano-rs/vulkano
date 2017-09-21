@@ -1,18 +1,20 @@
-# Unreleased (major)
+# Unreleased
+
+# Version 0.7.0 (2017-09-21)
 
 - Added `RuntimePipelineDesc`, an implementation of `PipelineLayoutDesc` that makes creating custom
   layouts easier.
+- Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
+  allocating or mapping memory.
+- Changed `CommandBufferExecError::AccessError` to provide a hint of where the error occurs.
+- Added `vulkano::pipeline::vertex::BufferlessDefinition` and `BufferlessVertices` to enable
+  bufferless drawing.
 - Changed `ImageAccess::try_gpu_lock` and `unlock()` to verify whether the image layout is correct,
   especially at the first usage of an image.
 - Changed `BufferAccess::conflict_*` and `ImageAccess::conflict_*` to forbid querying a specific
   range of the resource.
-- Changed `CpuBufferPool::next()` and `chunk()` to return a `Result` in case of an error when
-  allocating or mapping memory.
-- Changed `CommandBufferExecError::AccessError` to provide a hint of where the error occurs.
 - Fixed `layers` argument validation in `Swapchain::new_inner`.
-- Added `vulkano::pipeline::vertex::BufferlessDefinition` and `BufferlessVertices` to enable
-  bufferless drawing.
-- Provide 32-bit word constructor for `ShaderModule` (`ShaderModule::from_words`).
+- Added a 32-bit word constructor for `ShaderModule` (`ShaderModule::from_words`).
 - Changed the various `is_superset_of` functions to return a `Result` instead of a `bool`.
 
 # Version 0.6.2 (2017-09-06)
