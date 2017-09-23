@@ -1,5 +1,8 @@
 # Unreleased
 
+- Fixed `le()` and `ge()` for `DescriptorsCount`, which also fixes a potential memory leak when
+  allocating descriptor sets.
+
 # Version 0.7.0 (2017-09-21)
 
 - Added `RuntimePipelineDesc`, an implementation of `PipelineLayoutDesc` that makes creating custom
