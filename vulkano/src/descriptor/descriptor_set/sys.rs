@@ -130,6 +130,14 @@ macro_rules! descriptors_count {
                     None
                 }
             }
+
+            fn le(&self, other: &DescriptorsCount) -> bool {
+                $(self.$name <= other.$name)&&+
+            }
+
+            fn ge(&self, other: &DescriptorsCount) -> bool {
+                $(self.$name >= other.$name)&&+
+            }
         }
 
         impl ops::Sub for DescriptorsCount {
