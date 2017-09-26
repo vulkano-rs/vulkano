@@ -27,7 +27,7 @@ macro_rules! single_pass_renderpass {
                     color: [$($color_atch),*],
                     depth_stencil: {$($depth_atch)*},
                     input: [],
-                    $(resolve: [$($resolve_atch),*])*
+                    resolve: [$($resolve_atch),*]
                 }
             ]
         )
