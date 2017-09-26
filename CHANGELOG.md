@@ -2,6 +2,9 @@
 
 - Fixed `le()` and `ge()` for `DescriptorsCount`, which also fixes a potential memory leak when
   allocating descriptor sets.
+- Fixed the `ordered_passes_renderpass!` macro not working properly when using `resolve`.
+- Added an optional `resolve` entry in `pass` for `single_pass_renderpass!`, for resolving
+  multisampled attachments into non-multisampled attachments.
 
 # Version 0.7.0 (2017-09-21)
 
