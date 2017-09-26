@@ -40,10 +40,7 @@ fn main() {
     let mut events_loop = winit::EventsLoop::new();
     let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
-    let mut dimensions = {
-        let (width, height) = window.window().get_inner_size_pixels().unwrap();
-        [width, height]
-    };
+    let mut dimensions;
 
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    window.surface().is_supported(q).unwrap_or(false))
@@ -61,6 +58,8 @@ fn main() {
 
     let (mut swapchain, mut images) = {
         let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
+
+        dimensions = caps.current_extent.unwrap_or([1024, 768]);
 
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
@@ -143,10 +142,10 @@ fn main() {
         previous_frame.cleanup_finished();
 
         if recreate_swapchain {
-            dimensions = {
-                let (new_width, new_height) = window.window().get_inner_size_pixels().unwrap();
-                [new_width, new_height]
-            };
+
+        dimensions = window.surface().capabilities(physical)
+            .expect("failed to get surface capabilities")
+            .current_extent.unwrap_or([1024, 768]);
             
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,

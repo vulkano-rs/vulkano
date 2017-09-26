@@ -1,5 +1,6 @@
 # Unreleased
 
+- Fixed an HiDPI scaling issue on MacOS in vulkano-win.
 - Fixed `le()` and `ge()` for `DescriptorsCount`, which also fixes a potential memory leak when
   allocating descriptor sets.
 
