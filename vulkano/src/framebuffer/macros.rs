@@ -15,7 +15,8 @@ macro_rules! single_pass_renderpass {
         attachments: { $($a:tt)* },
         pass: {
             color: [$($color_atch:ident),*],
-            depth_stencil: {$($depth_atch:ident)*}
+            depth_stencil: {$($depth_atch:ident)*}$(,)*
+            $(resolve: [$($resolve_atch:ident),*])*$(,)*
         }
     ) => (
         ordered_passes_renderpass!(
@@ -25,7 +26,8 @@ macro_rules! single_pass_renderpass {
                 {
                     color: [$($color_atch),*],
                     depth_stencil: {$($depth_atch)*},
-                    input: []
+                    input: [],
+                    resolve: [$($resolve_atch),*]
                 }
             ]
         )
@@ -206,14 +208,15 @@ macro_rules! ordered_passes_renderpass {
                                 ),*
                             ],
                             resolve_attachments: vec![
-                                $(
+                                $($(
                                     ($resolve_atch, ImageLayout::TransferDstOptimal)
-                                ),*
+                                ),*)*
                             ],
                             preserve_attachments: (0 .. attachment_num).filter(|&a| {
                                 $(if a == $color_atch { return false; })*
                                 $(if a == $depth_atch { return false; })*
                                 $(if a == $input_atch { return false; })*
+                                $($(if a == $resolve_atch { return false; })*)*
                                 true
                             }).collect()
                         };
@@ -289,14 +292,14 @@ macro_rules! ordered_passes_renderpass {
                         }
                     )*
 
-                    $(
+                    $($(
                         if $resolve_atch == num {
                             if initial_layout.is_none() {
                                 initial_layout = Some(ImageLayout::TransferDstOptimal);
                             }
                             final_layout = Some(ImageLayout::TransferDstOptimal);
                         }
-                    )*
+                    )*)*
 
                     $(
                         if $input_atch == num {
