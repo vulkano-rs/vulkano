@@ -27,7 +27,7 @@ macro_rules! single_pass_renderpass {
                     color: [$($color_atch),*],
                     depth_stencil: {$($depth_atch)*},
                     input: [],
-                    resolve: [$($resolve_atch),*]
+                    resolve: [$($($resolve_atch),*)*]
                 }
             ]
         )
@@ -338,4 +338,35 @@ macro_rules! ordered_passes_renderpass {
             )*
         }.build_render_pass($device)
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use format::Format;
+
+    #[test]
+    fn single_pass_resolve() {
+        let (device, _) = gfx_dev_and_queue!();
+        let _ = single_pass_renderpass!(device.clone(),
+            attachments: {
+                a: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8Unorm,
+                    samples: 4,
+                },
+                b: {
+                    load: DontCare,
+                    store: Store,
+                    format: Format::R8G8B8A8Unorm,
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [a],
+                depth_stencil: {},
+                resolve: [b],
+            }
+        ).unwrap();
+    }
 }
