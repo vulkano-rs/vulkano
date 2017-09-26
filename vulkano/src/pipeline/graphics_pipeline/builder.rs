@@ -33,7 +33,6 @@ use pipeline::graphics_pipeline::GraphicsPipelineCreationError;
 use pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::input_assembly::PrimitiveTopology;
-use pipeline::multisample::Multisample;
 use pipeline::raster::CullMode;
 use pipeline::raster::DepthBiasControl;
 use pipeline::raster::FrontFace;
@@ -67,7 +66,7 @@ pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss,
     geometry_shader: Option<(Gs, Gss)>,
     viewport: Option<ViewportsState>,
     raster: Rasterization,
-    multisample: Multisample,
+    multisample: vk::PipelineMultisampleStateCreateInfo,
     fragment_shader: Option<(Fs, Fss)>,
     depth_stencil: DepthStencil,
     blend: Blend,
@@ -96,19 +95,24 @@ impl
                             ()> {
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
-        GraphicsPipelineBuilder {
-            vertex_input: SingleBufferDefinition::new(), // TODO: should be empty attrs instead
-            vertex_shader: None,
-            input_assembly: InputAssembly::triangle_list(),
-            tessellation: None,
-            geometry_shader: None,
-            viewport: None,
-            raster: Default::default(),
-            multisample: Multisample::disabled(),
-            fragment_shader: None,
-            depth_stencil: DepthStencil::disabled(),
-            blend: Blend::pass_through(),
-            render_pass: None,
+        unsafe {
+            GraphicsPipelineBuilder {
+                vertex_input: SingleBufferDefinition::new(), // TODO: should be empty attrs instead
+                vertex_shader: None,
+                input_assembly: InputAssembly::triangle_list(),
+                tessellation: None,
+                geometry_shader: None,
+                viewport: None,
+                raster: Default::default(),
+                multisample: vk::PipelineMultisampleStateCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
+                    .. mem::zeroed()
+                },
+                fragment_shader: None,
+                depth_stencil: DepthStencil::disabled(),
+                blend: Blend::pass_through(),
+                render_pass: None,
+            }
         }
     }
 }
@@ -798,34 +802,19 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             lineWidth: self.raster.line_width.unwrap_or(1.0),
         };
 
-        assert!(self.multisample.rasterization_samples >= 1);
-        // FIXME: check that rasterization_samples is equal to what's in the renderpass
-        if let Some(s) = self.multisample.sample_shading {
-            assert!(s >= 0.0 && s <= 1.0);
+        self.multisample.rasterizationSamples = self.render_pass.as_ref().unwrap().num_samples().unwrap_or(1);
+        if self.multisample.sampleShadingEnable != vk::FALSE {
+            debug_assert!(self.multisample.minSampleShading >= 0.0 &&
+                          self.multisample.minSampleShading <= 1.0);
+            if !device.enabled_features().sample_rate_shading {
+                return Err(GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled);
+            }
         }
-        let multisample = vk::PipelineMultisampleStateCreateInfo {
-            sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0, // reserved
-            rasterizationSamples: self.multisample.rasterization_samples,
-            sampleShadingEnable: if self.multisample.sample_shading.is_some() {
-                vk::TRUE
-            } else {
-                vk::FALSE
-            },
-            minSampleShading: self.multisample.sample_shading.unwrap_or(1.0),
-            pSampleMask: ptr::null(), //self.multisample.sample_mask.as_ptr(),     // FIXME:
-            alphaToCoverageEnable: if self.multisample.alpha_to_coverage {
-                vk::TRUE
-            } else {
-                vk::FALSE
-            },
-            alphaToOneEnable: if self.multisample.alpha_to_one {
-                vk::TRUE
-            } else {
-                vk::FALSE
-            },
-        };
+        if self.multisample.alphaToOneEnable != vk::FALSE {
+            if !device.enabled_features().alpha_to_one {
+                return Err(GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled);
+            }
+        }
 
         let depth_stencil = {
             let db = match self.depth_stencil.depth_bounds_test {
@@ -1032,7 +1021,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     .unwrap_or(ptr::null()),
                 pViewportState: &viewport_info,
                 pRasterizationState: &rasterization,
-                pMultisampleState: &multisample,
+                pMultisampleState: &self.multisample,
                 pDepthStencilState: &depth_stencil,
                 pColorBlendState: &blend,
                 pDynamicState: dynamic_states
@@ -1518,7 +1507,75 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
     // TODO: missing DepthBiasControl
 
-    // TODO: missing Multisample
+    /// Disables sample shading. The fragment shader will only be run once per fragment (ie. per
+    /// pixel) and not once by sample. The output will then be copied in all of the covered
+    /// samples.
+    ///
+    /// Sample shading is disabled by default.
+    #[inline]
+    pub fn sample_shading_disabled(mut self) -> Self {
+        self.multisample.sampleShadingEnable = vk::FALSE;
+        self
+    }
+
+    /// Enables sample shading. The fragment shader will be run once per sample at the borders of
+    /// the object you're drawing.
+    ///
+    /// Enabling sampling shading requires the `sample_rate_shading` feature to be enabled on the
+    /// device.
+    ///
+    /// The `min_fract` parameter is the minimum fraction of samples shading. For example if its
+    /// value is 0.5, then the fragment shader will run for at least half of the samples. The other
+    /// half of the samples will get their values determined automatically.
+    ///
+    /// Sample shading is disabled by default.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if `min_fract` is not between 0.0 and 1.0.
+    ///
+    #[inline]
+    pub fn sample_shading_enabled(mut self, min_fract: f32) -> Self {
+        assert!(min_fract >= 0.0 && min_fract <= 1.0);
+        self.multisample.sampleShadingEnable = vk::TRUE;
+        self.multisample.minSampleShading = min_fract;
+        self
+    }
+
+    // TODO: doc
+    pub fn alpha_to_coverage_disabled(mut self) -> Self {
+        self.multisample.alphaToCoverageEnable = vk::FALSE;
+        self
+    }
+
+    // TODO: doc
+    pub fn alpha_to_coverage_enabled(mut self) -> Self {
+        self.multisample.alphaToCoverageEnable = vk::TRUE;
+        self
+    }
+
+    /// Disables alpha-to-one.
+    ///
+    /// Alpha-to-one is disabled by default.
+    #[inline]
+    pub fn alpha_to_one_disabled(mut self) -> Self {
+        self.multisample.alphaToOneEnable = vk::FALSE;
+        self
+    }
+
+    /// Enables alpha-to-one. The alpha component of the first color output of the fragment shader
+    /// will be replaced by the value `1.0`.
+    ///
+    /// Enabling alpha-to-one requires the `alpha_to_one` feature to be enabled on the device.
+    ///
+    /// Alpha-to-one is disabled by default.
+    #[inline]
+    pub fn alpha_to_one_enabled(mut self) -> Self {
+        self.multisample.alphaToOneEnable = vk::TRUE;
+        self
+    }
+
+    // TODO: rasterizationSamples and pSampleMask
 
     /// Sets the fragment shader to use.
     ///
@@ -1687,7 +1744,17 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> Clone
             geometry_shader: self.geometry_shader.clone(),
             viewport: self.viewport.clone(),
             raster: self.raster.clone(),
-            multisample: self.multisample.clone(),
+            multisample: vk::PipelineMultisampleStateCreateInfo {
+                sType: self.multisample.sType,
+                pNext: self.multisample.pNext,
+                flags: self.multisample.flags,
+                rasterizationSamples: self.multisample.rasterizationSamples,
+                sampleShadingEnable: self.multisample.sampleShadingEnable,
+                minSampleShading: self.multisample.minSampleShading,
+                pSampleMask: self.multisample.pSampleMask,
+                alphaToCoverageEnable: self.multisample.alphaToCoverageEnable,
+                alphaToOneEnable: self.multisample.alphaToOneEnable,
+            },
             fragment_shader: self.fragment_shader.clone(),
             depth_stencil: self.depth_stencil.clone(),
             blend: self.blend.clone(),

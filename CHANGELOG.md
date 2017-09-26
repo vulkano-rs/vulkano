@@ -6,6 +6,11 @@
 - Fixed the `ordered_passes_renderpass!` macro not working properly when using `resolve`.
 - Added an optional `resolve` entry in `pass` for `single_pass_renderpass!`, for resolving
   multisampled attachments into non-multisampled attachments.
+- Fixed the value of `rasterizationSamples` not corresponding to the render pass.
+- Added `GraphicsPipelineBuilder::sample_shading_disabled`, `sample_shading_enabled`,
+  `alpha_to_coverage_disabled`, `alpha_to_coverage_enabled`, `alpha_to_one_disabled` and
+  `alpha_to_one_enabled`. Added `GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled`
+  and `AlphaToOneFeatureNotEnabled`.
 
 # Version 0.7.0 (2017-09-21)
 
