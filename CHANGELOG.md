@@ -11,6 +11,7 @@
   `alpha_to_coverage_disabled`, `alpha_to_coverage_enabled`, `alpha_to_one_disabled` and
   `alpha_to_one_enabled`. Added `GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled`
   and `AlphaToOneFeatureNotEnabled`.
+- Deprecated `pipeline::multisample::Multisample`.
 
 # Version 0.7.0 (2017-09-21)
 
