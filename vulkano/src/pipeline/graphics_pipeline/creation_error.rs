@@ -176,6 +176,12 @@ pub enum GraphicsPipelineCreationError {
     ///
     /// For example you passed a vertex shader as the fragment shader.
     WrongShaderType,
+
+    /// The `sample_rate_shading` feature must be enabled in order to use sample shading.
+    SampleRateShadingFeatureNotEnabled,
+
+    /// The `alpha_to_one` feature must be enabled in order to use alpha-to-one.
+    AlphaToOneFeatureNotEnabled,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -306,6 +312,12 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::WrongShaderType => {
                 "the wrong type of shader has been passed"
+            },
+            GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled => {
+                "the `sample_rate_shading` feature must be enabled in order to use sample shading"
+            },
+            GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled => {
+                "the `alpha_to_one` feature must be enabled in order to use alpha-to-one"
             },
         }
     }
