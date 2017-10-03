@@ -195,10 +195,10 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
                     (Some(mine), Some(other)) => {
                         if let Err(err) = mine.is_superset_of(&other) {
                             return Err(PipelineLayoutNotSupersetError::IncompatibleDescriptors {
-                                error: err,
-                                set_num: set_num as u32,
-                                descriptor: desc_num as u32,
-                            });
+                                           error: err,
+                                           set_num: set_num as u32,
+                                           descriptor: desc_num as u32,
+                                       });
                         }
                     },
                     (None, Some(_)) =>
@@ -260,7 +260,7 @@ impl error::Error for PipelineLayoutNotSupersetError {
             PipelineLayoutNotSupersetError::IncompatibleDescriptors { ref error, .. } => {
                 Some(error)
             },
-            _ => None
+            _ => None,
         }
     }
 }

@@ -457,22 +457,20 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
         if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
             if self.initialized.load(Ordering::SeqCst) {
                 return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: self.attachment_layout,
-                });
+                               requested: expected_layout,
+                               allowed: self.attachment_layout,
+                           });
             } else {
                 return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: ImageLayout::Undefined,
-                });
+                               requested: expected_layout,
+                               allowed: ImageLayout::Undefined,
+                           });
             }
         }
 
         if expected_layout != ImageLayout::Undefined {
             if !self.initialized.load(Ordering::SeqCst) {
-                return Err(AccessError::ImageNotInitialized {
-                    requested: expected_layout,
-                });
+                return Err(AccessError::ImageNotInitialized { requested: expected_layout });
             }
         }
 

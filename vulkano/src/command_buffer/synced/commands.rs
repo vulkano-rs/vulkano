@@ -1759,7 +1759,9 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
                         for (set_num, set) in self.0.iter().enumerate() {
                             if let Some(buf) = set.buffer(num) {
-                                return format!("Buffer bound to descriptor {} of set {}", buf.1, set_num)
+                                return format!("Buffer bound to descriptor {} of set {}",
+                                               buf.1,
+                                               set_num)
                                     .into();
                             }
                             num -= set.num_buffers();
@@ -1778,7 +1780,9 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     fn image_name(&self, mut num: usize) -> Cow<'static, str> {
                         for (set_num, set) in self.0.iter().enumerate() {
                             if let Some(img) = set.image(num) {
-                                return format!("Image bound to descriptor {} of set {}", img.1, set_num)
+                                return format!("Image bound to descriptor {} of set {}",
+                                               img.1,
+                                               set_num)
                                     .into();
                             }
                             num -= set.num_images();

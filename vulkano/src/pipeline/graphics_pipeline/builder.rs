@@ -106,7 +106,7 @@ impl
                 raster: Default::default(),
                 multisample: vk::PipelineMultisampleStateCreateInfo {
                     sType: vk::STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO,
-                    .. mem::zeroed()
+                    ..mem::zeroed()
                 },
                 fragment_shader: None,
                 depth_stencil: DepthStencil::disabled(),
@@ -802,10 +802,14 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             lineWidth: self.raster.line_width.unwrap_or(1.0),
         };
 
-        self.multisample.rasterizationSamples = self.render_pass.as_ref().unwrap().num_samples().unwrap_or(1);
+        self.multisample.rasterizationSamples = self.render_pass
+            .as_ref()
+            .unwrap()
+            .num_samples()
+            .unwrap_or(1);
         if self.multisample.sampleShadingEnable != vk::FALSE {
             debug_assert!(self.multisample.minSampleShading >= 0.0 &&
-                          self.multisample.minSampleShading <= 1.0);
+                              self.multisample.minSampleShading <= 1.0);
             if !device.enabled_features().sample_rate_shading {
                 return Err(GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled);
             }

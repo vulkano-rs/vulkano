@@ -264,8 +264,7 @@ unsafe impl<T> ImageAccess for T
 
     #[inline]
     fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
-                    -> Result<(), AccessError>
-    {
+                    -> Result<(), AccessError> {
         (**self).try_gpu_lock(exclusive_access, expected_layout)
     }
 
@@ -327,8 +326,7 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 
     #[inline]
     fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
-                    -> Result<(), AccessError>
-    {
+                    -> Result<(), AccessError> {
         self.image.try_gpu_lock(exclusive_access, expected_layout)
     }
 

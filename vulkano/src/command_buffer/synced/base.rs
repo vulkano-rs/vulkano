@@ -1077,13 +1077,14 @@ impl<P> SyncCommandBuffer<P> {
 
                     match (buf.try_gpu_lock(entry.exclusive, queue), prev_err) {
                         (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) | (_, AccessCheckError::Denied(err)) => {
+                        (Err(err), AccessCheckError::Unknown) |
+                        (_, AccessCheckError::Denied(err)) => {
                             ret_value = Err(CommandBufferExecError::AccessError {
-                                error: err,
-                                command_name: cmd.name().into(),
-                                command_param: cmd.buffer_name(resource_index),
-                                command_offset: command_id,
-                            });
+                                                error: err,
+                                                command_name: cmd.name().into(),
+                                                command_param: cmd.buffer_name(resource_index),
+                                                command_offset: command_id,
+                                            });
                             break;
                         },
                     };
@@ -1108,13 +1109,14 @@ impl<P> SyncCommandBuffer<P> {
 
                     match (img.try_gpu_lock(entry.exclusive, entry.initial_layout), prev_err) {
                         (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) | (_, AccessCheckError::Denied(err)) => {
+                        (Err(err), AccessCheckError::Unknown) |
+                        (_, AccessCheckError::Denied(err)) => {
                             ret_value = Err(CommandBufferExecError::AccessError {
-                                error: err,
-                                command_name: cmd.name().into(),
-                                command_param: cmd.image_name(resource_index),
-                                command_offset: command_id,
-                            });
+                                                error: err,
+                                                command_name: cmd.name().into(),
+                                                command_param: cmd.image_name(resource_index),
+                                                command_offset: command_id,
+                                            });
                             break;
                         },
                     };

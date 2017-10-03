@@ -94,7 +94,7 @@ impl error::Error for CheckDescriptorSetsValidityError {
             CheckDescriptorSetsValidityError::IncompatibleDescriptor { ref error, .. } => {
                 Some(error)
             },
-            _ => None
+            _ => None,
         }
     }
 }
