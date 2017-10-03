@@ -1289,8 +1289,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         debug_assert!(scissors.iter().all(|s| s.offset.x >= 0 && s.offset.y >= 0));
         debug_assert!(scissors.iter().all(|s| {
-            s.extent.width < i32::max_value() as u32 &&
-                s.extent.height < i32::max_value() as u32 &&
+            s.extent.width < i32::max_value() as u32 && s.extent.height < i32::max_value() as u32 &&
                 s.offset.x.checked_add(s.extent.width as i32).is_some() &&
                 s.offset.y.checked_add(s.extent.height as i32).is_some()
         }));

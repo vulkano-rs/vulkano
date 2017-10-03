@@ -74,7 +74,8 @@ impl ShaderModule {
     /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
     ///   this function either.
     ///
-    pub unsafe fn from_words(device: Arc<Device>, spirv: &[u32]) -> Result<Arc<ShaderModule>, OomError> {
+    pub unsafe fn from_words(device: Arc<Device>, spirv: &[u32])
+                             -> Result<Arc<ShaderModule>, OomError> {
         Self::from_ptr(device, spirv.as_ptr(), spirv.len() * mem::size_of::<u32>())
     }
 
@@ -86,7 +87,8 @@ impl ShaderModule {
     /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
     ///   this function either.
     ///
-    unsafe fn from_ptr(device: Arc<Device>, spirv: *const u32, spirv_len: usize) -> Result<Arc<ShaderModule>, OomError> {
+    unsafe fn from_ptr(device: Arc<Device>, spirv: *const u32, spirv_len: usize)
+                       -> Result<Arc<ShaderModule>, OomError> {
         let module = {
             let infos = vk::ShaderModuleCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,

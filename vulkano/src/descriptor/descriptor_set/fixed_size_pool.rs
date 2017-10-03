@@ -47,7 +47,7 @@ use sampler::Sampler;
 /// # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
 /// // use vulkano::pipeline::GraphicsPipelineAbstract;
 /// // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
-/// 
+///
 /// let pool = FixedSizeDescriptorSetsPool::new(graphics_pipeline.clone(), 0);
 /// ```
 ///

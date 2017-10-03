@@ -63,6 +63,8 @@
 //! # }
 //! ```
 
+pub use self::bufferless::BufferlessDefinition;
+pub use self::bufferless::BufferlessVertices;
 pub use self::definition::AttributeInfo;
 pub use self::definition::IncompatibleVertexDefinitionError;
 pub use self::definition::InputRate;
@@ -75,8 +77,6 @@ pub use self::two::TwoBuffersDefinition;
 pub use self::vertex::Vertex;
 pub use self::vertex::VertexMemberInfo;
 pub use self::vertex::VertexMemberTy;
-pub use self::bufferless::BufferlessDefinition;
-pub use self::bufferless::BufferlessVertices;
 
 mod definition;
 mod impl_vertex;
