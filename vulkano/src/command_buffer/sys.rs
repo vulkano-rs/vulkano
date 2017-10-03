@@ -1446,6 +1446,12 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
         // TODO: debug assert that it is a secondary command buffer?
         self.raw_cbs.push(cb.inner().internal_object());
     }
+
+    /// Adds a command buffer to the list.
+    #[inline]
+    pub unsafe fn add_raw(&mut self, cb: vk::CommandBuffer) {
+        self.raw_cbs.push(cb);
+    }
 }
 
 // TODO: move somewhere else?
