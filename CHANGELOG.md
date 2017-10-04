@@ -1,5 +1,7 @@
 # Unreleased
 
+- Fixed creating a buffer view not checking the `min_texel_buffer_offset_alignment` limit.
+
 # Version 0.7.1 (2017-09-28)
 
 - Fixed an HiDPI scaling issue on MacOS in vulkano-win.
