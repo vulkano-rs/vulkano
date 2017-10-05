@@ -189,6 +189,9 @@ pub const STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146001;
 pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146002;
 pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
 pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
+pub const STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT: u32 = 1000022000;
+pub const STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT: u32 = 1000022001;
+pub const STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT: u32 = 1000022002;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -2642,6 +2645,34 @@ pub struct PresentRegionsKHR {
     pub pRegions: *const PresentRegionKHR,
 }
 
+#[repr(C)]
+pub struct DebugMarkerObjectNameInfoEXT {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub objectType: DebugReportObjectTypeEXT,
+    pub object: u64,
+    pub name: *const c_char,
+}
+
+#[repr(C)]
+pub struct DebugMarkerObjectTagInfoEXT {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub objectType: DebugReportObjectTypeEXT,
+    pub object: u64,
+    pub tagName: u64,
+    pub tagSize: usize,
+    pub tag: *const c_void,
+}
+
+#[repr(C)]
+pub struct DebugMarkerMarkerInfoEXT {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub pMarkerName: *const c_char,
+    pub color: [f32; 4],
+}
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
@@ -2890,4 +2921,9 @@ ptrs!(DevicePointers, {
     CmdPushDescriptorSetWithTemplateKHR => (commandBuffer: CommandBuffer, descriptorUpdateTemplate: DescriptorUpdateTemplateKHR, layout: PipelineLayout, set: u32, pData: *const c_void) -> (),
     GetImageMemoryRequirements2KHR => (device: Device, pInfo: *const ImageMemoryRequirementsInfo2KHR, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
     GetBufferMemoryRequirements2KHR => (device: Device, pInfo: *const BufferMemoryRequirementsInfo2KHR, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
+    DebugMarkerSetObjectNameEXT => (device: Device, pNameInfo: *const DebugMarkerObjectNameInfoEXT) -> Result,
+    DebugMarkerSetObjectTagEXT => (device: Device, pTagInfo: *const DebugMarkerObjectTagInfoEXT) -> Result,
+    CmdDebugMarkerBeginEXT => (commandBuffer: CommandBuffer, pMarkerInfo: *const DebugMarkerMarkerInfoEXT) -> (),
+    CmdDebugMarkerEndEXT => (commandBuffer: CommandBuffer) -> (),
+    CmdDebugMarkerInsertEXT => (commandBuffer: CommandBuffer, pMarkerInfo: *const DebugMarkerMarkerInfoEXT) -> (),
 });
