@@ -19,8 +19,8 @@ macro_rules! features {
         ///
         /// # Example
         ///
-        /// ```no_run
-        /// # let physical_device: vulkano::instance::PhysicalDevice = unsafe { ::std::mem::uninitialized() };
+        /// ```
+        /// # let physical_device: vulkano::instance::PhysicalDevice = return;
         /// let minimal_features = vulkano::instance::Features {
         ///     geometry_shader: true,
         ///     .. vulkano::instance::Features::none()
@@ -89,22 +89,27 @@ macro_rules! features {
                     )+
                 }
             }
-        }
 
-        #[doc(hidden)]
-        impl From<vk::PhysicalDeviceFeatures> for Features {
-            fn from(features: vk::PhysicalDeviceFeatures) -> Features {
+            /// Builds a `Features` that is the difference of another `Features` object from `self`.
+            ///
+            /// The result's field will be true if it is true in `self` but not `other`.
+            pub fn difference(&self, other: &Features) -> Features {
+                Features {
+                    $(
+                        $name: self.$name && !other.$name,
+                    )+
+                }
+            }
+
+            pub(crate) fn from_vulkan_features(features: vk::PhysicalDeviceFeatures) -> Features {
                 Features {
                     $(
                         $name: features.$vk != 0,
                     )+
                 }
             }
-        }
 
-        #[doc(hidden)]
-        impl Into<vk::PhysicalDeviceFeatures> for Features {
-            fn into(self) -> vk::PhysicalDeviceFeatures {
+            pub(crate) fn into_vulkan_features(self) -> vk::PhysicalDeviceFeatures {
                 vk::PhysicalDeviceFeatures {
                     $(
                         $vk: if self.$name { vk::TRUE } else { vk::FALSE },

@@ -47,6 +47,7 @@
 //!
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
+
 use std::ops::Range;
 use vk;
 
@@ -121,8 +122,8 @@ impl ViewportsState {
 /// State of a single viewport.
 // FIXME: check that:
 //        x + width must be less than or equal to viewportBoundsRange[0]
-//        y + height must be less than or equal to viewportBoundsRange[1] 
-#[derive(Debug, Clone)]
+//        y + height must be less than or equal to viewportBoundsRange[1]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Viewport {
     /// Coordinates in pixels of the top-left hand corner of the viewport.
     pub origin: [f32; 2],
@@ -132,17 +133,17 @@ pub struct Viewport {
 
     /// Minimum and maximum values of the depth.
     ///
-    /// The values `-1.0` to `1.0` of each vertex's Z coordinate will be mapped to this
+    /// The values `0.0` to `1.0` of each vertex's Z coordinate will be mapped to this
     /// `depth_range` before being compared to the existing depth value.
     ///
-    /// This is equivalents to `glDepthRange` in OpenGL.
+    /// This is equivalents to `glDepthRange` in OpenGL, except that OpenGL uses the Z coordinate
+    /// range from `-1.0` to `1.0` instead.
     pub depth_range: Range<f32>,
 }
 
-#[doc(hidden)]
-impl Into<vk::Viewport> for Viewport {
+impl Viewport {
     #[inline]
-    fn into(self) -> vk::Viewport {
+    pub(crate) fn into_vulkan_viewport(self) -> vk::Viewport {
         vk::Viewport {
             x: self.origin[0],
             y: self.origin[1],
@@ -157,8 +158,8 @@ impl Into<vk::Viewport> for Viewport {
 /// State of a single scissor box.
 // FIXME: add a check:
 //      Evaluation of (offset.x + extent.width) must not cause a signed integer addition overflow
-//      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow 
-#[derive(Debug, Copy, Clone)]
+//      Evaluation of (offset.y + extent.height) must not cause a signed integer addition overflow
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Scissor {
     /// Coordinates in pixels of the top-left hand corner of the box.
     pub origin: [i32; 2],
@@ -176,19 +177,9 @@ impl Scissor {
             dimensions: [0x7fffffff, 0x7fffffff],
         }
     }
-}
 
-impl Default for Scissor {
     #[inline]
-    fn default() -> Scissor {
-        Scissor::irrelevant()
-    }
-}
-
-#[doc(hidden)]
-impl Into<vk::Rect2D> for Scissor {
-    #[inline]
-    fn into(self) -> vk::Rect2D {
+    pub(crate) fn into_vulkan_rect(self) -> vk::Rect2D {
         vk::Rect2D {
             offset: vk::Offset2D {
                 x: self.origin[0],
@@ -199,5 +190,12 @@ impl Into<vk::Rect2D> for Scissor {
                 height: self.dimensions[1],
             },
         }
+    }
+}
+
+impl Default for Scissor {
+    #[inline]
+    fn default() -> Scissor {
+        Scissor::irrelevant()
     }
 }

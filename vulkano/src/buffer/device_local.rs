@@ -13,82 +13,90 @@
 //! You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
+use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::mem;
-use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::Weak;
-use smallvec::SmallVec;
 
+use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
-use buffer::sys::Usage;
-use buffer::traits::AccessRange;
-use buffer::traits::Buffer;
-use buffer::traits::GpuAccessResult;
-use buffer::traits::TypedBuffer;
-use command_buffer::Submission;
+use buffer::traits::BufferAccess;
+use buffer::traits::BufferInner;
+use buffer::traits::TypedBufferAccess;
 use device::Device;
+use device::DeviceOwned;
+use device::Queue;
+use image::ImageAccess;
 use instance::QueueFamily;
+use memory::DedicatedAlloc;
+use memory::DeviceMemoryAllocError;
+use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
+use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
-use memory::pool::StdMemoryPool;
+use memory::pool::PotentialDedicatedAllocation;
+use memory::pool::StdMemoryPoolAlloc;
+use sync::AccessError;
 use sync::Sharing;
 
-use OomError;
-
-/// Buffer whose content is accessible by the CPU.
+/// Buffer whose content is in device-local memory.
+///
+/// This buffer type is useful in order to store intermediary data. For example you execute a
+/// compute shader that writes to this buffer, then read the content of the buffer in a following
+/// compute or graphics pipeline.
+///
+/// The `DeviceLocalBuffer` will be in device-local memory, unless the device doesn't provide any
+/// device-local memory.
 #[derive(Debug)]
-pub struct DeviceLocalBuffer<T: ?Sized, A = Arc<StdMemoryPool>> where A: MemoryPool {
+pub struct DeviceLocalBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
     inner: UnsafeBuffer,
 
     // The memory held by the buffer.
-    memory: A::Alloc,
+    memory: A,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
-    // Latest submission that uses this buffer.
-    // Also used to block any attempt to submit this buffer while it is accessed by the CPU.
-    latest_submission: Mutex<LatestSubmission>,
+    // Number of times this buffer is locked on the GPU side.
+    gpu_lock: Mutex<GpuAccess>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
 }
 
-#[derive(Debug)]
-struct LatestSubmission {
-    read_submissions: SmallVec<[Weak<Submission>; 4]>,
-    write_submission: Option<Weak<Submission>>,         // TODO: can use `Weak::new()` once it's stabilized
+#[derive(Debug, Copy, Clone)]
+enum GpuAccess {
+    None,
+    NonExclusive { num: u32 },
+    Exclusive { num: u32 },
 }
 
 impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
+    // TODO: unsafe because uninitialized data
     #[inline]
-    pub fn new<'a, I>(device: &Arc<Device>, usage: &Usage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
+    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
+                      -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
 }
 
 impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
+    // TODO: unsafe because uninitialized data
     #[inline]
-    pub fn array<'a, I>(device: &Arc<Device>, len: usize, usage: &Usage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<[T]>>, OomError>
+    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
+                        -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        unsafe {
-            DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families)
-        }
+        unsafe { DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families) }
     }
 }
 
@@ -99,12 +107,15 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: &Arc<Device>, size: usize, usage: &Usage, queue_families: I)
-                             -> Result<Arc<DeviceLocalBuffer<T>>, OomError>
+    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
+                             queue_families: I)
+                             -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
-        let queue_families = queue_families.into_iter().map(|f| f.id())
-                                           .collect::<SmallVec<[u32; 4]>>();
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
 
         let (buffer, mem_reqs) = {
             let sharing = if queue_families.len() >= 2 {
@@ -113,131 +124,163 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device, size, &usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
-                Err(BufferCreationError::OomError(err)) => return Err(err),
-                Err(_) => unreachable!()        // We don't use sparse binding, therefore the other
-                                                // errors can't happen
+                Err(BufferCreationError::AllocError(err)) => return Err(err),
+                Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
+                // errors can't happen
             }
         };
 
-        let mem_ty = {
-            let device_local = device.physical_device().memory_types()
-                                     .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0)
-                                     .filter(|t| t.is_device_local());
-            let any = device.physical_device().memory_types()
-                            .filter(|t| (mem_reqs.memory_type_bits & (1 << t.id())) != 0);
-            device_local.chain(any).next().unwrap()
-        };
-
-        let mem = try!(MemoryPool::alloc(&Device::standard_pool(device), mem_ty,
-                                         mem_reqs.size, mem_reqs.alignment, AllocLayout::Linear));
+        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
+                                    &mem_reqs,
+                                    AllocLayout::Linear,
+                                    MappingRequirement::DoNotMap,
+                                    DedicatedAlloc::Buffer(&buffer),
+                                    |t| if t.is_device_local() {
+                                        AllocFromRequirementsFilter::Preferred
+                                    } else {
+                                        AllocFromRequirementsFilter::Allowed
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        try!(buffer.bind_memory(mem.memory(), mem.offset()));
+        buffer.bind_memory(mem.memory(), mem.offset())?;
 
         Ok(Arc::new(DeviceLocalBuffer {
-            inner: buffer,
-            memory: mem,
-            queue_families: queue_families,
-            latest_submission: Mutex::new(LatestSubmission {
-                read_submissions: SmallVec::new(),
-                write_submission: None,
-            }),
-            marker: PhantomData,
-        }))
+                        inner: buffer,
+                        memory: mem,
+                        queue_families: queue_families,
+                        gpu_lock: Mutex::new(GpuAccess::None),
+                        marker: PhantomData,
+                    }))
     }
 }
 
-impl<T: ?Sized, A> DeviceLocalBuffer<T, A> where A: MemoryPool {
-    /// Returns the device used to create this buffer.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-
+impl<T: ?Sized, A> DeviceLocalBuffer<T, A> {
     /// Returns the queue families this buffer can be used on.
     // TODO: use a custom iterator
     #[inline]
     pub fn queue_families(&self) -> Vec<QueueFamily> {
-        self.queue_families.iter().map(|&num| {
-            self.device().physical_device().queue_family_by_id(num).unwrap()
-        }).collect()
+        self.queue_families
+            .iter()
+            .map(|&num| {
+                     self.device()
+                         .physical_device()
+                         .queue_family_by_id(num)
+                         .unwrap()
+                 })
+            .collect()
     }
 }
 
-unsafe impl<T: ?Sized, A> Buffer for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.inner.device()
+    }
+}
+
+unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
 {
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
-        &self.inner
-    }
-    
-    #[inline]
-    fn blocks(&self, _: Range<usize>) -> Vec<usize> {
-        vec![0]
+    fn inner(&self) -> BufferInner {
+        BufferInner {
+            buffer: &self.inner,
+            offset: 0,
+        }
     }
 
     #[inline]
-    fn block_memory_range(&self, _: usize) -> Range<usize> {
-        0 .. self.size()
-    }
-
-    fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> {
-        Some(false)
+    fn size(&self) -> usize {
+        self.inner.size()
     }
 
     #[inline]
-    fn host_accesses(&self, _: usize) -> bool {
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
         false
     }
 
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult
-    {
-        let queue_id = submission.queue().family().id();
-        if self.queue_families.iter().find(|&&id| id == queue_id).is_none() {
-            panic!("Trying to submit to family {} a buffer suitable for families {:?}",
-                   queue_id, self.queue_families);
-        }
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        self.inner.key()
+    }
 
-        let is_written = {
-            let mut written = false;
-            while let Some(r) = ranges.next() { if r.write { written = true; break; } }
-            written
+    #[inline]
+    fn try_gpu_lock(&self, exclusive: bool, _: &Queue) -> Result<(), AccessError> {
+        let mut lock = self.gpu_lock.lock().unwrap();
+        match &mut *lock {
+            a @ &mut GpuAccess::None => {
+                if exclusive {
+                    *a = GpuAccess::Exclusive { num: 1 };
+                } else {
+                    *a = GpuAccess::NonExclusive { num: 1 };
+                }
+
+                Ok(())
+            },
+            &mut GpuAccess::NonExclusive { ref mut num } => {
+                if exclusive {
+                    Err(AccessError::AlreadyInUse)
+                } else {
+                    *num += 1;
+                    Ok(())
+                }
+            },
+            &mut GpuAccess::Exclusive { .. } => {
+                Err(AccessError::AlreadyInUse)
+            },
+        }
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        let mut lock = self.gpu_lock.lock().unwrap();
+        match *lock {
+            GpuAccess::None => panic!(),
+            GpuAccess::NonExclusive { ref mut num } => {
+                debug_assert!(*num >= 1);
+                *num += 1;
+            },
+            GpuAccess::Exclusive { ref mut num } => {
+                debug_assert!(*num >= 1);
+                *num += 1;
+            },
+        }
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        let mut lock = self.gpu_lock.lock().unwrap();
+
+        match *lock {
+            GpuAccess::None => panic!("Tried to unlock a buffer that isn't locked"),
+            GpuAccess::NonExclusive { ref mut num } => {
+                assert!(*num >= 1);
+                *num -= 1;
+                if *num >= 1 {
+                    return;
+                }
+            },
+            GpuAccess::Exclusive { ref mut num } => {
+                assert!(*num >= 1);
+                *num -= 1;
+                if *num >= 1 {
+                    return;
+                }
+            },
         };
 
-        let mut submissions = self.latest_submission.lock().unwrap();
-
-        let dependencies = if is_written {
-            let write_dep = mem::replace(&mut submissions.write_submission,
-                                         Some(Arc::downgrade(submission)));
-
-            let read_submissions = mem::replace(&mut submissions.read_submissions,
-                                                SmallVec::new());
-
-            // We use a temporary variable to bypass a lifetime error in rustc.
-            let list = read_submissions.into_iter()
-                                       .chain(write_dep.into_iter())
-                                       .filter_map(|s| s.upgrade())
-                                       .collect::<Vec<_>>();
-            list
-
-        } else {
-            submissions.read_submissions.push(Arc::downgrade(submission));
-            submissions.write_submission.clone().and_then(|s| s.upgrade()).into_iter().collect()
-        };
-
-        GpuAccessResult {
-            dependencies: dependencies,
-            additional_wait_semaphore: None,
-            additional_signal_semaphore: None,
-        }
+        *lock = GpuAccess::None;
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBuffer for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync, A: MemoryPool
+unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
 {
     type Content = T;
 }

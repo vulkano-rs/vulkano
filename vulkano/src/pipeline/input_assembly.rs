@@ -11,6 +11,7 @@
 //!
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 //!
+
 use vk;
 
 /// How the input assembly stage should behave.
@@ -67,10 +68,14 @@ impl Into<vk::PrimitiveTopology> for PrimitiveTopology {
             PrimitiveTopology::TriangleList => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
             PrimitiveTopology::TriangleStrip => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
             PrimitiveTopology::TriangleFan => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
-            PrimitiveTopology::LineListWithAdjacency => vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
-            PrimitiveTopology::LineStripWithAdjacency => vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY,
-            PrimitiveTopology::TriangleListWithAdjacency => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
-            PrimitiveTopology::TriangleStripWithAdjacency => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY,
+            PrimitiveTopology::LineListWithAdjacency =>
+                vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
+            PrimitiveTopology::LineStripWithAdjacency =>
+                vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY,
+            PrimitiveTopology::TriangleListWithAdjacency =>
+                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
+            PrimitiveTopology::TriangleStripWithAdjacency =>
+                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY,
             PrimitiveTopology::PatchList { .. } => vk::PRIMITIVE_TOPOLOGY_PATCH_LIST,
         }
     }
@@ -86,7 +91,7 @@ impl PrimitiveTopology {
             PrimitiveTopology::TriangleFan => true,
             PrimitiveTopology::LineStripWithAdjacency => true,
             PrimitiveTopology::TriangleStripWithAdjacency => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -112,7 +117,7 @@ unsafe impl Index for u32 {
 }
 
 /// An enumeration of all valid index types.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[allow(missing_docs)]
 #[repr(u32)]
 pub enum IndexType {

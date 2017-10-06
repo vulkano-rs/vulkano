@@ -2,16 +2,13 @@
 name = "examples"
 version = "0.1.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>"]
-build = "build.rs"
+publish = false
 
 [dependencies]
 vulkano = { path = "../vulkano" }
+vulkano-shader-derive = { path = "../vulkano-shader-derive" }
 vulkano-win = { path = "../vulkano-win" }
-cgmath = "0.12.0"
-image = "0.6.1"
-winit = "0.5.2"
-time = "0.1.35"
-
-[build-dependencies]
-vk-sys = { path = "../vk-sys" }
-vulkano-shaders = { path = "../vulkano-shaders" }
+cgmath = "0.14.1"
+image = "0.14.0"
+winit = "0.7.0"
+time = "0.1.37"

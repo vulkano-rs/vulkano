@@ -18,9 +18,9 @@
 //! A physical device is composed of one or more **memory heaps**. A memory heap is a pool of
 //! memory that can be allocated.
 //!
-//! ```no_run
+//! ```
 //! // Enumerating memory heaps.
-//! # let physical_device: vulkano::instance::PhysicalDevice = unsafe { std::mem::uninitialized() };
+//! # let physical_device: vulkano::instance::PhysicalDevice = return;
 //! for heap in physical_device.memory_heaps() {
 //!     println!("Heap #{:?} has a capacity of {:?} bytes", heap.id(), heap.size());
 //! }
@@ -35,9 +35,9 @@
 //! memory type has a much quicker access time from the GPU than a non-device-local type. Note
 //! that non-device-local memory types are still accessible by the device, they are just slower.
 //!
-//! ```no_run
+//! ```
 //! // Enumerating memory types.
-//! # let physical_device: vulkano::instance::PhysicalDevice = unsafe { std::mem::uninitialized() };
+//! # let physical_device: vulkano::instance::PhysicalDevice = return;
 //! for ty in physical_device.memory_types() {
 //!     println!("Memory type belongs to heap #{:?}", ty.heap().id());
 //!     println!("Host-accessible: {:?}", ty.is_host_visible());
@@ -64,15 +64,15 @@
 //!
 //! Here is an example:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::memory::DeviceMemory;
-//! 
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { std::mem::uninitialized() };
+//!
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! // Taking the first memory type for the sake of this example.
 //! let ty = device.physical_device().memory_types().next().unwrap();
-//! 
-//! let alloc = DeviceMemory::alloc(&device, ty, 1024).expect("Failed to allocate memory");
-//! 
+//!
+//! let alloc = DeviceMemory::alloc(device.clone(), ty, 1024).expect("Failed to allocate memory");
+//!
 //! // The memory is automatically free'd when `alloc` is destroyed.
 //! ```
 //!
@@ -89,17 +89,21 @@ use std::mem;
 use std::os::raw::c_void;
 use std::slice;
 
+use buffer::sys::UnsafeBuffer;
+use image::sys::UnsafeImage;
 use vk;
 
 pub use self::device_memory::CpuAccess;
 pub use self::device_memory::DeviceMemory;
+pub use self::device_memory::DeviceMemoryAllocError;
 pub use self::device_memory::MappedDeviceMemory;
 pub use self::pool::MemoryPool;
 
 mod device_memory;
 pub mod pool;
 
-/// Represents requirements expressed by the Vulkan implementation.
+/// Represents requirements expressed by the Vulkan implementation when it comes to binding memory
+/// to a resource.
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryRequirements {
     /// Number of bytes of memory required.
@@ -112,18 +116,43 @@ pub struct MemoryRequirements {
     /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
     /// type whose index is the same as the position of the bit can be used.
     pub memory_type_bits: u32,
+
+    /// True if the implementation prefers to use dedicated allocations (in other words, allocate
+    /// a whole block of memory dedicated to this resource alone). If the
+    /// `khr_get_memory_requirements2` extension isn't enabled, then this will be false.
+    ///
+    /// > **Note**: As its name says, using a dedicated allocation is an optimization and not a
+    /// > requirement.
+    pub prefer_dedicated: bool,
 }
 
-#[doc(hidden)]
-impl From<vk::MemoryRequirements> for MemoryRequirements {
+impl MemoryRequirements {
     #[inline]
-    fn from(reqs: vk::MemoryRequirements) -> MemoryRequirements {
+    pub(crate) fn from_vulkan_reqs(reqs: vk::MemoryRequirements) -> MemoryRequirements {
         MemoryRequirements {
             size: reqs.size as usize,
             alignment: reqs.alignment as usize,
             memory_type_bits: reqs.memoryTypeBits,
+            prefer_dedicated: false,
         }
     }
+}
+
+/// Indicates whether we want to allocate memory for a specific resource, or in a generic way.
+///
+/// Using dedicated allocations can yield faster performances, but requires the
+/// `VK_KHR_dedicated_allocation` extension to be enabled on the device.
+///
+/// If a dedicated allocation is performed, it must only be bound to any resource other than the
+/// one that was passed with the enumeration.
+#[derive(Debug, Copy, Clone)]
+pub enum DedicatedAlloc<'a> {
+    /// Generic allocation.
+    None,
+    /// Allocation dedicated to a buffer.
+    Buffer(&'a UnsafeBuffer),
+    /// Allocation dedicated to an image.
+    Image(&'a UnsafeImage),
 }
 
 /// Trait for types of data that can be mapped.

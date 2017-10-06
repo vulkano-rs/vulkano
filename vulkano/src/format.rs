@@ -49,11 +49,11 @@
 //!   conversion.
 //!
 //! # Choosing a format
-//! 
+//!
 //! The following formats are guaranteed to be supported for everything that is related to
 //! texturing (ie. blitting source and sampling them linearly). You should choose one of these
 //! formats if you have an image that you are going to sample from:
-//! 
+//!
 //! // TODO: use vulkano enums
 //! - B4G4R4A4_UNORM_PACK16
 //! - R5G6B5_UNORM_PACK16
@@ -101,7 +101,12 @@
 //!
 //! // TODO: storage formats
 //!
+
+use std::{error, fmt, mem};
 use std::vec::IntoIter as VecIntoIter;
+
+use half::f16;
+
 use vk;
 
 // TODO: add enumerations for color, depth, stencil and depthstencil formats
@@ -120,11 +125,52 @@ pub unsafe trait Data {
 // TODO: that's just an example ; implement for all common data types
 unsafe impl Data for i8 {
     #[inline]
-    fn ty() -> Format { Format::R8Sint }
+    fn ty() -> Format {
+        Format::R8Sint
+    }
 }
 unsafe impl Data for u8 {
     #[inline]
-    fn ty() -> Format { Format::R8Uint }
+    fn ty() -> Format {
+        Format::R8Uint
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct IncompatiblePixelsType;
+
+impl error::Error for IncompatiblePixelsType {
+    #[inline]
+    fn description(&self) -> &str {
+        "supplied pixels' type is incompatible with this format"
+    }
+}
+
+impl fmt::Display for IncompatiblePixelsType {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+pub unsafe trait AcceptsPixels<T> {
+    /// Returns an error if `T` cannot be used as a source of pixels for `Self`.
+    fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType>;
+
+    /// The number of `T`s which make up a single pixel.
+    ///
+    /// ```
+    /// use vulkano::format::{AcceptsPixels, R8G8B8A8Srgb};
+    /// assert_eq!(<R8G8B8A8Srgb as AcceptsPixels<[u8; 4]>>::rate(&R8G8B8A8Srgb), 1);
+    /// assert_eq!(<R8G8B8A8Srgb as AcceptsPixels<u8>>::rate(&R8G8B8A8Srgb), 4);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// May panic if `ensure_accepts` would not return `Ok(())`.
+    fn rate(&self) -> u32 {
+        1
+    }
 }
 
 macro_rules! formats {
@@ -158,8 +204,7 @@ macro_rules! formats {
             }
 
             /// Returns the `Format` corresponding to a Vulkan constant.
-            #[doc(hidden)]
-            pub fn from_num(val: u32) -> Option<Format> {
+            pub(crate) fn from_vulkan_num(val: u32) -> Option<Format> {
                 match val {
                     $(
                         vk::$vk => Some(Format::$name),
@@ -352,12 +397,26 @@ macro_rules! formats {
     (__inner_ty__ $name:ident compressed=$f:tt) => { FormatTy::Compressed };
 
 
+    (__inner_strongstorage__ $name:ident [$ty:ty; $dim:expr]) => {
+        formats!(__inner_strongstorage_common__ $name [$ty; $dim]);
+        unsafe impl AcceptsPixels<$ty> for $name {
+            fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType> { Ok(()) }
+            fn rate(&self) -> u32 { $dim }
+        }
+    };
     (__inner_strongstorage__ $name:ident $ty:ty) => {
+        formats!(__inner_strongstorage_common__ $name $ty);
+    };
+    (__inner_strongstorage__ $name:ident ) => {};
+
+    (__inner_strongstorage_common__ $name:ident $ty:ty) => {
         unsafe impl StrongStorage for $name {
             type Pixel = $ty;
         }
+        unsafe impl AcceptsPixels<$ty> for $name {
+            fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType> { Ok(()) }
+        }
     };
-    (__inner_strongstorage__ $name:ident ) => {};
 }
 
 formats! {
@@ -436,28 +495,28 @@ formats! {
     R16Sscaled => FORMAT_R16_SSCALED [Some(2)] [float=1] {i16},
     R16Uint => FORMAT_R16_UINT [Some(2)] [uint=1] {u16},
     R16Sint => FORMAT_R16_SINT [Some(2)] [sint=1] {i16},
-    R16Sfloat => FORMAT_R16_SFLOAT [Some(2)] [float=1] {},
+    R16Sfloat => FORMAT_R16_SFLOAT [Some(2)] [float=1] {f16},
     R16G16Unorm => FORMAT_R16G16_UNORM [Some(4)] [float=2] {[u16; 2]},
     R16G16Snorm => FORMAT_R16G16_SNORM [Some(4)] [float=2] {[i16; 2]},
     R16G16Uscaled => FORMAT_R16G16_USCALED [Some(4)] [float=2] {[u16; 2]},
     R16G16Sscaled => FORMAT_R16G16_SSCALED [Some(4)] [float=2] {[i16; 2]},
     R16G16Uint => FORMAT_R16G16_UINT [Some(4)] [uint=2] {[u16; 2]},
     R16G16Sint => FORMAT_R16G16_SINT [Some(4)] [sint=2] {[i16; 2]},
-    R16G16Sfloat => FORMAT_R16G16_SFLOAT [Some(4)] [float=2] {},
+    R16G16Sfloat => FORMAT_R16G16_SFLOAT [Some(4)] [float=2] {[f16; 2]},
     R16G16B16Unorm => FORMAT_R16G16B16_UNORM [Some(6)] [float=3] {[u16; 3]},
     R16G16B16Snorm => FORMAT_R16G16B16_SNORM [Some(6)] [float=3] {[i16; 3]},
     R16G16B16Uscaled => FORMAT_R16G16B16_USCALED [Some(6)] [float=3] {[u16; 3]},
     R16G16B16Sscaled => FORMAT_R16G16B16_SSCALED [Some(6)] [float=3] {[i16; 3]},
     R16G16B16Uint => FORMAT_R16G16B16_UINT [Some(6)] [uint=3] {[u16; 3]},
     R16G16B16Sint => FORMAT_R16G16B16_SINT [Some(6)] [sint=3] {[i16; 3]},
-    R16G16B16Sfloat => FORMAT_R16G16B16_SFLOAT [Some(6)] [float=3] {},
+    R16G16B16Sfloat => FORMAT_R16G16B16_SFLOAT [Some(6)] [float=3] {[f16; 3]},
     R16G16B16A16Unorm => FORMAT_R16G16B16A16_UNORM [Some(8)] [float=4] {[u16; 4]},
     R16G16B16A16Snorm => FORMAT_R16G16B16A16_SNORM [Some(8)] [float=4] {[i16; 4]},
     R16G16B16A16Uscaled => FORMAT_R16G16B16A16_USCALED [Some(8)] [float=4] {[u16; 4]},
     R16G16B16A16Sscaled => FORMAT_R16G16B16A16_SSCALED [Some(8)] [float=4] {[i16; 4]},
     R16G16B16A16Uint => FORMAT_R16G16B16A16_UINT [Some(8)] [uint=4] {[u16; 4]},
     R16G16B16A16Sint => FORMAT_R16G16B16A16_SINT [Some(8)] [sint=4] {[i16; 4]},
-    R16G16B16A16Sfloat => FORMAT_R16G16B16A16_SFLOAT [Some(8)] [float=4] {},
+    R16G16B16A16Sfloat => FORMAT_R16G16B16A16_SFLOAT [Some(8)] [float=4] {[f16; 4]},
     R32Uint => FORMAT_R32_UINT [Some(4)] [uint=1] {u32},
     R32Sint => FORMAT_R32_SINT [Some(4)] [sint=1] {i32},
     R32Sfloat => FORMAT_R32_SFLOAT [Some(4)] [float=1] {f32},
@@ -572,7 +631,7 @@ unsafe impl FormatDesc for Format {
             (FormatTy::Depth, f @ ClearValue::Depth(_)) => f,
             (FormatTy::Stencil, f @ ClearValue::Stencil(_)) => f,
             (FormatTy::DepthStencil, f @ ClearValue::DepthStencil(_)) => f,
-            _ => panic!("Wrong clear value")
+            _ => panic!("Wrong clear value"),
         }
     }
 }
@@ -585,7 +644,9 @@ pub unsafe trait PossibleFloatFormatDesc: FormatDesc {
 
 unsafe impl PossibleFloatFormatDesc for Format {
     #[inline]
-    fn is_float(&self) -> bool { self.ty() == FormatTy::Float }
+    fn is_float(&self) -> bool {
+        self.ty() == FormatTy::Float
+    }
 }
 
 pub unsafe trait PossibleUintFormatDesc: FormatDesc {
@@ -594,7 +655,9 @@ pub unsafe trait PossibleUintFormatDesc: FormatDesc {
 
 unsafe impl PossibleUintFormatDesc for Format {
     #[inline]
-    fn is_uint(&self) -> bool { self.ty() == FormatTy::Uint }
+    fn is_uint(&self) -> bool {
+        self.ty() == FormatTy::Uint
+    }
 }
 
 pub unsafe trait PossibleSintFormatDesc: FormatDesc {
@@ -603,7 +666,9 @@ pub unsafe trait PossibleSintFormatDesc: FormatDesc {
 
 unsafe impl PossibleSintFormatDesc for Format {
     #[inline]
-    fn is_sint(&self) -> bool { self.ty() == FormatTy::Sint }
+    fn is_sint(&self) -> bool {
+        self.ty() == FormatTy::Sint
+    }
 }
 
 pub unsafe trait PossibleDepthFormatDesc: FormatDesc {
@@ -612,7 +677,9 @@ pub unsafe trait PossibleDepthFormatDesc: FormatDesc {
 
 unsafe impl PossibleDepthFormatDesc for Format {
     #[inline]
-    fn is_depth(&self) -> bool { self.ty() == FormatTy::Depth }
+    fn is_depth(&self) -> bool {
+        self.ty() == FormatTy::Depth
+    }
 }
 
 pub unsafe trait PossibleStencilFormatDesc: FormatDesc {
@@ -621,7 +688,9 @@ pub unsafe trait PossibleStencilFormatDesc: FormatDesc {
 
 unsafe impl PossibleStencilFormatDesc for Format {
     #[inline]
-    fn is_stencil(&self) -> bool { self.ty() == FormatTy::Stencil }
+    fn is_stencil(&self) -> bool {
+        self.ty() == FormatTy::Stencil
+    }
 }
 
 pub unsafe trait PossibleDepthStencilFormatDesc: FormatDesc {
@@ -630,7 +699,9 @@ pub unsafe trait PossibleDepthStencilFormatDesc: FormatDesc {
 
 unsafe impl PossibleDepthStencilFormatDesc for Format {
     #[inline]
-    fn is_depth_stencil(&self) -> bool { self.ty() == FormatTy::DepthStencil }
+    fn is_depth_stencil(&self) -> bool {
+        self.ty() == FormatTy::DepthStencil
+    }
 }
 
 pub unsafe trait PossibleCompressedFormatDesc: FormatDesc {
@@ -639,7 +710,9 @@ pub unsafe trait PossibleCompressedFormatDesc: FormatDesc {
 
 unsafe impl PossibleCompressedFormatDesc for Format {
     #[inline]
-    fn is_compressed(&self) -> bool { self.ty() == FormatTy::Compressed }
+    fn is_compressed(&self) -> bool {
+        self.ty() == FormatTy::Compressed
+    }
 }
 
 /// Trait for types that can possibly describe a float or compressed attachment.
@@ -655,6 +728,39 @@ unsafe impl PossibleFloatOrCompressedFormatDesc for Format {
     }
 }
 
+macro_rules! impl_pixel {
+    {$($ty:ty;)+} => {
+        $(impl_pixel!(inner $ty);)*
+        $(impl_pixel!(inner [$ty; 1]);)*
+        $(impl_pixel!(inner [$ty; 2]);)*
+        $(impl_pixel!(inner [$ty; 3]);)*
+        $(impl_pixel!(inner [$ty; 4]);)*
+        $(impl_pixel!(inner ($ty,));)*
+        $(impl_pixel!(inner ($ty, $ty));)*
+        $(impl_pixel!(inner ($ty, $ty, $ty));)*
+        $(impl_pixel!(inner ($ty, $ty, $ty, $ty));)*
+    };
+    (inner $ty:ty) => {
+        unsafe impl AcceptsPixels<$ty> for Format {
+            fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType> {
+                // TODO: Be more strict: accept only if the format has a matching AcceptsPixels impl.
+                if self.size().map_or(false, |x| x % mem::size_of::<$ty>() == 0) {
+                    Ok(())
+                } else {
+                    Err(IncompatiblePixelsType)
+                }
+            }
+            fn rate(&self) -> u32 {
+                (self.size().expect("this format cannot accept pixels") / mem::size_of::<$ty>()) as u32
+            }
+        }
+    }
+}
+
+impl_pixel! {
+    u8; i8; u16; i16; u32; i32; u64; i64; f16; f32; f64;
+}
+
 pub unsafe trait StrongStorage: FormatDesc {
     type Pixel: Copy;
 }
@@ -668,6 +774,19 @@ pub enum FormatTy {
     Stencil,
     DepthStencil,
     Compressed,
+}
+
+impl FormatTy {
+    /// Returns true if `Depth`, `Stencil`, `DepthStencil`. False otherwise.
+    #[inline]
+    pub fn is_depth_and_or_stencil(&self) -> bool {
+        match *self {
+            FormatTy::Depth => true,
+            FormatTy::Stencil => true,
+            FormatTy::DepthStencil => true,
+            _ => false,
+        }
+    }
 }
 
 /// Describes a uniform value that will be used to fill an image.
@@ -723,21 +842,21 @@ impl From<[f32; 4]> for ClearValue {
 impl From<[u32; 1]> for ClearValue {
     #[inline]
     fn from(val: [u32; 1]) -> ClearValue {
-        ClearValue::Uint([val[0], 0, 0, 0])     // TODO: is alpha value 0 correct?
+        ClearValue::Uint([val[0], 0, 0, 0]) // TODO: is alpha value 0 correct?
     }
 }
 
 impl From<[u32; 2]> for ClearValue {
     #[inline]
     fn from(val: [u32; 2]) -> ClearValue {
-        ClearValue::Uint([val[0], val[1], 0, 0])        // TODO: is alpha value 0 correct?
+        ClearValue::Uint([val[0], val[1], 0, 0]) // TODO: is alpha value 0 correct?
     }
 }
 
 impl From<[u32; 3]> for ClearValue {
     #[inline]
     fn from(val: [u32; 3]) -> ClearValue {
-        ClearValue::Uint([val[0], val[1], val[2], 0])       // TODO: is alpha value 0 correct?
+        ClearValue::Uint([val[0], val[1], val[2], 0]) // TODO: is alpha value 0 correct?
     }
 }
 
@@ -751,21 +870,21 @@ impl From<[u32; 4]> for ClearValue {
 impl From<[i32; 1]> for ClearValue {
     #[inline]
     fn from(val: [i32; 1]) -> ClearValue {
-        ClearValue::Int([val[0], 0, 0, 0])      // TODO: is alpha value 0 correct?
+        ClearValue::Int([val[0], 0, 0, 0]) // TODO: is alpha value 0 correct?
     }
 }
 
 impl From<[i32; 2]> for ClearValue {
     #[inline]
     fn from(val: [i32; 2]) -> ClearValue {
-        ClearValue::Int([val[0], val[1], 0, 0])     // TODO: is alpha value 0 correct?
+        ClearValue::Int([val[0], val[1], 0, 0]) // TODO: is alpha value 0 correct?
     }
 }
 
 impl From<[i32; 3]> for ClearValue {
     #[inline]
     fn from(val: [i32; 3]) -> ClearValue {
-        ClearValue::Int([val[0], val[1], val[2], 0])        // TODO: is alpha value 0 correct?
+        ClearValue::Int([val[0], val[1], val[2], 0]) // TODO: is alpha value 0 correct?
     }
 }
 

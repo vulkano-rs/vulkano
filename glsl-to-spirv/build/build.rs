@@ -18,9 +18,15 @@ fn main() {
     } else {
         // Try to initialize submodules. Don't care if it fails, since this code also runs for
         // the crates.io package.
-        let _ = Command::new("git").arg("submodule").arg("update").arg("--init").status();
+        let _ = Command::new("git")
+            .arg("submodule")
+            .arg("update")
+            .arg("--init")
+            .status();
         cmake::build("glslang");
-        Path::new(&env::var("OUT_DIR").unwrap()).join("bin").join("glslangValidator")
+        Path::new(&env::var("OUT_DIR").unwrap())
+            .join("bin")
+            .join("glslangValidator")
     };
 
     if let Err(_) = fs::hard_link(&path, &out_file) {

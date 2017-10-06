@@ -7,238 +7,212 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::any::Any;
 use std::ops::Range;
-use std::sync::Arc;
 
+use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
-use command_buffer::Submission;
+use device::DeviceOwned;
 use device::Queue;
-use image::Image;
+use image::ImageAccess;
 use memory::Content;
+use sync::AccessError;
 
-use sync::AccessFlagBits;
-use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
+use SafeDeref;
 
-use VulkanObject;
-
-pub unsafe trait Buffer: 'static + Send + Sync {
-    /// Returns the inner buffer.
-    fn inner(&self) -> &UnsafeBuffer;
-
-    /// Returns whether accessing a range of this buffer should signal a fence.
-    fn needs_fence(&self, write: bool, Range<usize>) -> Option<bool>;
-
-    /// Called when a command buffer that uses this buffer is being built.
-    ///
-    /// Must return true if the command buffer should include a pipeline barrier at the start,
-    /// to read from what the host wrote, and a pipeline barrier at the end, to flush caches and
-    /// allows the host to read the data.
-    fn host_accesses(&self, block: usize) -> bool;
-
-    /// Given a range, returns the list of blocks which each range is contained in.
-    ///
-    /// Each block must have a unique number. Hint: it can simply be the offset of the start of the
-    /// block.
-    /// Calling this function multiple times with the same parameter must always return the same
-    /// value.
-    /// The return value must not be empty.
-    fn blocks(&self, range: Range<usize>) -> Vec<usize>;
-
-    /// Returns the range of bytes of the buffer slice used by a block.
-    fn block_memory_range(&self, block: usize) -> Range<usize>;
-
-    ///
-    ///
-    /// If the host is still accessing the buffer, this function implementation should block
-    /// until it is no longer the case.
-    ///
-    /// **Important**: The `Submission` object likely holds an `Arc` to `self`. Therefore you
-    ///                should store the `Submission` in the form of a `Weak<Submission>` and not
-    ///                of an `Arc<Submission>` to avoid cyclic references.
-    unsafe fn gpu_access(&self, ranges: &mut Iterator<Item = AccessRange>,
-                         submission: &Arc<Submission>) -> GpuAccessResult;
-
-    #[inline]
-    fn size(&self) -> usize {
-        self.inner().size()
-    }
-}
-
-/// Extension trait for `Buffer`. Types that implement this can be used in a `StdCommandBuffer`.
+/// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
+/// buffer.
 ///
-/// Each buffer and image used in a `StdCommandBuffer` have an associated state which is
-/// represented by the `CommandListState` associated type of this trait. You can make multiple
-/// buffers or images share the same state by making `is_same` return true.
-pub unsafe trait TrackedBuffer: Buffer {
-    /// State of the buffer in a list of commands.
-    ///
-    /// The `Any` bound is here for stupid reasons, sorry.
-    // TODO: remove Any bound
-    type CommandListState: Any + CommandListState<FinishedState = Self::FinishedState>;
-    /// State of the buffer in a finished list of commands.
-    type FinishedState: CommandBufferState;
+/// See also `TypedBufferAccess`.
+pub unsafe trait BufferAccess: DeviceOwned {
+    /// Returns the inner information about this buffer.
+    fn inner(&self) -> BufferInner;
 
-    /// Returns true if TODO.
+    /// Returns the size of the buffer in bytes.
+    fn size(&self) -> usize;
+
+    /// Returns the length of the buffer in number of elements.
     ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other buffer. Otherwise a panic will occur.
+    /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn is_same_buffer<B>(&self, other: &B) -> bool where B: Buffer {
-        self.inner().internal_object() == other.inner().internal_object()
+    fn len(&self) -> usize
+        where Self: TypedBufferAccess,
+              Self::Content: Content
+    {
+        self.size() / <Self::Content as Content>::indiv_size()
     }
 
-    /// Returns true if TODO.
-    ///
-    /// If `is_same` returns true, then the type of `CommandListState` must be the same as for the
-    /// other image. Otherwise a panic will occur.
+    /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
-    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
-        false
+    fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
+        where Self: Sized + TypedBufferAccess
+    {
+        BufferSlice::from_typed_buffer_access(self)
     }
 
-    /// Returns the state of the buffer when it has not yet been used.
-    fn initial_state(&self) -> Self::CommandListState;
-}
-
-/// Trait for objects that represent the state of a slice of the buffer in a list of commands.
-pub trait CommandListState {
-    type FinishedState: CommandBufferState;
-
-    /// Returns a new state that corresponds to the moment after a slice of the buffer has been
-    /// used in the pipeline. The parameters indicate in which way it has been used.
+    /// Builds a `BufferSlice` object holding part of the buffer by reference.
     ///
-    /// If the transition should result in a pipeline barrier, then it must be returned by this
-    /// function.
-    fn transition(self, num_command: usize, buffer: &UnsafeBuffer, offset: usize, size: usize,
-                  write: bool, stage: PipelineStages, access: AccessFlagBits)
-                  -> (Self, Option<PipelineBarrierRequest>)
-        where Self: Sized;
-
-    /// Function called when the command buffer builder is turned into a real command buffer.
+    /// This method can only be called for buffers whose type is known to be an array.
     ///
-    /// This function can return an additional pipeline barrier that will be applied at the end
-    /// of the command buffer.
-    fn finish(self) -> (Self::FinishedState, Option<PipelineBarrierRequest>);
+    /// This method can be used when you want to perform an operation on some part of the buffer
+    /// and not on the whole buffer.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    fn slice<T>(&self, range: Range<usize>) -> Option<BufferSlice<[T], &Self>>
+        where Self: Sized + TypedBufferAccess<Content = [T]>
+    {
+        BufferSlice::slice(self.as_buffer_slice(), range)
+    }
+
+    /// Builds a `BufferSlice` object holding the buffer by value.
+    #[inline]
+    fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
+        where Self: Sized + TypedBufferAccess
+    {
+        BufferSlice::from_typed_buffer_access(self)
+    }
+
+    /// Builds a `BufferSlice` object holding part of the buffer by reference.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    ///
+    /// This method can be used when you want to perform an operation on a specific element of the
+    /// buffer and not on the whole buffer.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    fn index<T>(&self, index: usize) -> Option<BufferSlice<[T], &Self>>
+        where Self: Sized + TypedBufferAccess<Content = [T]>
+    {
+        self.slice(index .. (index + 1))
+    }
+
+    /// Returns true if an access to `self` potentially overlaps the same memory as an access to
+    /// `other`.
+    ///
+    /// If this function returns `false`, this means that we are allowed to mutably access the
+    /// content of `self` at the same time as the content of `other` without causing a data
+    /// race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool;
+
+    /// Returns true if an access to `self` potentially overlaps the same memory as an access to
+    /// `other`.
+    ///
+    /// If this function returns `false`, this means that we are allowed to mutably access the
+    /// content of `self` at the same time as the content of `other` without causing a data
+    /// race.
+    ///
+    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
+    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
+    fn conflicts_image(&self, other: &ImageAccess) -> bool;
+
+    /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
+    /// overlap in memory must return the same key.
+    ///
+    /// The key is shared amongst all buffers and images, which means that you can make several
+    /// different buffer objects share the same memory, or make some buffer objects share memory
+    /// with images, as long as they return the same key.
+    ///
+    /// Since it is possible to accidentally return the same key for memory ranges that don't
+    /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
+    /// verify whether they actually overlap.
+    fn conflict_key(&self) -> u64;
+
+    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
+    ///
+    /// This function exists to prevent the user from causing a data race by reading and writing
+    /// to the same resource at the same time.
+    ///
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
+
+    /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
+    /// simply increases the lock by one.
+    ///
+    /// Must only be called after `try_gpu_lock()` succeeded.
+    ///
+    /// If you call this function, you should call `unlock()` once the resource is no longer in use
+    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
+    /// can rely on the fact that `unlock()` is going to be called.
+    unsafe fn increase_gpu_lock(&self);
+
+    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    ///
+    /// # Safety
+    ///
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
-/// Requests that a pipeline barrier is created.
-pub struct PipelineBarrierRequest {
-    /// The number of the command after which the barrier should be placed. Must usually match
-    /// the number that was passed to the previous call to `transition`, or 0 if the buffer hasn't
-    /// been used yet.
-    pub after_command_num: usize,
-
-    /// The source pipeline stages of the transition.
-    pub source_stage: PipelineStages,
-
-    /// The destination pipeline stages of the transition.
-    pub destination_stages: PipelineStages,
-
-    /// If true, the pipeliner barrier is by region. There is literaly no reason to pass `false`
-    /// here, but it is included just in case.
-    pub by_region: bool,
-
-    /// An optional memory barrier. See the docs of `PipelineMemoryBarrierRequest`.
-    pub memory_barrier: Option<PipelineMemoryBarrierRequest>,
-}
-
-/// Requests that a memory barrier is created as part of the pipeline barrier.
-///
-/// By default, a pipeline barrier only guarantees that the source operations are executed before
-/// the destination operations, but it doesn't make memory writes made by source operations visible
-/// to the destination operations. In order to make so, you have to add a memory barrier.
-///
-/// The memory barrier always concerns the buffer that is currently being processed. You can't add
-/// a memory barrier that concerns another resource.
-pub struct PipelineMemoryBarrierRequest {
-    /// Offset of start of the range to flush.
+/// Inner information about a buffer.
+#[derive(Copy, Clone, Debug)]
+pub struct BufferInner<'a> {
+    /// The underlying buffer object.
+    pub buffer: &'a UnsafeBuffer,
+    /// The offset in bytes from the start of the underlying buffer object to the start of the
+    /// buffer we're describing.
     pub offset: usize,
-    /// Size of the range to flush.
-    pub size: usize,
-    /// Source accesses.
-    pub source_access: AccessFlagBits,
-    /// Destination accesses.
-    pub destination_access: AccessFlagBits,
 }
 
-/// Trait for objects that represent the state of the buffer in a command buffer.
-pub trait CommandBufferState {
-    /// Called right before the command buffer is submitted.
-    // TODO: function should be unsafe because it must be guaranteed that a cb is submitted
-    fn on_submit<B, F>(&self, buffer: &B, queue: &Arc<Queue>, fence: F) -> SubmitInfos
-        where B: Buffer, F: FnOnce() -> Arc<Fence>;
-}
-
-pub struct SubmitInfos {
-    pub pre_semaphore: Option<(Arc<Semaphore>, PipelineStages)>,
-    pub post_semaphore: Option<Arc<Semaphore>>,
-    pub pre_barrier: Option<PipelineBarrierRequest>,
-    pub post_barrier: Option<PipelineBarrierRequest>,
-}
-
-unsafe impl<B> Buffer for Arc<B> where B: Buffer {
+unsafe impl<T> BufferAccess for T
+    where T: SafeDeref,
+          T::Target: BufferAccess
+{
     #[inline]
-    fn inner(&self) -> &UnsafeBuffer {
+    fn inner(&self) -> BufferInner {
         (**self).inner()
     }
-
-    fn needs_fence(&self, _: bool, _: Range<usize>) -> Option<bool> { unimplemented!() }
-
-    fn host_accesses(&self, _: usize) -> bool { unimplemented!() }
-
-    fn blocks(&self, _: Range<usize>) -> Vec<usize> { unimplemented!() }
-
-    fn block_memory_range(&self, _: usize) -> Range<usize> { unimplemented!() }
-
-    unsafe fn gpu_access(&self, _: &mut Iterator<Item = AccessRange>,
-                         _: &Arc<Submission>) -> GpuAccessResult { unimplemented!() }
 
     #[inline]
     fn size(&self) -> usize {
         (**self).size()
     }
-}
-
-unsafe impl<B> TrackedBuffer for Arc<B> where B: TrackedBuffer, Arc<B>: Buffer {
-    type CommandListState = B::CommandListState;
-    type FinishedState = B::FinishedState;
 
     #[inline]
-    fn is_same_buffer<Bo>(&self, other: &Bo) -> bool where Bo: Buffer {
-        (**self).is_same_buffer(other)
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        (**self).conflicts_buffer(other)
     }
 
     #[inline]
-    fn is_same_image<I>(&self, other: &I) -> bool where I: Image {
-        (**self).is_same_image(other)
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        (**self).conflicts_image(other)
     }
 
     #[inline]
-    fn initial_state(&self) -> Self::CommandListState {
-        (**self).initial_state()
+    fn conflict_key(&self) -> u64 {
+        (**self).conflict_key()
     }
-}
-
-pub unsafe trait TypedBuffer: Buffer {
-    type Content: ?Sized + 'static;
 
     #[inline]
-    fn len(&self) -> usize where Self::Content: Content {
-        self.size() / <Self::Content as Content>::indiv_size()
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(exclusive_access, queue)
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        (**self).increase_gpu_lock()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccessRange {
-    pub block: usize,
-    pub write: bool,
+/// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
+pub unsafe trait TypedBufferAccess: BufferAccess {
+    /// The type of the content.
+    type Content: ?Sized;
 }
 
-pub struct GpuAccessResult {
-    pub dependencies: Vec<Arc<Submission>>,
-    pub additional_wait_semaphore: Option<Arc<Semaphore>>,
-    pub additional_signal_semaphore: Option<Arc<Semaphore>>,
+unsafe impl<T> TypedBufferAccess for T
+    where T: SafeDeref,
+          T::Target: TypedBufferAccess
+{
+    type Content = <T::Target as TypedBufferAccess>::Content;
 }

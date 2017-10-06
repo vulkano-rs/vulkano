@@ -8,3 +8,7 @@ members = [
     "vulkano-shader-derive",
     "vulkano-win"
 ]
+
+exclude = [
+    "www"
+]

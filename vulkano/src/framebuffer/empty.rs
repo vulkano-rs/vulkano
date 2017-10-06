@@ -7,112 +7,75 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::iter;
-use std::iter::Empty as EmptyIter;
-use std::option::IntoIter as OptionIntoIter;
-use std::sync::Arc;
-
-use device::Device;
 use format::ClearValue;
-use framebuffer::framebuffer::FramebufferCreationError;
-use framebuffer::sys::UnsafeRenderPass;
-use framebuffer::sys::RenderPassCreationError;
-use framebuffer::traits::RenderPass;
-use framebuffer::traits::RenderPassDesc;
-use framebuffer::traits::RenderPassAttachmentsList;
-use framebuffer::traits::RenderPassClearValues;
-use framebuffer::traits::LayoutAttachmentDescription;
-use framebuffer::traits::LayoutPassDescription;
-use framebuffer::traits::LayoutPassDependencyDescription;
-use image::Layout as ImageLayout;
-use image::traits::Image;
-use image::traits::ImageView;
+use framebuffer::LayoutAttachmentDescription;
+use framebuffer::LayoutPassDependencyDescription;
+use framebuffer::LayoutPassDescription;
+use framebuffer::RenderPassDesc;
+use framebuffer::RenderPassDescClearValues;
+use std::iter;
 
-/// Implementation of `RenderPass` with no attachment at all and a single pass.
+/// Description of an empty render pass.
 ///
-/// When you use a `EmptySinglePassRenderPass`, the list of attachments and clear values must
-/// be `()`.
-pub struct EmptySinglePassRenderPass {
-    render_pass: UnsafeRenderPass,
-}
+/// Can be used to create a render pass with one subpass and no attachment.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+/// use vulkano::framebuffer::RenderPassDesc;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let rp = EmptySinglePassRenderPassDesc.build_render_pass(device.clone());
+/// ```
+///
+#[derive(Debug, Copy, Clone)]
+pub struct EmptySinglePassRenderPassDesc;
 
-impl EmptySinglePassRenderPass {
-    /// See the docs of new().
-    pub fn raw(device: &Arc<Device>) -> Result<EmptySinglePassRenderPass, RenderPassCreationError> {
-        let rp = try!(unsafe {
-            let pass = LayoutPassDescription {
-                color_attachments: vec![],
-                depth_stencil: None,
-                input_attachments: vec![],
-                resolve_attachments: vec![],
-                preserve_attachments: vec![],
-            };
-
-            UnsafeRenderPass::new(device, iter::empty(), Some(pass).into_iter(), iter::empty())
-        });
-
-        Ok(EmptySinglePassRenderPass {
-            render_pass: rp
-        })
-    }
-    
-    /// Builds the render pass.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
+unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<EmptySinglePassRenderPass> {
-        Arc::new(EmptySinglePassRenderPass::raw(device).unwrap())
-    }
-}
-
-unsafe impl RenderPass for EmptySinglePassRenderPass {
-    #[inline]
-    fn inner(&self) -> &UnsafeRenderPass {
-        &self.render_pass
-    }
-}
-
-unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
-    type AttachmentsIter = EmptyIter<LayoutAttachmentDescription>;
-    type PassesIter = OptionIntoIter<LayoutPassDescription>;
-    type DependenciesIter = EmptyIter<LayoutPassDependencyDescription>;
-
-    #[inline]
-    fn attachments(&self) -> Self::AttachmentsIter {
-        iter::empty()
+    fn num_attachments(&self) -> usize {
+        0
     }
 
     #[inline]
-    fn passes(&self) -> Self::PassesIter {
-        Some(LayoutPassDescription {
-            color_attachments: vec![],
-            depth_stencil: None,
-            input_attachments: vec![],
-            resolve_attachments: vec![],
-            preserve_attachments: vec![],
-        }).into_iter()
+    fn attachment_desc(&self, _: usize) -> Option<LayoutAttachmentDescription> {
+        None
     }
 
     #[inline]
-    fn dependencies(&self) -> Self::DependenciesIter {
-        iter::empty()
-    }
-
-    #[inline]
-    fn num_subpasses(&self) -> u32 {
+    fn num_subpasses(&self) -> usize {
         1
     }
 
     #[inline]
-    fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
-        if subpass == 0 {
-            Some(0)
+    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+        if num == 0 {
+            Some(LayoutPassDescription {
+                     color_attachments: vec![],
+                     depth_stencil: None,
+                     input_attachments: vec![],
+                     resolve_attachments: vec![],
+                     preserve_attachments: vec![],
+                 })
         } else {
             None
         }
+    }
+
+    #[inline]
+    fn num_dependencies(&self) -> usize {
+        0
+    }
+
+    #[inline]
+    fn dependency_desc(&self, _: usize) -> Option<LayoutPassDependencyDescription> {
+        None
+    }
+
+    #[inline]
+    fn num_color_attachments(&self, subpass: u32) -> Option<u32> {
+        if subpass == 0 { Some(0) } else { None }
     }
 
     #[inline]
@@ -131,69 +94,36 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPass {
 
     #[inline]
     fn has_depth(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_writable_depth(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_stencil(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 
     #[inline]
     fn has_writable_stencil(&self, subpass: u32) -> Option<bool> {
-        if subpass == 0 {
-            Some(false)
-        } else {
-            None
-        }
+        if subpass == 0 { Some(false) } else { None }
     }
 }
 
-unsafe impl RenderPassAttachmentsList<()> for EmptySinglePassRenderPass {
-    type AttachmentsIter = EmptyIter<(Arc<ImageView>, Arc<Image>, ImageLayout, ImageLayout)>;
-
+unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_attachments_list(&self, _: ())
-                                -> Result<Self::AttachmentsIter, FramebufferCreationError>
-    {
-        Ok(iter::empty())
+    fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+        assert!(values.is_empty()); // TODO: error instead
+        Box::new(iter::empty())
     }
 }
 
-unsafe impl RenderPassClearValues<()> for EmptySinglePassRenderPass {
-    type ClearValuesIter = EmptyIter<ClearValue>;
-
+unsafe impl RenderPassDescClearValues<()> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_clear_values(&self, _: ()) -> Self::ClearValuesIter {
-        iter::empty()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use framebuffer::EmptySinglePassRenderPass;
-
-    #[test]
-    #[ignore]       // TODO: crashes on AMD+Windows
-    fn create() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _ = EmptySinglePassRenderPass::new(&device);
+    fn convert_clear_values(&self, _: ()) -> Box<Iterator<Item = ClearValue>> {
+        Box::new(iter::empty())
     }
 }

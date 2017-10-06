@@ -8,9 +8,9 @@
 // according to those terms.
 
 //! Link between Vulkan and a window and/or the screen.
-//! 
+//!
 //! Before you can draw on the screen or a window, you have to create two objects:
-//! 
+//!
 //! - Create a `Surface` object that represents the location where the image will show up (either
 //!   a window or a monitor).
 //! - Create a `Swapchain` that uses that `Surface`.
@@ -20,19 +20,19 @@
 //!
 //! Once you have a swapchain, you can retrieve `Image` objects from it and draw to them just like
 //! you would draw on any other image.
-//! 
+//!
 //! # Surfaces
-//! 
+//!
 //! A surface is an object that represents a location where to render. It can be created from an
 //! instance and either a window handle (in a platform-specific way) or a monitor.
-//! 
+//!
 //! In order to use surfaces, you will have to enable the `VK_KHR_surface` extension on the
 //! instance. See the `instance` module for more information about how to enable extensions.
-//! 
+//!
 //! ## Creating a surface from a window
-//! 
+//!
 //! There are 6 extensions that each allow you to create a surface from a type of window:
-//! 
+//!
 //! - `VK_KHR_xlib_surface`
 //! - `VK_KHR_xcb_surface`
 //! - `VK_KHR_wayland_surface`
@@ -48,7 +48,7 @@
 //! error.
 //!
 //! **Note that the `Surface` object is unsafe**. It is your responsibility to keep the window
-//! alive for at least as long as the surface exists. 
+//! alive for at least as long as the surface exists.
 //!
 //! ### Example
 //!
@@ -72,15 +72,15 @@
 //! };
 //!
 //! # fn build_window() -> *const u32 { ptr::null() }
-//! let window = build_window();
+//! let window = build_window();        // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null();     // Windows-specific object
-//!     Surface::from_hwnd(&instance, hinstance, window).unwrap()
+//!     Surface::from_hwnd(instance.clone(), hinstance, window).unwrap()
 //! };
 //! ```
-//! 
+//!
 //! ## Creating a surface from a monitor
-//! 
+//!
 //! Currently no system provides the `VK_KHR_display` extension that contains this feature.
 //! This feature is still a work-in-progress in vulkano and will reside in the `display` module.
 //!
@@ -94,7 +94,7 @@
 //! turn on the screen, one after another. More information below.
 //!
 //! Swapchains have several properties:
-//! 
+//!
 //!  - The number of images that will cycle on the screen.
 //!  - The format of the images.
 //!  - The 2D dimensions of the images, plus a number of layers, for a total of three dimensions.
@@ -104,17 +104,104 @@
 //!  - How the alpha of the final output will be interpreted.
 //!  - How to perform the cycling between images in regard to vsync.
 //!
-//! You can query the supported values of all these properties with `Surface::get_capabilities()`.
+//! You can query the supported values of all these properties with
+//! [`Surface::capabilities()]`](struct.Surface.html#method.capabilities).
 //!
 //! ## Creating a swapchain
 //!
 //! In order to create a swapchain, you will first have to enable the `VK_KHR_swapchain` extension
-//! on the device (and not on the instance like `VK_KHR_surface`).
+//! on the device (and not on the instance like `VK_KHR_surface`):
 //!
-//! Then, you should query the capabilities of the surface with `Surface::get_capabilities()` and
-//! choose which values you are going to use. Then, call `Swapchain::new`.
+//! ```no_run
+//! # use vulkano::instance::DeviceExtensions;
+//! let ext = DeviceExtensions {
+//!     khr_swapchain: true,
+//!     .. DeviceExtensions::none()
+//! };
+//! ```
 //!
-//! TODO: add example here
+//! Then, query the capabilities of the surface with
+//! [`Surface::capabilities()`](struct.Surface.html#method.capabilities)
+//! and choose which values you are going to use.
+//!
+//! ```no_run
+//! # use std::sync::Arc;
+//! # use vulkano::device::Device;
+//! # use vulkano::swapchain::Surface;
+//! # use std::cmp::{max, min};
+//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface>) -> Result<(), Box<std::error::Error>> {
+//! let caps = surface.capabilities(device.physical_device())?;
+//!
+//! // Use the current window size or some fixed resolution.
+//! let dimensions = caps.current_extent.unwrap_or([640, 480]);
+//!
+//! // Try to use double-buffering.
+//! let buffers_count = max(min(2, caps.min_image_count), caps.max_image_count.unwrap_or(2));
+//!
+//! // Preserve the current surface transform.
+//! let transform = caps.current_transform;
+//!
+//! // Use the first available format.
+//! let (format, color_space) = caps.supported_formats[0];
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! Then, call [`Swapchain::new()`](struct.Swapchain.html#method.new).
+//!
+//! ```no_run
+//! # use std::sync::Arc;
+//! # use vulkano::device::{Device, Queue};
+//! # use vulkano::image::ImageUsage;
+//! # use vulkano::sync::SharingMode;
+//! # use vulkano::format::Format;
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha};
+//! # fn create_swapchain(
+//! #     device: Arc<Device>, surface: Arc<Surface>, present_queue: Arc<Queue>,
+//! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
+//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
+//! # ) -> Result<(), Box<std::error::Error>> {
+//! // The created swapchain will be used as a color attachment for rendering.
+//! let usage = ImageUsage {
+//!     color_attachment: true,
+//!     .. ImageUsage::none()
+//! };
+//!
+//! let sharing_mode = SharingMode::Exclusive(present_queue.family().id());
+//!
+//! // Create the swapchain and its buffers.
+//! let (swapchain, buffers) = Swapchain::new(
+//!     // Create the swapchain in this `device`'s memory.
+//!     device,
+//!     // The surface where the images will be presented.
+//!     surface,
+//!     // How many buffers to use in the swapchain.
+//!     buffers_count,
+//!     // The format of the images.
+//!     format,
+//!     // The size of each image.
+//!     dimensions,
+//!     // How many layers each image has.
+//!     1,
+//!     // What the images are going to be used for.
+//!     usage,
+//!     // Describes which queues will interact with the swapchain.
+//!     sharing_mode,
+//!     // What transformation to use with the surface.
+//!     surface_transform,
+//!     // How to handle the alpha channel.
+//!     composite_alpha,
+//!     // How to present images.
+//!     present_mode,
+//!     // Clip the parts of the buffer which aren't visible.
+//!     true,
+//!     // No previous swapchain.
+//!     None
+//! )?;
+//!
+//! # Ok(())
+//! # }
+//! ```
 //!
 //! Creating a swapchain not only returns the swapchain object, but also all the images that belong
 //! to it.
@@ -124,19 +211,21 @@
 //! Once you created a swapchain and retreived all the images that belong to it (see previous
 //! section), you can draw on it. This is done in three steps:
 //!
-//!  - Call `Swapchain::acquire_next_image`. This function will return the index of the image
-//!    (within the list returned by `Swapchain::new`) that is available to draw.
+//!  - Call `swapchain::acquire_next_image`. This function will return the index of the image
+//!    (within the list returned by `Swapchain::new`) that is available to draw, plus a future
+//!    representing the moment when the GPU will gain access to that image.
 //!  - Draw on that image just like you would draw to any other image (see the documentation of
-//!    the `pipeline` module).
-//!  - Call `Swapchain::present` with the same index in order to tell the implementation that you
-//!    are finished drawing to the image and that it can queue a command to present the image on
-//!    the screen after the draw operations are finished. 
+//!    the `pipeline` module). You need to chain the draw after the future that was returned by
+//!    `acquire_next_image`.
+//!  - Call `Swapchain::present` with the same index and by chaining the futures, in order to tell
+//!    the implementation that you are finished drawing to the image and that it can queue a
+//!    command to present the image on the screen after the draw operations are finished.
 //!
 //! TODO: add example here
 //! loop {
-//!     let index = swapchain.acquire_next_image(Duration::from_millis(500)).unwrap();
+//!     let index = swapchain::acquire_next_image(None).unwrap();
 //!     draw(images[index]);
-//!     swapchain.present(queue, index).unwrap();
+//!     swapchain::present(queue, index).unwrap();
 //! }
 //!
 //! ## Recreating a swapchain
@@ -152,14 +241,15 @@
 //!
 //! TODO: suboptimal stuff
 //!
-//! ```no_run
+//! ```
 //! # use std::time::Duration;
+//! use vulkano::swapchain;
 //! use vulkano::swapchain::AcquireError;
-//! use vulkano::swapchain::PresentError;
+//! use vulkano::sync::GpuFuture;
 //!
 //! // let mut swapchain = Swapchain::new(...);
-//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = unsafe { ::std::mem::uninitialized() };
-//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = unsafe { ::std::mem::uninitialized() };
+//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = return;
+//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!
 //! loop {
@@ -170,154 +260,62 @@
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let index = match swapchain.acquire_next_image(Duration::from_millis(500)) {
-//!         Ok(img) => img,
+//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+//!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)
 //!     };
 //!
 //!     // ...
 //!
-//!     match swapchain.present(&queue, index) {
-//!         Ok(()) => (),
-//!         Err(PresentError::OutOfDate) => { recreate_swapchain = true; },
-//!         Err(err) => panic!("{:?}", err),
-//!     }
+//!     let final_future = acq_future
+//!         // .then_execute(...)
+//!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
+//!         .then_signal_fence();
+//!
+//!     final_future.flush().unwrap();      // TODO: PresentError?
 //! }
 //! ```
 //!
 
 use std::sync::atomic::AtomicBool;
-use vk;
 
-pub use self::surface::Capabilities;
+pub use self::capabilities::Capabilities;
+pub use self::capabilities::ColorSpace;
+pub use self::capabilities::CompositeAlpha;
+pub use self::capabilities::PresentMode;
+pub use self::capabilities::SupportedCompositeAlpha;
+pub use self::capabilities::SupportedCompositeAlphaIter;
+pub use self::capabilities::SupportedPresentModes;
+pub use self::capabilities::SupportedPresentModesIter;
+pub use self::capabilities::SupportedSurfaceTransforms;
+pub use self::capabilities::SupportedSurfaceTransformsIter;
+pub use self::capabilities::SurfaceTransform;
+pub use self::present_region::PresentRegion;
+pub use self::present_region::RectangleLayer;
+pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
-pub use self::surface::PresentMode;
-pub use self::surface::SupportedPresentModes;
-pub use self::surface::SupportedPresentModesIter;
-pub use self::surface::SurfaceTransform;
-pub use self::surface::CompositeAlpha;
-pub use self::surface::SupportedCompositeAlpha;
-pub use self::surface::SupportedCompositeAlphaIter;
-pub use self::surface::ColorSpace;
 pub use self::surface::SurfaceCreationError;
-pub use self::swapchain::Swapchain;
 pub use self::swapchain::AcquireError;
-pub use self::swapchain::PresentError;
+pub use self::swapchain::AcquiredImage;
+pub use self::swapchain::PresentFuture;
+pub use self::swapchain::Swapchain;
+pub use self::swapchain::SwapchainAcquireFuture;
+pub use self::swapchain::SwapchainCreationError;
+pub use self::swapchain::acquire_next_image;
+pub use self::swapchain::acquire_next_image_raw;
+pub use self::swapchain::present;
+pub use self::swapchain::present_incremental;
 
+mod capabilities;
 pub mod display;
+mod present_region;
 mod surface;
 mod swapchain;
 
-/// List of supported composite alpha modes.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedSurfaceTransforms {
-    pub identity: bool,
-    pub rotate90: bool,
-    pub rotate180: bool,
-    pub rotate270: bool,
-    pub horizontal_mirror: bool,
-    pub horizontal_mirror_rotate90: bool,
-    pub horizontal_mirror_rotate180: bool,
-    pub horizontal_mirror_rotate270: bool,
-    pub inherit: bool,
-}
-
-impl SupportedSurfaceTransforms {
-    /// Builds a `SupportedSurfaceTransforms` with all fields set to false.
-    #[inline]
-    pub fn none() -> SupportedSurfaceTransforms {
-        SupportedSurfaceTransforms {
-            identity: false,
-            rotate90: false,
-            rotate180: false,
-            rotate270: false,
-            horizontal_mirror: false,
-            horizontal_mirror_rotate90: false,
-            horizontal_mirror_rotate180: false,
-            horizontal_mirror_rotate270: false,
-            inherit: false,
-        }
-    }
-
-    #[inline]
-    fn from_bits(val: vk::SurfaceTransformFlagsKHR) -> SupportedSurfaceTransforms {
-        macro_rules! v {
-            ($val:expr, $out:ident, $e:expr, $f:ident) => (
-                if ($val & $e) != 0 { $out.$f = true; }
-            );
-        }
-
-        let mut result = SupportedSurfaceTransforms::none();
-        v!(val, result, vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, identity);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR, rotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR, rotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR, rotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR, horizontal_mirror);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-                        horizontal_mirror_rotate90);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-                        horizontal_mirror_rotate180);
-        v!(val, result, vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-                        horizontal_mirror_rotate270);
-        v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
-        result
-    }
-
-    /// Returns true if the given `SurfaceTransform` is in this list.
-    #[inline]
-    pub fn supports(&self, value: SurfaceTransform) -> bool {
-        match value {
-            SurfaceTransform::Identity => self.identity,
-            SurfaceTransform::Rotate90 => self.rotate90,
-            SurfaceTransform::Rotate180 => self.rotate180,
-            SurfaceTransform::Rotate270 => self.rotate270,
-            SurfaceTransform::HorizontalMirror => self.horizontal_mirror,
-            SurfaceTransform::HorizontalMirrorRotate90 => self.horizontal_mirror_rotate90,
-            SurfaceTransform::HorizontalMirrorRotate180 => self.horizontal_mirror_rotate180,
-            SurfaceTransform::HorizontalMirrorRotate270 => self.horizontal_mirror_rotate270,
-            SurfaceTransform::Inherit => self.inherit,
-        }
-    }
-
-    /// Returns an iterator to the list of supported composite alpha.
-    #[inline]
-    pub fn iter(&self) -> SupportedSurfaceTransformsIter {
-        SupportedSurfaceTransformsIter(self.clone())
-    }
-}
-
-/// Enumeration of the `SurfaceTransform` that are supported.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SupportedSurfaceTransformsIter(SupportedSurfaceTransforms);
-
-impl Iterator for SupportedSurfaceTransformsIter {
-    type Item = SurfaceTransform;
-
-    #[inline]
-    fn next(&mut self) -> Option<SurfaceTransform> {
-        if self.0.identity { self.0.identity = false; return Some(SurfaceTransform::Identity); }
-        if self.0.rotate90 { self.0.rotate90 = false; return Some(SurfaceTransform::Rotate90); }
-        if self.0.rotate180 { self.0.rotate180 = false; return Some(SurfaceTransform::Rotate180); }
-        if self.0.rotate270 { self.0.rotate270 = false; return Some(SurfaceTransform::Rotate270); }
-        if self.0.horizontal_mirror { self.0.horizontal_mirror = false; return Some(SurfaceTransform::HorizontalMirror); }
-        if self.0.horizontal_mirror_rotate90 { self.0.horizontal_mirror_rotate90 = false; return Some(SurfaceTransform::HorizontalMirrorRotate90); }
-        if self.0.horizontal_mirror_rotate180 { self.0.horizontal_mirror_rotate180 = false; return Some(SurfaceTransform::HorizontalMirrorRotate180); }
-        if self.0.horizontal_mirror_rotate270 { self.0.horizontal_mirror_rotate270 = false; return Some(SurfaceTransform::HorizontalMirrorRotate270); }
-        if self.0.inherit { self.0.inherit = false; return Some(SurfaceTransform::Inherit); }
-        None
-    }
-}
-
-impl Default for SurfaceTransform {
-    #[inline]
-    fn default() -> SurfaceTransform {
-        SurfaceTransform::Identity
-    }
-}
-
 /// Internal trait so that creating/destroying a swapchain can access the surface's "has_swapchain"
 /// flag.
+// TODO: use pub(crate) maybe?
 unsafe trait SurfaceSwapchainLock {
     fn flag(&self) -> &AtomicBool;
 }

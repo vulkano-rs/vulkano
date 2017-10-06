@@ -55,7 +55,7 @@ macro_rules! gfx_dev_and_queue {
             return;
         }
 
-        let (device, mut queues) = match Device::new(&physical, &features,
+        let (device, mut queues) = match Device::new(physical, &features,
                                                      &extensions, [(queue, 0.5)].iter().cloned())
         {
             Ok(r) => r,
@@ -63,5 +63,37 @@ macro_rules! gfx_dev_and_queue {
         };
 
         (device, queues.next().unwrap())
+    });
+}
+
+macro_rules! assert_should_panic {
+    ($msg:expr, $code:block) => ({
+        let res = ::std::panic::catch_unwind(|| {
+            $code
+        });
+
+        match res {
+            Ok(_) => panic!("Test expected to panic but didn't"),
+            Err(err) => {
+                if let Some(msg) = err.downcast_ref::<String>() {
+                    assert!(msg.contains($msg));
+                } else if let Some(&msg) = err.downcast_ref::<&str>() {
+                    assert!(msg.contains($msg));
+                } else {
+                    panic!("Couldn't decipher the panic message of the test")
+                }
+            }
+        }
+    });
+
+    ($code:block) => ({
+        let res = ::std::panic::catch_unwind(|| {
+            $code
+        });
+
+        match res {
+            Ok(_) => panic!("Test expected to panic but didn't"),
+            Err(_) => {}
+        }
     });
 }

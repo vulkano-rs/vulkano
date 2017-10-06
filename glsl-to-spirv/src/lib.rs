@@ -43,20 +43,25 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
         };
 
         let file_path = temp_dir.path().join(format!("{}{}", num, extension));
-        File::create(&file_path).unwrap().write_all(source.as_bytes()).unwrap();
+        File::create(&file_path)
+            .unwrap()
+            .write_all(source.as_bytes())
+            .unwrap();
         command.arg(file_path);
     }
 
-    let output = command.output().expect("Failed to execute glslangValidator");
+    let output = command
+        .output()
+        .expect("Failed to execute glslangValidator");
 
     if output.status.success() {
         let spirv_output = File::open(output_file).expect("failed to open SPIR-V output file");
         return Ok(spirv_output);
     }
 
-    let error1 = String::from_utf8(output.stdout).expect("output of glsl compiler is not UTF-8");
-    let error2 = String::from_utf8(output.stderr).expect("output of glsl compiler is not UTF-8");
-    return Err(error1 + &error2);
+    let error1 = String::from_utf8_lossy(&output.stdout);
+    let error2 = String::from_utf8_lossy(&output.stderr);
+    return Err(error1.into_owned() + &error2);
 }
 
 /// Type of shader.

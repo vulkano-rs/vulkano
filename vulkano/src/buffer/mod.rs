@@ -9,35 +9,53 @@
 
 //! Location in memory that contains data.
 //!
-//! All buffers are guaranteed to be accessible from the GPU.
+//! A Vulkan buffer is very similar to a buffer that you would use in programming languages in
+//! general, in the sense that it is a location in memory that contains data. The difference
+//! between a Vulkan buffer and a regular buffer is that the content of a Vulkan buffer is
+//! accessible from the GPU.
 //!
-//! # High-level wrappers
+//! # Various kinds of buffers
 //!
-//! The low level implementation of a buffer is `UnsafeBuffer`. However, the vulkano library
-//! provides high-level wrappers around that type that are specialized depending on the way you
-//! are going to use it:
+//! The low level implementation of a buffer is [`UnsafeBuffer`](sys/struct.UnsafeBuffer.html).
+//! This type makes it possible to use all the features that Vulkan is capable of, but as its name
+//! tells it is unsafe to use.
 //!
-//! - `CpuAccessBuffer` designates a buffer located in RAM and whose content can be directly
-//!   written by your application.
-//! - `DeviceLocalBuffer` designates a buffer located in video memory and whose content can't be
-//!   written by your application. Accessing this buffer from the GPU is usually faster than the
-//!   `CpuAccessBuffer`.
-//! - `ImmutableBuffer` designates a buffer in video memory and whose content can only be
-//!   written once. Compared to `DeviceLocalBuffer`, this buffer requires less processing on the
-//!   CPU because we don't need to keep track of the reads and writes.
+//! Instead you are encouraged to use one of the high-level wrappers that vulkano provides. Which
+//! wrapper to use depends on the way you are going to use the buffer:
 //!
-//! If you have data that is modified at every single frame, you are encouraged to use a
-//! `CpuAccessibleBuffer`. If you have data that is very rarely modified, you are encouraged to
-//! use an `ImmutableBuffer` or a `DeviceLocalBuffer` instead.
+//! - A [`DeviceLocalBuffer`](device_local/struct.DeviceLocalBuffer.html) designates a buffer
+//!   usually located in video memory and whose content can't be directly accessed by your
+//!   application. Accessing this buffer from the GPU is generally faster compared to accessing a
+//!   CPU-accessible buffer.
+//! - An [`ImmutableBuffer`](immutable/struct.ImmutableBuffer.html) designates a buffer in video
+//!   memory and whose content can only be written at creation. Compared to `DeviceLocalBuffer`,
+//!   this buffer requires less CPU processing because we don't need to keep track of the reads
+//!   and writes.
+//! - A [`CpuBufferPool`](cpu_pool/struct.CpuBufferPool.html) is a ring buffer that can be used to
+//!   transfer data between the CPU and the GPU at a high rate.
+//! - A [`CpuAccessibleBuffer`](cpu_access/struct.CpuAccessibleBuffer.html) is a simple buffer that
+//!   can be used to prototype. It may be removed from vulkano in the far future.
 //!
-//! If you just want to get started, you can use the `CpuAccessibleBuffer` everywhere, as it is
-//! the most flexible type of buffer.
+//! Here is a quick way to choose which buffer to use. Do you need to often need to read or write
+//! the content of the buffer? If so, use a `CpuBufferPool`. Otherwise, do you need to be able to
+//! modify the content of the buffer after its initialization? If so, use a `DeviceLocalBuffer`.
+//! If no to both questions, use an `ImmutableBuffer`.
+//!
+//! When deciding how your buffer is going to be used, don't forget that sometimes the best
+//! solution is to manipulate multiple buffers instead. For example if you need to update a buffer's
+//! content only from time to time, it may be a good idea to simply recreate a new `ImmutableBuffer`
+//! every time.
+//! Another example: if a buffer is under constant access by the GPU but you need to
+//! read its content on the CPU from time to time, it may be a good idea to use a
+//! `DeviceLocalBuffer` as the main buffer and a `CpuBufferPool` for when you need to read it.
+//! Then whenever you need to read the main buffer, ask the GPU to copy from the device-local
+//! buffer to the CPU buffer pool, and read the CPU buffer pool instead.
 //!
 //! # Buffers usage
 //!
 //! When you create a buffer object, you have to specify its *usage*. In other words, you have to
 //! specify the way it is going to be used. Trying to use a buffer in a way that wasn't specified
-//! when you created it will result in an error.
+//! when you created it will result in a runtime error.
 //!
 //! You can use buffers for the following purposes:
 //!
@@ -58,216 +76,27 @@
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module
 //! for how to create a buffer view.
 //!
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::Range;
-use std::sync::Arc;
 
 pub use self::cpu_access::CpuAccessibleBuffer;
+pub use self::cpu_pool::CpuBufferPool;
 pub use self::device_local::DeviceLocalBuffer;
 pub use self::immutable::ImmutableBuffer;
+pub use self::slice::BufferSlice;
 pub use self::sys::BufferCreationError;
-pub use self::sys::Usage as BufferUsage;
-pub use self::traits::Buffer;
-pub use self::traits::TypedBuffer;
+pub use self::traits::BufferAccess;
+pub use self::traits::BufferInner;
+pub use self::traits::TypedBufferAccess;
+pub use self::usage::BufferUsage;
 pub use self::view::BufferView;
+pub use self::view::BufferViewRef;
 
 pub mod cpu_access;
+pub mod cpu_pool;
 pub mod device_local;
 pub mod immutable;
 pub mod sys;
-pub mod traits;
 pub mod view;
 
-/// A subpart of a buffer.
-///
-/// This object doesn't correspond to any Vulkan object. It exists for API convenience.
-///
-/// # Example
-///
-/// Creating a slice:
-///
-/// ```no_run
-/// use vulkano::buffer::BufferSlice;
-/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
-///                                                         unsafe { std::mem::uninitialized() };
-/// let _slice = BufferSlice::from(&buffer);
-/// ```
-///
-/// Selecting a slice of a buffer that contains `[T]`:
-///
-/// ```no_run
-/// use vulkano::buffer::BufferSlice;
-/// # let buffer: std::sync::Arc<vulkano::buffer::DeviceLocalBuffer<[u8]>> =
-///                                                         unsafe { std::mem::uninitialized() };
-/// let _slice = BufferSlice::from(&buffer).slice(12 .. 14).unwrap();
-/// ```
-///
-#[derive(Clone)]
-pub struct BufferSlice<'a, T: ?Sized, B: 'a> {
-    marker: PhantomData<T>,
-    resource: &'a Arc<B>,
-    offset: usize,
-    size: usize,
-}
-
-impl<'a, T: ?Sized, B: 'a> BufferSlice<'a, T, B> {
-    /// Returns the buffer that this slice belongs to.
-    pub fn buffer(&self) -> &'a Arc<B> {
-        &self.resource
-    }
-
-    /// Returns the offset of that slice within the buffer.
-    #[inline]
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-
-    /// Returns the size of that slice in bytes.
-    #[inline]
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    /// Builds a slice that contains an element from inside the buffer.
-    ///
-    /// This method builds an object that represents a slice of the buffer. No actual operation
-    /// is performed.
-    ///
-    /// # Example
-    ///
-    /// TODO
-    ///
-    /// # Safety
-    ///
-    /// The object whose reference is passed to the closure is uninitialized. Therefore you
-    /// **must not** access the content of the object.
-    ///
-    /// You **must** return a reference to an element from the parameter. The closure **must not**
-    /// panic.
-    #[inline]
-    pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<'a, R, B>
-        where F: for<'r> FnOnce(&'r T) -> &'r R
-        // TODO: bounds on R
-    {
-        let data: &T = mem::zeroed();
-        let result = f(data);
-        let size = mem::size_of_val(result);
-        let result = result as *const R as *const () as usize;
-
-        assert!(result <= self.size());
-        assert!(result + size <= self.size());
-
-        BufferSlice {
-            marker: PhantomData,
-            resource: self.resource,
-            offset: self.offset + result,
-            size: size,
-        }
-    }
-}
-
-impl<'a, T, B: 'a> BufferSlice<'a, [T], B> {
-    /// Returns the number of elements in this slice.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.size() / mem::size_of::<T>()
-    }
-
-    /// Reduces the slice to just one element of the array.
-    ///
-    /// Returns `None` if out of range.
-    #[inline]
-    pub fn index(self, index: usize) -> Option<BufferSlice<'a, T, B>> {
-        if index >= self.len() { return None; }
-
-        Some(BufferSlice {
-            marker: PhantomData,
-            resource: self.resource,
-            offset: self.offset + index * mem::size_of::<T>(),
-            size: mem::size_of::<T>(),
-        })
-    }
-
-    /// Reduces the slice to just a range of the array.
-    ///
-    /// Returns `None` if out of range.
-    #[inline]
-    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<'a, [T], B>> {
-        if range.end > self.len() { return None; }
-
-        Some(BufferSlice {
-            marker: PhantomData,
-            resource: self.resource,
-            offset: self.offset + range.start * mem::size_of::<T>(),
-            size: (range.end - range.start) * mem::size_of::<T>(),
-        })
-    }
-}
-
-impl<'a, T: ?Sized, B: 'a> From<&'a Arc<B>> for BufferSlice<'a, T, B>
-    where B: TypedBuffer<Content = T>, T: 'static
-{
-    #[inline]
-    fn from(r: &'a Arc<B>) -> BufferSlice<'a, T, B> {
-        BufferSlice {
-            marker: PhantomData,
-            resource: r,
-            offset: 0,
-            size: r.size(),
-        }
-    }
-}
-
-impl<'a, T, B: 'a> From<BufferSlice<'a, T, B>> for BufferSlice<'a, [T], B>
-    where T: 'static
-{
-    #[inline]
-    fn from(r: BufferSlice<'a, T, B>) -> BufferSlice<'a, [T], B> {
-        BufferSlice {
-            marker: PhantomData,
-            resource: r.resource,
-            offset: r.offset,
-            size: r.size,
-        }
-    }
-}
-
-/// Takes a `BufferSlice` that points to a struct, and returns a `BufferSlice` that points to
-/// a specific field of that struct.
-#[macro_export]
-macro_rules! buffer_slice_field {
-    ($slice:expr, $field:ident) => (
-        // TODO: add #[allow(unsafe_code)] when that's allowed
-        unsafe { $slice.slice_custom(|s| &s.$field) }
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    // TODO: restore these tests
-    /*use std::mem;
-
-    use buffer::Usage;
-    use buffer::Buffer;
-    use buffer::BufferView;
-    use buffer::BufferViewCreationError;
-    use memory::DeviceLocal;
-
-    #[test]
-    fn create() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let _ = Buffer::<[i8; 16], _>::new(&device, &Usage::all(), DeviceLocal, &queue).unwrap();
-    }
-
-    #[test]
-    fn array_len() {
-        let (device, queue) = gfx_dev_and_queue!();
-
-        let b = Buffer::<[i16], _>::array(&device, 12, &Usage::all(),
-                                          DeviceLocal, &queue).unwrap();
-        assert_eq!(b.len(), 12);
-        assert_eq!(b.size(), 12 * mem::size_of::<i16>());
-    }*/
-}
+mod slice;
+mod traits;
+mod usage;

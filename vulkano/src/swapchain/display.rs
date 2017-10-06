@@ -8,13 +8,13 @@
 // according to those terms.
 
 //! Allows you to create surfaces that fill a whole display, outside of the windowing system.
-//! 
+//!
 //! **As far as the author knows, no existing device supports these features. Therefore the code
 //! here is mostly a draft and needs rework in both the API and the implementation.**
-//! 
+//!
 //! The purpose of the objects in this module is to let you create a `Surface` object that
 //! represents a location on the screen. This is done in four steps:
-//! 
+//!
 //! - Choose a `Display` where the surface will be located. A `Display` represents a display
 //!   display, usually a monitor. The available displays can be enumerated with
 //!   `Display::enumerate`.
@@ -25,8 +25,8 @@
 //! - Create a `Surface` object with `Surface::from_display_mode` and pass the chosen `DisplayMode`
 //!   and `DisplayPlane`.
 
-#![allow(dead_code)]        // TODO: this module isn't finished
-#![allow(unused_variables)]        // TODO: this module isn't finished
+#![allow(dead_code)] // TODO: this module isn't finished
+#![allow(unused_variables)] // TODO: this module isn't finished
 
 use std::ffi::CStr;
 use std::ptr;
@@ -36,11 +36,11 @@ use std::vec::IntoIter;
 use instance::Instance;
 use instance::PhysicalDevice;
 use swapchain::SupportedSurfaceTransforms;
+use swapchain::capabilities;
 
-use check_errors;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
+use check_errors;
 use vk;
 
 // TODO: extract this to a `display` module and solve the visibility problems
@@ -58,24 +58,25 @@ pub struct DisplayPlane {
 
 impl DisplayPlane {
     /// See the docs of enumerate().
-    pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
+    pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
         let vk = device.instance().pointers();
 
-        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
+        assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
 
         let num = unsafe {
             let mut num: u32 = 0;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
-                                                                            &mut num, ptr::null_mut())));
+            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
+                                                                       &mut num,
+                                                                       ptr::null_mut()))?;
             num
         };
 
         let planes: Vec<vk::DisplayPlanePropertiesKHR> = unsafe {
             let mut planes = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
-                                                                            &mut num,
-                                                                            planes.as_mut_ptr())));
+            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
+                                                                       &mut num,
+                                                                       planes.as_mut_ptr()))?;
             planes.set_len(num as usize);
             planes
         };
@@ -107,7 +108,7 @@ impl DisplayPlane {
             }
         }).collect::<Vec<_>>().into_iter())
     }
-    
+
     /// Enumerates all the display planes that are available on a given physical device.
     ///
     /// # Panic
@@ -116,7 +117,7 @@ impl DisplayPlane {
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
-    pub fn enumerate(device: &PhysicalDevice) -> IntoIter<DisplayPlane> {
+    pub fn enumerate(device: PhysicalDevice) -> IntoIter<DisplayPlane> {
         DisplayPlane::enumerate_raw(device).unwrap()
     }
 
@@ -140,7 +141,10 @@ impl DisplayPlane {
             return false;
         }
 
-        self.supported_displays.iter().find(|&&d| d == display.internal_object()).is_some()
+        self.supported_displays
+            .iter()
+            .find(|&&d| d == display.internal_object())
+            .is_some()
     }
 }
 
@@ -150,41 +154,46 @@ impl DisplayPlane {
 pub struct Display {
     instance: Arc<Instance>,
     physical_device: usize,
-    properties: Arc<vk::DisplayPropertiesKHR>,      // TODO: Arc because struct isn't clone
+    properties: Arc<vk::DisplayPropertiesKHR>, // TODO: Arc because struct isn't clone
 }
 
 impl Display {
     /// See the docs of enumerate().
-    pub fn enumerate_raw(device: &PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
+    pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
         let vk = device.instance().pointers();
-        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
+        assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
 
         let num = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
-                                                                       &mut num, ptr::null_mut())));
+            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
+                                                                  &mut num,
+                                                                  ptr::null_mut()))?;
             num
         };
 
         let displays: Vec<vk::DisplayPropertiesKHR> = unsafe {
             let mut displays = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
-                                                                       &mut num,
-                                                                       displays.as_mut_ptr())));
+            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
+                                                                  &mut num,
+                                                                  displays.as_mut_ptr()))?;
             displays.set_len(num as usize);
             displays
         };
 
-        Ok(displays.into_iter().map(|prop| {
-            Display {
-                instance: device.instance().clone(),
-                physical_device: device.index(),
-                properties: Arc::new(prop),
-            }
-        }).collect::<Vec<_>>().into_iter())
+        Ok(displays
+               .into_iter()
+               .map(|prop| {
+                        Display {
+                            instance: device.instance().clone(),
+                            physical_device: device.index(),
+                            properties: Arc::new(prop),
+                        }
+                    })
+               .collect::<Vec<_>>()
+               .into_iter())
     }
-    
+
     /// Enumerates all the displays that are available on a given physical device.
     ///
     /// # Panic
@@ -193,7 +202,7 @@ impl Display {
     ///
     // TODO: move iterator creation here from raw constructor?
     #[inline]
-    pub fn enumerate(device: &PhysicalDevice) -> IntoIter<Display> {
+    pub fn enumerate(device: PhysicalDevice) -> IntoIter<Display> {
         Display::enumerate_raw(device).unwrap()
     }
 
@@ -233,7 +242,7 @@ impl Display {
     /// Returns the transforms supported by this display.
     #[inline]
     pub fn supported_transforms(&self) -> SupportedSurfaceTransforms {
-        SupportedSurfaceTransforms::from_bits(self.properties.supportedTransforms)
+        capabilities::surface_transforms_from_bits(self.properties.supportedTransforms)
     }
 
     /// Returns true if TODO.
@@ -254,31 +263,37 @@ impl Display {
 
         let num = unsafe {
             let mut num = 0;
-            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                             self.properties.display, 
-                                                             &mut num, ptr::null_mut())));
+            check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
+                                                        self.properties.display,
+                                                        &mut num,
+                                                        ptr::null_mut()))?;
             num
         };
 
         let modes: Vec<vk::DisplayModePropertiesKHR> = unsafe {
             let mut modes = Vec::with_capacity(num as usize);
             let mut num = num;
-            try!(check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                             self.properties.display, &mut num,
-                                                             modes.as_mut_ptr())));
+            check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
+                                                        self.properties.display,
+                                                        &mut num,
+                                                        modes.as_mut_ptr()))?;
             modes.set_len(num as usize);
             modes
         };
 
-        Ok(modes.into_iter().map(|mode| {
-            DisplayMode {
-                display: self.clone(),
-                display_mode: mode.displayMode,
-                parameters: mode.parameters,
-            }
-        }).collect::<Vec<_>>().into_iter())
+        Ok(modes
+               .into_iter()
+               .map(|mode| {
+                        DisplayMode {
+                            display: self.clone(),
+                            display_mode: mode.displayMode,
+                            parameters: mode.parameters,
+                        }
+                    })
+               .collect::<Vec<_>>()
+               .into_iter())
     }
-    
+
     /// Returns a list of all modes available on this display.
     ///
     /// # Panic

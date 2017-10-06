@@ -11,12 +11,12 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
 use OomError;
 use Success;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
+use device::Device;
+use device::DeviceOwned;
 use vk;
 
 /// Used to block the GPU execution until an event on the CPU occurs.
@@ -31,43 +31,67 @@ pub struct Event {
     event: vk::Event,
     // The device.
     device: Arc<Device>,
+    must_put_in_pool: bool,
 }
 
 impl Event {
-    /// See the docs of new().
-    #[inline]
-    pub fn raw(device: &Arc<Device>) -> Result<Event, OomError> {
-        let vk = device.pointers();
+    /// Takes an event from the vulkano-provided event pool.
+    /// If the pool is empty, a new event will be allocated.
+    /// Upon `drop`, the event is put back into the pool.
+    ///
+    /// For most applications, using the event pool should be preferred,
+    /// in order to avoid creating new events every frame.
+    pub fn from_pool(device: Arc<Device>) -> Result<Event, OomError> {
+        let maybe_raw_event = device.event_pool().lock().unwrap().pop();
+        match maybe_raw_event {
+            Some(raw_event) => {
+                unsafe {
+                    // Make sure the event isn't signaled
+                    let vk = device.pointers();
+                    check_errors(vk.ResetEvent(device.internal_object(), raw_event))?;
+                }
+                Ok(Event {
+                       event: raw_event,
+                       device: device,
+                       must_put_in_pool: true,
+                   })
+            },
+            None => {
+                // Pool is empty, alloc new event
+                Event::alloc_impl(device, true)
+            },
+        }
+    }
 
+    /// Builds a new event.
+    #[inline]
+    pub fn alloc(device: Arc<Device>) -> Result<Event, OomError> {
+        Event::alloc_impl(device, false)
+    }
+
+    fn alloc_impl(device: Arc<Device>, must_put_in_pool: bool) -> Result<Event, OomError> {
         let event = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
             static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
                 sType: vk::STRUCTURE_TYPE_EVENT_CREATE_INFO,
                 pNext: 0 as *const _, //ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateEvent(device.internal_object(), &INFOS,
-                                             ptr::null(), &mut output)));
+            let vk = device.pointers();
+            check_errors(vk.CreateEvent(device.internal_object(),
+                                        &INFOS,
+                                        ptr::null(),
+                                        &mut output))?;
             output
         };
 
         Ok(Event {
-            device: device.clone(),
-            event: event,
-        })
-    }
-    
-    /// Builds a new event.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new(device: &Arc<Device>) -> Arc<Event> {
-        Arc::new(Event::raw(device).unwrap())
+               device: device,
+               event: event,
+               must_put_in_pool: must_put_in_pool,
+           })
     }
 
     /// Returns true if the event is signaled.
@@ -75,12 +99,12 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let result = try!(check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                             self.event)));
+            let result = check_errors(vk.GetEventStatus(self.device.internal_object(),
+                                                        self.event))?;
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
-                _ => unreachable!()
+                _ => unreachable!(),
             }
         }
     }
@@ -90,7 +114,7 @@ impl Event {
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.SetEvent(self.device.internal_object(), self.event)));
+            check_errors(vk.SetEvent(self.device.internal_object(), self.event))?;
             Ok(())
         }
     }
@@ -113,7 +137,7 @@ impl Event {
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
             let vk = self.device.pointers();
-            try!(check_errors(vk.ResetEvent(self.device.internal_object(), self.event)));
+            check_errors(vk.ResetEvent(self.device.internal_object(), self.event))?;
             Ok(())
         }
     }
@@ -130,6 +154,13 @@ impl Event {
     }
 }
 
+unsafe impl DeviceOwned for Event {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl VulkanObject for Event {
     type Object = vk::Event;
 
@@ -143,31 +174,36 @@ impl Drop for Event {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyEvent(self.device.internal_object(), self.event, ptr::null());
+            if self.must_put_in_pool {
+                let raw_event = self.event;
+                self.device.event_pool().lock().unwrap().push(raw_event);
+            } else {
+                let vk = self.device.pointers();
+                vk.DestroyEvent(self.device.internal_object(), self.event, ptr::null());
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use VulkanObject;
     use sync::Event;
 
     #[test]
     fn event_create() {
         let (device, _) = gfx_dev_and_queue!();
-        let event = Event::new(&device);
+        let event = Event::alloc(device).unwrap();
         assert!(!event.signaled().unwrap());
     }
 
     #[test]
     fn event_set() {
         let (device, _) = gfx_dev_and_queue!();
-        let mut event = Event::new(&device);
+        let mut event = Event::alloc(device).unwrap();
         assert!(!event.signaled().unwrap());
 
-        Arc::get_mut(&mut event).unwrap().set();
+        event.set();
         assert!(event.signaled().unwrap());
     }
 
@@ -175,11 +211,28 @@ mod tests {
     fn event_reset() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let mut event = Event::new(&device);
-        Arc::get_mut(&mut event).unwrap().set();
+        let mut event = Event::alloc(device).unwrap();
+        event.set();
         assert!(event.signaled().unwrap());
 
-        Arc::get_mut(&mut event).unwrap().reset();
+        event.reset();
         assert!(!event.signaled().unwrap());
+    }
+
+    #[test]
+    fn event_pool() {
+        let (device, _) = gfx_dev_and_queue!();
+
+        assert_eq!(device.event_pool().lock().unwrap().len(), 0);
+        let event1_internal_obj = {
+            let event = Event::from_pool(device.clone()).unwrap();
+            assert_eq!(device.event_pool().lock().unwrap().len(), 0);
+            event.internal_object()
+        };
+
+        assert_eq!(device.event_pool().lock().unwrap().len(), 1);
+        let event2 = Event::from_pool(device.clone()).unwrap();
+        assert_eq!(device.event_pool().lock().unwrap().len(), 0);
+        assert_eq!(event2.internal_object(), event1_internal_obj);
     }
 }

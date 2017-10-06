@@ -21,20 +21,21 @@
 //!
 //! A simple sampler for most usages:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::sampler::Sampler;
-//! 
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-//! let _sampler = Sampler::simple_repeat_linear_no_mipmap(&device);
+//!
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
+//! let _sampler = Sampler::simple_repeat_linear_no_mipmap(device.clone());
 //! ```
 //!
 //! More detailed sampler creation:
 //!
-//! ```no_run
+//! ```
 //! use vulkano::sampler;
-//! 
-//! # let device: std::sync::Arc<vulkano::device::Device> = unsafe { ::std::mem::uninitialized() };
-//! let _sampler = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+//!
+//! # let device: std::sync::Arc<vulkano::device::Device> = return;
+//! let _sampler = sampler::Sampler::new(device.clone(), sampler::Filter::Linear,
+//!                                      sampler::Filter::Linear,
 //!                                      sampler::MipmapMode::Nearest,
 //!                                      sampler::SamplerAddressMode::Repeat,
 //!                                      sampler::SamplerAddressMode::Repeat,
@@ -60,18 +61,19 @@
 //! Samplers that don't use `ClampToBorder` are not concerned by these restrictions.
 //!
 // FIXME: restrictions aren't checked yet
+
 use std::error;
 use std::fmt;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
 use Error;
 use OomError;
 use VulkanObject;
-use VulkanPointers;
 use check_errors;
+use device::Device;
+use device::DeviceOwned;
 use vk;
 
 pub use pipeline::depth_stencil::Compare;
@@ -87,8 +89,6 @@ pub struct Sampler {
     usable_with_swizzling: bool,
 }
 
-// TODO: what's the story with VK_KHR_mirror_clamp_to_edge? Is it an extension or is it core?
-
 impl Sampler {
     /// Shortcut for creating a sampler with linear sampling, linear mipmaps, and with the repeat
     /// mode for borders.
@@ -100,10 +100,19 @@ impl Sampler {
     /// - Panics if out of memory or the maximum number of samplers has exceeded.
     ///
     #[inline]
-    pub fn simple_repeat_linear(device: &Arc<Device>) -> Arc<Sampler> {
-        Sampler::new(device, Filter::Linear, Filter::Linear, MipmapMode::Linear,
-                     SamplerAddressMode::Repeat, SamplerAddressMode::Repeat,
-                     SamplerAddressMode::Repeat, 0.0, 1.0, 0.0, 1_000.0).unwrap()
+    pub fn simple_repeat_linear(device: Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(device,
+                     Filter::Linear,
+                     Filter::Linear,
+                     MipmapMode::Linear,
+                     SamplerAddressMode::Repeat,
+                     SamplerAddressMode::Repeat,
+                     SamplerAddressMode::Repeat,
+                     0.0,
+                     1.0,
+                     0.0,
+                     1_000.0)
+            .unwrap()
     }
 
     /// Shortcut for creating a sampler with linear sampling, that only uses the main level of
@@ -116,10 +125,19 @@ impl Sampler {
     /// - Panics if out of memory or the maximum number of samplers has exceeded.
     ///
     #[inline]
-    pub fn simple_repeat_linear_no_mipmap(device: &Arc<Device>) -> Arc<Sampler> {
-        Sampler::new(device, Filter::Linear, Filter::Linear, MipmapMode::Nearest,
-                     SamplerAddressMode::Repeat, SamplerAddressMode::Repeat,
-                     SamplerAddressMode::Repeat, 0.0, 1.0, 0.0, 1.0).unwrap()
+    pub fn simple_repeat_linear_no_mipmap(device: Arc<Device>) -> Arc<Sampler> {
+        Sampler::new(device,
+                     Filter::Linear,
+                     Filter::Linear,
+                     MipmapMode::Nearest,
+                     SamplerAddressMode::Repeat,
+                     SamplerAddressMode::Repeat,
+                     SamplerAddressMode::Repeat,
+                     0.0,
+                     1.0,
+                     0.0,
+                     1.0)
+            .unwrap()
     }
 
     /// Creates a new `Sampler` with the given behavior.
@@ -148,14 +166,23 @@ impl Sampler {
     /// - Panics if `min_lod > max_lod`.
     ///
     #[inline(always)]
-    pub fn new(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
+    pub fn new(device: Arc<Device>, mag_filter: Filter, min_filter: Filter,
                mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
                max_anisotropy: f32, min_lod: f32, max_lod: f32)
-               -> Result<Arc<Sampler>, SamplerCreationError>
-    {
-        Sampler::new_impl(device, mag_filter, min_filter, mipmap_mode, address_u, address_v,
-                          address_w, mip_lod_bias, max_anisotropy, min_lod, max_lod, None)
+               -> Result<Arc<Sampler>, SamplerCreationError> {
+        Sampler::new_impl(device,
+                          mag_filter,
+                          min_filter,
+                          mipmap_mode,
+                          address_u,
+                          address_v,
+                          address_w,
+                          mip_lod_bias,
+                          max_anisotropy,
+                          min_lod,
+                          max_lod,
+                          None)
     }
 
     /// Creates a new `Sampler` with the given behavior.
@@ -175,22 +202,31 @@ impl Sampler {
     /// Same panic reasons as `new`.
     ///
     #[inline(always)]
-    pub fn compare(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
+    pub fn compare(device: Arc<Device>, mag_filter: Filter, min_filter: Filter,
                    mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
-                   address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
-                   max_anisotropy: f32, min_lod: f32, max_lod: f32, compare: Compare)
-                   -> Result<Arc<Sampler>, SamplerCreationError>
-    {
-        Sampler::new_impl(device, mag_filter, min_filter, mipmap_mode, address_u, address_v,
-                          address_w, mip_lod_bias, max_anisotropy, min_lod, max_lod, Some(compare))
+                   address_v: SamplerAddressMode, address_w: SamplerAddressMode,
+                   mip_lod_bias: f32, max_anisotropy: f32, min_lod: f32, max_lod: f32,
+                   compare: Compare)
+                   -> Result<Arc<Sampler>, SamplerCreationError> {
+        Sampler::new_impl(device,
+                          mag_filter,
+                          min_filter,
+                          mipmap_mode,
+                          address_u,
+                          address_v,
+                          address_w,
+                          mip_lod_bias,
+                          max_anisotropy,
+                          min_lod,
+                          max_lod,
+                          Some(compare))
     }
 
-    fn new_impl(device: &Arc<Device>, mag_filter: Filter, min_filter: Filter,
+    fn new_impl(device: Arc<Device>, mag_filter: Filter, min_filter: Filter,
                 mipmap_mode: MipmapMode, address_u: SamplerAddressMode,
                 address_v: SamplerAddressMode, address_w: SamplerAddressMode, mip_lod_bias: f32,
                 max_anisotropy: f32, min_lod: f32, max_lod: f32, compare: Option<Compare>)
-                -> Result<Arc<Sampler>, SamplerCreationError>
-    {
+                -> Result<Arc<Sampler>, SamplerCreationError> {
         assert!(max_anisotropy >= 1.0);
         assert!(min_lod <= max_lod);
 
@@ -203,9 +239,9 @@ impl Sampler {
             let limit = device.physical_device().limits().max_sampler_anisotropy();
             if max_anisotropy > limit {
                 return Err(SamplerCreationError::AnisotropyLimitExceeded {
-                    requested: max_anisotropy,
-                    maximum: limit,
-                });
+                               requested: max_anisotropy,
+                               maximum: limit,
+                           });
             }
         }
 
@@ -214,21 +250,37 @@ impl Sampler {
             let limit = device.physical_device().limits().max_sampler_lod_bias();
             if mip_lod_bias > limit {
                 return Err(SamplerCreationError::MipLodBiasLimitExceeded {
-                    requested: mip_lod_bias,
-                    maximum: limit,
-                });
+                               requested: mip_lod_bias,
+                               maximum: limit,
+                           });
+            }
+        }
+
+        // Check MirrorClampToEdge extension support
+        if [address_u, address_v, address_w]
+            .iter()
+            .any(|&mode| mode == SamplerAddressMode::MirrorClampToEdge)
+        {
+            if !device.loaded_extensions().khr_sampler_mirror_clamp_to_edge {
+                return Err(SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled);
             }
         }
 
         // Handling border color.
         let border_color = address_u.border_color();
         let border_color = match (border_color, address_v.border_color()) {
-            (Some(b1), Some(b2)) => { assert_eq!(b1, b2); Some(b1) },
+            (Some(b1), Some(b2)) => {
+                assert_eq!(b1, b2);
+                Some(b1)
+            },
             (None, b) => b,
             (b, None) => b,
         };
         let border_color = match (border_color, address_w.border_color()) {
-            (Some(b1), Some(b2)) => { assert_eq!(b1, b2); Some(b1) },
+            (Some(b1), Some(b2)) => {
+                assert_eq!(b1, b2);
+                Some(b1)
+            },
             (None, b) => b,
             (b, None) => b,
         };
@@ -238,7 +290,7 @@ impl Sampler {
             let infos = vk::SamplerCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 magFilter: mag_filter as u32,
                 minFilter: min_filter as u32,
                 mipmapMode: mipmap_mode as u32,
@@ -246,9 +298,17 @@ impl Sampler {
                 addressModeV: address_v.to_vk(),
                 addressModeW: address_w.to_vk(),
                 mipLodBias: mip_lod_bias,
-                anisotropyEnable: if max_anisotropy > 1.0 { vk::TRUE } else { vk::FALSE },
+                anisotropyEnable: if max_anisotropy > 1.0 {
+                    vk::TRUE
+                } else {
+                    vk::FALSE
+                },
                 maxAnisotropy: max_anisotropy,
-                compareEnable: if compare.is_some() { vk::TRUE } else { vk:: FALSE },
+                compareEnable: if compare.is_some() {
+                    vk::TRUE
+                } else {
+                    vk::FALSE
+                },
                 compareOp: compare.map(|c| c as u32).unwrap_or(0),
                 minLod: min_lod,
                 maxLod: max_lod,
@@ -257,36 +317,39 @@ impl Sampler {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateSampler(device.internal_object(), &infos,
-                                               ptr::null(), &mut output)));
+            check_errors(vk.CreateSampler(device.internal_object(),
+                                          &infos,
+                                          ptr::null(),
+                                          &mut output))?;
             output
         };
 
         Ok(Arc::new(Sampler {
-            sampler: sampler,
-            device: device.clone(),
-            compare_mode: compare.is_some(),
-            unnormalized: false,
-            usable_with_float_formats: match border_color {
-                Some(BorderColor::FloatTransparentBlack) => true,
-                Some(BorderColor::FloatOpaqueBlack) => true,
-                Some(BorderColor::FloatOpaqueWhite) => true,
-                Some(_) => false,
-                None => true,
-            },
-            usable_with_int_formats: compare.is_none() && match border_color {
-                Some(BorderColor::IntTransparentBlack) => true,
-                Some(BorderColor::IntOpaqueBlack) => true,
-                Some(BorderColor::IntOpaqueWhite) => true,
-                Some(_) => false,
-                None => true,
-            },
-            usable_with_swizzling: match border_color {
-                Some(BorderColor::FloatOpaqueBlack) => false,
-                Some(BorderColor::IntOpaqueBlack) => false,
-                _ => true,
-            },
-        }))
+                        sampler: sampler,
+                        device: device.clone(),
+                        compare_mode: compare.is_some(),
+                        unnormalized: false,
+                        usable_with_float_formats: match border_color {
+                            Some(BorderColor::FloatTransparentBlack) => true,
+                            Some(BorderColor::FloatOpaqueBlack) => true,
+                            Some(BorderColor::FloatOpaqueWhite) => true,
+                            Some(_) => false,
+                            None => true,
+                        },
+                        usable_with_int_formats: compare.is_none() &&
+                            match border_color {
+                                Some(BorderColor::IntTransparentBlack) => true,
+                                Some(BorderColor::IntOpaqueBlack) => true,
+                                Some(BorderColor::IntOpaqueWhite) => true,
+                                Some(_) => false,
+                                None => true,
+                            },
+                        usable_with_swizzling: match border_color {
+                            Some(BorderColor::FloatOpaqueBlack) => false,
+                            Some(BorderColor::IntOpaqueBlack) => false,
+                            _ => true,
+                        },
+                    }))
     }
 
     /// Creates a sampler with unnormalized coordinates. This means that texture coordinates won't
@@ -302,16 +365,18 @@ impl Sampler {
     ///
     /// - Panics if multiple `ClampToBorder` values are passed and the border color is different.
     ///
-    pub fn unnormalized(device: &Arc<Device>, filter: Filter,
+    pub fn unnormalized(device: Arc<Device>, filter: Filter,
                         address_u: UnnormalizedSamplerAddressMode,
                         address_v: UnnormalizedSamplerAddressMode)
-                        -> Result<Arc<Sampler>, SamplerCreationError>
-    {
+                        -> Result<Arc<Sampler>, SamplerCreationError> {
         let vk = device.pointers();
 
         let border_color = address_u.border_color();
         let border_color = match (border_color, address_v.border_color()) {
-            (Some(b1), Some(b2)) => { assert_eq!(b1, b2); Some(b1) },
+            (Some(b1), Some(b2)) => {
+                assert_eq!(b1, b2);
+                Some(b1)
+            },
             (None, b) => b,
             (b, None) => b,
         };
@@ -320,16 +385,16 @@ impl Sampler {
             let infos = vk::SamplerCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: 0,   // reserved
+                flags: 0, // reserved
                 magFilter: filter as u32,
                 minFilter: filter as u32,
                 mipmapMode: vk::SAMPLER_MIPMAP_MODE_NEAREST,
                 addressModeU: address_u.to_vk(),
                 addressModeV: address_v.to_vk(),
-                addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,       // unused by the impl
+                addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, // unused by the impl
                 mipLodBias: 0.0,
                 anisotropyEnable: vk::FALSE,
-                maxAnisotropy: 0.0,
+                maxAnisotropy: 1.0,
                 compareEnable: vk::FALSE,
                 compareOp: vk::COMPARE_OP_NEVER,
                 minLod: 0.0,
@@ -339,36 +404,38 @@ impl Sampler {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateSampler(device.internal_object(), &infos,
-                                               ptr::null(), &mut output)));
+            check_errors(vk.CreateSampler(device.internal_object(),
+                                          &infos,
+                                          ptr::null(),
+                                          &mut output))?;
             output
         };
 
         Ok(Arc::new(Sampler {
-            sampler: sampler,
-            device: device.clone(),
-            compare_mode: false,
-            unnormalized: true,
-            usable_with_float_formats: match border_color {
-                Some(BorderColor::FloatTransparentBlack) => true,
-                Some(BorderColor::FloatOpaqueBlack) => true,
-                Some(BorderColor::FloatOpaqueWhite) => true,
-                Some(_) => false,
-                None => true,
-            },
-            usable_with_int_formats: match border_color {
-                Some(BorderColor::IntTransparentBlack) => true,
-                Some(BorderColor::IntOpaqueBlack) => true,
-                Some(BorderColor::IntOpaqueWhite) => true,
-                Some(_) => false,
-                None => true,
-            },
-            usable_with_swizzling: match border_color {
-                Some(BorderColor::FloatOpaqueBlack) => false,
-                Some(BorderColor::IntOpaqueBlack) => false,
-                _ => true,
-            },
-        }))
+                        sampler: sampler,
+                        device: device.clone(),
+                        compare_mode: false,
+                        unnormalized: true,
+                        usable_with_float_formats: match border_color {
+                            Some(BorderColor::FloatTransparentBlack) => true,
+                            Some(BorderColor::FloatOpaqueBlack) => true,
+                            Some(BorderColor::FloatOpaqueWhite) => true,
+                            Some(_) => false,
+                            None => true,
+                        },
+                        usable_with_int_formats: match border_color {
+                            Some(BorderColor::IntTransparentBlack) => true,
+                            Some(BorderColor::IntOpaqueBlack) => true,
+                            Some(BorderColor::IntOpaqueWhite) => true,
+                            Some(_) => false,
+                            None => true,
+                        },
+                        usable_with_swizzling: match border_color {
+                            Some(BorderColor::FloatOpaqueBlack) => false,
+                            Some(BorderColor::IntOpaqueBlack) => false,
+                            _ => true,
+                        },
+                    }))
     }
 
     /// Returns true if the sampler is a compare-mode sampler.
@@ -405,12 +472,26 @@ impl Sampler {
     }
 }
 
+unsafe impl DeviceOwned for Sampler {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl VulkanObject for Sampler {
     type Object = vk::Sampler;
 
     #[inline]
     fn internal_object(&self) -> vk::Sampler {
         self.sampler
+    }
+}
+
+impl fmt::Debug for Sampler {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "<Vulkan sampler {:?}>", self.sampler)
     }
 }
 
@@ -493,7 +574,7 @@ impl SamplerAddressMode {
     fn border_color(self) -> Option<BorderColor> {
         match self {
             SamplerAddressMode::ClampToBorder(c) => Some(c),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -584,7 +665,7 @@ pub enum SamplerCreationError {
         /// The value that was requested.
         requested: f32,
         /// The maximum supported value.
-        maximum: f32
+        maximum: f32,
     },
 
     /// The requested mip lod bias exceeds the device's limits.
@@ -592,8 +673,12 @@ pub enum SamplerCreationError {
         /// The value that was requested.
         requested: f32,
         /// The maximum supported value.
-        maximum: f32
+        maximum: f32,
     },
+
+    /// Using `MirrorClampToEdge` requires enabling the `VK_KHR_sampler_mirror_clamp_to_edge`
+    /// extension when creating the device.
+    SamplerMirrorClampToEdgeExtensionNotEnabled,
 }
 
 impl error::Error for SamplerCreationError {
@@ -602,10 +687,12 @@ impl error::Error for SamplerCreationError {
         match *self {
             SamplerCreationError::OomError(_) => "not enough memory available",
             SamplerCreationError::TooManyObjects => "too many simultaneous sampler objects",
-            SamplerCreationError::SamplerAnisotropyFeatureNotEnabled => "the `sampler_anisotropy` \
-                                                                         feature is not enabled",
+            SamplerCreationError::SamplerAnisotropyFeatureNotEnabled =>
+                "the `sampler_anisotropy` feature is not enabled",
             SamplerCreationError::AnisotropyLimitExceeded { .. } => "anisotropy limit exceeded",
             SamplerCreationError::MipLodBiasLimitExceeded { .. } => "mip lod bias limit exceeded",
+            SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled =>
+                "the device extension `VK_KHR_sampler_mirror_clamp_to_edge` is not enabled",
         }
     }
 
@@ -613,7 +700,7 @@ impl error::Error for SamplerCreationError {
     fn cause(&self) -> Option<&error::Error> {
         match *self {
             SamplerCreationError::OomError(ref err) => Some(err),
-            _ => None
+            _ => None,
         }
     }
 }
@@ -639,7 +726,7 @@ impl From<Error> for SamplerCreationError {
             err @ Error::OutOfHostMemory => SamplerCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => SamplerCreationError::OomError(OomError::from(err)),
             Error::TooManyObjects => SamplerCreationError::TooManyObjects,
-            _ => panic!("unexpected error: {:?}", err)
+            _ => panic!("unexpected error: {:?}", err),
         }
     }
 }
@@ -652,12 +739,18 @@ mod tests {
     fn create_regular() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let s = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+        let s = sampler::Sampler::new(device,
+                                      sampler::Filter::Linear,
+                                      sampler::Filter::Linear,
                                       sampler::MipmapMode::Nearest,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
-                                      0.0, 2.0).unwrap();
+                                      sampler::SamplerAddressMode::Repeat,
+                                      1.0,
+                                      1.0,
+                                      0.0,
+                                      2.0)
+            .unwrap();
         assert!(!s.compare_mode());
         assert!(!s.is_unnormalized());
     }
@@ -666,12 +759,19 @@ mod tests {
     fn create_compare() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let s = sampler::Sampler::compare(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+        let s = sampler::Sampler::compare(device,
+                                          sampler::Filter::Linear,
+                                          sampler::Filter::Linear,
                                           sampler::MipmapMode::Nearest,
                                           sampler::SamplerAddressMode::Repeat,
                                           sampler::SamplerAddressMode::Repeat,
-                                          sampler::SamplerAddressMode::Repeat, 1.0, 1.0,
-                                          0.0, 2.0, sampler::Compare::Less).unwrap();
+                                          sampler::SamplerAddressMode::Repeat,
+                                          1.0,
+                                          1.0,
+                                          0.0,
+                                          2.0,
+                                          sampler::Compare::Less)
+            .unwrap();
 
         assert!(s.compare_mode());
         assert!(!s.is_unnormalized());
@@ -681,10 +781,12 @@ mod tests {
     fn create_unnormalized() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let s = sampler::Sampler::unnormalized(&device, sampler::Filter::Linear,
-                                               sampler::UnnormalizedSamplerAddressMode::ClampToEdge,
-                                               sampler::UnnormalizedSamplerAddressMode::ClampToEdge)
-                                               .unwrap();
+        let s =
+            sampler::Sampler::unnormalized(device,
+                                           sampler::Filter::Linear,
+                                           sampler::UnnormalizedSamplerAddressMode::ClampToEdge,
+                                           sampler::UnnormalizedSamplerAddressMode::ClampToEdge)
+                .unwrap();
 
         assert!(!s.compare_mode());
         assert!(s.is_unnormalized());
@@ -693,67 +795,94 @@ mod tests {
     #[test]
     fn simple_repeat_linear() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _ = sampler::Sampler::simple_repeat_linear(&device);
+        let _ = sampler::Sampler::simple_repeat_linear(device);
     }
 
     #[test]
     fn simple_repeat_linear_no_mipmap() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _ = sampler::Sampler::simple_repeat_linear_no_mipmap(&device);
+        let _ = sampler::Sampler::simple_repeat_linear_no_mipmap(device);
     }
 
     #[test]
-    #[should_panic]
     fn min_lod_inferior() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
-                                      sampler::MipmapMode::Nearest,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0, 5.0, 2.0);
+        assert_should_panic!({
+                                 let _ = sampler::Sampler::new(device,
+                                                               sampler::Filter::Linear,
+                                                               sampler::Filter::Linear,
+                                                               sampler::MipmapMode::Nearest,
+                                                               sampler::SamplerAddressMode::Repeat,
+                                                               sampler::SamplerAddressMode::Repeat,
+                                                               sampler::SamplerAddressMode::Repeat,
+                                                               1.0,
+                                                               1.0,
+                                                               5.0,
+                                                               2.0);
+                             });
     }
 
     #[test]
-    #[should_panic]
     fn max_anisotropy() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
-                                      sampler::MipmapMode::Nearest,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat, 1.0, 0.5, 0.0, 2.0);
+        assert_should_panic!({
+                                 let _ = sampler::Sampler::new(device,
+                                                               sampler::Filter::Linear,
+                                                               sampler::Filter::Linear,
+                                                               sampler::MipmapMode::Nearest,
+                                                               sampler::SamplerAddressMode::Repeat,
+                                                               sampler::SamplerAddressMode::Repeat,
+                                                               sampler::SamplerAddressMode::Repeat,
+                                                               1.0,
+                                                               0.5,
+                                                               0.0,
+                                                               2.0);
+                             });
     }
 
     #[test]
-    #[should_panic]
     fn different_borders() {
         let (device, queue) = gfx_dev_and_queue!();
 
         let b1 = sampler::BorderColor::IntTransparentBlack;
         let b2 = sampler::BorderColor::FloatOpaqueWhite;
 
-        let _ = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
-                                      sampler::MipmapMode::Nearest,
-                                      sampler::SamplerAddressMode::ClampToBorder(b1),
-                                      sampler::SamplerAddressMode::ClampToBorder(b2),
-                                      sampler::SamplerAddressMode::Repeat, 1.0, 1.0, 5.0, 2.0);
+        assert_should_panic!({
+            let _ = sampler::Sampler::new(device,
+                                          sampler::Filter::Linear,
+                                          sampler::Filter::Linear,
+                                          sampler::MipmapMode::Nearest,
+                                          sampler::SamplerAddressMode::ClampToBorder(b1),
+                                          sampler::SamplerAddressMode::ClampToBorder(b2),
+                                          sampler::SamplerAddressMode::Repeat,
+                                          1.0,
+                                          1.0,
+                                          5.0,
+                                          2.0);
+        });
     }
 
     #[test]
     fn anisotropy_feature() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+        let r = sampler::Sampler::new(device,
+                                      sampler::Filter::Linear,
+                                      sampler::Filter::Linear,
                                       sampler::MipmapMode::Nearest,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat, 1.0, 2.0, 0.0, 2.0);
+                                      sampler::SamplerAddressMode::Repeat,
+                                      1.0,
+                                      2.0,
+                                      0.0,
+                                      2.0);
 
         match r {
             Err(sampler::SamplerCreationError::SamplerAnisotropyFeatureNotEnabled) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -761,16 +890,21 @@ mod tests {
     fn anisotropy_limit() {
         let (device, queue) = gfx_dev_and_queue!(sampler_anisotropy);
 
-        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+        let r = sampler::Sampler::new(device,
+                                      sampler::Filter::Linear,
+                                      sampler::Filter::Linear,
                                       sampler::MipmapMode::Nearest,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat, 1.0, 100000000.0, 0.0,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      1.0,
+                                      100000000.0,
+                                      0.0,
                                       2.0);
 
         match r {
             Err(sampler::SamplerCreationError::AnisotropyLimitExceeded { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -778,16 +912,43 @@ mod tests {
     fn mip_lod_bias_limit() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let r = sampler::Sampler::new(&device, sampler::Filter::Linear, sampler::Filter::Linear,
+        let r = sampler::Sampler::new(device,
+                                      sampler::Filter::Linear,
+                                      sampler::Filter::Linear,
                                       sampler::MipmapMode::Nearest,
                                       sampler::SamplerAddressMode::Repeat,
                                       sampler::SamplerAddressMode::Repeat,
-                                      sampler::SamplerAddressMode::Repeat, 100000000.0, 1.0, 0.0,
+                                      sampler::SamplerAddressMode::Repeat,
+                                      100000000.0,
+                                      1.0,
+                                      0.0,
                                       2.0);
 
         match r {
             Err(sampler::SamplerCreationError::MipLodBiasLimitExceeded { .. }) => (),
-            _ => panic!()
+            _ => panic!(),
+        }
+    }
+
+    #[test]
+    fn sampler_mirror_clamp_to_edge_extension() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let r = sampler::Sampler::new(device,
+                                      sampler::Filter::Linear,
+                                      sampler::Filter::Linear,
+                                      sampler::MipmapMode::Nearest,
+                                      sampler::SamplerAddressMode::MirrorClampToEdge,
+                                      sampler::SamplerAddressMode::MirrorClampToEdge,
+                                      sampler::SamplerAddressMode::MirrorClampToEdge,
+                                      1.0,
+                                      1.0,
+                                      0.0,
+                                      2.0);
+
+        match r {
+            Err(sampler::SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled) => (),
+            _ => panic!(),
         }
     }
 }
