@@ -1378,8 +1378,11 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdDebugMarkerBeginEXT` on the builder.
+    ///
+    /// Does nothing if the `VK_EXT_debug_marker` device extension is not loaded.
     #[inline]
     pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
+        if !self.device().loaded_extensions().ext_debug_marker { return; }
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         let info = vk::DebugMarkerMarkerInfoEXT {
@@ -1392,16 +1395,22 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdDebugMarkerEndEXT` on the builder.
+    ///
+    /// Does nothing if the `VK_EXT_debug_marker` device extension is not loaded.
     #[inline]
     pub unsafe fn debug_marker_end(&mut self) {
+        if !self.device().loaded_extensions().ext_debug_marker { return; }
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdDebugMarkerEndEXT(cmd);
     }
 
     /// Calls `vkCmdDebugMarkerInsertEXT` on the builder.
+    ///
+    /// Does nothing if the `VK_EXT_debug_marker` device extension is not loaded.
     #[inline]
     pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
+        if !self.device().loaded_extensions().ext_debug_marker { return; }
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         let info = vk::DebugMarkerMarkerInfoEXT {
