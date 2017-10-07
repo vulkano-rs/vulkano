@@ -43,7 +43,7 @@ use pipeline::shader::GraphicsEntryPointAbstract;
 use pipeline::shader::GraphicsShaderType;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::SpecializationConstants;
-use pipeline::vertex::SingleBufferDefinition;
+use pipeline::vertex::BufferlessDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
@@ -81,7 +81,7 @@ struct TessInfo<Tcs, Tcss, Tes, Tess> {
 }
 
 impl
-    GraphicsPipelineBuilder<SingleBufferDefinition<()>,
+    GraphicsPipelineBuilder<BufferlessDefinition,
                             EmptyEntryPointDummy,
                             (),
                             EmptyEntryPointDummy,
@@ -97,7 +97,7 @@ impl
     pub(super) fn new() -> Self {
         unsafe {
             GraphicsPipelineBuilder {
-                vertex_input: SingleBufferDefinition::new(), // TODO: should be empty attrs instead
+                vertex_input: BufferlessDefinition,
                 vertex_shader: None,
                 input_assembly: InputAssembly::triangle_list(),
                 tessellation: None,
