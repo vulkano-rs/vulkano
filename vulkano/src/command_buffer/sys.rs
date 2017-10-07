@@ -1378,6 +1378,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdDebugMarkerBeginEXT` on the builder.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
     #[inline]
     pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
@@ -1392,6 +1395,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdDebugMarkerEndEXT` on the builder.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
     #[inline]
     pub unsafe fn debug_marker_end(&mut self) {
         let vk = self.device().pointers();
@@ -1400,6 +1406,9 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 
     /// Calls `vkCmdDebugMarkerInsertEXT` on the builder.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
     #[inline]
     pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
