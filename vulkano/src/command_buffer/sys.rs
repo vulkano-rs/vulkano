@@ -1381,6 +1381,10 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     ///
     /// # Panics
     /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// The command pool that this command buffer was allocated from must support graphics or
+    /// compute operations
     #[inline]
     pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
@@ -1398,6 +1402,12 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     ///
     /// # Panics
     /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// There must be an outstanding `vkCmdDebugMarkerBeginEXT` command prior to the
+    /// `vkCmdDebugMarkerEndEXT` on the queue that this command buffer is submitted to. If the
+    /// matching `vkCmdDebugMarkerBeginEXT` command was in a secondary command buffer, the
+    /// `vkCmdDebugMarkerEndEXT` must be in the same command buffer.
     #[inline]
     pub unsafe fn debug_marker_end(&mut self) {
         let vk = self.device().pointers();
@@ -1409,6 +1419,10 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     ///
     /// # Panics
     /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// The command pool that this command buffer was allocated from must support graphics or
+    /// compute operations
     #[inline]
     pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
