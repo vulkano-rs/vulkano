@@ -44,6 +44,7 @@ use pipeline::shader::GraphicsShaderType;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::SpecializationConstants;
 use pipeline::vertex::BufferlessDefinition;
+use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
