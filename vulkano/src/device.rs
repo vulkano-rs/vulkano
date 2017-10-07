@@ -470,9 +470,13 @@ impl Device {
 
     /// Assigns a human-readable name to `object` for debugging purposes.
     ///
-    /// Does nothing if the `VK_EXT_debug_marker` device extension is not loaded.
-    pub fn set_object_name<T: VulkanObject>(&self, object: &T, name: &CStr) -> Result<(), OomError> {
-        if !self.extensions.ext_debug_marker { return Ok(()); }
+    /// Requires the `VK_EXT_debug_marker` device extension.
+    ///
+    /// # Panics
+    /// * If the `VK_EXT_debug_marker` device extension is not loaded.
+    /// * If `object` is not owned by this device.
+    pub fn set_object_name<T: VulkanObject + DeviceOwned>(&self, object: &T, name: &CStr) -> Result<(), OomError> {
+        assert!(object.device().internal_object() == self.internal_object());
         let info = vk::DebugMarkerObjectNameInfoEXT {
             sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT,
             pNext: ptr::null(),
@@ -481,6 +485,26 @@ impl Device {
             name: name.as_ptr(),
         };
         unsafe { check_errors(self.vk.DebugMarkerSetObjectNameEXT(self.device, &info)) }?;
+        Ok(())
+    }
+
+    /// Assigns a human-readable name to `object` for debugging purposes.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// `object` must be a Vulkan handle owned by this device.
+    pub unsafe fn set_object_name_raw<T: vk::Handle>(&self, object: T, name: &CStr) -> Result<(), OomError> {
+        if !self.extensions.ext_debug_marker { return Ok(()); }
+        let info = vk::DebugMarkerObjectNameInfoEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT,
+            pNext: ptr::null(),
+            objectType: T::TYPE,
+            object: object.into(),
+            name: name.as_ptr(),
+        };
+        check_errors(self.vk.DebugMarkerSetObjectNameEXT(self.device, &info))?;
         Ok(())
     }
 }

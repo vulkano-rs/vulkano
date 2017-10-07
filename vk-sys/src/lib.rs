@@ -25,7 +25,7 @@ pub type DeviceSize = u64;
 pub type SampleMask = u32;
 
 /// Handles yielded by the Vulkan implementation
-pub trait Handle: Into<u64> {
+pub trait Handle: Into<u64> + Copy {
     const TYPE: DebugReportObjectTypeEXT;
     const NULL: Self;
     fn is_null(&self) -> bool;
