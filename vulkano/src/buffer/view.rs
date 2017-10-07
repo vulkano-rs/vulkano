@@ -94,7 +94,14 @@ impl<F, B> BufferView<F, B>
             let device = buffer.device();
             let format = format.format();
 
-            // TODO: check minTexelBufferOffsetAlignment
+            if (offset %
+                    device
+                        .physical_device()
+                        .limits()
+                        .min_texel_buffer_offset_alignment() as usize) != 0
+            {
+                return Err(BufferViewCreationError::WrongBufferAlignment);
+            }
 
             if !buffer.usage_uniform_texel_buffer() && !buffer.usage_storage_texel_buffer() {
                 return Err(BufferViewCreationError::WrongBufferUsage);
@@ -276,6 +283,10 @@ pub enum BufferViewCreationError {
     /// `uniform_texel_buffer` usages.
     WrongBufferUsage,
 
+    /// The offset within the buffer is not a multiple of the `min_texel_buffer_offset_alignment`
+    /// limit.
+    WrongBufferAlignment,
+
     /// The requested format is not supported for this usage.
     UnsupportedFormat,
 
@@ -290,6 +301,10 @@ impl error::Error for BufferViewCreationError {
             BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
             BufferViewCreationError::WrongBufferUsage =>
                 "the buffer is missing correct usage flags",
+            BufferViewCreationError::WrongBufferAlignment => {
+                "the offset within the buffer is not a multiple of the
+                 `min_texel_buffer_offset_alignment` limit"
+            },
             BufferViewCreationError::UnsupportedFormat =>
                 "the requested format is not supported for this usage",
             BufferViewCreationError::MaxTexelBufferElementsExceeded => {
