@@ -13,7 +13,6 @@
 
 use std::mem;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::fmt;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
@@ -2669,8 +2668,8 @@ macro_rules! ptrs {
                     $(
                         $name: unsafe {
                             extern "system" fn $name($(_: $param_ty),*) { panic!("function pointer `{}` not loaded", stringify!($name)) }
-                            let name = CString::new(concat!("vk", stringify!($name)).to_owned()).unwrap();
-                            let val = f(&name);
+                            let name = CStr::from_bytes_with_nul_unchecked(concat!("vk", stringify!($name), "\0").as_bytes());
+                            let val = f(name);
                             if val.is_null() { mem::transmute($name as *const ()) } else { mem::transmute(val) }
                         },
                     )+

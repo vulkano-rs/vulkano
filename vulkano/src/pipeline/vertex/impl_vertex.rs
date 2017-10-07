@@ -13,7 +13,7 @@ use pipeline::vertex::VertexMemberTy;
 // TODO: add example
 #[macro_export]
 macro_rules! impl_vertex {
-    ($out:ident $(, $member:ident)*) => (
+    ($out:ty $(, $member:ident)*) => (
         #[allow(unsafe_code)]
         unsafe impl $crate::pipeline::vertex::Vertex for $out {
             #[inline(always)]
