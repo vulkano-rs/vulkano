@@ -103,6 +103,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
+use std::ffi::CStr;
 
 use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::StdDescriptorPool;
@@ -118,6 +119,7 @@ use SynchronizedVulkanObject;
 use VulkanObject;
 use check_errors;
 use vk;
+use vk::Handle;
 
 pub use instance::{DeviceExtensions, RawDeviceExtensions};
 
@@ -464,6 +466,22 @@ impl Device {
 
     pub(crate) fn event_pool(&self) -> &Mutex<Vec<vk::Event>> {
         &self.event_pool
+    }
+
+    /// Assigns a human-readable name to `object` for debugging purposes.
+    ///
+    /// Does nothing if the `VK_EXT_debug_marker` device extension is not loaded.
+    pub fn set_object_name<T: VulkanObject>(&self, object: &T, name: &CStr) -> Result<(), OomError> {
+        if !self.extensions.ext_debug_marker { return Ok(()); }
+        let info = vk::DebugMarkerObjectNameInfoEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT,
+            pNext: ptr::null(),
+            objectType: T::Object::TYPE,
+            object: object.internal_object().into(),
+            name: name.as_ptr(),
+        };
+        unsafe { check_errors(self.vk.DebugMarkerSetObjectNameEXT(self.device, &info)) }?;
+        Ok(())
     }
 }
 

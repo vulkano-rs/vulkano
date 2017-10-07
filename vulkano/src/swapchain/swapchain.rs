@@ -395,7 +395,7 @@ impl Swapchain {
                 oldSwapchain: if let Some(ref old_swapchain) = old_swapchain {
                     old_swapchain.swapchain
                 } else {
-                    0
+                    vk::SwapchainKHR::NULL
                 },
             };
 
@@ -1167,8 +1167,8 @@ pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Dura
         check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
                                             swapchain.swapchain,
                                             timeout_ns,
-                                            semaphore.map(|s| s.internal_object()).unwrap_or(0),
-                                            fence.map(|f| f.internal_object()).unwrap_or(0),
+                                            semaphore.map(|s| s.internal_object()).unwrap_or(vk::Semaphore::NULL),
+                                            fence.map(|f| f.internal_object()).unwrap_or(vk::Fence::NULL),
                                             &mut out))?;
 
     let (id, suboptimal) = match r {

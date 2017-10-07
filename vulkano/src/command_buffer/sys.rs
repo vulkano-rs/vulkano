@@ -264,11 +264,11 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                         //       the render pass?
                         FramebufferAbstract::inner(fb).internal_object()
                     },
-                    None => 0,
+                    None => vk::Framebuffer::NULL,
                 };
                 (rp, sp, fb)
             },
-            _ => (0, 0, 0),
+            _ => (vk::RenderPass::NULL, 0, vk::Framebuffer::NULL),
         };
 
         let (oqe, qf, ps) = match kind {

@@ -6,6 +6,8 @@
 - Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
 - Fix linking against MoltenVK >= 0.19.0 
 - Added `AutoCommandBufferBuilder::copy_image`
+- Refactored vk-sys to use strongly typed handles
+- Added `Device::set_object_name` using `VK_EXT_debug_marker`
 
 # Version 0.7.2 (2017-10-09)
 

@@ -559,7 +559,7 @@ impl UnsafeImage {
     /// Creates an image from a raw handle. The image won't be destroyed.
     ///
     /// This function is for example used at the swapchain's initialization.
-    pub unsafe fn from_raw(device: Arc<Device>, handle: u64, usage: u32, format: Format,
+    pub unsafe fn from_raw(device: Arc<Device>, handle: vk::Image, usage: u32, format: Format,
                            dimensions: ImageDimensions, samples: u32, mipmaps: u32)
                            -> UnsafeImage {
         let vk_i = device.instance().pointers();
@@ -632,7 +632,7 @@ impl UnsafeImage {
     /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {
-        self.image
+        self.image.into()
     }
 
     /// Queries the layout of an image in memory. Only valid for images with linear tiling.

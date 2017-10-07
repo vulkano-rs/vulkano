@@ -134,13 +134,13 @@ impl<Pl> ComputePipeline<Pl> {
                 flags: 0,
                 stage: stage,
                 layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
-                basePipelineHandle: 0,
+                basePipelineHandle: vk::Pipeline::NULL,
                 basePipelineIndex: 0,
             };
 
             let mut output = mem::uninitialized();
             check_errors(vk.CreateComputePipelines(device.internal_object(),
-                                                   0,
+                                                   vk::PipelineCache::NULL,
                                                    1,
                                                    &infos,
                                                    ptr::null(),

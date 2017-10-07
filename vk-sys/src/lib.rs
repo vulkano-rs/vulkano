@@ -24,38 +24,96 @@ pub type Bool32 = u32;
 pub type DeviceSize = u64;
 pub type SampleMask = u32;
 
-pub type Instance = usize;
-pub type PhysicalDevice = usize;
-pub type Device = usize;
-pub type Queue = usize;
-pub type CommandBuffer = usize;
+/// Handles yielded by the Vulkan implementation
+pub trait Handle: Into<u64> {
+    const TYPE: DebugReportObjectTypeEXT;
+    const NULL: Self;
+    fn is_null(&self) -> bool;
+}
 
-pub type Semaphore = u64;
-pub type Fence = u64;
-pub type DeviceMemory = u64;
-pub type Buffer = u64;
-pub type Image = u64;
-pub type Event = u64;
-pub type QueryPool = u64;
-pub type BufferView = u64;
-pub type ImageView = u64;
-pub type ShaderModule = u64;
-pub type PipelineCache = u64;
-pub type PipelineLayout = u64;
-pub type RenderPass = u64;
-pub type Pipeline = u64;
-pub type DescriptorSetLayout = u64;
-pub type Sampler = u64;
-pub type DescriptorPool = u64;
-pub type DescriptorSet = u64;
-pub type Framebuffer = u64;
-pub type CommandPool = u64;
-pub type SurfaceKHR = u64;
-pub type SwapchainKHR = u64;
-pub type DisplayKHR = u64;
-pub type DisplayModeKHR = u64;
-pub type DebugReportCallbackEXT = u64;
-pub type DescriptorUpdateTemplateKHR = u64;
+macro_rules! define_handle {
+    ($name:ident, $ty:ident) => {
+        define_handle!($name, $ty, u64);
+
+        impl fmt::Display for $name {
+            #[inline]
+            fn fmt(&self, fmt: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
+                write!(fmt, "{:#016x}", self.0)
+            }
+        }
+    };
+    ($name:ident, $ty:ident, $inner:ty) => {
+        #[repr(C)]
+        #[derive(Debug, Copy, Clone, Eq, PartialEq)]
+        pub struct $name($inner);
+
+        impl $name {
+            pub const NULL: Self = $name(0 as _);
+            #[inline]
+            pub fn is_null(&self) -> bool { *self == Self::NULL }
+        }
+
+        impl From<$name> for u64 { fn from(x: $name) -> u64 { x.0 as u64 } }
+        impl From<$inner> for $name { fn from(x: $inner) -> $name { $name(x) } }
+
+        impl Handle for $name {
+            const TYPE: DebugReportObjectTypeEXT = $ty;
+            const NULL: Self = $name::NULL;
+            #[inline]
+            fn is_null(&self) -> bool { self.is_null() }
+        }
+    };
+}
+
+macro_rules! define_dispatchable {
+    ($name:ident, $ty:ident) => {
+        define_handle!($name, $ty, *mut c_void);
+
+        unsafe impl Send for $name {}
+        unsafe impl Sync for $name {}
+
+        impl From<$name> for *mut c_void { fn from(x: $name) -> *mut c_void { x.0 } }
+
+        impl fmt::Display for $name {
+            #[inline]
+            fn fmt(&self, fmt: &mut fmt::Formatter) -> ::std::result::Result<(), fmt::Error> {
+                fmt::Pointer::fmt(&self.0, fmt)
+            }
+        }
+    };
+}
+
+define_dispatchable!(Instance, DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT);
+define_dispatchable!(PhysicalDevice, DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT);
+define_dispatchable!(Device, DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT);
+define_dispatchable!(Queue, DEBUG_REPORT_OBJECT_TYPE_QUEUE_EXT);
+define_handle!(Semaphore, DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT);
+define_dispatchable!(CommandBuffer, DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT);
+define_handle!(Fence, DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT);
+define_handle!(DeviceMemory, DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT);
+define_handle!(Buffer, DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT);
+define_handle!(Image, DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT);
+define_handle!(Event, DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT);
+define_handle!(QueryPool, DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT);
+define_handle!(BufferView, DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT);
+define_handle!(ImageView, DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT);
+define_handle!(ShaderModule, DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT);
+define_handle!(PipelineCache, DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT);
+define_handle!(PipelineLayout, DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT);
+define_handle!(RenderPass, DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT);
+define_handle!(Pipeline, DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT);
+define_handle!(DescriptorSetLayout, DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT);
+define_handle!(Sampler, DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT);
+define_handle!(DescriptorPool, DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_POOL_EXT);
+define_handle!(DescriptorSet, DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT);
+define_handle!(Framebuffer, DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT);
+define_handle!(CommandPool, DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT);
+define_handle!(SurfaceKHR, DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT);
+define_handle!(SwapchainKHR, DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT);
+define_handle!(DebugReportCallbackEXT, DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT);
+define_handle!(DisplayKHR, DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT);
+define_handle!(DisplayModeKHR, DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT);
+define_handle!(DescriptorUpdateTemplateKHR, DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_KHR_EXT);
 
 pub const LOD_CLAMP_NONE: f32 = 1000.0;
 pub const REMAINING_MIP_LEVELS: u32 = 0xffffffff;
@@ -999,7 +1057,15 @@ pub const DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT: u32 = 24;
 pub const DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT: u32 = 25;
 pub const DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT: u32 = 26;
 pub const DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT: u32 = 27;
+#[deprecated = "Renamed to DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT"]
 pub const DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT: u32 = 28;
+pub const DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_CALLBACK_EXT_EXT: u32 = 28;
+pub const DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT: u32 = 29;
+pub const DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT: u32 = 30;
+pub const DEBUG_REPORT_OBJECT_TYPE_OBJECT_TABLE_NVX_EXT: u32 = 31;
+pub const DEBUG_REPORT_OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX_EXT: u32 = 32;
+pub const DEBUG_REPORT_OBJECT_TYPE_VALIDATION_CACHE_EXT: u32 = 33;
+pub const DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_KHR_EXT: u32 = 1000085000;
 
 pub type DebugReportErrorEXT = u32;
 pub const DEBUG_REPORT_ERROR_NONE_EXT: u32 = 0;
