@@ -2,6 +2,8 @@
 
 - Allow `impl_vertex!` to support generic structs.
 - Fixed creating a buffer view not checking the `min_texel_buffer_offset_alignment` limit.
+- Added support for loading the `VK_EXT_debug_marker` extension and adding debug markers to
+  `UnsafeCommandBufferBuilder`
 - Changed `GraphicsPipelineBuilder` to default to a buffer-less vertex input.
 - Deprecated `pipeline::input_assembly::InputAssembly`.
 

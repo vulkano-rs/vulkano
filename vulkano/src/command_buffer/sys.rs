@@ -13,6 +13,7 @@ use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
+use std::ffi::CStr;
 
 use OomError;
 use VulkanObject;
@@ -1374,6 +1375,65 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                              stages.into_vulkan_bits(),
                              query.pool().internal_object(),
                              query.index());
+    }
+
+    /// Calls `vkCmdDebugMarkerBeginEXT` on the builder.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// The command pool that this command buffer was allocated from must support graphics or
+    /// compute operations
+    #[inline]
+    pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let info = vk::DebugMarkerMarkerInfoEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+            pNext: ptr::null(),
+            pMarkerName: name.as_ptr(),
+            color: color,
+        };
+        vk.CmdDebugMarkerBeginEXT(cmd, &info);
+    }
+
+    /// Calls `vkCmdDebugMarkerEndEXT` on the builder.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// There must be an outstanding `vkCmdDebugMarkerBeginEXT` command prior to the
+    /// `vkCmdDebugMarkerEndEXT` on the queue that this command buffer is submitted to. If the
+    /// matching `vkCmdDebugMarkerBeginEXT` command was in a secondary command buffer, the
+    /// `vkCmdDebugMarkerEndEXT` must be in the same command buffer.
+    #[inline]
+    pub unsafe fn debug_marker_end(&mut self) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdDebugMarkerEndEXT(cmd);
+    }
+
+    /// Calls `vkCmdDebugMarkerInsertEXT` on the builder.
+    ///
+    /// # Panics
+    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    ///
+    /// # Safety
+    /// The command pool that this command buffer was allocated from must support graphics or
+    /// compute operations
+    #[inline]
+    pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let info = vk::DebugMarkerMarkerInfoEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+            pNext: ptr::null(),
+            pMarkerName: name.as_ptr(),
+            color: color,
+        };
+        vk.CmdDebugMarkerInsertEXT(cmd, &info);
     }
 }
 
