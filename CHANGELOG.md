@@ -2,6 +2,7 @@
 
 - Allow `impl_vertex!` to support generic structs.
 - Fixed creating a buffer view not checking the `min_texel_buffer_offset_alignment` limit.
+- Changed `GraphicsPipelineBuilder` to default to a buffer-less vertex input.
 - Deprecated `pipeline::input_assembly::InputAssembly`.
 
 # Version 0.7.1 (2017-09-28)

@@ -34,8 +34,8 @@ use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
 use framebuffer::Subpass;
 use pipeline::shader::EmptyEntryPointDummy;
+use pipeline::vertex::BufferlessDefinition;
 use pipeline::vertex::IncompatibleVertexDefinitionError;
-use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::vertex::VertexSource;
 use vk;
@@ -83,7 +83,7 @@ impl GraphicsPipeline<(), (), ()> {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
     pub fn start<'a>()
-        -> GraphicsPipelineBuilder<SingleBufferDefinition<()>,
+        -> GraphicsPipelineBuilder<BufferlessDefinition,
                                    EmptyEntryPointDummy,
                                    (),
                                    EmptyEntryPointDummy,
