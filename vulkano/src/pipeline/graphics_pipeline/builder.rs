@@ -31,7 +31,6 @@ use pipeline::depth_stencil::DepthStencil;
 use pipeline::graphics_pipeline::GraphicsPipeline;
 use pipeline::graphics_pipeline::GraphicsPipelineCreationError;
 use pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
-use pipeline::input_assembly::InputAssembly;
 use pipeline::input_assembly::PrimitiveTopology;
 use pipeline::raster::CullMode;
 use pipeline::raster::DepthBiasControl;
@@ -43,6 +42,7 @@ use pipeline::shader::GraphicsEntryPointAbstract;
 use pipeline::shader::GraphicsShaderType;
 use pipeline::shader::ShaderInterfaceDefMatch;
 use pipeline::shader::SpecializationConstants;
+use pipeline::vertex::BufferlessDefinition;
 use pipeline::vertex::SingleBufferDefinition;
 use pipeline::vertex::VertexDefinition;
 use pipeline::viewport::Scissor;
@@ -61,7 +61,10 @@ use vk;
 pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
     vertex_input: Vdef,
     vertex_shader: Option<(Vs, Vss)>,
-    input_assembly: InputAssembly,
+    input_assembly: vk::PipelineInputAssemblyStateCreateInfo,
+    // Note: the `input_assembly_topology` member is temporary in order to not lose information
+    // about the number of patches per primitive.
+    input_assembly_topology: PrimitiveTopology,
     tessellation: Option<TessInfo<Tcs, Tcss, Tes, Tess>>,
     geometry_shader: Option<(Gs, Gss)>,
     viewport: Option<ViewportsState>,
@@ -81,7 +84,7 @@ struct TessInfo<Tcs, Tcss, Tes, Tess> {
 }
 
 impl
-    GraphicsPipelineBuilder<SingleBufferDefinition<()>,
+    GraphicsPipelineBuilder<BufferlessDefinition,
                             EmptyEntryPointDummy,
                             (),
                             EmptyEntryPointDummy,
@@ -97,9 +100,14 @@ impl
     pub(super) fn new() -> Self {
         unsafe {
             GraphicsPipelineBuilder {
-                vertex_input: SingleBufferDefinition::new(), // TODO: should be empty attrs instead
+                vertex_input: BufferlessDefinition,
                 vertex_shader: None,
-                input_assembly: InputAssembly::triangle_list(),
+                input_assembly: vk::PipelineInputAssemblyStateCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
+                    topology: PrimitiveTopology::TriangleList.into(),
+                    ..mem::zeroed()
+                },
+                input_assembly_topology: PrimitiveTopology::TriangleList,
                 tessellation: None,
                 geometry_shader: None,
                 viewport: None,
@@ -603,11 +611,11 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             pVertexAttributeDescriptions: attribute_descriptions.as_ptr(),
         };
 
-        if self.input_assembly.primitive_restart_enable &&
-            !self.input_assembly.topology.supports_primitive_restart()
+        if self.input_assembly.primitiveRestartEnable != vk::FALSE &&
+            !self.input_assembly_topology.supports_primitive_restart()
         {
             return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
-                           primitive: self.input_assembly.topology,
+                           primitive: self.input_assembly_topology,
                        });
         }
 
@@ -615,7 +623,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         if let Some(ref gs) = self.geometry_shader {
             match gs.0.ty() {
                 GraphicsShaderType::Geometry(primitives) => {
-                    if !primitives.matches(self.input_assembly.topology) {
+                    if !primitives.matches(self.input_assembly_topology) {
                         return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
                     }
                 },
@@ -623,19 +631,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             }
         }
 
-        let input_assembly = vk::PipelineInputAssemblyStateCreateInfo {
-            sType: vk::STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0, // reserved
-            topology: self.input_assembly.topology.into(),
-            primitiveRestartEnable: if self.input_assembly.primitive_restart_enable {
-                vk::TRUE
-            } else {
-                vk::FALSE
-            },
-        };
-
-        let tessellation = match self.input_assembly.topology {
+        let tessellation = match self.input_assembly_topology {
             PrimitiveTopology::PatchList { vertices_per_patch } => {
                 if self.tessellation.is_none() {
                     return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
@@ -1018,7 +1014,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 stageCount: stages.len() as u32,
                 pStages: stages.as_ptr(),
                 pVertexInputState: &vertex_input_state,
-                pInputAssemblyState: &input_assembly,
+                pInputAssemblyState: &self.input_assembly,
                 pTessellationState: tessellation
                     .as_ref()
                     .map(|t| t as *const _)
@@ -1098,6 +1094,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             vertex_input: vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: self.tessellation,
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
@@ -1144,6 +1141,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             vertex_input: self.vertex_input,
             vertex_shader: Some((shader, specialization_constants)),
             input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: self.tessellation,
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
@@ -1159,14 +1157,20 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Sets whether primitive restart if enabled.
     #[inline]
     pub fn primitive_restart(mut self, enabled: bool) -> Self {
-        self.input_assembly.primitive_restart_enable = enabled;
+        self.input_assembly.primitiveRestartEnable = if enabled {
+            vk::TRUE
+        } else {
+            vk::FALSE
+        };
+
         self
     }
 
     /// Sets the topology of the primitives that are expected by the pipeline.
     #[inline]
     pub fn primitive_topology(mut self, topology: PrimitiveTopology) -> Self {
-        self.input_assembly.topology = topology;
+        self.input_assembly_topology = topology;
+        self.input_assembly.topology = topology.into();
         self
     }
 
@@ -1287,6 +1291,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: Some(TessInfo {
                                    tessellation_control_shader:
                                        (tessellation_control_shader,
@@ -1326,6 +1331,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: self.tessellation,
             geometry_shader: Some((shader, specialization_constants)),
             viewport: self.viewport,
@@ -1596,6 +1602,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: self.tessellation,
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
@@ -1711,6 +1718,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: self.tessellation,
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
@@ -1743,7 +1751,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> Clone
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input.clone(),
             vertex_shader: self.vertex_shader.clone(),
-            input_assembly: self.input_assembly.clone(),
+            input_assembly: unsafe { ptr::read(&self.input_assembly) },
+            input_assembly_topology: self.input_assembly_topology,
             tessellation: self.tessellation.clone(),
             geometry_shader: self.geometry_shader.clone(),
             viewport: self.viewport.clone(),

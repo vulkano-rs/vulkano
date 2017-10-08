@@ -16,6 +16,7 @@ use vk;
 
 /// How the input assembly stage should behave.
 #[derive(Copy, Clone, Debug)]
+#[deprecated]
 pub struct InputAssembly {
     /// The type of primitives.
     ///
