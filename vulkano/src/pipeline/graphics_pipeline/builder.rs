@@ -154,13 +154,9 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 {
     /// Builds the graphics pipeline.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
-    pub fn build(mut self, device: Arc<Device>)
+    pub fn build(self, device: Arc<Device>)
                  -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
                            GraphicsPipelineCreationError> {
-        // TODO: return errors instead of panicking if missing param
-
-        let vk = device.pointers();
-
         let pipeline_layout;
 
         if let Some(ref tess) = self.tessellation {
@@ -281,6 +277,23 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                                  .unwrap()) as Box<_>; // TODO: error
             }
         }
+
+        self.with_pipeline_layout(device, pipeline_layout)
+    }
+
+    /// Builds the graphics pipeline.
+    ///
+    /// Does the same as `build`, except that `build` automatically builds the pipeline layout
+    /// object corresponding to the union of your shaders while this function allows you to specify
+    /// the pipeline layout.
+    pub fn with_pipeline_layout<Pl>(mut self, device: Arc<Device>, pipeline_layout: Pl)
+                                    -> Result<GraphicsPipeline<Vdef, Pl, Rp>,
+                                              GraphicsPipelineCreationError>
+        where Pl: PipelineLayoutAbstract
+    {
+        // TODO: return errors instead of panicking if missing param
+
+        let vk = device.pointers();
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
