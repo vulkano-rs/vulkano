@@ -1,5 +1,7 @@
 # Unreleased
 
+- Changed `ShaderInterfaceMismatchError` to be more verbose.
+
 # Version 0.7.2 (2017-10-09)
 
 - Allow `impl_vertex!` to support generic structs.
