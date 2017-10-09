@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.7.2 (2017-10-09)
+
 - Allow `impl_vertex!` to support generic structs.
 - Added `GraphicsPipelineBuilder::with_pipeline_layout`.
 - Fixed creating a buffer view not checking the `min_texel_buffer_offset_alignment` limit.
