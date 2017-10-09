@@ -29,7 +29,7 @@ What does vulkano do?
   the documentation for hours for every single operation.
 
 Note that vulkano does **not** require you to install the official Vulkan SDK. This is not
-something specific to vulkano (you don't need to SDK to write program that use Vulkan, even
+something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
 required.
 
