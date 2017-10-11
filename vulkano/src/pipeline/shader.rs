@@ -458,7 +458,10 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
 {
     fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
-            return Err(ShaderInterfaceMismatchError::ElementsCountMismatch);
+            return Err(ShaderInterfaceMismatchError::ElementsCountMismatch {
+                self_elements: self.elements().len() as u32,
+                other_elements: other.elements().len() as u32,
+            });
         }
 
         for a in self.elements() {
@@ -473,7 +476,11 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
                 };
 
                 if a.format != b.format {
-                    return Err(ShaderInterfaceMismatchError::FormatMismatch);
+                    return Err(ShaderInterfaceMismatchError::FormatMismatch {
+                        location: loc,
+                        self_format: a.format,
+                        other_format: b.format,
+                    });
                 }
 
                 // TODO: enforce this?
@@ -484,28 +491,54 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
             }
         }
 
+        // Note: since we check that the number of elements is the same, we don't need to iterate
+        // over b's elements.
+
         Ok(())
     }
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.
-// TODO: improve diagnostic a bit
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShaderInterfaceMismatchError {
-    ElementsCountMismatch,
-    MissingElement { location: u32 },
-    FormatMismatch,
+    /// The number of elements is not the same between the two shader interfaces.
+    ElementsCountMismatch {
+        /// Number of elements in the first interface.
+        self_elements: u32,
+        /// Number of elements in the second interface.
+        other_elements: u32,
+    },
+
+    /// An element is missing from one of the interfaces.
+    MissingElement {
+        /// Location of the missing element.
+        location: u32,
+    },
+
+    /// The format of an element does not match.
+    FormatMismatch {
+        /// Location of the element that mismatches.
+        location: u32,
+        /// Format in the first interface.
+        self_format: Format,
+        /// Format in the second interface.
+        other_format: Format
+    },
 }
 
 impl error::Error for ShaderInterfaceMismatchError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            ShaderInterfaceMismatchError::ElementsCountMismatch =>
-                "the number of elements mismatches",
-            ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
-            ShaderInterfaceMismatchError::FormatMismatch =>
-                "the format of an element does not match",
+            ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
+                "the number of elements mismatches"
+            },
+            ShaderInterfaceMismatchError::MissingElement { .. } => {
+                "an element is missing"
+            },
+            ShaderInterfaceMismatchError::FormatMismatch { .. } => {
+                "the format of an element does not match"
+            },
         }
     }
 }
