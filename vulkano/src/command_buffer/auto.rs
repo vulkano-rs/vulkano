@@ -730,14 +730,10 @@ impl<P> AutoCommandBufferBuilder<P> {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_aspect: if destination.has_color() {
-                    UnsafeCommandBufferBuilderImageAspect {
-                        color: true,
-                        depth: false,
-                        stencil: false,
-                    }
-                } else {
-                    unimplemented!()
+                image_aspect: UnsafeCommandBufferBuilderImageAspect {
+                    color: source.has_color(),
+                    depth: source.has_depth(),
+                    stencil: source.has_stencil()
                 },
                 image_mip_level: mipmap,
                 image_base_array_layer: first_layer,
