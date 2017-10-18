@@ -501,7 +501,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
-            let mut clear_values_copy = clear_values.clone().enumerate();
+            let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
             for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate().filter(|&(_, ref desc)| { desc.load == LoadOp::Clear }) {
                 match clear_values_copy.next() {
