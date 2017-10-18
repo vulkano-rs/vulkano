@@ -49,9 +49,11 @@ use device::Queue;
 use format::AcceptsPixels;
 use format::ClearValue;
 use format::Format;
+use format::FormatTy;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
 use framebuffer::FramebufferAbstract;
+use framebuffer::LoadOp;
 use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassCompatible;
@@ -499,6 +501,40 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             let clear_values = framebuffer.convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
+            let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
+
+            for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate().filter(|&(_, ref desc)| { desc.load == LoadOp::Clear }) {
+                match clear_values_copy.next() {
+                    Some((clear_i, clear_value)) => match clear_value {
+                        ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None", 
+                            clear_i, atch_i, atch_desc.format.ty()),
+                        ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
+                           panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float", 
+                               clear_i, atch_i, atch_desc.format.ty());
+                        }, ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
+                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int", 
+                               clear_i, atch_i, atch_desc.format.ty());
+                        }, ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
+                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint", 
+                               clear_i, atch_i, atch_desc.format.ty());
+                        }, ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
+                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth", 
+                               clear_i, atch_i, atch_desc.format.ty());
+                        }, ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
+                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil", 
+                               clear_i, atch_i, atch_desc.format.ty());
+                        }, ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
+                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStenceil", 
+                               clear_i, atch_i, atch_desc.format.ty());
+                        }
+                    }, None => panic!("Not enough clear values")
+                }
+            }
+            
+            if clear_values_copy.count() != 0 {
+                panic!("Too many clear values")
+            }
+
             let contents = if secondary {
                 SubpassContents::SecondaryCommandBuffers
             } else {
