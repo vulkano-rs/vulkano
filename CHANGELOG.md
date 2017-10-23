@@ -2,6 +2,7 @@
 
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
+- Allow `Surface` to own the window it references.
 
 # Version 0.7.2 (2017-10-09)
 
