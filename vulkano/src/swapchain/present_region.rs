@@ -20,7 +20,9 @@ pub struct PresentRegion {
 
 impl PresentRegion {
     /// Returns true if this present region is compatible with swapchain.
-    pub fn is_compatible_with(&self, swapchain: &Swapchain) -> bool {
+    pub fn is_compatible_with<W>(&self, swapchain: &Swapchain<W>) -> bool
+        where W: Send + Sync
+    {
         self.rectangles
             .iter()
             .all(|rect| rect.is_compatible_with(swapchain))
@@ -42,7 +44,9 @@ pub struct RectangleLayer {
 
 impl RectangleLayer {
     /// Returns true if this rectangle layer is compatible with swapchain.
-    pub fn is_compatible_with(&self, swapchain: &Swapchain) -> bool {
+    pub fn is_compatible_with<W>(&self, swapchain: &Swapchain<W>) -> bool
+        where W: Send + Sync
+    {
         // FIXME negative offset is not disallowed by spec, but semantically should not be possible
         debug_assert!(self.offset[0] >= 0);
         debug_assert!(self.offset[1] >= 0);
