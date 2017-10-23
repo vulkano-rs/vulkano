@@ -91,9 +91,7 @@ impl<'a> SubmitPresentBuilder<'a> {
     ///
     #[inline]
     pub unsafe fn add_swapchain<W>(&mut self, swapchain: &'a Swapchain<W>, image_num: u32,
-                                   present_region: Option<&'a PresentRegion>)
-        where W: Send + Sync
-    {
+                                   present_region: Option<&'a PresentRegion>) {
         debug_assert!(image_num < swapchain.num_images());
 
         if swapchain

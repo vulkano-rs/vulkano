@@ -41,17 +41,13 @@ use OomError;
 /// the screen. Once an image has been presented, it can no longer be used unless it is acquired
 /// again.
 // TODO: #[derive(Debug)]
-pub struct SwapchainImage<W>
-    where W: Send + Sync
-{
+pub struct SwapchainImage<W> {
     swapchain: Arc<Swapchain<W>>,
     image_offset: usize,
     view: UnsafeImageView,
 }
 
-impl<W> SwapchainImage<W>
-    where W: Send + Sync
-{
+impl<W> SwapchainImage<W> {
     /// Builds a `SwapchainImage` from raw components.
     ///
     /// This is an internal method that you shouldn't call.
@@ -88,9 +84,7 @@ impl<W> SwapchainImage<W>
     }
 }
 
-unsafe impl<W> ImageAccess for SwapchainImage<W>
-    where W: Send + Sync
-{
+unsafe impl<W> ImageAccess for SwapchainImage<W> {
     #[inline]
     fn inner(&self) -> ImageInner {
         self.my_image()
@@ -137,27 +131,21 @@ unsafe impl<W> ImageAccess for SwapchainImage<W>
     }
 }
 
-unsafe impl<W> ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage<W>
-    where W: Send + Sync
-{
+unsafe impl<W> ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage<W> {
     #[inline]
     fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
         Some(self.swapchain.format().decode_clear_value(value))
     }
 }
 
-unsafe impl<P,W> ImageContent<P> for SwapchainImage<W>
-    where W: Send + Sync
-{
+unsafe impl<P,W> ImageContent<P> for SwapchainImage<W> {
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
     }
 }
 
-unsafe impl<W> ImageViewAccess for SwapchainImage<W>
-    where W: Send + Sync
-{
+unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     #[inline]
     fn parent(&self) -> &ImageAccess {
         self

@@ -35,9 +35,7 @@ use vk;
 /// Represents a surface on the screen.
 ///
 /// Creating a `Surface` is platform-specific.
-pub struct Surface<W>
-    where W: Send + Sync
-{
+pub struct Surface<W> {
     window: W,
     instance: Arc<Instance>,
     surface: vk::SurfaceKHR,
@@ -47,9 +45,7 @@ pub struct Surface<W>
     has_swapchain: AtomicBool,
 }
 
-impl<W> Surface<W>
-    where W: Send + Sync
-{
+impl<W> Surface<W> {
     /// Creates a `Surface` given the raw handler.
     ///
     /// Be careful when using it
@@ -618,18 +614,14 @@ impl<W> Surface<W>
     }
 }
 
-unsafe impl <W> SurfaceSwapchainLock for Surface<W>
-    where W: Send + Sync
-{
+unsafe impl <W> SurfaceSwapchainLock for Surface<W> {
     #[inline]
     fn flag(&self) -> &AtomicBool {
         &self.has_swapchain
     }
 }
 
-unsafe impl <W> VulkanObject for Surface<W>
-    where W: Send + Sync
-{
+unsafe impl <W> VulkanObject for Surface<W> {
     type Object = vk::SurfaceKHR;
 
     #[inline]
@@ -638,18 +630,14 @@ unsafe impl <W> VulkanObject for Surface<W>
     }
 }
 
-impl <W> fmt::Debug for Surface<W>
-    where W: Send + Sync
-{
+impl <W> fmt::Debug for Surface<W> {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan surface {:?}>", self.surface)
     }
 }
 
-impl <W> Drop for Surface<W>
-    where W: Send + Sync
-{
+impl <W> Drop for Surface<W> {
     #[inline]
     fn drop(&mut self) {
         unsafe {

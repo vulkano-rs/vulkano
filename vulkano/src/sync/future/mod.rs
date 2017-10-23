@@ -239,8 +239,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_swapchain_present<W>(self, queue: Arc<Queue>, swapchain: Arc<Swapchain<W>>,
                               image_index: usize)
                               -> PresentFuture<Self,W>
-        where Self: Sized,
-              W: Send + Sync
+        where Self: Sized
     {
         swapchain::present(swapchain, self, queue, image_index)
     }
@@ -252,8 +251,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     fn then_swapchain_present_incremental<W>(self, queue: Arc<Queue>, swapchain: Arc<Swapchain<W>>,
                                           image_index: usize, present_region: PresentRegion)
                                           -> PresentFuture<Self,W>
-        where Self: Sized,
-              W: Send + Sync
+        where Self: Sized
     {
         swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
     }

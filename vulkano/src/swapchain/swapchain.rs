@@ -67,9 +67,7 @@ use vk;
 /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
 /// behavior may change).
 pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Duration>)
-                          -> Result<(usize, SwapchainAcquireFuture<W>), AcquireError>
-    where W: Send + Sync
-{
+                          -> Result<(usize, SwapchainAcquireFuture<W>), AcquireError> {
     let semaphore = Semaphore::from_pool(swapchain.device.clone())?;
     let fence = Fence::from_pool(swapchain.device.clone())?;
 
@@ -105,8 +103,7 @@ pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Durat
 /// swapchain.
 pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>, index: usize)
                   -> PresentFuture<F,W>
-    where F: GpuFuture,
-          W: Send + Sync
+    where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
 
@@ -137,8 +134,7 @@ pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
 pub fn present_incremental<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
                               index: usize, present_region: PresentRegion)
                               -> PresentFuture<F, W>
-    where F: GpuFuture,
-          W: Send + Sync
+    where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
 
@@ -161,9 +157,7 @@ pub fn present_incremental<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue:
 }
 
 /// Contains the swapping system and the images that can be shown on a surface.
-pub struct Swapchain<W>
-    where W: Send + Sync
-{
+pub struct Swapchain<W> {
     // The Vulkan device this swapchain was created with.
     device: Arc<Device>,
     // The surface, which we need to keep alive.
@@ -202,9 +196,7 @@ struct ImageEntry {
     undefined_layout: AtomicBool,
 }
 
-impl <W> Swapchain<W>
-    where W: Send + Sync
-{
+impl <W> Swapchain<W> {
     /// Builds a new swapchain. Allocates images who content can be made visible on a surface.
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
@@ -565,9 +557,7 @@ impl <W> Swapchain<W>
     }
 }
 
-unsafe impl<W> VulkanObject for Swapchain<W>
-    where W: Send + Sync
-{
+unsafe impl<W> VulkanObject for Swapchain<W> {
     type Object = vk::SwapchainKHR;
 
     #[inline]
@@ -576,26 +566,20 @@ unsafe impl<W> VulkanObject for Swapchain<W>
     }
 }
 
-unsafe impl<W> DeviceOwned for Swapchain<W>
-    where W: Send + Sync
-{
+unsafe impl<W> DeviceOwned for Swapchain<W> {
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl<W> fmt::Debug for Swapchain<W>
-    where W: Send + Sync
-{
+impl<W> fmt::Debug for Swapchain<W> {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan swapchain {:?}>", self.swapchain)
     }
 }
 
-impl<W> Drop for Swapchain<W>
-    where W: Send + Sync
-{
+impl<W> Drop for Swapchain<W> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -762,9 +746,7 @@ impl From<CapabilitiesError> for SwapchainCreationError {
 
 /// Represents the moment when the GPU will have access to a swapchain image.
 #[must_use]
-pub struct SwapchainAcquireFuture<W>
-    where W: Send + Sync
-{
+pub struct SwapchainAcquireFuture<W> {
     swapchain: Arc<Swapchain<W>>,
     image_id: usize,
     // Semaphore that is signalled when the acquire is complete. Empty if the acquire has already
@@ -776,9 +758,7 @@ pub struct SwapchainAcquireFuture<W>
     finished: AtomicBool,
 }
 
-impl<W> SwapchainAcquireFuture<W>
-    where W: Send + Sync
-{
+impl<W> SwapchainAcquireFuture<W> {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
     #[inline]
     pub fn image_id(&self) -> usize {
@@ -792,9 +772,7 @@ impl<W> SwapchainAcquireFuture<W>
     }
 }
 
-unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W>
-    where W: Send + Sync
-{
+unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     #[inline]
     fn cleanup_finished(&mut self) {
     }
@@ -865,18 +843,14 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W>
     }
 }
 
-unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W>
-    where W: Send + Sync
-{
+unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.swapchain.device
     }
 }
 
-impl<W> Drop for SwapchainAcquireFuture<W>
-    where W: Send + Sync
-{
+impl<W> Drop for SwapchainAcquireFuture<W> {
     fn drop(&mut self) {
         if !*self.finished.get_mut() {
             if let Some(ref fence) = self.fence {
@@ -975,8 +949,7 @@ impl From<Error> for AcquireError {
 /// Represents a swapchain image being presented on the screen.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct PresentFuture<P, W>
-    where P: GpuFuture,
-          W: Send + Sync
+    where P: GpuFuture
 {
     previous: P,
     queue: Arc<Queue>,
@@ -992,8 +965,7 @@ pub struct PresentFuture<P, W>
 }
 
 impl<P, W> PresentFuture<P, W>
-    where P: GpuFuture,
-          W: Send + Sync
+    where P: GpuFuture
 {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
     #[inline]
@@ -1009,8 +981,7 @@ impl<P, W> PresentFuture<P, W>
 }
 
 unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
-    where P: GpuFuture,
-          W: Send + Sync
+    where P: GpuFuture
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -1135,8 +1106,7 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
 }
 
 unsafe impl<P, W> DeviceOwned for PresentFuture<P, W>
-    where P: GpuFuture,
-          W: Send + Sync
+    where P: GpuFuture
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -1145,8 +1115,7 @@ unsafe impl<P, W> DeviceOwned for PresentFuture<P, W>
 }
 
 impl<P, W> Drop for PresentFuture<P, W>
-    where P: GpuFuture,
-          W: Send+Sync
+    where P: GpuFuture
 {
     fn drop(&mut self) {
         unsafe {
@@ -1181,9 +1150,7 @@ pub struct AcquiredImage {
 ///   a new one.
 pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Option<Duration>,
                                      semaphore: Option<&Semaphore>, fence: Option<&Fence>)
-                                              -> Result<AcquiredImage, AcquireError>
-    where W: Send + Sync
-{
+                                              -> Result<AcquiredImage, AcquireError> {
     let vk = swapchain.device.pointers();
 
     let timeout_ns = if let Some(timeout) = timeout {
