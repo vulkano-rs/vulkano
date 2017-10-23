@@ -3,6 +3,7 @@
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
+- Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
 
 # Version 0.7.2 (2017-10-09)
 
