@@ -48,9 +48,9 @@
 //! error.
 //!
 //! **Note that the `Surface` object is potentially unsafe**. It is your responsibility to
-//! keep the window alive for at least as long as the surface exists. If you implement the
-//! `WindowAbstract` trait for your window struct, `Surface` can keep a reference to that object,
-//! which will track this for you.
+//! keep the window alive for at least as long as the surface exists. In many cases Surface
+//! may be able to do this for you, if you pass it ownership of your Window (or a
+//! reference-counting container for it).
 //!
 //! ### Example
 //!
@@ -73,11 +73,17 @@
 //!     }
 //! };
 //!
-//! # fn build_window() -> *const u32 { ptr::null() }
+//! # use std::sync::Arc;
+//! # struct Window(*const u32);
+//! # impl Window {
+//! # fn hwnd(&self) -> *const u32 { self.0 }
+//! # }
+//! #
+//! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window();        // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null();     // Windows-specific object
-//!     Surface::from_hwnd(instance.clone(), hinstance, window, ()).unwrap()
+//!     Surface::from_hwnd(instance.clone(), hinstance, window.hwnd(), Arc::clone(&window)).unwrap()
 //! };
 //! ```
 //!

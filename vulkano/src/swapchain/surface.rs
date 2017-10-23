@@ -113,8 +113,6 @@ impl<W> Surface<W> {
             output
         };
 
-        // TODO: What "window" should we reference here? Should we just implement
-        // WindowAbstract for the Display, and track it?
         Ok(Arc::new(Surface {
                         window: (),
                         instance: instance.clone(),
