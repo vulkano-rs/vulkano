@@ -37,12 +37,12 @@ fn main() {
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
     let mut events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     let mut dimensions;
 
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
-                                                   window.surface().is_supported(q).unwrap_or(false))
+                                                   surface.is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
     let device_ext = vulkano::device::DeviceExtensions {
@@ -55,14 +55,14 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, mut images) = {
-        let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
+        let caps = surface.capabilities(physical).expect("failed to get surface capabilities");
 
         dimensions = caps.current_extent.unwrap_or([1024, 768]);
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count,
+        vulkano::swapchain::Swapchain::new(device.clone(), surface.clone(), caps.min_image_count,
                                            format, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            alpha,
@@ -149,7 +149,7 @@ fn main() {
         previous_frame_end.cleanup_finished();
         if recreate_swapchain {
 
-            dimensions = window.surface().capabilities(physical)
+            dimensions = surface.capabilities(physical)
                 .expect("failed to get surface capabilities")
                 .current_extent.unwrap_or([1024, 768]);
             
