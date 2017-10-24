@@ -29,7 +29,5 @@ fn main() {
             .join("glslangValidator")
     };
 
-    if let Err(_) = fs::hard_link(&path, &out_file) {
-        fs::copy(&path, &out_file).expect("failed to copy executable");
-    }
+    fs::copy(&path, &out_file).expect("failed to copy executable");
 }
