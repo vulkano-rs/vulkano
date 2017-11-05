@@ -30,7 +30,7 @@ fn main() {
     // `triangle` example if you haven't done so yet.
 
     let extensions = vulkano_win::required_extensions();
-    let instance = vulkano::instance::Instance::new(None, &extensions, &[]).expect("failed to create instance");
+    let instance = vulkano::instance::Instance::new(None, &extensions, None).expect("failed to create instance");
 
     let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
                             .next().expect("no device available");
@@ -152,7 +152,7 @@ fn main() {
             dimensions = window.surface().capabilities(physical)
                 .expect("failed to get surface capabilities")
                 .current_extent.unwrap_or([1024, 768]);
-            
+
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(vulkano::swapchain::SwapchainCreationError::UnsupportedDimensions) => {
