@@ -169,7 +169,7 @@ fn main() {
         let caps = window.surface().capabilities(physical)
                          .expect("failed to get surface capabilities");
         
-        dimensions = caps.current_extent.unwrap();
+        dimensions = caps.current_extent.unwrap_or([1024, 768]);
 
         // We choose the dimensions of the swapchain to match the current extent of the surface.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
