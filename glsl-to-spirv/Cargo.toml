@@ -12,4 +12,4 @@ categories = ["rendering::graphics-api"]
 tempdir = "0.3.5"
 
 [build-dependencies]
-cmake = "0.1.19"
+cmake = "0.1.27"

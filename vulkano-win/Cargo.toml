@@ -9,9 +9,9 @@ categories = ["rendering::graphics-api"]
 
 [dependencies]
 vulkano = { version = "0.7.0", path = "../vulkano" }
-winit = "0.7.0"
+winit = "0.8.0"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-metal-rs = "0.4.3"
-cocoa = "0.9"
-objc = "0.2"
+metal-rs = "0.5.2"
+cocoa = "0.11"
+objc = "0.2.2"
