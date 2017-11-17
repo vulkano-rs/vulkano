@@ -14,6 +14,7 @@ fn main() {
     if target.contains("apple-darwin") {
         println!("cargo:rustc-link-lib=c++");
         println!("cargo:rustc-link-lib=framework=MoltenVK");
+        println!("cargo:rustc-link-lib=framework=IOSurface");
         println!("cargo:rustc-link-lib=framework=QuartzCore");
         println!("cargo:rustc-link-lib=framework=Metal");
         println!("cargo:rustc-link-lib=framework=Foundation");
