@@ -31,6 +31,7 @@ use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
 use format::FormatTy;
+use format::PossibleCompressedFormatDesc;
 use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::Framebuffer;
 use framebuffer::FramebufferAbstract;
@@ -560,6 +561,100 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                                 num_bindings,
                                 params.raw_buffers.as_ptr(),
                                 params.offsets.as_ptr());
+    }
+
+    /// Calls `vkCmdCopyImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn copy_image<S, D, R>(&mut self, source: &S, source_layout: ImageLayout,
+                                   destination: &D, destination_layout: ImageLayout, regions: R)
+        where S: ?Sized + ImageAccess,
+              D: ?Sized + ImageAccess,
+              R: Iterator<Item = UnsafeCommandBufferBuilderImageCopy>
+    {
+        // TODO: The correct check here is that the uncompressed element size of the source is
+        // equal to the compressed element size of the destination.
+        debug_assert!(source.format().is_compressed() ||
+                      destination.format().is_compressed() ||
+                      source.format().size() == destination.format().size());
+
+        // Depth/Stencil formats are required to match exactly.
+        debug_assert!(!source.format().ty().is_depth_and_or_stencil() ||
+                      source.format() == destination.format());
+
+        debug_assert_eq!(source.samples(), destination.samples());
+        let source = source.inner();
+        debug_assert!(source.image.usage_transfer_source());
+        debug_assert!(source_layout == ImageLayout::General ||
+                      source_layout == ImageLayout::TransferSrcOptimal);
+
+        let destination = destination.inner();
+        debug_assert!(destination.image.usage_transfer_destination());
+        debug_assert!(destination_layout == ImageLayout::General ||
+                      destination_layout == ImageLayout::TransferDstOptimal);
+
+        let regions: SmallVec<[_; 8]> = regions
+            .filter_map(|copy| {
+                // TODO: not everything is checked here
+                debug_assert!(copy.source_base_array_layer + copy.layer_count <=
+                                  source.num_layers as u32);
+                debug_assert!(copy.destination_base_array_layer + copy.layer_count <=
+                                  destination.num_layers as u32);
+                debug_assert!(copy.source_mip_level < destination.num_mipmap_levels as u32);
+                debug_assert!(copy.destination_mip_level < destination.num_mipmap_levels as u32);
+
+                if copy.layer_count == 0 {
+                    return None;
+                }
+
+                Some(vk::ImageCopy {
+                    srcSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: copy.aspect.to_vk_bits(),
+                        mipLevel: copy.source_mip_level,
+                        baseArrayLayer: copy.source_base_array_layer + source.first_layer as u32,
+                        layerCount: copy.layer_count,
+                    },
+                    srcOffset: vk::Offset3D {
+                        x: copy.source_offset[0],
+                        y: copy.source_offset[1],
+                        z: copy.source_offset[2],
+                    },
+                    dstSubresource: vk::ImageSubresourceLayers {
+                        aspectMask: copy.aspect.to_vk_bits(),
+                        mipLevel: copy.destination_mip_level,
+                        baseArrayLayer: copy.destination_base_array_layer +
+                            destination.first_layer as u32,
+                        layerCount: copy.layer_count,
+                    },
+                    dstOffset: vk::Offset3D {
+                        x: copy.destination_offset[0],
+                        y: copy.destination_offset[1],
+                        z: copy.destination_offset[2],
+                    },
+                    extent: vk::Extent3D {
+                        width: copy.extent[0],
+                        height: copy.extent[1],
+                        depth: copy.extent[2],
+                    }
+                })
+            })
+            .collect();
+
+        if regions.is_empty() {
+            return;
+        }
+
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdCopyImage(cmd,
+                        source.image.internal_object(),
+                        source_layout as u32,
+                        destination.image.internal_object(),
+                        destination_layout as u32,
+                        regions.len() as u32,
+                        regions.as_ptr());
     }
 
     /// Calls `vkCmdBlitImage` on the builder.
@@ -1558,6 +1653,20 @@ pub struct UnsafeCommandBufferBuilderBufferImageCopy {
     pub image_layer_count: u32,
     pub image_offset: [i32; 3],
     pub image_extent: [u32; 3],
+}
+
+// TODO: move somewhere else?
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct UnsafeCommandBufferBuilderImageCopy {
+    pub aspect: UnsafeCommandBufferBuilderImageAspect,
+    pub source_mip_level: u32,
+    pub destination_mip_level: u32,
+    pub source_base_array_layer: u32,
+    pub destination_base_array_layer: u32,
+    pub layer_count: u32,
+    pub source_offset: [i32; 3],
+    pub destination_offset: [i32; 3],
+    pub extent: [u32; 3],
 }
 
 // TODO: move somewhere else?
