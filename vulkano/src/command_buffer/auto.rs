@@ -40,6 +40,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
+use command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use command_buffer::validity::*;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
@@ -544,6 +545,82 @@ impl<P> AutoCommandBufferBuilder<P> {
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass = Some((Box::new(framebuffer) as Box<_>, 0));
             self.subpass_secondary = secondary;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that copies an image to another.
+    ///
+    /// Copy operations have several restrictions:
+    ///
+    /// - Copy operations are only allowed on queue families that support transfer, graphics, or
+    ///   compute operations.
+    /// - The number of samples in the source and destination images must be equal.
+    /// - The size of the uncompressed element format of the source image must be equal to the
+    ///   compressed element format of the destination.
+    /// - If you copy between depth, stencil or depth-stencil images, the format of both images
+    ///   must match exactly.
+    /// - For two-dimensional images, the Z coordinate must be 0 for the image offsets and 1 for
+    ///   the extent. Same for the Y coordinate for one-dimensional images.
+    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
+    ///
+    /// If `layer_count` is superior to 1, the copy will happen between each individual layer as
+    /// if they were separate images.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the source or the destination was not created with `device`.
+    ///
+    pub fn copy_image<S, D>(mut self, source: S, source_offset: [i32; 3],
+                            source_base_array_layer: u32, source_mip_level: u32,
+                            destination: D, destination_offset: [i32; 3],
+                            destination_base_array_layer: u32, destination_mip_level: u32,
+                            extent: [u32; 3], layer_count: u32)
+                            -> Result<Self, CopyImageError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+
+            check_copy_image(self.device(),
+                             &source,
+                             source_offset,
+                             source_base_array_layer,
+                             source_mip_level,
+                             &destination,
+                             destination_offset,
+                             destination_base_array_layer,
+                             destination_mip_level,
+                             extent,
+                             layer_count)?;
+
+            let copy = UnsafeCommandBufferBuilderImageCopy {
+                // TODO: Allowing choosing a subset of the image aspects, but note that if color
+                // is included, neither depth nor stencil may.
+                aspect: UnsafeCommandBufferBuilderImageAspect {
+                    color: source.has_color(),
+                    depth: !source.has_color() &&
+                           source.has_depth() && destination.has_depth(),
+                    stencil: !source.has_color() &&
+                             source.has_stencil() && destination.has_stencil(),
+                },
+                source_mip_level,
+                destination_mip_level,
+                source_base_array_layer,
+                destination_base_array_layer,
+                layer_count,
+                source_offset,
+                destination_offset,
+                extent,
+            };
+
+            // TODO: Allow choosing layouts, but note that only Transfer*Optimal and General are
+            // valid.
+            self.inner
+                .copy_image(source, ImageLayout::TransferSrcOptimal,
+                            destination, ImageLayout::TransferDstOptimal,
+                            iter::once(copy))?;
             Ok(self)
         }
     }
@@ -1454,6 +1531,12 @@ err_gen!(BuildError {
 
 err_gen!(BeginRenderPassError {
              AutoCommandBufferBuilderContextError,
+             SyncCommandBufferBuilderError,
+         });
+
+err_gen!(CopyImageError {
+             AutoCommandBufferBuilderContextError,
+             CheckCopyImageError,
              SyncCommandBufferBuilderError,
          });
 

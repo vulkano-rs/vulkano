@@ -5,6 +5,7 @@
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
 - Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
 - Fix linking against MoltenVK >= 0.19.0 
+- Added `AutoCommandBufferBuilder::copy_image`
 
 # Version 0.7.2 (2017-10-09)
 
