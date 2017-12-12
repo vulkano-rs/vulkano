@@ -47,7 +47,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
             destination_stages: SmallVec::new(),
             signal_semaphores: SmallVec::new(),
             command_buffers: SmallVec::new(),
-            fence: 0,
+            fence: vk::Fence::NULL,
             marker: PhantomData,
         }
     }
@@ -72,7 +72,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// ```
     #[inline]
     pub fn has_fence(&self) -> bool {
-        self.fence != 0
+        !self.fence.is_null()
     }
 
     /// Adds an operation that signals a fence after this submission ends.
@@ -231,7 +231,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// Panics if both builders have a fence already set.
     // TODO: create multiple batches instead
     pub fn merge(mut self, other: Self) -> Self {
-        assert!(self.fence == 0 || other.fence == 0,
+        assert!(self.fence.is_null() || other.fence.is_null(),
                 "Can't merge two queue submits that both have a fence");
 
         self.wait_semaphores.extend(other.wait_semaphores);
@@ -239,7 +239,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
         self.signal_semaphores.extend(other.signal_semaphores);
         self.command_buffers.extend(other.command_buffers);
 
-        if self.fence == 0 {
+        if self.fence.is_null() {
             self.fence = other.fence;
         }
 

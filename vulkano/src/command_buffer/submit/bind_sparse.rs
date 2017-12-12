@@ -42,7 +42,7 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     pub fn new() -> SubmitBindSparseBuilder<'a> {
         SubmitBindSparseBuilder {
             infos: SmallVec::new(),
-            fence: 0,
+            fence: vk::Fence::NULL,
         }
     }
 
@@ -76,7 +76,7 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// ```
     #[inline]
     pub fn has_fence(&self) -> bool {
-        self.fence != 0
+        !self.fence.is_null()
     }
 
     /// Adds an operation that signals a fence after this submission ends.
@@ -128,7 +128,7 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     #[inline]
     pub fn merge(&mut self, other: SubmitBindSparseBuilder<'a>)
                  -> Result<(), SubmitBindSparseBuilder<'a>> {
-        if self.fence != 0 && other.fence != 0 {
+        if !self.fence.is_null() && !other.fence.is_null() {
             return Err(other);
         }
 
@@ -378,7 +378,7 @@ impl<'a> SubmitBindSparseBufferBindBuilder<'a> {
         self.binds.push(vk::SparseMemoryBind {
                             resourceOffset: offset as vk::DeviceSize,
                             size: size as vk::DeviceSize,
-                            memory: 0,
+                            memory: vk::DeviceMemory::NULL,
                             memoryOffset: 0,
                             flags: 0,
                         });
@@ -423,7 +423,7 @@ impl<'a> SubmitBindSparseImageOpaqueBindBuilder<'a> {
         self.binds.push(vk::SparseMemoryBind {
                             resourceOffset: offset as vk::DeviceSize,
                             size: size as vk::DeviceSize,
-                            memory: 0,
+                            memory: vk::DeviceMemory::NULL,
                             memoryOffset: 0,
                             flags: 0, // TODO: is that relevant?
                         });

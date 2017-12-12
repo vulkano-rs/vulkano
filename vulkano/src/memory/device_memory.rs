@@ -104,7 +104,7 @@ impl DeviceMemory {
                         Some(vk::MemoryDedicatedAllocateInfoKHR {
                                  sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
                                  pNext: ptr::null(),
-                                 image: 0,
+                                 image: vk::Image::NULL,
                                  buffer: buffer.internal_object(),
                              })
                     },
@@ -113,7 +113,7 @@ impl DeviceMemory {
                                  sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
                                  pNext: ptr::null(),
                                  image: image.internal_object(),
-                                 buffer: 0,
+                                 buffer: vk::Buffer::NULL,
                              })
                     },
                     DedicatedAlloc::None => {

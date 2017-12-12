@@ -62,8 +62,8 @@ impl StateCacher {
     pub fn new() -> StateCacher {
         StateCacher {
             dynamic_state: DynamicState::none(),
-            compute_pipeline: 0,
-            graphics_pipeline: 0,
+            compute_pipeline: vk::Pipeline::NULL,
+            graphics_pipeline: vk::Pipeline::NULL,
             compute_descriptor_sets: SmallVec::new(),
             graphics_descriptor_sets: SmallVec::new(),
             poisonned_descriptor_sets: false,
@@ -78,8 +78,8 @@ impl StateCacher {
     #[inline]
     pub fn invalidate(&mut self) {
         self.dynamic_state = DynamicState::none();
-        self.compute_pipeline = 0;
-        self.graphics_pipeline = 0;
+        self.compute_pipeline = vk::Pipeline::NULL;
+        self.graphics_pipeline = vk::Pipeline::NULL;
         self.compute_descriptor_sets = SmallVec::new();
         self.graphics_descriptor_sets = SmallVec::new();
         self.vertex_buffers = SmallVec::new();

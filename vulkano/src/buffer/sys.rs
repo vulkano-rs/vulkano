@@ -291,7 +291,7 @@ impl UnsafeBuffer {
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {
-        self.buffer
+        self.buffer.into()
     }
 }
 

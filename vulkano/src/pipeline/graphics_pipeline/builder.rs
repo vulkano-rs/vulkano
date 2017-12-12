@@ -1049,13 +1049,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     .inner()
                     .internal_object(),
                 subpass: self.render_pass.as_ref().unwrap().index(),
-                basePipelineHandle: 0, // TODO:
+                basePipelineHandle: vk::Pipeline::NULL, // TODO:
                 basePipelineIndex: -1, // TODO:
             };
 
             let mut output = mem::uninitialized();
             check_errors(vk.CreateGraphicsPipelines(device.internal_object(),
-                                                    0,
+                                                    vk::PipelineCache::NULL,
                                                     1,
                                                     &infos,
                                                     ptr::null(),

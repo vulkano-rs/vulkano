@@ -658,7 +658,7 @@ impl UnsafeDescriptorSet {
                     DescriptorWriteInner::Sampler(sampler) => {
                         image_descriptors.push(vk::DescriptorImageInfo {
                                                    sampler: sampler,
-                                                   imageView: 0,
+                                                   imageView: vk::ImageView::NULL,
                                                    imageLayout: 0,
                                                });
                     },
@@ -671,21 +671,21 @@ impl UnsafeDescriptorSet {
                     },
                     DescriptorWriteInner::StorageImage(view, layout) => {
                         image_descriptors.push(vk::DescriptorImageInfo {
-                                                   sampler: 0,
+                                                   sampler: vk::Sampler::NULL,
                                                    imageView: view,
                                                    imageLayout: layout,
                                                });
                     },
                     DescriptorWriteInner::SampledImage(view, layout) => {
                         image_descriptors.push(vk::DescriptorImageInfo {
-                                                   sampler: 0,
+                                                   sampler: vk::Sampler::NULL,
                                                    imageView: view,
                                                    imageLayout: layout,
                                                });
                     },
                     DescriptorWriteInner::InputAttachment(view, layout) => {
                         image_descriptors.push(vk::DescriptorImageInfo {
-                                                   sampler: 0,
+                                                   sampler: vk::Sampler::NULL,
                                                    imageView: view,
                                                    imageLayout: layout,
                                                });

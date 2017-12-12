@@ -110,7 +110,7 @@ impl<L> FunctionPointers<L> {
     pub fn new(loader: L) -> FunctionPointers<L>
         where L: Loader
     {
-        let entry_points = vk::EntryPoints::load(|name| unsafe { mem::transmute(loader.get_instance_proc_addr(0, name.as_ptr())) });
+        let entry_points = vk::EntryPoints::load(|name| unsafe { mem::transmute(loader.get_instance_proc_addr(vk::Instance::NULL, name.as_ptr())) });
 
         FunctionPointers {
             loader,
