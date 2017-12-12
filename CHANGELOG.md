@@ -8,6 +8,7 @@
 - Added `AutoCommandBufferBuilder::copy_image`
 - Added `VulkanObject::TYPE` to look up the `DebugReportObjectTypeEXT` of an object
 - Added `Device::set_object_name` and `Device::set_object_name_raw`
+- Added `GraphicsPipelineBuilder::with_auto_layout` to simplify use of dynamic buffers.
 
 # Version 0.7.2 (2017-10-09)
 
