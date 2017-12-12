@@ -591,6 +591,8 @@ unsafe impl SurfaceSwapchainLock for Surface {
 unsafe impl VulkanObject for Surface {
     type Object = vk::SurfaceKHR;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SURFACE_KHR_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::SurfaceKHR {
         self.surface

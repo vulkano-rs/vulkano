@@ -1542,6 +1542,8 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBufferBuilder<P> {
 unsafe impl<P> VulkanObject for UnsafeCommandBufferBuilder<P> {
     type Object = vk::CommandBuffer;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
         debug_assert!(self.cmd.is_some());
@@ -1949,6 +1951,8 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBuffer<P> {
 
 unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> {
     type Object = vk::CommandBuffer;
+
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {

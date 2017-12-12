@@ -103,6 +103,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
+use std::ffi::CStr;
 
 use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::StdDescriptorPool;
@@ -116,6 +117,7 @@ use Error;
 use OomError;
 use SynchronizedVulkanObject;
 use VulkanObject;
+use VulkanHandle;
 use check_errors;
 use vk;
 
@@ -465,6 +467,35 @@ impl Device {
     pub(crate) fn event_pool(&self) -> &Mutex<Vec<vk::Event>> {
         &self.event_pool
     }
+
+    /// Assigns a human-readable name to `object` for debugging purposes.
+    ///
+    /// # Panics
+    /// * If the `VK_EXT_debug_marker` device extension is not loaded.
+    /// * If `object` is not owned by this device.
+    pub fn set_object_name<T: VulkanObject + DeviceOwned>(&self, object: &T, name: &CStr) -> Result<(), OomError> {
+        assert!(object.device().internal_object() == self.internal_object());
+        unsafe { self.set_object_name_raw(T::TYPE, object.internal_object().value(), name) }
+    }
+
+    /// Assigns a human-readable name to `object` for debugging purposes.
+    ///
+    /// # Panics
+    /// * If the `VK_EXT_debug_marker` device extension is not loaded.
+    ///
+    /// # Safety
+    /// `object` must be a Vulkan handle owned by this device, and its type must be accurately described by `ty`.
+    pub unsafe fn set_object_name_raw(&self, ty: vk::DebugReportObjectTypeEXT, object: u64, name: &CStr) -> Result<(), OomError> {
+        let info = vk::DebugMarkerObjectNameInfoEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT,
+            pNext: ptr::null(),
+            objectType: ty,
+            object: object,
+            name: name.as_ptr(),
+        };
+        check_errors(self.vk.DebugMarkerSetObjectNameEXT(self.device, &info))?;
+        Ok(())
+    }
 }
 
 impl fmt::Debug for Device {
@@ -476,6 +507,8 @@ impl fmt::Debug for Device {
 
 unsafe impl VulkanObject for Device {
     type Object = vk::Device;
+
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT;
 
     #[inline]
     fn internal_object(&self) -> vk::Device {

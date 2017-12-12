@@ -482,6 +482,8 @@ unsafe impl DeviceOwned for Sampler {
 unsafe impl VulkanObject for Sampler {
     type Object = vk::Sampler;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::Sampler {
         self.sampler
