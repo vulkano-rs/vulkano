@@ -22,27 +22,23 @@ pub struct PipelineLayoutDescTweaks<T> {
     dynamic_buffers: FnvHashSet<(usize, usize)>,
 }
 
-impl<T> PipelineLayoutDescTweaks<T> {
-    pub fn new(inner: T) -> Self {
-        Self {
-            inner,
-            dynamic_buffers: FnvHashSet::default(),
-        }
-    }
-
-    /// Mark the descriptors at each `(set, binding)` as dynamic buffers.
-    pub fn set_dynamic_buffers<I: IntoIterator<Item=(usize, usize)>>(&mut self, bindings: I)
-        where T: PipelineLayoutDesc
+impl<T> PipelineLayoutDescTweaks<T>
+    where T: PipelineLayoutDesc
+{
+    /// Describe a layout, ensuring that each `(set, binding)` in `dynamic_buffers` is a dynamic buffers.
+    pub fn new<I>(inner: T, dynamic_buffers: I) -> Self
+        where I: IntoIterator<Item=(usize, usize)>
     {
-        self.dynamic_buffers.extend(bindings);
-        for &(set, binding) in &self.dynamic_buffers {
-            debug_assert!(self.inner.descriptor(set, binding)
+        let dynamic_buffers = dynamic_buffers.into_iter().collect();
+        for &(set, binding) in &dynamic_buffers {
+            debug_assert!(inner.descriptor(set, binding)
                           .map_or(false, |desc| match desc.ty {
                               DescriptorDescTy::Buffer(_) => true,
                               _ => false,
                           }),
                           "tried to make the non-buffer descriptor at set {} binding {} a dynamic buffer", set, binding);
         }
+        Self { inner, dynamic_buffers }
     }
 }
 
