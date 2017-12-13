@@ -107,10 +107,26 @@ unsafe impl<T: ?Sized> SafeDeref for Arc<T> {
 unsafe impl<T: ?Sized> SafeDeref for Box<T> {
 }
 
+pub trait VulkanHandle {
+    fn value(&self) -> u64;
+}
+
+impl VulkanHandle for usize {
+    #[inline]
+    fn value(&self) -> u64 { *self as u64 }
+}
+impl VulkanHandle for u64 {
+    #[inline]
+    fn value(&self) -> u64 { *self }
+}
+
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
     /// The type of the object.
-    type Object;
+    type Object: VulkanHandle;
+
+    /// The `DebugReportObjectTypeEXT` of the internal Vulkan handle.
+    const TYPE: vk::DebugReportObjectTypeEXT;
 
     /// Returns a reference to the object.
     fn internal_object(&self) -> Self::Object;
@@ -120,7 +136,7 @@ pub unsafe trait VulkanObject {
 // TODO: remove ; crappy design
 pub unsafe trait SynchronizedVulkanObject {
     /// The type of the object.
-    type Object;
+    type Object: VulkanHandle;
 
     /// Returns a reference to the object.
     fn internal_object_guard(&self) -> MutexGuard<Self::Object>;

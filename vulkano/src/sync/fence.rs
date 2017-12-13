@@ -307,6 +307,8 @@ unsafe impl<D> VulkanObject for Fence<D>
 {
     type Object = vk::Fence;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::Fence {
         self.fence

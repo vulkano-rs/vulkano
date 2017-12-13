@@ -457,6 +457,8 @@ pub struct FramebufferSys<'a>(vk::Framebuffer, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
     type Object = vk::Framebuffer;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::Framebuffer {
         self.0
