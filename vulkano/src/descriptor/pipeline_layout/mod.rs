@@ -65,9 +65,12 @@ pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutSuperset;
 pub use self::union::PipelineLayoutDescUnion;
 
+pub(crate) use self::tweaks::PipelineLayoutDescTweaks;
+
 mod empty;
 mod limits_check;
 mod runtime_desc;
 mod sys;
 mod traits;
 mod union;
+mod tweaks;
