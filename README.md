@@ -5,6 +5,7 @@
 [![Crates.io](https://img.shields.io/crates/v/vulkano.svg)](https://crates.io/crates/vulkano)
 [![Docs](https://docs.rs/vulkano/badge.svg)](https://docs.rs/vulkano)
 [![Build Status](https://travis-ci.org/vulkano-rs/vulkano.svg?branch=master)](https://travis-ci.org/vulkano-rs/vulkano)
+[![Gitter chat](https://badges.gitter.im/vulkano-rs/Lobby.png)](https://gitter.im/vulkano-rs/Lobby)
 
 See also [vulkano.rs](http://vulkano.rs).
 
