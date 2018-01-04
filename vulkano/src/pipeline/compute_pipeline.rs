@@ -212,6 +212,8 @@ pub struct ComputePipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
     type Object = vk::Pipeline;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
         self.0
@@ -271,6 +273,8 @@ unsafe impl<Pl> DeviceOwned for ComputePipeline<Pl> {
 // TODO: remove in favor of ComputePipelineAbstract?
 unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
     type Object = vk::Pipeline;
+
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {

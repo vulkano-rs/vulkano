@@ -201,6 +201,8 @@ unsafe impl<F, B> VulkanObject for BufferView<F, B>
 {
     type Object = vk::BufferView;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_BUFFER_VIEW_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::BufferView {
         self.view

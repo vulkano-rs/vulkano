@@ -164,6 +164,8 @@ unsafe impl DeviceOwned for Event {
 unsafe impl VulkanObject for Event {
     type Object = vk::Event;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::Event {
         self.event

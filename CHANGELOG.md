@@ -4,6 +4,11 @@
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
 - Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
+- Fix linking against MoltenVK >= 0.19.0 
+- Added `AutoCommandBufferBuilder::copy_image`
+- Added `VulkanObject::TYPE` to look up the `DebugReportObjectTypeEXT` of an object
+- Added `Device::set_object_name` and `Device::set_object_name_raw`
+- Added `GraphicsPipelineBuilder::with_auto_layout` to simplify use of dynamic buffers.
 
 # Version 0.7.2 (2017-10-09)
 

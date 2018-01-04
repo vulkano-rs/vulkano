@@ -732,6 +732,8 @@ impl UnsafeDescriptorSet {
 unsafe impl VulkanObject for UnsafeDescriptorSet {
     type Object = vk::DescriptorSet;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::DescriptorSet {
         self.set
