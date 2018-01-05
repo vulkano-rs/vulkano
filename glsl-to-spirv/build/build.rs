@@ -5,6 +5,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+// A tool used by `glsl-to-spirv`.
+struct Tool<'a> {
+    name: &'a str,
+    builder: &'a Fn(),
+    bin_path: &'a Path,
+}
+
 fn main() {
     // Determine if we are on Windows and cache the result.
     let on_windows = {
@@ -13,10 +20,23 @@ fn main() {
     };
 
     // A list of all tools we need to build.
-    // Format: (<tool name>, <tool Git subdirectory>, <path to binary file>)
     let tools = [
-        ("glslangValidator", "glslang", Path::new("bin/glslangValidator")),
-        ("spirv-opt", "spirv-tools", Path::new("bin/spirv-opt")),
+        // The glslangValidator is the reference GLSL compiler.
+        Tool {
+            name: "glslangValidator",
+            builder: &|| { cmake::build("glslang"); },
+            bin_path: Path::new("bin/glslangValidator"),
+        },
+        // The spirv-opt tool is used to optimize the generated shader code.
+        Tool {
+            name: "spirv-opt",
+            builder: &|| {
+                cmake::Config::new("spirv-tools")
+                    .define("SPIRV-Headers_SOURCE_DIR", "glsl-to-spirv/spirv-headers")
+                    .build();
+            },
+            bin_path: Path::new("bin/spirv-opt"),
+        },
     ];
 
     // Update all Git submodules at once.
@@ -36,7 +56,7 @@ fn main() {
     // Process all tools.
     for tool in tools.iter() {
         // The name of the tool binary.
-        let file = tool.0;
+        let file = tool.name;
 
         // Path to Windows pre-built binary.
         let exe_file = format!("build/{}.exe", file);
@@ -49,13 +69,11 @@ fn main() {
             // TODO: check the hash of the file to make sure that it is not altered
             Path::new(&exe_file).to_owned()
         } else {
-            // Determine the name of the CMake project to build.
-            let project_name = tool.1;
-            cmake::build(project_name);
+            // Build the tool.
+            (tool.builder)();
 
             // Determine the subpath where the tool binary is.
-            let bin_path = tool.2;
-            out_dir.join(bin_path)
+            out_dir.join(tool.bin_path)
         };
 
         // Determine the final file to copy to.
