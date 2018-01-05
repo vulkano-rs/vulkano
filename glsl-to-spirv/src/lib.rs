@@ -27,7 +27,7 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
     let temp_dir = tempdir::TempDir::new("glslang-compile").unwrap();
     let output_file = temp_dir.path().join("compilation_output.spv");
 
-    let mut command = Command::new(concat!(env!("OUT_DIR"), "/glslang_validator"));
+    let mut command = Command::new(concat!(env!("OUT_DIR"), "/glslangValidator"));
     command.arg("-V");
     command.arg("-l");
     command.arg("-o").arg(&output_file);
