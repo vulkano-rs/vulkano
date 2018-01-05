@@ -1,7 +1,9 @@
 [submodule "glsl-to-spirv/glslang"]
 	path = glsl-to-spirv/glslang
 	url = https://github.com/KhronosGroup/glslang
-
 [submodule "glsl-to-spirv/spirv-tools"]
 	path = glsl-to-spirv/spirv-tools
 	url = https://github.com/KhronosGroup/SPIRV-Tools
+[submodule "glsl-to-spirv/spirv-headers"]
+	path = glsl-to-spirv/spirv-headers
+	url = https://github.com/KhronosGroup/SPIRV-Headers
