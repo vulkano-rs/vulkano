@@ -62,7 +62,6 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
     // Optimize for performance.
     command.arg("-O");
 
-
     // Add the final linked module as the input.
     command.arg(&output_file);
 
