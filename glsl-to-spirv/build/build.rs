@@ -12,7 +12,27 @@ struct Tool<'a> {
     bin_path: &'a Path,
 }
 
+fn create_cmake_config(out_dir: &Path, tool_name: &str) -> cmake::Config {
+    let mut cfg = cmake::Config::new(tool_name);
+
+    // Create a different output dir for each tool.
+    let out_dir = out_dir.join(tool_name);
+    fs::create_dir_all(&out_dir).unwrap();
+
+    cfg.out_dir(out_dir);
+
+    // Build all tools in release mode.
+    cfg.profile("Release");
+
+    cfg
+}
+
 fn main() {
+    // Cache the output dir, since it's used in multiple places.
+    let out_dir = PathBuf::from(&env::var("OUT_DIR").unwrap());
+
+    let manifest_dir = PathBuf::from(&env::var("CARGO_MANIFEST_DIR").unwrap());
+
     // Determine if we are on Windows and cache the result.
     let on_windows = {
         let target = env::var("TARGET").unwrap();
@@ -24,18 +44,18 @@ fn main() {
         // The glslangValidator is the reference GLSL compiler.
         Tool {
             name: "glslangValidator",
-            builder: &|| { cmake::build("glslang"); },
-            bin_path: Path::new("bin/glslangValidator"),
+            builder: &|| { create_cmake_config(&out_dir, "glslang").build(); },
+            bin_path: Path::new("glslang/bin/glslangValidator"),
         },
         // The spirv-opt tool is used to optimize the generated shader code.
         Tool {
             name: "spirv-opt",
             builder: &|| {
-                cmake::Config::new("spirv-tools")
-                    .define("SPIRV-Headers_SOURCE_DIR", "glsl-to-spirv/spirv-headers")
+                create_cmake_config(&out_dir, "spirv-tools")
+                    .define("SPIRV-Headers_SOURCE_DIR", manifest_dir.join("spirv-headers"))
                     .build();
             },
-            bin_path: Path::new("bin/spirv-opt"),
+            bin_path: Path::new("spirv-tools/bin/spirv-opt"),
         },
     ];
 
@@ -49,9 +69,6 @@ fn main() {
             .arg("--init")
             .status();
     }
-
-    // Cache the output dir, since it's used in multiple places.
-    let out_dir = PathBuf::from(&env::var("OUT_DIR").unwrap());
 
     // Process all tools.
     for tool in tools.iter() {
