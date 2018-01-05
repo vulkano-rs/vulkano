@@ -4,4 +4,4 @@
 
 [submodule "glsl-to-spirv/spirv-tools"]
 	path = glsl-to-spirv/spirv-tools
-	urk = https://github.com/KhronosGroup/SPIRV-Tools
+	url = https://github.com/KhronosGroup/SPIRV-Tools
