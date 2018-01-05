@@ -117,9 +117,9 @@ fn main() {
         let exe_file = format!("build/{}.exe", file);
 
         // Rebuild if tool binary is updated.
-        // This will also lead to Git updating the submodules.
         println!("cargo:rerun-if-changed={}", exe_file);
 
+        // Determine the subpath where the tool binary is.
         let path = if on_windows {
             // TODO: check the hash of the file to make sure that it is not altered
             Path::new(&exe_file).to_owned()
@@ -127,7 +127,6 @@ fn main() {
             // Compile the tool.
             tool.build();
 
-            // Determine the subpath where the tool binary is.
             out_dir.join(tool.src_dir()).join(tool.bin_path())
         };
 
