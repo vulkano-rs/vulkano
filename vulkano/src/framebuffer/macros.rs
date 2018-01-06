@@ -327,8 +327,14 @@ macro_rules! ordered_passes_renderpass {
                     $(initial_layout = Some($init_layout);)*
                     $(final_layout = Some($final_layout);)*
                 })*
-
-                (initial_layout.unwrap(), final_layout.unwrap())
+                (
+                    initial_layout.expect(format!("Attachment {} is missing initial_layout, this is normally \
+                        automatically determined but you can manually specify it for an individual \
+                        attachment in the single_pass_renderpass! macro", attachment_num).as_ref()),
+                    final_layout.expect(format!("Attachment {} is missing final_layout, this is normally \
+                        automatically determined but you can manually specify it for an individual \
+                        attachment in the single_pass_renderpass! macro", attachment_num).as_ref())
+                )
             }
         }
 
