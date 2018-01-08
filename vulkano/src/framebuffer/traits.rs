@@ -128,12 +128,6 @@ pub unsafe trait RenderPassDescClearValues<C> {
     /// The format of the clear value **must** match the format of the attachment. Attachments
     /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
     ///
-    /// Only the attachments whose `LoadOp` is `Clear` should appear in the list returned by the
-    /// method. Other attachments simply should not appear. TODO: check that this is correct.
-    /// For example if attachments 1, 2 and 4 are `Clear` and attachments 0 and 3 are `Load`, then
-    /// the list returned by the function must have three elements which are the clear values of
-    /// attachments 1, 2 and 4.
-    ///
     /// # Safety
     ///
     /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format
