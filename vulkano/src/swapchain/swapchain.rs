@@ -1017,7 +1017,10 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::CommandBuffer(cb) => {
-                   cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
+                   // submit the command buffer by flushing previous.
+                   // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+                   self.previous.flush()?;
+                   
                    let mut builder = SubmitPresentBuilder::new();
                    builder.add_swapchain(&self.swapchain,
                                          self.image_id as u32,
@@ -1025,7 +1028,10 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::BindSparse(cb) => {
-                   cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
+                   // submit the command buffer by flushing previous.
+                   // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+                   self.previous.flush()?;
+
                    let mut builder = SubmitPresentBuilder::new();
                    builder.add_swapchain(&self.swapchain,
                                          self.image_id as u32,
