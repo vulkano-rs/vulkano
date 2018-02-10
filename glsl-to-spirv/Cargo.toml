@@ -1,6 +1,6 @@
 [package]
 name = "glsl-to-spirv"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Wrapper around the official GLSL to SPIR-V compiler"

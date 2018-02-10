@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.7.3 (2018-02-10)
+
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
