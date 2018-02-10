@@ -10,5 +10,5 @@ vulkano-shader-derive = { path = "../vulkano-shader-derive" }
 vulkano-win = { path = "../vulkano-win" }
 cgmath = "0.15.0"
 image = "0.18.0"
-winit = "0.10.0"
+winit = "0.11.0"
 time = "0.1.38"
