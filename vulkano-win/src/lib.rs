@@ -13,6 +13,7 @@ use std::fmt;
 #[cfg(target_os = "windows")]
 use std::ptr;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use vulkano::instance::Instance;
 use vulkano::instance::InstanceExtensions;
@@ -71,14 +72,38 @@ impl VkSurfaceBuild for WindowBuilder {
     }
 }
 
-pub struct Window {
-    window: winit::Window,
+pub trait IntoVkWindow<W> {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<Window<W>, CreationError>;
+}
+
+impl IntoVkWindow<winit::Window> for winit::Window {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<Window<winit::Window>, CreationError> {
+        let surface = try!(unsafe { winit_to_surface(instance, &self) });
+        Ok(Window {
+            window: self,
+            surface: surface,
+        })
+    }
+}
+
+impl IntoVkWindow<Arc<Mutex<winit::Window>>> for Arc<Mutex<winit::Window>> {
+    fn into_vk_win(self, instance: &Arc<Instance>) -> Result<Window<Arc<Mutex<winit::Window>>>, CreationError> {
+        let surface = try!(unsafe { winit_to_surface(instance, &self.lock().unwrap()) });
+        Ok(Window {
+            window: self,
+            surface: surface,
+        })
+    }
+}
+
+pub struct Window<W = winit::Window> {
+    window: W,
     surface: Arc<Surface>,
 }
 
-impl Window {
+impl <W> Window <W> {
     #[inline]
-    pub fn window(&self) -> &winit::Window {
+    pub fn window(&self) -> &W {
         &self.window
     }
 
@@ -87,6 +112,8 @@ impl Window {
         &self.surface
     }
 }
+
+
 
 /// Error that can happen when creating a window.
 #[derive(Debug)]
