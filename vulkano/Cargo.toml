@@ -16,5 +16,5 @@ fnv = "1.0.6"
 shared_library = "0.1.7"
 smallvec = "0.5.0"
 lazy_static = "0.2.9"
-vk-sys = { version = "0.3.2", path = "../vk-sys" }
+vk-sys = { version = "0.3.3", path = "../vk-sys" }
 half = "1"
