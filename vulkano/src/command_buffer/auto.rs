@@ -483,6 +483,8 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// you're inside the first subpass of the render pass. If `secondary` is false, you will only
     /// be able to add inline draw commands and not secondary command buffers.
     ///
+    /// C must contain exactly one clear value for each attachment in the framebuffer.
+    ///
     /// You must call this before you can add draw commands.
     #[inline]
     pub fn begin_render_pass<F, C>(mut self, framebuffer: F, secondary: bool, clear_values: C)
@@ -504,31 +506,47 @@ impl<P> AutoCommandBufferBuilder<P> {
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
-            for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate().filter(|&(_, ref desc)| { desc.load == LoadOp::Clear }) {
+            for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate() {
                 match clear_values_copy.next() {
-                    Some((clear_i, clear_value)) => match clear_value {
-                        ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None", 
-                            clear_i, atch_i, atch_desc.format.ty()),
-                        ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
-                           panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStenceil", 
-                               clear_i, atch_i, atch_desc.format.ty());
+                    Some((clear_i, clear_value)) => {
+                        if atch_desc.load == LoadOp::Clear {
+                            match clear_value {
+                                ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None",
+                                    clear_i, atch_i, atch_desc.format.ty()),
+                                ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
+                                   panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStencil",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                            }
                         }
-                    }, None => panic!("Not enough clear values")
+                        else {
+                            if clear_value != ClearValue::None {
+                                panic!("Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
+                                   clear_i, atch_i, clear_value);
+                            }
+                        }
+                    }
+                    None => panic!("Not enough clear values")
                 }
             }
             
