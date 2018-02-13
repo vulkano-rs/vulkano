@@ -66,8 +66,8 @@ use vk;
 ///
 /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
 /// behavior may change).
-pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
-                          -> Result<(usize, SwapchainAcquireFuture), AcquireError> {
+pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Duration>)
+                          -> Result<(usize, SwapchainAcquireFuture<W>), AcquireError> {
     let semaphore = Semaphore::from_pool(swapchain.device.clone())?;
     let fence = Fence::from_pool(swapchain.device.clone())?;
 
@@ -101,8 +101,8 @@ pub fn acquire_next_image(swapchain: Arc<Swapchain>, timeout: Option<Duration>)
 ///
 /// The actual behavior depends on the present mode that you passed when creating the
 /// swapchain.
-pub fn present<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index: usize)
-                  -> PresentFuture<F>
+pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>, index: usize)
+                  -> PresentFuture<F,W>
     where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
@@ -131,9 +131,9 @@ pub fn present<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>, index
 /// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
 ///
 /// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
-pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Queue>,
+pub fn present_incremental<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
                               index: usize, present_region: PresentRegion)
-                              -> PresentFuture<F>
+                              -> PresentFuture<F, W>
     where F: GpuFuture
 {
     assert!(index < swapchain.images.len());
@@ -157,11 +157,11 @@ pub fn present_incremental<F>(swapchain: Arc<Swapchain>, before: F, queue: Arc<Q
 }
 
 /// Contains the swapping system and the images that can be shown on a surface.
-pub struct Swapchain {
+pub struct Swapchain<W> {
     // The Vulkan device this swapchain was created with.
     device: Arc<Device>,
     // The surface, which we need to keep alive.
-    surface: Arc<Surface>,
+    surface: Arc<Surface<W>>,
     // The swapchain object.
     swapchain: vk::SwapchainKHR,
 
@@ -196,7 +196,7 @@ struct ImageEntry {
     undefined_layout: AtomicBool,
 }
 
-impl Swapchain {
+impl <W> Swapchain<W> {
     /// Builds a new swapchain. Allocates images who content can be made visible on a surface.
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
@@ -222,11 +222,11 @@ impl Swapchain {
     // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
     pub fn new<F, S>(
-        device: Arc<Device>, surface: Arc<Surface>, num_images: u32, format: F,
+        device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: F,
         dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
         transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode, clipped: bool,
-        old_swapchain: Option<&Arc<Swapchain>>)
-        -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError>
+        old_swapchain: Option<&Arc<Swapchain<W>>>)
+        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
         where F: FormatDesc,
               S: Into<SharingMode>
     {
@@ -249,7 +249,7 @@ impl Swapchain {
     /// Recreates the swapchain with new dimensions.
     pub fn recreate_with_dimension(
         &self, dimensions: [u32; 2])
-        -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
+        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
         Swapchain::new_inner(self.device.clone(),
                              self.surface.clone(),
                              self.num_images,
@@ -266,11 +266,11 @@ impl Swapchain {
                              Some(self))
     }
 
-    fn new_inner(device: Arc<Device>, surface: Arc<Surface>, num_images: u32, format: Format,
+    fn new_inner(device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: Format,
                  color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
-                 mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain>)
-                 -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
+                 mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain<W>>)
+                 -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
         assert_eq!(device.instance().internal_object(),
                    surface.instance().internal_object());
 
@@ -557,7 +557,7 @@ impl Swapchain {
     }
 }
 
-unsafe impl VulkanObject for Swapchain {
+unsafe impl<W> VulkanObject for Swapchain<W> {
     type Object = vk::SwapchainKHR;
 
     const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT;
@@ -568,20 +568,20 @@ unsafe impl VulkanObject for Swapchain {
     }
 }
 
-unsafe impl DeviceOwned for Swapchain {
+unsafe impl<W> DeviceOwned for Swapchain<W> {
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl fmt::Debug for Swapchain {
+impl<W> fmt::Debug for Swapchain<W> {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan swapchain {:?}>", self.swapchain)
     }
 }
 
-impl Drop for Swapchain {
+impl<W> Drop for Swapchain<W> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -748,8 +748,8 @@ impl From<CapabilitiesError> for SwapchainCreationError {
 
 /// Represents the moment when the GPU will have access to a swapchain image.
 #[must_use]
-pub struct SwapchainAcquireFuture {
-    swapchain: Arc<Swapchain>,
+pub struct SwapchainAcquireFuture<W> {
+    swapchain: Arc<Swapchain<W>>,
     image_id: usize,
     // Semaphore that is signalled when the acquire is complete. Empty if the acquire has already
     // happened.
@@ -760,7 +760,7 @@ pub struct SwapchainAcquireFuture {
     finished: AtomicBool,
 }
 
-impl SwapchainAcquireFuture {
+impl<W> SwapchainAcquireFuture<W> {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
     #[inline]
     pub fn image_id(&self) -> usize {
@@ -769,12 +769,12 @@ impl SwapchainAcquireFuture {
 
     /// Returns the corresponding swapchain.
     #[inline]
-    pub fn swapchain(&self) -> &Arc<Swapchain> {
+    pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
         &self.swapchain
     }
 }
 
-unsafe impl GpuFuture for SwapchainAcquireFuture {
+unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     #[inline]
     fn cleanup_finished(&mut self) {
     }
@@ -845,14 +845,14 @@ unsafe impl GpuFuture for SwapchainAcquireFuture {
     }
 }
 
-unsafe impl DeviceOwned for SwapchainAcquireFuture {
+unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.swapchain.device
     }
 }
 
-impl Drop for SwapchainAcquireFuture {
+impl<W> Drop for SwapchainAcquireFuture<W> {
     fn drop(&mut self) {
         if !*self.finished.get_mut() {
             if let Some(ref fence) = self.fence {
@@ -950,12 +950,12 @@ impl From<Error> for AcquireError {
 
 /// Represents a swapchain image being presented on the screen.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
-pub struct PresentFuture<P>
+pub struct PresentFuture<P, W>
     where P: GpuFuture
 {
     previous: P,
     queue: Arc<Queue>,
-    swapchain: Arc<Swapchain>,
+    swapchain: Arc<Swapchain<W>>,
     image_id: usize,
     present_region: Option<PresentRegion>,
     // True if `flush()` has been called on the future, which means that the present command has
@@ -966,7 +966,7 @@ pub struct PresentFuture<P>
     finished: AtomicBool,
 }
 
-impl<P> PresentFuture<P>
+impl<P, W> PresentFuture<P, W>
     where P: GpuFuture
 {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
@@ -977,12 +977,12 @@ impl<P> PresentFuture<P>
 
     /// Returns the corresponding swapchain.
     #[inline]
-    pub fn swapchain(&self) -> &Arc<Swapchain> {
+    pub fn swapchain(&self) -> &Arc<Swapchain<W>> {
         &self.swapchain
     }
 }
 
-unsafe impl<P> GpuFuture for PresentFuture<P>
+unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
     where P: GpuFuture
 {
     #[inline]
@@ -1113,7 +1113,7 @@ unsafe impl<P> GpuFuture for PresentFuture<P>
     }
 }
 
-unsafe impl<P> DeviceOwned for PresentFuture<P>
+unsafe impl<P, W> DeviceOwned for PresentFuture<P, W>
     where P: GpuFuture
 {
     #[inline]
@@ -1122,7 +1122,7 @@ unsafe impl<P> DeviceOwned for PresentFuture<P>
     }
 }
 
-impl<P> Drop for PresentFuture<P>
+impl<P, W> Drop for PresentFuture<P, W>
     where P: GpuFuture
 {
     fn drop(&mut self) {
@@ -1156,9 +1156,9 @@ pub struct AcquiredImage {
 /// - The semaphore and/or the fence must be kept alive until it is signaled.
 /// - The swapchain must not have been replaced by being passed as the old swapchain when creating
 ///   a new one.
-pub unsafe fn acquire_next_image_raw(swapchain: &Swapchain, timeout: Option<Duration>,
+pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Option<Duration>,
                                      semaphore: Option<&Semaphore>, fence: Option<&Fence>)
-                                     -> Result<AcquiredImage, AcquireError> {
+                                              -> Result<AcquiredImage, AcquireError> {
     let vk = swapchain.device.pointers();
 
     let timeout_ns = if let Some(timeout) = timeout {
