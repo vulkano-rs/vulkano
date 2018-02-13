@@ -1,6 +1,4 @@
-# Unreleased
-
-# Version 0.7.3 (2018-02-10)
+# Unreleased (major)
 
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
@@ -12,6 +10,10 @@
 - Added `VulkanObject::TYPE` to look up the `DebugReportObjectTypeEXT` of an object
 - Added `Device::set_object_name` and `Device::set_object_name_raw`
 - Added `GraphicsPipelineBuilder::with_auto_layout` to simplify use of dynamic buffers.
+
+# Version 0.7.3 (2018-02-10)
+
+*Yanked*
 
 # Version 0.7.2 (2017-10-09)
 
