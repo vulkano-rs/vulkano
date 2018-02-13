@@ -26,6 +26,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
+use command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::ShaderStages;
@@ -297,6 +298,135 @@ impl<P> SyncCommandBufferBuilder<P> {
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
             buffers: Vec::new(),
         }
+    }
+
+    /// Calls `vkCmdCopyImage` on the builder.
+    ///
+    /// Does nothing if the list of regions is empty, as it would be a no-op and isn't a valid
+    /// usage of the command anyway.
+    #[inline]
+    pub unsafe fn copy_image<S, D, R>(&mut self, source: S, source_layout: ImageLayout,
+                                      destination: D, destination_layout: ImageLayout, regions: R)
+                                      -> Result<(), SyncCommandBufferBuilderError>
+        where S: ImageAccess + Send + Sync + 'static,
+              D: ImageAccess + Send + Sync + 'static,
+              R: Iterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync + 'static
+    {
+        struct Cmd<S, D, R> {
+            source: Option<S>,
+            source_layout: ImageLayout,
+            destination: Option<D>,
+            destination_layout: ImageLayout,
+            regions: Option<R>,
+        }
+
+        impl<P, S, D, R> Command<P> for Cmd<S, D, R>
+            where S: ImageAccess + Send + Sync + 'static,
+                  D: ImageAccess + Send + Sync + 'static,
+                  R: Iterator<Item = UnsafeCommandBufferBuilderImageCopy>
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdCopyImage"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.copy_image(self.source.as_ref().unwrap(),
+                               self.source_layout,
+                               self.destination.as_ref().unwrap(),
+                               self.destination_layout,
+                               self.regions.take().unwrap());
+            }
+
+            fn into_final_command(mut self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                struct Fin<S, D>(S, D);
+                impl<S, D> FinalCommand for Fin<S, D>
+                    where S: ImageAccess + Send + Sync + 'static,
+                          D: ImageAccess + Send + Sync + 'static
+                {
+                    fn name(&self) -> &'static str {
+                        "vkCmdCopyImage"
+                    }
+                    fn image(&self, num: usize) -> &ImageAccess {
+                        if num == 0 {
+                            &self.0
+                        } else if num == 1 {
+                            &self.1
+                        } else {
+                            panic!()
+                        }
+                    }
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        if num == 0 {
+                            "source".into()
+                        } else if num == 1 {
+                            "destination".into()
+                        } else {
+                            panic!()
+                        }
+                    }
+                }
+
+                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
+                // without using an Option.
+                Box::new(Fin(self.source.take().unwrap(),
+                             self.destination.take().unwrap()))
+            }
+
+            fn image(&self, num: usize) -> &ImageAccess {
+                if num == 0 {
+                    self.source.as_ref().unwrap()
+                } else if num == 1 {
+                    self.destination.as_ref().unwrap()
+                } else {
+                    panic!()
+                }
+            }
+
+            fn image_name(&self, num: usize) -> Cow<'static, str> {
+                if num == 0 {
+                    "source".into()
+                } else if num == 1 {
+                    "destination".into()
+                } else {
+                    panic!()
+                }
+            }
+        }
+
+        self.append_command(Cmd {
+                                source: Some(source),
+                                source_layout,
+                                destination: Some(destination),
+                                destination_layout,
+                                regions: Some(regions),
+                            });
+        self.prev_cmd_resource(KeyTy::Image,
+                               0,
+                               false,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_read: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               source_layout,
+                               source_layout)?;
+        self.prev_cmd_resource(KeyTy::Image,
+                               1,
+                               true,
+                               PipelineStages {
+                                   transfer: true,
+                                   ..PipelineStages::none()
+                               },
+                               AccessFlagBits {
+                                   transfer_write: true,
+                                   ..AccessFlagBits::none()
+                               },
+                               destination_layout,
+                               destination_layout)?;
+        Ok(())
     }
 
     /// Calls `vkCmdBlitImage` on the builder.

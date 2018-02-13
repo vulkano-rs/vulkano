@@ -1,6 +1,6 @@
 [package]
 name = "glsl-to-spirv"
-version = "0.1.3"
+version = "0.1.4"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Wrapper around the official GLSL to SPIR-V compiler"
@@ -12,4 +12,4 @@ categories = ["rendering::graphics-api"]
 tempdir = "0.3.5"
 
 [build-dependencies]
-cmake = "0.1.19"
+cmake = "0.1.27"

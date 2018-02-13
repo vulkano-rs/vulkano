@@ -310,6 +310,8 @@ impl Display {
 unsafe impl VulkanObject for Display {
     type Object = vk::DisplayKHR;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::DisplayKHR {
         self.properties.display
@@ -377,6 +379,8 @@ impl DisplayMode {
 
 unsafe impl VulkanObject for DisplayMode {
     type Object = vk::DisplayModeKHR;
+
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT;
 
     #[inline]
     fn internal_object(&self) -> vk::DisplayModeKHR {

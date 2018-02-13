@@ -560,6 +560,8 @@ impl <W> Swapchain<W> {
 unsafe impl<W> VulkanObject for Swapchain<W> {
     type Object = vk::SwapchainKHR;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::SwapchainKHR {
         self.swapchain
@@ -1015,7 +1017,10 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::CommandBuffer(cb) => {
-                   cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
+                   // submit the command buffer by flushing previous.
+                   // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+                   self.previous.flush()?;
+                   
                    let mut builder = SubmitPresentBuilder::new();
                    builder.add_swapchain(&self.swapchain,
                                          self.image_id as u32,
@@ -1023,7 +1028,10 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
                    SubmitAnyBuilder::QueuePresent(builder)
                },
                SubmitAnyBuilder::BindSparse(cb) => {
-                   cb.submit(&queue.unwrap())?; // FIXME: wrong because build_submission can be called multiple times
+                   // submit the command buffer by flushing previous.
+                   // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+                   self.previous.flush()?;
+
                    let mut builder = SubmitPresentBuilder::new();
                    builder.add_swapchain(&self.swapchain,
                                          self.image_id as u32,

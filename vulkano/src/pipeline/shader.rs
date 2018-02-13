@@ -166,6 +166,8 @@ impl ShaderModule {
 unsafe impl VulkanObject for ShaderModule {
     type Object = vk::ShaderModule;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::ShaderModule {
         self.module

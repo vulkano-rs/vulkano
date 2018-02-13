@@ -783,6 +783,8 @@ impl UnsafeImage {
 unsafe impl VulkanObject for UnsafeImage {
     type Object = vk::Image;
 
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT;
+
     #[inline]
     fn internal_object(&self) -> vk::Image {
         self.image
@@ -1080,6 +1082,8 @@ impl UnsafeImageView {
 
 unsafe impl VulkanObject for UnsafeImageView {
     type Object = vk::ImageView;
+
+    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT;
 
     #[inline]
     fn internal_object(&self) -> vk::ImageView {

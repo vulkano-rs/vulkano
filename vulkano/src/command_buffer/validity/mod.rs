@@ -12,6 +12,7 @@
 pub use self::blit_image::{CheckBlitImageError, check_blit_image};
 pub use self::clear_color_image::{CheckClearColorImageError, check_clear_color_image};
 pub use self::copy_buffer::{CheckCopyBuffer, CheckCopyBufferError, check_copy_buffer};
+pub use self::copy_image::{CheckCopyImageError, check_copy_image};
 pub use self::copy_image_buffer::{CheckCopyBufferImageError, CheckCopyBufferImageTy,
                                   check_copy_buffer_image};
 pub use self::descriptor_sets::{CheckDescriptorSetsValidityError, check_descriptor_sets_validity};
@@ -26,6 +27,7 @@ pub use self::vertex_buffers::{CheckVertexBuffer, CheckVertexBufferError, check_
 mod blit_image;
 mod clear_color_image;
 mod copy_buffer;
+mod copy_image;
 mod copy_image_buffer;
 mod descriptor_sets;
 mod dispatch;

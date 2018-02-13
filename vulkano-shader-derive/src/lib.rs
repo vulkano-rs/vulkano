@@ -1,3 +1,67 @@
+//! Procedural Macro glue for compile-time compilation of GLSL into SPIR-V
+//!
+//! # Basic usage
+//!
+//! ```
+//! #[macro_use]
+//! extern crate vulkano_shader_derive;
+//! extern crate vulkano;
+//! # fn main() {}
+//! #[allow(unused)]
+//! mod vertex_shader {
+//!     #[derive(VulkanoShader)]
+//!     #[ty = "vertex"]
+//!     #[src = "
+//! #version 450
+//!
+//! layout(location = 0) in vec3 position;
+//!
+//! void main() {
+//!     gl_Position = vec4(position, 1.0);
+//! }
+//! "]
+//!     struct Dummy;
+//! }
+//! ```
+//!
+//! # Details
+//!
+//! Due to the current limitations of procedural shaders in Rust, the current
+//! functionality of this crate is to base everything off of deriving
+//! `VulkanoShader` for a dummy struct that never actually gets used. When
+//! derived, the unused struct itself will be replaced by the functionality
+//! needed to use the shader in a Vulkano application. Due to the fact that
+//! a lot of what is generated will never be used, it's a good idea to put
+//! `#[allow(unused)]` on the module itself if you don't want to see irrelevant
+//! errors.
+//!
+//! The options available are in the form of the following attributes:
+//!
+//! ## `#[ty = "..."]`
+//!
+//! This defines what shader type the given GLSL source will be compiled into.
+//! The type can be any of the following:
+//!
+//! * `vertex`
+//! * `fragment`
+//! * `geometry`
+//! * `tess_ctrl`
+//! * `tess_eval`
+//! * `compute`
+//!
+//! For details on what these shader types mean, [see Vulkano's documentation]
+//! (https://docs.rs/vulkano/0.7.2/vulkano/pipeline/index.html).
+//!
+//! ## `#[src = "..."]`
+//!
+//! Provides the raw GLSL source to be compiled in the form of a string. Cannot
+//! be used in conjunction with the `#[path]` attribute.
+//!
+//! ## `#[path = "..."]`
+//!
+//! Provides the path to the GLSL source to be compiled, relative to `Cargo.toml`.
+//! Cannot be used in conjunction with the `#[src]` attribute.
+
 extern crate glsl_to_spirv;
 extern crate proc_macro;
 extern crate syn;
