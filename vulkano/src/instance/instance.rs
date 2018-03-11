@@ -1032,6 +1032,23 @@ impl<'a> QueueFamily<'a> {
         self.physical_device.infos().queue_families[self.id as usize].queueCount as usize
     }
 
+    /// Returns the number of bits supported by timestamp operations. This can
+    /// be zero if timestamps are unsupported or in the range 36..64. Bits
+    /// outside this range are guaranteed to be zeros.
+    #[inline]
+    pub fn timestamp_valid_bits(&self) -> usize {
+        self.physical_device.infos().queue_families[self.id as usize].timestampValidBits as usize
+    }
+
+    /// Returns the minimum granularity supported for image transfers in terms
+    /// of `[width, height, depth]`
+    #[inline]
+    pub fn min_image_transfer_granularity(&self) -> [u32; 3] {
+        let ref granularity = self.physical_device.infos().queue_families[self.id as usize]
+            .minImageTransferGranularity;
+        [granularity.width, granularity.height, granularity.depth]
+    }
+
     /// Returns true if queues of this family can execute graphics operations.
     #[inline]
     pub fn supports_graphics(&self) -> bool {
