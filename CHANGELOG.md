@@ -1,4 +1,6 @@
-# Unreleased (major)
+# Unreleased
+
+# Version 0.8.0 (2018-03-11)
 
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
