@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-shader-derive"
-version = "0.7.3"
+version = "0.8.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
@@ -15,7 +15,7 @@ proc-macro = true
 [dependencies]
 glsl-to-spirv = { version = "0.1.2", path = "../glsl-to-spirv" }
 syn = { version = "0.11.11", features = ["aster", "visit"] }
-vulkano-shaders = { version = "0.7", path = "../vulkano-shaders" }
+vulkano-shaders = { version = "0.8", path = "../vulkano-shaders" }
 
 [dev-dependencies]
-vulkano = "0.7.2"
+vulkano = { version = "0.8", path = "../vulkano" }

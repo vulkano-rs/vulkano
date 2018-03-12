@@ -1,7 +1,10 @@
-# Unreleased (major)
+# Unreleased
+
+# Version 0.8.0 (2018-03-11)
 
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
+- Allow `Surface` to own the window it references.
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
 - Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
 - Fix linking against MoltenVK >= 0.19.0 
