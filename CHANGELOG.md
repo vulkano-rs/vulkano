@@ -1,5 +1,7 @@
 # Unreleased
 
+- Updated dependencies to latest versions.
+
 # Version 0.8.0 (2018-03-11)
 
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
