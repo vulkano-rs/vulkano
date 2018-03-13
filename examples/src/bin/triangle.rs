@@ -56,7 +56,6 @@ use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
-use std::iter;
 use std::sync::Arc;
 use std::mem;
 
