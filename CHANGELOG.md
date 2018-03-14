@@ -1,6 +1,8 @@
 # Unreleased
 
-- Updated dependencies to latest versions.
+# Version 0.9.0 (2018-03-13)
+
+- Updated winit to version 0.11.
 
 # Version 0.8.0 (2018-03-11)
 
