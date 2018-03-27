@@ -9,7 +9,7 @@ build = "build/build.rs"
 categories = ["rendering::graphics-api"]
 
 [dependencies]
-tempdir = "0.3.5"
+tempfile = "3"
 
 [build-dependencies]
 cmake = "0.1.27"

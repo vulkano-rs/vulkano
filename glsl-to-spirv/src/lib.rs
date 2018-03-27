@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-extern crate tempdir;
+extern crate tempfile;
 
 use std::fs::File;
 use std::io::Write;
@@ -24,7 +24,7 @@ pub fn compile(code: &str, ty: ShaderType) -> Result<SpirvOutput, String> {
 fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
     where I: IntoIterator<Item = (&'a str, ShaderType)>
 {
-    let temp_dir = tempdir::TempDir::new("glslang-compile").unwrap();
+    let temp_dir = tempfile::tempdir().unwrap();
     let output_file = temp_dir.path().join("compilation_output.spv");
 
     let mut command = Command::new(concat!(env!("OUT_DIR"), "/glslang_validator"));
