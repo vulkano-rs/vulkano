@@ -67,9 +67,10 @@ extern crate proc_macro;
 extern crate syn;
 extern crate vulkano_shaders;
 
-use std::path::Path;
+use std::env;
 use std::fs::File;
 use std::io::Read;
+use std::path::Path;
 
 use proc_macro::TokenStream;
 
@@ -80,21 +81,23 @@ enum SourceKind {
 
 #[proc_macro_derive(VulkanoShader, attributes(src, path, ty))]
 pub fn derive(input: TokenStream) -> TokenStream {
-    let syn_item = syn::parse_macro_input(&input.to_string()).unwrap();
+    let syn_item: syn::DeriveInput = syn::parse(input).unwrap();
 
     let source_code = {
         let mut iter = syn_item.attrs.iter().filter_map(|attr| {
-            match attr.value {
-                syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "src" => {
-                    Some(SourceKind::Src(val.clone()))
-                },
+            attr.interpret_meta().and_then(|meta| {
+                match meta {
+                    syn::Meta::NameValue(syn::MetaNameValue { ident, lit: syn::Lit::Str(lit_str), .. }) => {
+                        match ident.as_ref() {
+                            "src"  => Some(SourceKind::Src(lit_str.value())),
+                            "path" => Some(SourceKind::Path(lit_str.value())),
+                            _      => None,
+                        }
+                    },
 
-                syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "path" => {
-                    Some(SourceKind::Path(val.clone()))
-                },
-
-                _ => None
-            }
+                    _ => None
+                }
+            })
         });
 
         let source = iter.next().expect("No source attribute given ; put #[src = \"...\"] or #[path = \"...\"]");
@@ -107,7 +110,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             SourceKind::Src(source) => source,
 
             SourceKind::Path(path) => {
-                let root = std::env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+                let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
                 let full_path = Path::new(&root).join(&path);
 
                 if full_path.is_file() {
@@ -124,12 +127,18 @@ pub fn derive(input: TokenStream) -> TokenStream {
     };
 
     let ty_str = syn_item.attrs.iter().filter_map(|attr| {
-        match attr.value {
-            syn::MetaItem::NameValue(ref i, syn::Lit::Str(ref val, _)) if i == "ty" => {
-                Some(val.clone())
-            },
-            _ => None
-        }
+        attr.interpret_meta().and_then(|meta| {
+            match meta {
+                syn::Meta::NameValue(syn::MetaNameValue { ident, lit: syn::Lit::Str(lit_str), .. }) => {
+                    match ident.as_ref() {
+                        "ty" => Some(lit_str.value()),
+                        _    => None
+                    }
+                }
+
+                _ => None
+            }
+        })
     }).next().expect("Can't find `ty` attribute ; put #[ty = \"vertex\"] for example.");
 
     let ty = match &ty_str[..] {
