@@ -1,5 +1,7 @@
 # Unreleased
 
+- Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
+
 # Version 0.9.0 (2018-03-13)
 
 - Updated winit to version 0.11.

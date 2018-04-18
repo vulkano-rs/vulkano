@@ -40,10 +40,6 @@ after_success:
     - |
         [ $TRAVIS_BRANCH = master ] &&
         [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path glsl-to-spirv/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
         cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
     - |
         [ $TRAVIS_BRANCH = master ] &&

@@ -62,8 +62,8 @@
 //! Provides the path to the GLSL source to be compiled, relative to `Cargo.toml`.
 //! Cannot be used in conjunction with the `#[src]` attribute.
 
-extern crate glsl_to_spirv;
 extern crate proc_macro;
+extern crate shaderc;
 extern crate syn;
 extern crate vulkano_shaders;
 
@@ -73,6 +73,7 @@ use std::io::Read;
 use std::path::Path;
 
 use proc_macro::TokenStream;
+use shaderc::{Compiler, CompileOptions, TargetEnv};
 
 enum SourceKind {
     Src(String),
@@ -142,19 +143,31 @@ pub fn derive(input: TokenStream) -> TokenStream {
     }).next().expect("Can't find `ty` attribute ; put #[ty = \"vertex\"] for example.");
 
     let ty = match &ty_str[..] {
-        "vertex" => glsl_to_spirv::ShaderType::Vertex,
-        "fragment" => glsl_to_spirv::ShaderType::Fragment,
-        "geometry" => glsl_to_spirv::ShaderType::Geometry,
-        "tess_ctrl" => glsl_to_spirv::ShaderType::TessellationControl,
-        "tess_eval" => glsl_to_spirv::ShaderType::TessellationEvaluation,
-        "compute" => glsl_to_spirv::ShaderType::Compute,
+        "vertex" => shaderc::ShaderKind::Vertex,
+        "fragment" => shaderc::ShaderKind::Fragment,
+        "geometry" => shaderc::ShaderKind::Geometry,
+        "tess_ctrl" => shaderc::ShaderKind::TessControl,
+        "tess_eval" => shaderc::ShaderKind::TessEvaluation,
+        "compute" => shaderc::ShaderKind::Compute,
         _ => panic!("Unexpected shader type ; valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
     };
 
-    let spirv_data = match glsl_to_spirv::compile(&source_code, ty) {
+    let mut compiler = Compiler::new().expect("failed to create GLSL compiler");
+    let mut compile_options = CompileOptions::new().expect("failed to initialize compile options");
+    compile_options.set_target_env(TargetEnv::Vulkan, 0);
+    let content = match compiler.compile_into_spirv(
+        &source_code,
+        ty,
+        "shader.glsl",
+        "main",
+        Some(&compile_options),
+    ) {
         Ok(compiled) => compiled,
-        Err(message) => panic!("{}\nfailed to compile shader", message),
+        Err(error) => panic!("{}\nfailed to compile shader", error),
     };
-
-    vulkano_shaders::reflect("Shader", spirv_data).unwrap().parse().unwrap()
+    
+    vulkano_shaders::reflect("Shader", content.as_binary())
+        .unwrap()
+        .parse()
+        .unwrap()
 }

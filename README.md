@@ -70,14 +70,10 @@ This repository contains six libraries:
   easily integrate your GLSL shaders within the rest of your source code.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
-- `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`. `glsl-to-spirv` is an
-  implementation detail that you don't need to use manually if you use vulkano.
 - `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.
 
 Once procedural macros are stabilized in Rust, the `vulkano-shaders` and `vulkano-shader-derive`
-crates will be merged with the `vulkano` crate. The `glsl-to-spirv` crate is an implementation
-detail of vulkano and is not supposed to be used directly if you use vulkano. You are, however,
-free to use it if you want to write an alternative to vulkano.
+crates will be merged with the `vulkano` crate.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
 driver is up to date before doing so.
