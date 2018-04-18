@@ -29,10 +29,11 @@ What does vulkano do?
 - Tries to be convenient to use. Nobody is going to use a library that requires you to browse
   the documentation for hours for every single operation.
 
-Note that vulkano does **not** require you to install the official Vulkan SDK. This is not
-something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
+Note that in general vulkano does **not** require you to install the official Vulkan SDK. This is
+not something specific to vulkano (you don't need the SDK to write programs that use Vulkan, even
 without vulkano), but many people are unaware of that and install the SDK thinking that it is
-required.
+required. However, macOS and iOS platforms do require a little more Vulkan setup since it is not
+natively supported. See below for more details.
 
 ## Development status
 
@@ -45,6 +46,22 @@ will likely be straight-forward to fix in user code.
 To get started you are encouraged to read the examples in
 [the `vulkano-examples` repository](https://github.com/vulkano-rs/vulkano-examples), starting with
 [the `triangle` example](https://github.com/vulkano-rs/vulkano-examples/blob/master/triangle/main.rs).
+
+## macOS and iOS Setup
+
+Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
+a Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
+and iOS platforms.
+
+The easiest way to get vulkano up and running on macOS is to install the 
+[Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). Vulkano will by default, as it does on
+other platforms, look for `libvulkan.1.dylib` (included as part of the SDK). Note that it is still
+possible to link with the MoltenVK framework (as vulkano did in previous versions) by adding the
+appropriate cargo output lines to your build script and implementing your own
+`vulkano::instance::loader::Loader` that calls the MoltenVK `vkGetInstanceProcAddr` implementation.
+
+On iOS vulkano links directly to the MoltenVK framework. There is nothing else to do besides
+installing it. Note that the Vulkan SDK for macOS also comes with the iOS framework.
 
 ## Donate
 
