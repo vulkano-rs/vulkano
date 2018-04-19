@@ -1,5 +1,6 @@
 # Unreleased
 
+- Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
 
 # Version 0.9.0 (2018-03-13)
