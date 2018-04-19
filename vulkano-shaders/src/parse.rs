@@ -9,7 +9,7 @@
 
 use enums::*;
 
-/// Parses a SPIR-V document from a list of words.
+/// Parses a SPIR-V document from a list of instructions.
 pub fn parse_spirv(i: &[u32]) -> Result<Spirv, ParseError> {
     if i.len() < 5 {
         return Err(ParseError::MissingHeader);
@@ -364,6 +364,12 @@ mod test {
     #[test]
     fn test() {
         let data = include_bytes!("../tests/frag.spv");
-        parse::parse_spirv(data).unwrap();
+        let insts: Vec<_> = data.chunks(4)
+            .map(|c| {
+                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
+            })
+            .collect();
+
+        parse::parse_spirv(&insts).unwrap();
     }
 }

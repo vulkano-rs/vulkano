@@ -17,7 +17,9 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
-pub use shaderc::{Compiler, CompileOptions, ShaderKind, TargetEnv};
+use shaderc::{Compiler, CompileOptions, TargetEnv};
+
+pub use shaderc::{CompilationArtifact, ShaderKind};
 pub use parse::ParseError;
 
 mod descriptor_sets;
@@ -55,24 +57,21 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
         let mut file_output = File::create(&destination.join("shaders").join(shader))
             .expect("failed to open shader output");
 
-        let mut compiler = Compiler::new().expect("failed to create GLSL compiler");
-        let mut compile_options =
-            CompileOptions::new().expect("failed to initialize compile options");
-        compile_options.set_target_env(TargetEnv::Vulkan, 0);
-        let content = match compiler.compile_into_spirv(
-            &shader_content,
-            ty,
-            "shader.glsl",
-            "main",
-            Some(&compile_options),
-        ) {
-            Ok(compiled) => compiled,
-            Err(error) => panic!("{}\nfailed to compile shader", error),
-        };
-
+        let content = compile(&shader_content, ty).unwrap();
         let output = reflect("Shader", content.as_binary()).unwrap();
         write!(file_output, "{}", output).unwrap();
     }
+}
+
+pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String> {
+    let mut compiler = Compiler::new().expect("failed to create GLSL compiler");
+    let mut compile_options = CompileOptions::new().ok_or(String::from(""))?;
+    compile_options.set_target_env(TargetEnv::Vulkan, 0);
+    let content = compiler
+        .compile_into_spirv(&code, ty, "shader.glsl", "main", Some(&compile_options))
+        .map_err(|e| e.to_string())?;
+
+    Ok(content)
 }
 
 pub fn reflect(name: &str, spirv: &[u32]) -> Result<String, Error> {

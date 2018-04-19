@@ -63,7 +63,6 @@
 //! Cannot be used in conjunction with the `#[src]` attribute.
 
 extern crate proc_macro;
-extern crate shaderc;
 extern crate syn;
 extern crate vulkano_shaders;
 
@@ -73,7 +72,6 @@ use std::io::Read;
 use std::path::Path;
 
 use proc_macro::TokenStream;
-use shaderc::{Compiler, CompileOptions, TargetEnv};
 
 enum SourceKind {
     Src(String),
@@ -143,28 +141,15 @@ pub fn derive(input: TokenStream) -> TokenStream {
     }).next().expect("Can't find `ty` attribute ; put #[ty = \"vertex\"] for example.");
 
     let ty = match &ty_str[..] {
-        "vertex" => shaderc::ShaderKind::Vertex,
-        "fragment" => shaderc::ShaderKind::Fragment,
-        "geometry" => shaderc::ShaderKind::Geometry,
-        "tess_ctrl" => shaderc::ShaderKind::TessControl,
-        "tess_eval" => shaderc::ShaderKind::TessEvaluation,
-        "compute" => shaderc::ShaderKind::Compute,
+        "vertex" => vulkano_shaders::ShaderKind::Vertex,
+        "fragment" => vulkano_shaders::ShaderKind::Fragment,
+        "geometry" => vulkano_shaders::ShaderKind::Geometry,
+        "tess_ctrl" => vulkano_shaders::ShaderKind::TessControl,
+        "tess_eval" => vulkano_shaders::ShaderKind::TessEvaluation,
+        "compute" => vulkano_shaders::ShaderKind::Compute,
         _ => panic!("Unexpected shader type ; valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
     };
-
-    let mut compiler = Compiler::new().expect("failed to create GLSL compiler");
-    let mut compile_options = CompileOptions::new().expect("failed to initialize compile options");
-    compile_options.set_target_env(TargetEnv::Vulkan, 0);
-    let content = match compiler.compile_into_spirv(
-        &source_code,
-        ty,
-        "shader.glsl",
-        "main",
-        Some(&compile_options),
-    ) {
-        Ok(compiled) => compiled,
-        Err(error) => panic!("{}\nfailed to compile shader", error),
-    };
+    let content = vulkano_shaders::compile(&source_code, ty).unwrap();
     
     vulkano_shaders::reflect("Shader", content.as_binary())
         .unwrap()
