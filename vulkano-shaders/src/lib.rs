@@ -130,6 +130,8 @@ pub struct {name} {{
     shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
 }}
 
+pub const SPIRV_BINARY: &[u8] = &[{spirv_data}];
+
 impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
@@ -139,7 +141,8 @@ impl {name} {{
     {{
 
         "#,
-            name = name
+            name = name,
+            spirv_data = spirv_data,
         ));
 
         // checking whether each required capability is enabled in the vulkan device
@@ -162,10 +165,8 @@ impl {name} {{
         output.push_str(&format!(
             r#"
         unsafe {{
-            let data = [{spirv_data}];
-
             Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
+                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, SPIRV_BINARY))
             }})
         }}
     }}
@@ -178,7 +179,6 @@ impl {name} {{
     }}
         "#,
             name = name,
-            spirv_data = spirv_data
         ));
 
         // writing one method for each entry point of this module
