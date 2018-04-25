@@ -136,7 +136,19 @@ impl {name} {{
     /// Loads the shader in Vulkan as a `ShaderModule`.
     #[inline]
     #[allow(unsafe_code)]
+    #[allow(dead_code)]
     pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
+                -> Result<{name}, ::vulkano::OomError>
+    {{
+        unsafe {{
+            Self::load_binary(device, SPIRV_BINARY)
+        }}
+    }}
+
+    /// Loads the shader in Vulkan as a `ShaderModule`.
+    #[inline]
+    #[allow(unsafe_code)]
+    pub unsafe fn load_binary(device: ::std::sync::Arc<::vulkano::device::Device>, spirv_binary: &[u8])
                 -> Result<{name}, ::vulkano::OomError>
     {{
 
@@ -164,11 +176,9 @@ impl {name} {{
         // follow-up of the header
         output.push_str(&format!(
             r#"
-        unsafe {{
-            Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, SPIRV_BINARY))
-            }})
-        }}
+        Ok({name} {{
+            shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, spirv_binary))
+        }})
     }}
 
     /// Returns the module that was created.
