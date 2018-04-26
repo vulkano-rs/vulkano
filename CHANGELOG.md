@@ -1,6 +1,7 @@
 # Unreleased
 
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
+- Allow applications to access the instance and device pointers
 
 # Version 0.9.0 (2018-03-13)
 

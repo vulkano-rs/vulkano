@@ -427,7 +427,7 @@ impl Instance {
 
     /// Grants access to the Vulkan functions of the instance.
     #[inline]
-    pub(crate) fn pointers(&self) -> &vk::InstancePointers {
+    pub fn pointers(&self) -> &vk::InstancePointers {
         &self.vk
     }
 
