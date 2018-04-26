@@ -1,6 +1,7 @@
 # Unreleased
 
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
+- Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
 
 # Version 0.9.0 (2018-03-13)
 
