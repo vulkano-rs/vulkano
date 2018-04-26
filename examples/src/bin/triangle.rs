@@ -473,7 +473,7 @@ void main() {
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
                 _ => ()
             }
         });

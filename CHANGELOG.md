@@ -1,6 +1,7 @@
 # Unreleased
 
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
+- Updated winit to version 0.13.
 
 # Version 0.9.0 (2018-03-13)
 
