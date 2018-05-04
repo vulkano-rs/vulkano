@@ -24,6 +24,7 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -143,10 +144,11 @@ fn main() {
 
     let mut recreate_swapchain = false;
 
-    let mut previous_frame_end = Box::new(tex_future) as Box<GpuFuture>;
+    let mut previous_frame_end_gpu = Box::new(tex_future) as Box<GpuFuture>;
+    let mut previous_frame_end_fence: Option<Arc<vulkano::sync::FenceSignalFuture<_>>> = None;
 
     loop {
-        previous_frame_end.cleanup_finished();
+        previous_frame_end_gpu.cleanup_finished();
         if recreate_swapchain {
 
             dimensions = surface.capabilities(physical)
@@ -208,22 +210,30 @@ fn main() {
             .end_render_pass().unwrap()
             .build().unwrap();
 
-        let future = previous_frame_end.join(future)
+        if let &mut Some(ref mut previous_frame_end_fence) = &mut previous_frame_end_fence {
+            previous_frame_end_fence.wait(Some(Duration::new(1, 0))).unwrap();
+        }
+
+        let future = previous_frame_end_gpu.join(future)
             .then_execute(queue.clone(), cb).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush();
 
         match future {
             Ok(future) => {
-                previous_frame_end = Box::new(future) as Box<_>;
+                let arc = Arc::new(future);
+                previous_frame_end_gpu = Box::new(arc.clone()) as Box<_>;
+                previous_frame_end_fence = Some(arc);
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_fence = None;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_fence = None;
             }
         }
 

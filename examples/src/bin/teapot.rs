@@ -25,6 +25,7 @@ use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -130,22 +131,22 @@ fn main() {
         .depth_stencil_simple_depth()
         .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
         .build(device.clone())
-                            .unwrap());
+        .unwrap());
+
     let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
-
     let mut recreate_swapchain = false;
-
-    let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end_fence: Option<Arc<vulkano::sync::FenceSignalFuture<_>>> = None;
     let rotation_start = std::time::Instant::now();
 
     loop {
-        previous_frame.cleanup_finished();
+        previous_frame_end_gpu.cleanup_finished();
 
         if recreate_swapchain {
 
-        dimensions = surface.capabilities(physical)
-            .expect("failed to get surface capabilities")
-            .current_extent.unwrap_or([1024, 768]);
+            dimensions = surface.capabilities(physical)
+                .expect("failed to get surface capabilities")
+                .current_extent.unwrap_or([1024, 768]);
             
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
@@ -229,23 +230,31 @@ fn main() {
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
             .build().unwrap();
+
+        if let &mut Some(ref mut previous_frame_end_fence) = &mut previous_frame_end_fence {
+            previous_frame_end_fence.wait(Some(Duration::new(1, 0))).unwrap();
+        }
         
-        let future = previous_frame.join(acquire_future)
+        let future = previous_frame_end_gpu.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush();
 
         match future {
             Ok(future) => {
-                previous_frame = Box::new(future) as Box<_>;
+                let arc = Arc::new(future);
+                previous_frame_end_gpu = Box::new(arc.clone()) as Box<_>;
+                previous_frame_end_fence = Some(arc);
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_fence = None;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_fence = None;
             }
         }
 

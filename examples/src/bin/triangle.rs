@@ -53,11 +53,11 @@ use vulkano::swapchain::SurfaceTransform;
 use vulkano::swapchain::Swapchain;
 use vulkano::swapchain::AcquireError;
 use vulkano::swapchain::SwapchainCreationError;
-use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
 use std::mem;
+use std::time::Duration;
 
 fn main() {
     // The first step of any vulkan program is to create an instance.
@@ -324,14 +324,19 @@ void main() {
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store the submission of the previous frame here.
-    let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
+
+    // This is the same as above however we store as a struct instead of converting into
+    // a GpuFuture trait object.
+    // This will allow us to call the wait method later on.
+    let mut previous_frame_end_fence: Option<Arc<vulkano::sync::FenceSignalFuture<_>>> = None;
 
     loop {
         // It is important to call this function from time to time, otherwise resources will keep
         // accumulating and you will eventually reach an out of memory error.
         // Calling this function polls various fences in order to determine what the GPU has
         // already processed, and frees the resources that are no longer needed.
-        previous_frame_end.cleanup_finished();
+        previous_frame_end_gpu.cleanup_finished();
 
         // If the swapchain needs to be recreated, recreate it
         if recreate_swapchain {
@@ -434,7 +439,13 @@ void main() {
             // Finish building the command buffer by calling `build`.
             .build().unwrap();
 
-        let future = previous_frame_end.join(acquire_future)
+        // Wait for the fence to be signalled.
+        // If we dont do this, OutOfHostMemory can occur due to frames being created faster then they are displayed.
+        if let &mut Some(ref mut previous_frame_end_fence) = &mut previous_frame_end_fence {
+            previous_frame_end_fence.wait(Some(Duration::new(1, 0))).unwrap();
+        }
+
+        let future = previous_frame_end_gpu.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
 
             // The color output is now expected to contain our triangle. But in order to show it on
@@ -448,15 +459,19 @@ void main() {
 
         match future {
             Ok(future) => {
-                previous_frame_end = Box::new(future) as Box<_>;
+                let arc = Arc::new(future);
+                previous_frame_end_gpu = Box::new(arc.clone()) as Box<_>;
+                previous_frame_end_fence = Some(arc);
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_fence = None;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_gpu = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end_fence = None;
             }
         }
 
