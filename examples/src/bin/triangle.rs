@@ -205,6 +205,10 @@ fn main() {
     //
     // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
     //
+    // An overview of what the `VulkanoShader` derive macro generates can be found in the
+    // `vulkano-shader-derive` crate docs. You can view them at
+    // https://docs.rs/vulkano-shader-derive/*/vulkano_shader_derive/
+    //
     // TODO: explain this in details
     mod vs {
         #[derive(VulkanoShader)]
