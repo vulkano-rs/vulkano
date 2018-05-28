@@ -23,6 +23,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
         desc_ty: String,
         array_count: u64,
         readonly: bool,
+        name: String
     }
 
     // Looping to find all the elements that have the `DescriptorSet` decoration.
@@ -74,6 +75,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
                              binding: binding,
                              array_count: array_count,
                              readonly: readonly,
+                             name: name
                          });
     }
 
@@ -106,12 +108,14 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             array_count: {array_count},
             stages: self.0.clone(),
             readonly: {readonly},
+            name: String::from(\"{name}\")
         }}),",
                 set = d.set,
                 binding = d.binding,
                 desc_ty = d.desc_ty,
                 array_count = d.array_count,
-                readonly = if d.readonly { "true" } else { "false" }
+                readonly = if d.readonly { "true" } else { "false" },
+                name = d.name
             )
 
         })
