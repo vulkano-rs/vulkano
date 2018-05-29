@@ -1091,6 +1091,7 @@ mod tests {
             array_count: 1,
             stages: ShaderStages::all_graphics(),
             readonly: true,
+            name: String::from("test")
         };
 
         let set_layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(layout)))
@@ -1121,6 +1122,7 @@ mod tests {
             array_count: 1,
             stages: ShaderStages::all_graphics(),
             readonly: true,
+            name: String::from("test")
         };
 
         let set_layout = UnsafeDescriptorSetLayout::new(device1, iter::once(Some(layout))).unwrap();
