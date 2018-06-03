@@ -88,7 +88,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
             attr.interpret_meta().and_then(|meta| {
                 match meta {
                     syn::Meta::NameValue(syn::MetaNameValue { ident, lit: syn::Lit::Str(lit_str), .. }) => {
-                        match ident.as_ref() {
+                        match ident.to_string().as_ref() {
                             "src"  => Some(SourceKind::Src(lit_str.value())),
                             "path" => Some(SourceKind::Path(lit_str.value())),
                             _      => None,
@@ -130,7 +130,7 @@ pub fn derive(input: TokenStream) -> TokenStream {
         attr.interpret_meta().and_then(|meta| {
             match meta {
                 syn::Meta::NameValue(syn::MetaNameValue { ident, lit: syn::Lit::Str(lit_str), .. }) => {
-                    match ident.as_ref() {
+                    match ident.to_string().as_ref() {
                         "ty" => Some(lit_str.value()),
                         _    => None
                     }
