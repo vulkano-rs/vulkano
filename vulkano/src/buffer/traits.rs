@@ -30,17 +30,6 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
 
-    /// Returns the length of the buffer in number of elements.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    #[inline]
-    fn len(&self) -> usize
-        where Self: TypedBufferAccess,
-              Self::Content: Content
-    {
-        self.size() / <Self::Content as Content>::indiv_size()
-    }
-
     /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
     fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
@@ -208,6 +197,14 @@ unsafe impl<T> BufferAccess for T
 pub unsafe trait TypedBufferAccess: BufferAccess {
     /// The type of the content.
     type Content: ?Sized;
+
+    /// Returns the length of the buffer in number of elements.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    #[inline]
+    fn len(&self) -> usize where Self::Content: Content {
+        self.size() / <Self::Content as Content>::indiv_size()
+    }
 }
 
 unsafe impl<T> TypedBufferAccess for T
