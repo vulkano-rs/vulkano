@@ -927,6 +927,7 @@ mod tests {
                                                ..ShaderStages::none()
                                            },
                                            readonly: true,
+                                           name: String::from("test")
                                        }),
                         _ => None,
                     }

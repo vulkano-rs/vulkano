@@ -71,6 +71,9 @@ pub struct DescriptorDesc {
 
     /// True if the attachment is only ever read by the shader. False if it is also written.
     pub readonly: bool,
+
+    /// Name of the uniform in the shader
+    pub name: String
 }
 
 impl DescriptorDesc {
@@ -115,6 +118,7 @@ impl DescriptorDesc {
                  array_count: cmp::max(self.array_count, other.array_count),
                  stages: self.stages | other.stages,
                  readonly: self.readonly && other.readonly,
+                 name: self.name.clone()
              })
     }
 

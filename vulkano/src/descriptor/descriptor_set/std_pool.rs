@@ -199,6 +199,7 @@ mod tests {
             array_count: 1,
             stages: ShaderStages::all(),
             readonly: false,
+            name: String::from("test")
         };
         let layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc)))
             .unwrap();
