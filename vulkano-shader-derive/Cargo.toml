@@ -14,7 +14,7 @@ proc-macro = true
 
 [dependencies]
 glsl-to-spirv = { version = "0.1.2", path = "../glsl-to-spirv" }
-syn = "0.13"
+syn = "0.14"
 vulkano-shaders = { version = "0.9", path = "../vulkano-shaders" }
 
 [dev-dependencies]

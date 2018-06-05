@@ -640,7 +640,7 @@ impl error::Error for DeviceCreationError {
                 "no memory available on the graphical device"
             },
             DeviceCreationError::DeviceLost => {
-                "failed to connecgt to the device"
+                "failed to connect to the device"
             },
             DeviceCreationError::TooManyQueuesForFamily => {
                 "tried to create too many queues for a given family"

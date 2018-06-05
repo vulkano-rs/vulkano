@@ -299,8 +299,8 @@ impl<D> RenderPass<D>
         let dependencies = description
             .dependency_descs()
             .map(|dependency| {
-                debug_assert!(dependency.source_subpass < passes.len());
-                debug_assert!(dependency.destination_subpass < passes.len());
+                debug_assert!(dependency.source_subpass as u32 == vk::SUBPASS_EXTERNAL || dependency.source_subpass < passes.len());
+                debug_assert!(dependency.destination_subpass as u32 == vk::SUBPASS_EXTERNAL || dependency.destination_subpass < passes.len());
 
                 vk::SubpassDependency {
                     srcSubpass: dependency.source_subpass as u32,

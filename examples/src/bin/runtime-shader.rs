@@ -444,7 +444,7 @@ fn main() {
             .begin_render_pass(
                 framebuffers[image_num].clone(),
                 false,
-                vec![[0.0, 0.0, 0.0, 1.0].into(), 1.0.into()],
+                vec![[0.0, 0.0, 0.0, 1.0].into()],
             ).unwrap()
             .draw(
                 graphics_pipeline.clone(),
