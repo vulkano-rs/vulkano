@@ -11,7 +11,7 @@ extern crate tempfile;
 
 use std::fs::File;
 use std::io::Write;
-use std::process::Command;
+use std::process::{Command, Output};
 
 pub type SpirvOutput = File;
 
@@ -27,7 +27,7 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
     let temp_dir = tempfile::tempdir().unwrap();
     let output_file = temp_dir.path().join("compilation_output.spv");
 
-    let mut command = Command::new(concat!(env!("OUT_DIR"), "/glslang_validator"));
+    let mut command = Command::new(concat!(env!("OUT_DIR"), "/glslangValidator"));
     command.arg("-V");
     command.arg("-l");
     command.arg("-o").arg(&output_file);
@@ -54,14 +54,26 @@ fn compile_inner<'a, I>(shaders: I) -> Result<SpirvOutput, String>
         .output()
         .expect("Failed to execute glslangValidator");
 
-    if output.status.success() {
-        let spirv_output = File::open(output_file).expect("failed to open SPIR-V output file");
-        return Ok(spirv_output);
-    }
+    check_command_result(&output)?;
 
-    let error1 = String::from_utf8_lossy(&output.stdout);
-    let error2 = String::from_utf8_lossy(&output.stderr);
-    return Err(error1.into_owned() + &error2);
+    // Optimize the code.
+    let mut command = Command::new(concat!(env!("OUT_DIR"), "/spirv-opt"));
+
+    // Optimize for performance.
+    command.arg("-O");
+
+    // Add the final linked module as the input.
+    command.arg(&output_file);
+
+    // Optimize in-place.
+    command.arg("-o").arg(&output_file);
+
+    let output = command.output().expect("Failed to execute spirv-opt");
+
+    check_command_result(&output)?;
+
+    let spirv_output = File::open(output_file).expect("failed to open SPIR-V output file");
+    Ok(spirv_output)
 }
 
 /// Type of shader.
@@ -73,4 +85,15 @@ pub enum ShaderType {
     TessellationControl,
     TessellationEvaluation,
     Compute,
+}
+
+// Check a commands output for failure.
+fn check_command_result(output: &Output) -> Result<(), String> {
+    if !output.status.success() {
+        let error1 = String::from_utf8_lossy(&output.stdout);
+        let error2 = String::from_utf8_lossy(&output.stderr);
+        Err(error1.into_owned() + &error2)
+    } else {
+        Ok(())
+    }
 }
