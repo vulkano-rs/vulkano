@@ -375,7 +375,6 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
             let read_lock = self.access.read().unwrap();
             if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
                 let prev = num.fetch_add(1, Ordering::SeqCst);
-                debug_assert!(prev >= 1);
                 return;
             }
         }
