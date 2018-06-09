@@ -9,4 +9,4 @@ documentation = "http://tomaka.github.io/vulkano/vulkano/index.html"
 categories = ["rendering::graphics-api"]
 
 [dependencies]
-glsl-to-spirv = { version = "0.1.2", path = "../glsl-to-spirv" }
+glsl-to-spirv = { version = "0.1.5", path = "../glsl-to-spirv" }
