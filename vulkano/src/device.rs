@@ -62,7 +62,7 @@
 //! Not all physical devices support all possible features and extensions. For example mobile
 //! devices tend to not support geometry shaders, because their hardware is not capable of it. You
 //! can query what is supported with respectively `PhysicalDevice::supported_features` and
-//! TODO: oops, there's no method for querying supported extensions in vulkan yet.
+//! `DeviceExtensions::supported_by_device`.
 //!
 //! > **Note**: The fact that you need to manually enable features at initialization also means
 //! > that you don't need to worry about a capability not being supported later on in your code.
