@@ -9,6 +9,7 @@
 
 use smallvec::SmallVec;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
@@ -61,6 +62,9 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
     // Format.
     format: F,
 
+    // Image has been initialized
+    initialized: AtomicBool,
+
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
 
@@ -68,8 +72,17 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
     gpu_lock: AtomicUsize,
 }
 
+// Must not implement Clone, as that would lead to multiple `used` values.
+pub struct StorageImageInitialization<F, A = Arc<StdMemoryPool>>
+    where A: MemoryPool
+{
+    image: Arc<StorageImage<F, A>>,
+    used: AtomicBool,
+}
+
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
+    #[deprecated(note = "use StorageImage::uninitialized instead")]
     #[inline]
     pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
                       -> Result<Arc<StorageImage<F>>, ImageCreationError>
@@ -95,13 +108,33 @@ impl<F> StorageImage<F> {
             transient_attachment: false,
         };
 
+        #[allow(deprecated)]
         StorageImage::with_usage(device, dimensions, format, usage, queue_families)
     }
 
     /// Same as `new`, but allows specifying the usage.
+    #[deprecated(note = "use StorageImage::uninitialized instead")]
     pub fn with_usage<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F,
                              usage: ImageUsage, queue_families: I)
                              -> Result<Arc<StorageImage<F>>, ImageCreationError>
+        where F: FormatDesc,
+              I: IntoIterator<Item = QueueFamily<'a>>
+    {
+        let (image, _) = StorageImage::uninitialized(device,
+                                                     dimensions,
+                                                     format,
+                                                     usage,
+                                                     queue_families)?;
+        image.initialized.store(true, Ordering::Relaxed); // Allow uninitialized access for backwards compatibility
+        Ok(image)
+    }
+
+    /// Builds an uninitialized storage image.
+    ///
+    /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
+    pub fn uninitialized<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F,
+                                usage: ImageUsage, queue_families: I)
+                                -> Result<(Arc<StorageImage<F>>, StorageImageInitialization<F>), ImageCreationError>
         where F: FormatDesc,
               I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -150,15 +183,23 @@ impl<F> StorageImage<F> {
                                  0 .. image.dimensions().array_layers())?
         };
 
-        Ok(Arc::new(StorageImage {
-                        image: image,
-                        view: view,
-                        memory: mem,
-                        dimensions: dimensions,
-                        format: format,
-                        queue_families: queue_families,
-                        gpu_lock: AtomicUsize::new(0),
-                    }))
+        let image = Arc::new(StorageImage {
+                                 image: image,
+                                 view: view,
+                                 memory: mem,
+                                 dimensions: dimensions,
+                                 format: format,
+                                 initialized: AtomicBool::new(false),
+                                 queue_families: queue_families,
+                                 gpu_lock: AtomicUsize::new(0),
+                             });
+
+        let init = StorageImageInitialization {
+            image: image.clone(),
+            used: AtomicBool::new(false),
+        };
+
+        Ok((image, init))
     }
 }
 
@@ -220,6 +261,10 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
                            requested: expected_layout,
                            allowed: ImageLayout::General,
                        });
+        }
+
+        if !self.initialized.load(Ordering::Relaxed) {
+            return Err(AccessError::BufferNotInitialized);
         }
 
         let val = self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst);
@@ -308,22 +353,102 @@ unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     }
 }
 
+unsafe impl<F, A> ImageAccess for StorageImageInitialization<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{
+    #[inline]
+    fn inner(&self) -> ImageInner {
+        ImageAccess::inner(&self.image)
+    }
+
+    #[inline]
+    fn initial_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::Undefined
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> ImageLayout {
+        ImageLayout::General
+    }
+
+    #[inline]
+    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+        false
+    }
+
+    #[inline]
+    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+        self.conflict_key() == other.conflict_key() // TODO:
+    }
+
+    #[inline]
+    fn conflict_key(&self) -> u64 {
+        self.image.image.key()
+    }
+
+    #[inline]
+    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+        if expected_layout != ImageLayout::Undefined {
+            return Err(AccessError::UnexpectedImageLayout {
+                           requested: expected_layout,
+                           allowed: ImageLayout::Undefined,
+                       });
+        }
+
+        if self.image.initialized.load(Ordering::Relaxed) {
+            return Err(AccessError::AlreadyInUse);
+        }
+
+        // Lock the parent image (should always succeed because it cannot be
+        // locked while in the uninitialized state)
+        let val = self.image.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst);
+        assert_eq!(val, 0);
+
+        // FIXME: Mipmapped textures require multiple writes to initialize
+        if !self.used.compare_and_swap(false, true, Ordering::Relaxed) {
+            Ok(())
+        } else {
+            Err(AccessError::AlreadyInUse)
+        }
+
+    }
+
+    #[inline]
+    unsafe fn increase_gpu_lock(&self) {
+        debug_assert!(self.used.load(Ordering::Relaxed));
+        self.image.increase_gpu_lock();
+    }
+
+    #[inline]
+    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+        assert_eq!(new_layout, Some(ImageLayout::General));
+        self.image.gpu_lock.fetch_sub(1, Ordering::SeqCst);
+        self.image.initialized.store(true, Ordering::Relaxed);
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
-    use super::StorageImage;
+    use super::{ImageUsage, StorageImage};
     use format::Format;
     use image::Dimensions;
 
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _img = StorageImage::new(device,
-                                     Dimensions::Dim2d {
-                                         width: 32,
-                                         height: 32,
-                                     },
-                                     Format::R8G8B8A8Unorm,
-                                     Some(queue.family()))
+        let (_img, _init) = StorageImage::uninitialized(device,
+                                                        Dimensions::Dim2d {
+                                                            width: 32,
+                                                            height: 32,
+                                                        },
+                                                        Format::R8G8B8A8Unorm,
+                                                        ImageUsage {
+                                                            transfer_destination: true,
+                                                            .. ImageUsage::none()
+                                                        },
+                                                        Some(queue.family()))
             .unwrap();
     }
 }
