@@ -16,7 +16,7 @@ fn main() {
 
     let path = if target.contains("windows") {
         const SHA256SUM: &'static str = 
-            "b6ebab5bd07dc7c0b54c59a2a303df58f7132e5fd6c177ffed92d20934dafa41";
+            "90b377479fb137f4ac69460d5f5cdc54cd23bace5eb6e6812516fdfa693b25cf";
         let path = Path::new("build/glslangValidator.exe").to_owned();
         let content = fs::read(&path).expect("failed to open executable");
         let mut hasher = Sha256::default();
