@@ -13,7 +13,7 @@ name = "vulkano_shader_derive"
 proc-macro = true
 
 [dependencies]
-glsl-to-spirv = { version = "0.1.5", path = "../glsl-to-spirv" }
+glsl-to-spirv = { version = "0.1.6", path = "../glsl-to-spirv" }
 syn = "0.14"
 vulkano-shaders = { version = "0.9", path = "../vulkano-shaders" }
 
