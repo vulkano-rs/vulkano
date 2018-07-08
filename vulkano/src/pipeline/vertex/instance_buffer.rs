@@ -105,7 +105,7 @@ where
         // FIXME: safety
         assert_eq!(source.len(), 1);
         let len = source[0].size() / mem::size_of::<V>();
-        (vec![Box::new(source.remove(0))], len, 1)
+        (vec![Box::new(source.remove(0))], 1, len)
     }
 }
 
@@ -117,6 +117,6 @@ where
     #[inline]
     fn decode(&self, source: B) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
         let len = source.len();
-        (vec![Box::new(source) as Box<_>], len, 1)
+        (vec![Box::new(source) as Box<_>], 1, len)
     }
 }
