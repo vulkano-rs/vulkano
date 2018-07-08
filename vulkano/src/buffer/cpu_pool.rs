@@ -315,12 +315,10 @@ impl<T, A> CpuBufferPool<T, A>
             Err(d) => d,
         };
 
-        // TODO: choose the capacity better?
-        let next_capacity = cmp::max(data.len(), 1) *
-            match *mutex {
-                Some(ref b) => b.capacity * 2,
-                None => 3,
-            };
+        let next_capacity = match *mutex {
+            Some(ref b) if data.len() < b.capacity => 2 * b.capacity,
+            _ => 2 * data.len(),
+        };
 
         self.reset_buf(&mut mutex, next_capacity)?;
 
