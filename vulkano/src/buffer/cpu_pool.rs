@@ -654,7 +654,6 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
             .find(|c| c.index == self.index)
             .unwrap();
 
-        debug_assert!(chunk.num_gpu_accesses >= 1);
         chunk.num_gpu_accesses = chunk
             .num_gpu_accesses
             .checked_add(1)
