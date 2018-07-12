@@ -3,6 +3,8 @@
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
 - Updated winit to version 0.16.
 - Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
+- Added `vulkano_win::create_vk_surface` which allows creating a surface safely without taking ownership of
+  the window.
 
 # Version 0.9.0 (2018-03-13)
 
