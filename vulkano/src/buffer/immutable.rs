@@ -338,8 +338,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.inner.key()
+    fn conflict_key(&self) -> (u64, usize) {
+        (self.inner.key(), 0)
     }
 
     #[inline]
@@ -404,8 +404,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.buffer.inner.key()
+    fn conflict_key(&self) -> (u64, usize) {
+        (self.buffer.inner.key(), 0)
     }
 
     #[inline]
