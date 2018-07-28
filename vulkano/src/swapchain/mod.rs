@@ -144,7 +144,10 @@
 //! let dimensions = caps.current_extent.unwrap_or([640, 480]);
 //!
 //! // Try to use double-buffering.
-//! let buffers_count = max(min(2, caps.min_image_count), caps.max_image_count.unwrap_or(2));
+//! let buffers_count = match caps.max_image_count {
+//!     None => max(2, caps.min_image_count),
+//!     Some(limit) => min(max(2, caps.min_image_count), limit)
+//! };
 //!
 //! // Preserve the current surface transform.
 //! let transform = caps.current_transform;
