@@ -57,7 +57,7 @@ use sampler::Sampler;
 /// # use std::sync::Arc;
 /// # use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
 /// # use vulkano::pipeline::GraphicsPipelineAbstract;
-/// # let mut pool: FixedSizeDescriptorSetsPool<Arc<GraphicsPipelineAbstract>> = return;
+/// # let mut pool: FixedSizeDescriptorSetsPool = return;
 /// let descriptor_set = pool.next()
 ///     //.add_buffer(...)
 ///     //.add_sampled_image(...)

@@ -378,6 +378,7 @@ mod tests {
     use descriptor::descriptor::DescriptorDescTy;
     use descriptor::descriptor::ShaderStages;
     use descriptor::descriptor_set::PersistentDescriptorSet;
+    use descriptor::pipeline_layout::PipelineLayoutAbstract;
     use descriptor::pipeline_layout::PipelineLayoutDesc;
     use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     use pipeline::ComputePipeline;
@@ -979,7 +980,7 @@ mod tests {
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(),
                                                                                queue.family())
             .unwrap()
-            .dispatch([1, 1, 1], pipeline, set, ())
+            .dispatch([1, 1, 1], pipeline.clone(), set, ())
             .unwrap()
             .build()
             .unwrap();
