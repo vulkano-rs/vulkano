@@ -20,6 +20,7 @@ use vk;
 
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::DescriptorsCount;
+use descriptor::descriptor_set::DescriptorSetDesc;
 use device::Device;
 use device::DeviceOwned;
 
@@ -33,6 +34,8 @@ pub struct UnsafeDescriptorSetLayout {
     layout: vk::DescriptorSetLayout,
     // The device this layout belongs to.
     device: Arc<Device>,
+    // Descriptors.
+    descriptors: SmallVec<[Option<DescriptorDesc>; 32]>,
     // Number of descriptors.
     descriptors_count: DescriptorsCount,
 }
@@ -47,10 +50,11 @@ impl UnsafeDescriptorSetLayout {
                   -> Result<UnsafeDescriptorSetLayout, OomError>
         where I: IntoIterator<Item = Option<DescriptorDesc>>
     {
+        let descriptors = descriptors.into_iter().collect::<SmallVec<[_; 32]>>();
         let mut descriptors_count = DescriptorsCount::zero();
 
         let bindings = descriptors
-            .into_iter()
+            .iter()
             .enumerate()
             .filter_map(|(binding, desc)| {
                 let desc = match desc {
@@ -97,6 +101,7 @@ impl UnsafeDescriptorSetLayout {
         Ok(UnsafeDescriptorSetLayout {
                layout: layout,
                device: device,
+               descriptors: descriptors,
                descriptors_count: descriptors_count,
            })
     }
@@ -105,6 +110,17 @@ impl UnsafeDescriptorSetLayout {
     #[inline]
     pub fn descriptors_count(&self) -> &DescriptorsCount {
         &self.descriptors_count
+    }
+}
+
+unsafe impl DescriptorSetDesc for UnsafeDescriptorSetLayout {
+    #[inline]
+    fn num_bindings(&self) -> usize {
+        self.descriptors.len()
+    }
+    #[inline]
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
+        self.descriptors.get(binding).cloned().unwrap_or(None)
     }
 }
 

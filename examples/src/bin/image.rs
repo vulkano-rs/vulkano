@@ -134,7 +134,8 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
-    let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(layout.clone())
         .add_sampled_image(texture.clone(), sampler.clone()).unwrap()
         .build().unwrap()
     );
