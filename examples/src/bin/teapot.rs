@@ -158,8 +158,7 @@ fn main() {
             swapchain = new_swapchain;
             images = new_images;
 
-            let new_depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
-            std::mem::replace(&mut depth_buffer, new_depth_buffer);
+            depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
 
             framebuffers = None;
 
@@ -169,13 +168,12 @@ fn main() {
         }
 
         if framebuffers.is_none() {
-            let new_framebuffers = Some(images.iter().map(|image| {
+            framebuffers = Some(images.iter().map(|image| {
                 Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
                          .add(image.clone()).unwrap()
                          .add(depth_buffer.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>());
-            std::mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         let uniform_buffer_subbuffer = {
