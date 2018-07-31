@@ -189,7 +189,7 @@ pub unsafe trait ImageAccess {
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
-    /// If the GPU operation that we unlock from transitionned the image to another layout, then
+    /// If the GPU operation that we unlock from transitioned the image to another layout, then
     /// it should be passed as parameter.
     ///
     /// A layout transition requires exclusive access to the image, which means two things:
@@ -202,11 +202,11 @@ pub unsafe trait ImageAccess {
     /// # Safety
     ///
     /// - Must only be called once per previous lock.
-    /// - The transitionned layout must be supported by the image (eg. the layout shouldn't be
+    /// - The transitioned layout must be supported by the image (eg. the layout shouldn't be
     ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
-    /// - The transitionned layout must not be `Undefined`.
+    /// - The transitioned layout must not be `Undefined`.
     ///
-    unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>);
+    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>);
 }
 
 /// Inner information about an image.
@@ -274,8 +274,8 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>) {
-        (**self).unlock(transitionned_layout)
+    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
+        (**self).unlock(transitioned_layout)
     }
 }
 

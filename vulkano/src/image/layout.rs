@@ -24,7 +24,7 @@ use vk;
 /// must first transition the image to the `TransferDstOptimal` layout. The `General` layout can
 /// also be used as a general-purpose fit-all layout, but using it will result in slower operations.
 ///
-/// Transitionning between layouts can only be done through a GPU-side operation that is part of
+/// Transitioning between layouts can only be done through a GPU-side operation that is part of
 /// a command buffer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]

@@ -446,7 +446,7 @@ pub struct LayoutAttachmentDescription {
     /// is more optimal to set this to the correct value.
     pub initial_layout: ImageLayout,
 
-    /// Layout that the image will be transitionned to at the end of the renderpass.
+    /// Layout that the image will be transitioned to at the end of the renderpass.
     pub final_layout: ImageLayout,
 }
 
