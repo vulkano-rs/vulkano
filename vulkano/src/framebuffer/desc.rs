@@ -48,7 +48,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 
     /// Returns the description of an attachment.
     ///
-    /// Returns `None` if `num` is greater than `num_attachments()`.
+    /// Returns `None` if `num` is greater than or equal to `num_attachments()`.
     fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription>;
 
     /// Returns an iterator to the list of attachments.
@@ -67,7 +67,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 
     /// Returns the description of a subpass.
     ///
-    /// Returns `None` if `num` is greater than `num_subpasses()`.
+    /// Returns `None` if `num` is greater than or equal to `num_subpasses()`.
     fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription>;
 
     /// Returns an iterator to the list of subpasses.
@@ -86,7 +86,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 
     /// Returns the description of a dependency.
     ///
-    /// Returns `None` if `num` is greater than `num_dependencies()`.
+    /// Returns `None` if `num` is greater than or equal to `num_dependencies()`.
     fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
 
     /// Returns an iterator to the list of dependencies.
