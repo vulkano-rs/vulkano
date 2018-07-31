@@ -152,12 +152,12 @@ impl Sampler {
     ///
     /// `mip_lod_bias` is a value to add to .
     ///
-    /// `max_anisotropy` must be superior or equal to 1.0. If superior to 1.0, the implementation
-    /// will use anistropic filtering. Using a value superior to 1.0 requires the
-    /// `sampler_anisotropy` feature to be enabled when creating the device.
+    /// `max_anisotropy` must be greater than or equal to 1.0. If greater than 1.0, the
+    /// implementation will use anistropic filtering. Using a value greater than 1.0 requires
+    /// the `sampler_anisotropy` feature to be enabled when creating the device.
     ///
     /// `min_lod` and `max_lod` are respectively the minimum and maximum mipmap level to use.
-    /// `max_lod` must always be superior or equal to `min_lod`.
+    /// `max_lod` must always be greater than or equal to `min_lod`.
     ///
     /// # Panic
     ///
@@ -527,7 +527,7 @@ pub enum MipmapMode {
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
     Nearest = vk::SAMPLER_MIPMAP_MODE_NEAREST,
 
-    /// Take the two mipmaps whose dimensions are immediately inferior and superior to the
+    /// Take the two mipmaps whose dimensions are immediately less than and greater than the
     /// dimensions of the destination, calculate the value for both, and interpolate them.
     Linear = vk::SAMPLER_MIPMAP_MODE_LINEAR,
 }
@@ -658,8 +658,8 @@ pub enum SamplerCreationError {
     /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
     TooManyObjects,
 
-    /// Using an anisotropy superior to 1.0 requires enabling the `sampler_anisotropy` feature when
-    /// creating the device.
+    /// Using an anisotropy greater than 1.0 requires enabling the `sampler_anisotropy` feature
+    /// when creating the device.
     SamplerAnisotropyFeatureNotEnabled,
 
     /// The requested anisotropy level exceeds the device's limits.
