@@ -527,8 +527,8 @@ pub enum MipmapMode {
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
     Nearest = vk::SAMPLER_MIPMAP_MODE_NEAREST,
 
-    /// Take the two mipmaps whose dimensions are immediately less than and greater than the
-    /// dimensions of the destination, calculate the value for both, and interpolate them.
+    /// Take the mipmap whose dimensions are no greater than that of the destination together
+    /// with the next higher level mipmap, calculate the value for both, and interpolate them.
     Linear = vk::SAMPLER_MIPMAP_MODE_LINEAR,
 }
 
