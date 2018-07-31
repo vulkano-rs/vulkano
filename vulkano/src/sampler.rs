@@ -153,7 +153,7 @@ impl Sampler {
     /// `mip_lod_bias` is a value to add to .
     ///
     /// `max_anisotropy` must be greater than or equal to 1.0. If greater than 1.0, the
-    /// implementation will use anistropic filtering. Using a value greater than 1.0 requires
+    /// implementation will use anisotropic filtering. Using a value greater than 1.0 requires
     /// the `sampler_anisotropy` feature to be enabled when creating the device.
     ///
     /// `min_lod` and `max_lod` are respectively the minimum and maximum mipmap level to use.
