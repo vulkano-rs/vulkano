@@ -448,7 +448,7 @@ fn main() {
             ).unwrap()
             .draw(
                 graphics_pipeline.clone(),
-                DynamicState::none(),
+                &mut DynamicState::none(),
                 vertex_buffer.clone(),
                 (),
                 (),

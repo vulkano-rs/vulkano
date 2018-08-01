@@ -5,6 +5,7 @@
 - Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
 - Added `vulkano_win::create_vk_surface` which allows creating a surface safely without taking ownership of
   the window.
+- `AutoCommandBufferBuilder::draw` and friends no longer consume the `DynamicState` argument, allowing reuse between calls.
 
 # Version 0.9.0 (2018-03-13)
 

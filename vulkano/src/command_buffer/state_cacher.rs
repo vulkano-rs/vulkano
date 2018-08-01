@@ -86,12 +86,12 @@ impl StateCacher {
         self.index_buffer = None;
     }
 
-    /// Compares the current state with `incoming`, and returns a new state that contains the
-    /// states that differ and that need to be actually set in the command buffer builder.
+    /// Compares the current state with `incoming`, and removes the states that are the same and 
+    /// that don't need to be actually set in the command buffer builder.
     ///
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
-    pub fn dynamic_state(&mut self, mut incoming: DynamicState) -> DynamicState {
+    pub fn dynamic_state(&mut self, incoming: &mut DynamicState) {
         macro_rules! cmp {
             ($field:ident) => (
                 if self.dynamic_state.$field == incoming.$field {
@@ -105,8 +105,6 @@ impl StateCacher {
         cmp!(line_width);
         cmp!(viewports);
         cmp!(scissors);
-
-        incoming
     }
 
     /// Starts the process of comparing a list of descriptor sets to the descriptor sets currently
