@@ -210,7 +210,7 @@ fn main() {
                 framebuffers.as_ref().unwrap()[image_num].clone(), false,
                 vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(),
-                  &mut dynamic_state,
+                  &dynamic_state,
                   vertex_buffer.clone(),
                   set.clone(), ()).unwrap()
             .end_render_pass().unwrap()

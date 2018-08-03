@@ -232,7 +232,7 @@ fn main() {
                 ]).unwrap()
             .draw_indexed(
                 pipeline.clone(),
-                &mut dynamic_state,
+                &dynamic_state,
                 (vertex_buffer.clone(), normals_buffer.clone()), 
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()

@@ -432,7 +432,7 @@ void main() {
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
             .draw(pipeline.clone(),
-                  &mut dynamic_state,
+                  &dynamic_state,
                   vertex_buffer.clone(), (), ())
             .unwrap()
 

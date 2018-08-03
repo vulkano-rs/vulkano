@@ -981,7 +981,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &mut DynamicState, vertices: V, sets: S,
+    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &DynamicState, vertices: V, sets: S,
                               constants: Pc)
                               -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1002,10 +1002,10 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_pipeline_graphics(pipeline.clone());
             }
 
-            self.state_cacher.dynamic_state(dynamic);
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1026,7 +1026,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: &mut DynamicState,
+    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
                                              vertices: V, index_buffer: Ib, sets: S, constants: Pc)
                                              -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1056,10 +1056,10 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_index_buffer(index_buffer, I::ty())?;
             }
 
-            self.state_cacher.dynamic_state(dynamic);
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1079,7 +1079,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: &mut DynamicState,
+    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: &DynamicState,
                                            vertices: V, indirect_buffer: Ib, sets: S, constants: Pc)
                                            -> Result<Self, DrawIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1107,10 +1107,10 @@ impl<P> AutoCommandBufferBuilder<P> {
                 self.inner.bind_pipeline_graphics(pipeline.clone());
             }
 
-            self.state_cacher.dynamic_state(dynamic);
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,

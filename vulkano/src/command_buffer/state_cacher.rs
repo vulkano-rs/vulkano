@@ -91,13 +91,16 @@ impl StateCacher {
     ///
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
-    pub fn dynamic_state(&mut self, incoming: &mut DynamicState) {
+    pub fn dynamic_state(&mut self, incoming: &DynamicState) -> DynamicState {
+        let mut changed = DynamicState::none();
+
         macro_rules! cmp {
             ($field:ident) => (
-                if self.dynamic_state.$field == incoming.$field {
-                    incoming.$field = None;
-                } else if incoming.$field.is_some() {
-                    self.dynamic_state.$field = incoming.$field.clone();
+                if self.dynamic_state.$field != incoming.$field {
+                    changed.$field = incoming.$field.clone();
+                    if incoming.$field.is_some() {
+                        self.dynamic_state.$field = incoming.$field.clone();
+                    }
                 }
             );
         }
@@ -105,6 +108,8 @@ impl StateCacher {
         cmp!(line_width);
         cmp!(viewports);
         cmp!(scissors);
+
+        changed
     }
 
     /// Starts the process of comparing a list of descriptor sets to the descriptor sets currently
