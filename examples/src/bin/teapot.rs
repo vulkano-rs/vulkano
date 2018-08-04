@@ -138,6 +138,16 @@ fn main() {
     let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
     let rotation_start = std::time::Instant::now();
 
+    let mut dynamic_state = vulkano::command_buffer::DynamicState {
+        line_width: None,
+        viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0 .. 1.0,
+        }]),
+        scissors: None,
+    };
+
     loop {
         previous_frame.cleanup_finished();
 
@@ -164,6 +174,12 @@ fn main() {
             framebuffers = None;
 
             proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { dimensions[0] as f32 / dimensions[1] as f32 }, 0.01, 100.0);
+
+            dynamic_state.viewports = Some(vec![vulkano::pipeline::viewport::Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0 .. 1.0,
+            }]);
 
             recreate_swapchain = false;
         }
@@ -216,15 +232,7 @@ fn main() {
                 ]).unwrap()
             .draw_indexed(
                 pipeline.clone(),
-                vulkano::command_buffer::DynamicState {
-                      line_width: None,
-                      viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      scissors: None,
-                },
+                &dynamic_state,
                 (vertex_buffer.clone(), normals_buffer.clone()), 
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()

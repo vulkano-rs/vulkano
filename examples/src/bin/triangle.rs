@@ -330,6 +330,16 @@ void main() {
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
+    let mut dynamic_state = DynamicState {
+        line_width: None,
+        viewports: Some(vec![Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0 .. 1.0,
+        }]),
+        scissors: None,
+    };
+
     loop {
         // It is important to call this function from time to time, otherwise resources will keep
         // accumulating and you will eventually reach an out of memory error.
@@ -358,6 +368,12 @@ void main() {
             mem::replace(&mut images, new_images);
 
             framebuffers = None;
+
+            dynamic_state.viewports = Some(vec![Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0 .. 1.0,
+            }]);
 
             recreate_swapchain = false;
         }
@@ -416,16 +432,7 @@ void main() {
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
             .draw(pipeline.clone(),
-                  DynamicState {
-                      line_width: None,
-                      // TODO: Find a way to do this without having to dynamically allocate a Vec every frame.
-                      viewports: Some(vec![Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      scissors: None,
-                  },
+                  &dynamic_state,
                   vertex_buffer.clone(), (), ())
             .unwrap()
 

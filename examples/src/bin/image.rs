@@ -145,6 +145,16 @@ fn main() {
 
     let mut previous_frame_end = Box::new(tex_future) as Box<GpuFuture>;
 
+    let mut dynamic_state =  vulkano::command_buffer::DynamicState {
+        line_width: None,
+        viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0 .. 1.0,
+        }]),
+        scissors: None,
+    };
+
     loop {
         previous_frame_end.cleanup_finished();
         if recreate_swapchain {
@@ -165,6 +175,12 @@ fn main() {
             std::mem::replace(&mut images, new_images);
 
             framebuffers = None;
+
+            dynamic_state.viewports = Some(vec![vulkano::pipeline::viewport::Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0 .. 1.0,
+            }]);
 
             recreate_swapchain = false;
         }
@@ -194,15 +210,7 @@ fn main() {
                 framebuffers.as_ref().unwrap()[image_num].clone(), false,
                 vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(),
-                   vulkano::command_buffer::DynamicState {
-                      line_width: None,
-                      viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      scissors: None,
-                  },
+                  &dynamic_state,
                   vertex_buffer.clone(),
                   set.clone(), ()).unwrap()
             .end_render_pass().unwrap()

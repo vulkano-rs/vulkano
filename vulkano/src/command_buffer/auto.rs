@@ -981,7 +981,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
+    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &DynamicState, vertices: V, sets: S,
                               constants: Pc)
                               -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -991,7 +991,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
@@ -1005,7 +1005,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1026,7 +1026,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: DynamicState,
+    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
                                              vertices: V, index_buffer: Ib, sets: S, constants: Pc)
                                              -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1039,7 +1039,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
@@ -1059,7 +1059,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1079,7 +1079,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: DynamicState,
+    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: &DynamicState,
                                            vertices: V, indirect_buffer: Ib, sets: S, constants: Pc)
                                            -> Result<Self, DrawIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1094,7 +1094,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
@@ -1110,7 +1110,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1304,7 +1304,7 @@ unsafe fn push_constants<P, Pl, Pc>(destination: &mut SyncCommandBufferBuilder<P
 }
 
 // Shortcut function to change the state of the pipeline.
-unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicState) {
+unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &DynamicState) {
     if let Some(line_width) = dynamic.line_width {
         destination.set_line_width(line_width);
     }
