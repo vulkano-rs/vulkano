@@ -171,8 +171,8 @@ fn main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            std::mem::replace(&mut swapchain, new_swapchain);
-            std::mem::replace(&mut images, new_images);
+            swapchain = new_swapchain;
+            images = new_images;
 
             framebuffers = None;
 
@@ -186,12 +186,11 @@ fn main() {
         }
 
         if framebuffers.is_none() {
-            let new_framebuffers = Some(images.iter().map(|image| {
+            framebuffers = Some(images.iter().map(|image| {
                 Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>());
-            std::mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         let (image_num, future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(),

@@ -57,7 +57,6 @@ use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
-use std::mem;
 
 fn main() {
     // The first step of any vulkan program is to create an instance.
@@ -364,8 +363,8 @@ void main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            mem::replace(&mut swapchain, new_swapchain);
-            mem::replace(&mut images, new_images);
+            swapchain = new_swapchain;
+            images = new_images;
 
             framebuffers = None;
 
@@ -381,12 +380,11 @@ void main() {
         // Because framebuffers contains an Arc on the old swapchain, we need to
         // recreate framebuffers as well.
         if framebuffers.is_none() {
-            let new_framebuffers = Some(images.iter().map(|image| {
+            framebuffers = Some(images.iter().map(|image| {
                 Arc::new(Framebuffer::start(render_pass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>());
-            mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
