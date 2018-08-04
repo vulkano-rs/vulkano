@@ -86,8 +86,8 @@ impl StateCacher {
         self.index_buffer = None;
     }
 
-    /// Compares the current state with `incoming`, and removes the states that are the same and 
-    /// that don't need to be actually set in the command buffer builder.
+    /// Compares the current state with `incoming`, and returns a new state that contains the
+    /// states that differ and that need to be actually set in the command buffer builder.
     ///
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
