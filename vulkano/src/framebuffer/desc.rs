@@ -443,7 +443,7 @@ pub struct LayoutAttachmentDescription {
     /// Layout that the image is going to be in at the start of the renderpass.
     ///
     /// The vulkano library will automatically switch to the correct layout if necessary, but it
-    /// is more optimal to set this to the correct value.
+    /// is more efficient to set this to the correct value.
     pub initial_layout: ImageLayout,
 
     /// Layout that the image will be transitioned to at the end of the renderpass.
