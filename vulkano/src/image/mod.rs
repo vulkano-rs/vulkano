@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Images storage (1D, 2D, 3D, arrays, etc.).
+//! Image storage (1D, 2D, 3D, arrays, etc.).
 //!
-//! An *image* is a location in memory whose purpose is to store multi-dimensional data. Its
-//! most common usage is to store a 2D array of color pixels (in other words an *image* in the
+//! An *image* is a region of memory whose purpose is to store multi-dimensional data. Its
+//! most common use is to store a 2D array of color pixels (in other words an *image* in
 //! everyday language), but it can also be used to store arbitrary data.
 //!
 //! The advantage of using an image compared to a buffer is that the memory layout is optimized
@@ -22,8 +22,8 @@
 //!
 //! # Images and image views
 //!
-//! There is a distinction between *images* and *image views*. As its name tells, an image view
-//! describes how the GPU must interpret the image.
+//! There is a distinction between *images* and *image views*. As its name suggests, an image
+//! view describes how the GPU must interpret the image.
 //!
 //! Transfer and memory operations operate on images themselves, while reading/writing an image
 //! operates on image views. You can create multiple image views from the same image.
@@ -41,7 +41,7 @@
 //! - An `ImmutableImage` stores data which never need be changed after the initial upload,
 //!   like a texture.
 //!
-//! # Low-level informations
+//! # Low-level information
 //!
 //! To be written.
 //!

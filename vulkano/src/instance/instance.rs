@@ -52,7 +52,7 @@ use version::Version;
 ///
 /// A layer is a component that will hook and potentially modify the Vulkan function calls.
 /// For example, activating a layer could add a frames-per-second counter on the screen, or it
-/// could send informations to a debugger that will debug your application.
+/// could send information to a debugger that will debug your application.
 ///
 /// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
 /// > and Linux layers can be installed by third party installers or by package managers and can

@@ -61,7 +61,7 @@ pub fn write_descriptor_sets(doc: &parse::Spirv) -> String {
             .next()
             .expect(&format!("Uniform `{}` is missing a binding", name));
 
-        // Find informations about the kind of binding for this descriptor.
+        // Find information about the kind of binding for this descriptor.
         let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false)
             .expect(&format!("Couldn't find relevant type for uniform `{}` (type {}, maybe \
                               unimplemented)",

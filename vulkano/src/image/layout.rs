@@ -17,7 +17,7 @@ use vk;
 ///
 /// In the Vulkan API, each mipmap level of each array layer is in one of the layouts of this enum.
 ///
-/// Unless you use some short of high-level shortcut function, an image always starts in either
+/// Unless you use some sort of high-level shortcut function, an image always starts in either
 /// the `Undefined` or the `Preinitialized` layout.
 /// Before you can use an image for a given purpose, you must ensure that the image in question is
 /// in the layout required for that purpose. For example if you want to write data to an image, you
