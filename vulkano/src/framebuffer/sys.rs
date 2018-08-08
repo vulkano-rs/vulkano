@@ -376,7 +376,7 @@ impl<D> RenderPass<D> {
     /// Returns the granularity of this render pass.
     ///
     /// If the render area of a render pass in a command buffer is a multiple of this granularity,
-    /// then the performances will be optimal. Performances are always optimal for render areas
+    /// then the performance will be optimal. Performances are always optimal for render areas
     /// that cover the whole framebuffer.
     pub fn granularity(&self) -> [u32; 2] {
         let mut granularity = self.granularity.lock().unwrap();
