@@ -192,7 +192,7 @@ pub struct Swapchain<W> {
 struct ImageEntry {
     // The actual image.
     image: UnsafeImage,
-    // If true, then the image is still in the undefined layout and must be transitionned.
+    // If true, then the image is still in the undefined layout and must be transitioned.
     undefined_layout: AtomicBool,
 }
 

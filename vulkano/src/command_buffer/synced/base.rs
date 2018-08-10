@@ -459,7 +459,7 @@ impl<P> SyncCommandBufferBuilder<P> {
     // `exclusive`, `stages` and `access` must match the way the resource has been used.
     //
     // `start_layout` and `end_layout` designate the image layout that the image is expected to be
-    // in when the command starts, and the image layout that the image will be transitionned to
+    // in when the command starts, and the image layout that the image will be transitioned to
     // during the command. When it comes to buffers, you should pass `Undefined` for both.
     pub(super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
                                     exclusive: bool, stages: PipelineStages,
