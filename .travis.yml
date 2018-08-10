@@ -23,6 +23,8 @@ addons:
 
 script:
     - cargo test --all -j 1
+    - cd examples
+    - cargo build
 
 after_success:
     - |
