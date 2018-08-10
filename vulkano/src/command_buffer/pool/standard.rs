@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam::sync::MsQueue;
+use crossbeam::queue::MsQueue;
 use fnv::FnvHashMap;
 use std::collections::hash_map::Entry;
 use std::marker::PhantomData;

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam::sync::SegQueue;
+use crossbeam::queue::SegQueue;
 use std::sync::Arc;
 
 use OomError;
