@@ -140,7 +140,7 @@ impl MemoryRequirements {
 
 /// Indicates whether we want to allocate memory for a specific resource, or in a generic way.
 ///
-/// Using dedicated allocations can yield faster performances, but requires the
+/// Using dedicated allocations can yield better performance, but requires the
 /// `VK_KHR_dedicated_allocation` extension to be enabled on the device.
 ///
 /// If a dedicated allocation is performed, it must only be bound to any resource other than the

@@ -582,7 +582,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///   the extent. Same for the Y coordinate for one-dimensional images.
     /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
     ///
-    /// If `layer_count` is superior to 1, the copy will happen between each individual layer as
+    /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
     /// if they were separate images.
     ///
     /// # Panic
@@ -667,7 +667,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///   the bottom-right offset. Same for the Y coordinate for one-dimensional images.
     /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
     ///
-    /// If `layer_count` is superior to 1, the blit will happen between each individual layer as
+    /// If `layer_count` is greater than 1, the blit will happen between each individual layer as
     /// if they were separate images.
     ///
     /// # Panic

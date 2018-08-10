@@ -69,7 +69,7 @@ use sync::Sharing;
 /// In other words, if you are going to read from the image after drawing to it, use a regular
 /// image. If you don't need to read from it (for example if it's some kind of intermediary color,
 /// or a depth buffer that is only used once) then use a transient image as it may improve
-/// performances.
+/// performance.
 ///
 // TODO: forbid reading transient images outside render passes?
 #[derive(Debug)]
