@@ -219,7 +219,7 @@
 //!
 //! ## Acquiring and presenting images
 //!
-//! Once you created a swapchain and retreived all the images that belong to it (see previous
+//! Once you created a swapchain and retrieved all the images that belong to it (see previous
 //! section), you can draw on it. This is done in three steps:
 //!
 //!  - Call `swapchain::acquire_next_image`. This function will return the index of the image
@@ -232,12 +232,25 @@
 //!    the implementation that you are finished drawing to the image and that it can queue a
 //!    command to present the image on the screen after the draw operations are finished.
 //!
-//! TODO: add example here
+//! ```
+//! use vulkano::swapchain;
+//! use vulkano::sync::GpuFuture;
+//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
+//! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain<()>> = return;
+//! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
-//!     let index = swapchain::acquire_next_image(None).unwrap();
-//!     draw(images[index]);
-//!     swapchain::present(queue, index).unwrap();
+//!     # let mut command_buffer: ::vulkano::command_buffer::AutoCommandBuffer<()> = return;
+//!     let (image_num, acquire_future)
+//!         = swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
+//!
+//!     // The command_buffer contains the draw commands that modify the framebuffer
+//!     // constructed from images[image_num]
+//!     acquire_future
+//!         .then_execute(queue.clone(), command_buffer).unwrap()
+//!         .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+//!         .then_signal_fence_and_flush().unwrap();
 //! }
+//! ```
 //!
 //! ## Recreating a swapchain
 //!
@@ -253,7 +266,6 @@
 //! TODO: suboptimal stuff
 //!
 //! ```
-//! # use std::time::Duration;
 //! use vulkano::swapchain;
 //! use vulkano::swapchain::AcquireError;
 //! use vulkano::sync::GpuFuture;
@@ -282,9 +294,7 @@
 //!     let final_future = acq_future
 //!         // .then_execute(...)
 //!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
-//!         .then_signal_fence();
-//!
-//!     final_future.flush().unwrap();      // TODO: PresentError?
+//!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
 //! }
 //! ```
 //!
