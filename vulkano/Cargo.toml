@@ -1,6 +1,6 @@
 [package]
 name = "vulkano"
-version = "0.7.2"
+version = "0.9.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
@@ -11,10 +11,10 @@ categories = ["rendering::graphics-api"]
 build = "build.rs"
 
 [dependencies]
-crossbeam = "0.3.0"
+crossbeam = "0.4"
 fnv = "1.0.6"
 shared_library = "0.1.7"
-smallvec = "0.5.0"
-lazy_static = "0.2.9"
-vk-sys = { version = "0.3.2", path = "../vk-sys" }
+smallvec = "0.6.0"
+lazy_static = "1"
+vk-sys = { version = "0.3.3", path = "../vk-sys" }
 half = "1"

@@ -73,7 +73,7 @@ fn main() {
         .next()
         .expect("no graphics device");
     let mut events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new()
+    let surface = winit::WindowBuilder::new()
         .with_decorations(false)
         .with_title("particle storm")
         .build_vk_surface(&events_loop, instance.clone())
@@ -81,7 +81,7 @@ fn main() {
     let (graphics_device, mut queues) = {
         let graphical_queue_family = physical
             .queue_families()
-            .find(|&q| q.supports_graphics() && window.surface().is_supported(q).unwrap_or(false))
+            .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
             .expect("couldn't find a graphic queue family");
         let device_ext = DeviceExtensions {
             khr_swapchain: true,
@@ -97,7 +97,7 @@ fn main() {
     let graphics_queue = queues.next().unwrap();
 
     let (swapchain, images) = {
-        let caps = window.surface()
+        let caps = surface
             .capabilities(graphics_device.physical_device())
             .expect("failure to get surface capabilities");
         let format = caps.supported_formats[0].0;
@@ -107,7 +107,7 @@ fn main() {
 
         Swapchain::new(
             graphics_device.clone(),
-            window.surface().clone(),
+            surface.clone(),
             caps.min_image_count,
             format,
             dimensions,
@@ -444,11 +444,11 @@ fn main() {
             .begin_render_pass(
                 framebuffers[image_num].clone(),
                 false,
-                vec![[0.0, 0.0, 0.0, 1.0].into(), 1.0.into()],
+                vec![[0.0, 0.0, 0.0, 1.0].into()],
             ).unwrap()
             .draw(
                 graphics_pipeline.clone(),
-                DynamicState::none(),
+                &DynamicState::none(),
                 vertex_buffer.clone(),
                 (),
                 (),

@@ -14,7 +14,6 @@
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
 // Note that since we don't create any window, fewer imports are needed.
-#[macro_use]
 extern crate vulkano;
 #[macro_use]
 extern crate vulkano_shader_derive;
@@ -81,6 +80,7 @@ fn main() {
     // pipelines are much more simple to create.
     let pipeline = Arc::new({
         // TODO: explain
+        #[allow(dead_code)]
         mod cs {
             #[derive(VulkanoShader)]
             #[ty = "compute"]

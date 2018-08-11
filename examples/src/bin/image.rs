@@ -37,12 +37,12 @@ fn main() {
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
     let mut events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     let mut dimensions;
 
     let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
-                                                   window.surface().is_supported(q).unwrap_or(false))
+                                                   surface.is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
     let device_ext = vulkano::device::DeviceExtensions {
@@ -55,14 +55,14 @@ fn main() {
     let queue = queues.next().unwrap();
 
     let (mut swapchain, mut images) = {
-        let caps = window.surface().capabilities(physical).expect("failed to get surface capabilities");
+        let caps = surface.capabilities(physical).expect("failed to get surface capabilities");
 
         dimensions = caps.current_extent.unwrap_or([1024, 768]);
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
 
-        vulkano::swapchain::Swapchain::new(device.clone(), window.surface().clone(), caps.min_image_count,
+        vulkano::swapchain::Swapchain::new(device.clone(), surface.clone(), caps.min_image_count,
                                            format, dimensions, 1,
                                            usage, &queue, vulkano::swapchain::SurfaceTransform::Identity,
                                            alpha,
@@ -145,11 +145,21 @@ fn main() {
 
     let mut previous_frame_end = Box::new(tex_future) as Box<GpuFuture>;
 
+    let mut dynamic_state =  vulkano::command_buffer::DynamicState {
+        line_width: None,
+        viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0 .. 1.0,
+        }]),
+        scissors: None,
+    };
+
     loop {
         previous_frame_end.cleanup_finished();
         if recreate_swapchain {
 
-            dimensions = window.surface().capabilities(physical)
+            dimensions = surface.capabilities(physical)
                 .expect("failed to get surface capabilities")
                 .current_extent.unwrap_or([1024, 768]);
 
@@ -161,21 +171,26 @@ fn main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            std::mem::replace(&mut swapchain, new_swapchain);
-            std::mem::replace(&mut images, new_images);
+            swapchain = new_swapchain;
+            images = new_images;
 
             framebuffers = None;
+
+            dynamic_state.viewports = Some(vec![vulkano::pipeline::viewport::Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0 .. 1.0,
+            }]);
 
             recreate_swapchain = false;
         }
 
         if framebuffers.is_none() {
-            let new_framebuffers = Some(images.iter().map(|image| {
+            framebuffers = Some(images.iter().map(|image| {
                 Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>());
-            std::mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         let (image_num, future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(),
@@ -194,15 +209,7 @@ fn main() {
                 framebuffers.as_ref().unwrap()[image_num].clone(), false,
                 vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(),
-                   vulkano::command_buffer::DynamicState {
-                      line_width: None,
-                      viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      scissors: None,
-                  },
+                  &dynamic_state,
                   vertex_buffer.clone(),
                   set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
@@ -211,13 +218,26 @@ fn main() {
         let future = previous_frame_end.join(future)
             .then_execute(queue.clone(), cb).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence_and_flush().unwrap();
-        previous_frame_end = Box::new(future) as Box<_>;
+            .then_signal_fence_and_flush();
+
+        match future {
+            Ok(future) => {
+                previous_frame_end = Box::new(future) as Box<_>;
+            }
+            Err(vulkano::sync::FlushError::OutOfDate) => {
+                recreate_swapchain = true;
+                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+            }
+        }
 
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
                 _ => ()
             }
         });

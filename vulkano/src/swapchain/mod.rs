@@ -47,8 +47,10 @@
 //! Trying to use one of these functions without enabling the proper extension will result in an
 //! error.
 //!
-//! **Note that the `Surface` object is unsafe**. It is your responsibility to keep the window
-//! alive for at least as long as the surface exists.
+//! **Note that the `Surface` object is potentially unsafe**. It is your responsibility to
+//! keep the window alive for at least as long as the surface exists. In many cases Surface
+//! may be able to do this for you, if you pass it ownership of your Window (or a
+//! reference-counting container for it).
 //!
 //! ### Example
 //!
@@ -71,11 +73,17 @@
 //!     }
 //! };
 //!
-//! # fn build_window() -> *const u32 { ptr::null() }
+//! # use std::sync::Arc;
+//! # struct Window(*const u32);
+//! # impl Window {
+//! # fn hwnd(&self) -> *const u32 { self.0 }
+//! # }
+//! #
+//! # fn build_window() -> Arc<Window> { Arc::new(Window(ptr::null())) }
 //! let window = build_window();        // Third-party function, not provided by vulkano
 //! let _surface = unsafe {
 //!     let hinstance: *const () = ptr::null();     // Windows-specific object
-//!     Surface::from_hwnd(instance.clone(), hinstance, window).unwrap()
+//!     Surface::from_hwnd(instance.clone(), hinstance, window.hwnd(), Arc::clone(&window)).unwrap()
 //! };
 //! ```
 //!
@@ -129,14 +137,17 @@
 //! # use vulkano::device::Device;
 //! # use vulkano::swapchain::Surface;
 //! # use std::cmp::{max, min};
-//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface>) -> Result<(), Box<std::error::Error>> {
+//! # fn choose_caps(device: Arc<Device>, surface: Arc<Surface<()>>) -> Result<(), Box<std::error::Error>> {
 //! let caps = surface.capabilities(device.physical_device())?;
 //!
 //! // Use the current window size or some fixed resolution.
 //! let dimensions = caps.current_extent.unwrap_or([640, 480]);
 //!
 //! // Try to use double-buffering.
-//! let buffers_count = max(min(2, caps.min_image_count), caps.max_image_count.unwrap_or(2));
+//! let buffers_count = match caps.max_image_count {
+//!     None => max(2, caps.min_image_count),
+//!     Some(limit) => min(max(2, caps.min_image_count), limit)
+//! };
 //!
 //! // Preserve the current surface transform.
 //! let transform = caps.current_transform;
@@ -157,7 +168,7 @@
 //! # use vulkano::format::Format;
 //! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha};
 //! # fn create_swapchain(
-//! #     device: Arc<Device>, surface: Arc<Surface>, present_queue: Arc<Queue>,
+//! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
 //! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
 //! # ) -> Result<(), Box<std::error::Error>> {
@@ -248,7 +259,7 @@
 //! use vulkano::sync::GpuFuture;
 //!
 //! // let mut swapchain = Swapchain::new(...);
-//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain>, _) = return;
+//! # let mut swapchain: (::std::sync::Arc<::vulkano::swapchain::Swapchain<()>>, _) = return;
 //! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
 //! let mut recreate_swapchain = false;
 //!

@@ -1,14 +1,33 @@
-# Unreleased
+# Unreleased (major)
+
+- Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
+- Updated winit to version 0.17.
+- Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
+- Added `vulkano_win::create_vk_surface` which allows creating a surface safely without taking ownership of
+  the window.
+- `AutoCommandBufferBuilder::draw` and friends no longer consume the `DynamicState` argument, allowing reuse between calls.
+
+# Version 0.9.0 (2018-03-13)
+
+- Updated winit to version 0.11.
+
+# Version 0.8.0 (2018-03-11)
 
 - Changed `ShaderInterfaceMismatchError` to be more verbose.
 - Allow depth/stencil images to be used with `AutoCommandBufferBuilder::copy_image_to_buffer()`
+- Allow `Surface` to own the window it references.
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
 - Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
 - Fix linking against MoltenVK >= 0.19.0 
+- Fix panic on DeviceLost error after resizing swapchain on nvidia/amd hardware
 - Added `AutoCommandBufferBuilder::copy_image`
 - Added `VulkanObject::TYPE` to look up the `DebugReportObjectTypeEXT` of an object
 - Added `Device::set_object_name` and `Device::set_object_name_raw`
 - Added `GraphicsPipelineBuilder::with_auto_layout` to simplify use of dynamic buffers.
+
+# Version 0.7.3 (2018-02-10)
+
+*Yanked*
 
 # Version 0.7.2 (2017-10-09)
 

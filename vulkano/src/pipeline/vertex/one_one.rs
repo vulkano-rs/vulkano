@@ -104,7 +104,7 @@ unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>>
         // FIXME: safety
         assert_eq!(source.len(), 2);
         let len = source[0].size() / mem::size_of::<T>();
-        let inst = source[0].size() / mem::size_of::<U>();
+        let inst = source[1].size() / mem::size_of::<U>();
         let s0 = source.remove(0);
         let s1 = source.remove(0);
         (vec![Box::new(s0) as Box<_>, Box::new(s1) as Box<_>], len, inst)

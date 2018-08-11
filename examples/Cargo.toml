@@ -8,7 +8,7 @@ publish = false
 vulkano = { path = "../vulkano" }
 vulkano-shader-derive = { path = "../vulkano-shader-derive" }
 vulkano-win = { path = "../vulkano-win" }
-cgmath = "0.15.0"
-image = "0.17.0"
-winit = "0.7.0"
+cgmath = "0.16.1"
+image = "0.19.0"
+winit = "0.17"
 time = "0.1.38"

@@ -236,9 +236,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut for the `Swapchain::present()` function.
     #[inline]
-    fn then_swapchain_present(self, queue: Arc<Queue>, swapchain: Arc<Swapchain>,
+    fn then_swapchain_present<W>(self, queue: Arc<Queue>, swapchain: Arc<Swapchain<W>>,
                               image_index: usize)
-                              -> PresentFuture<Self>
+                              -> PresentFuture<Self,W>
         where Self: Sized
     {
         swapchain::present(swapchain, self, queue, image_index)
@@ -248,9 +248,9 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
     #[inline]
-    fn then_swapchain_present_incremental(self, queue: Arc<Queue>, swapchain: Arc<Swapchain>,
+    fn then_swapchain_present_incremental<W>(self, queue: Arc<Queue>, swapchain: Arc<Swapchain<W>>,
                                           image_index: usize, present_region: PresentRegion)
-                                          -> PresentFuture<Self>
+                                          -> PresentFuture<Self,W>
         where Self: Sized
     {
         swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
@@ -319,7 +319,7 @@ pub enum AccessError {
         requested: ImageLayout,
     },
 
-    /// Trying to use an image without transitionning it from the "undefined" or "preinitialized"
+    /// Trying to use an image without transitioning it from the "undefined" or "preinitialized"
     /// layouts first.
     ImageNotInitialized {
         /// The layout that was requested for the image.
@@ -347,7 +347,7 @@ impl error::Error for AccessError {
                 unimplemented!() // TODO: find a description
             },
             AccessError::ImageNotInitialized { .. } => {
-                "trying to use an image without transitionning it from the undefined or \
+                "trying to use an image without transitioning it from the undefined or \
                  preinitialized layouts first"
             },
             AccessError::BufferNotInitialized => {

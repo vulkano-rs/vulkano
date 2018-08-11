@@ -483,6 +483,8 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// you're inside the first subpass of the render pass. If `secondary` is false, you will only
     /// be able to add inline draw commands and not secondary command buffers.
     ///
+    /// C must contain exactly one clear value for each attachment in the framebuffer.
+    ///
     /// You must call this before you can add draw commands.
     #[inline]
     pub fn begin_render_pass<F, C>(mut self, framebuffer: F, secondary: bool, clear_values: C)
@@ -504,31 +506,47 @@ impl<P> AutoCommandBufferBuilder<P> {
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
-            for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate().filter(|&(_, ref desc)| { desc.load == LoadOp::Clear }) {
+            for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate() {
                 match clear_values_copy.next() {
-                    Some((clear_i, clear_value)) => match clear_value {
-                        ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None", 
-                            clear_i, atch_i, atch_desc.format.ty()),
-                        ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
-                           panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil", 
-                               clear_i, atch_i, atch_desc.format.ty());
-                        }, ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
-                            panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStenceil", 
-                               clear_i, atch_i, atch_desc.format.ty());
+                    Some((clear_i, clear_value)) => {
+                        if atch_desc.load == LoadOp::Clear {
+                            match clear_value {
+                                ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None",
+                                    clear_i, atch_i, atch_desc.format.ty()),
+                                ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
+                                   panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                                ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
+                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStencil",
+                                       clear_i, atch_i, atch_desc.format.ty());
+                                }
+                            }
                         }
-                    }, None => panic!("Not enough clear values")
+                        else {
+                            if clear_value != ClearValue::None {
+                                panic!("Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
+                                   clear_i, atch_i, clear_value);
+                            }
+                        }
+                    }
+                    None => panic!("Not enough clear values")
                 }
             }
             
@@ -564,7 +582,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///   the extent. Same for the Y coordinate for one-dimensional images.
     /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
     ///
-    /// If `layer_count` is superior to 1, the copy will happen between each individual layer as
+    /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
     /// if they were separate images.
     ///
     /// # Panic
@@ -649,7 +667,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///   the bottom-right offset. Same for the Y coordinate for one-dimensional images.
     /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
     ///
-    /// If `layer_count` is superior to 1, the blit will happen between each individual layer as
+    /// If `layer_count` is greater than 1, the blit will happen between each individual layer as
     /// if they were separate images.
     ///
     /// # Panic
@@ -963,7 +981,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
+    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &DynamicState, vertices: V, sets: S,
                               constants: Pc)
                               -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -973,7 +991,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
@@ -987,7 +1005,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1008,7 +1026,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: DynamicState,
+    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
                                              vertices: V, index_buffer: Ib, sets: S, constants: Pc)
                                              -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1021,7 +1039,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
@@ -1041,7 +1059,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1061,7 +1079,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: DynamicState,
+    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: &DynamicState,
                                            vertices: V, indirect_buffer: Ib, sets: S, constants: Pc)
                                            -> Result<Self, DrawIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1076,7 +1094,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
@@ -1092,7 +1110,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1286,7 +1304,7 @@ unsafe fn push_constants<P, Pl, Pc>(destination: &mut SyncCommandBufferBuilder<P
 }
 
 // Shortcut function to change the state of the pipeline.
-unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicState) {
+unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &DynamicState) {
     if let Some(line_width) = dynamic.line_width {
         destination.set_line_width(line_width);
     }

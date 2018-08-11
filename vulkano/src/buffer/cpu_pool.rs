@@ -315,12 +315,10 @@ impl<T, A> CpuBufferPool<T, A>
             Err(d) => d,
         };
 
-        // TODO: choose the capacity better?
-        let next_capacity = cmp::max(data.len(), 1) *
-            match *mutex {
-                Some(ref b) => b.capacity * 2,
-                None => 3,
-            };
+        let next_capacity = match *mutex {
+            Some(ref b) if data.len() < b.capacity => 2 * b.capacity,
+            _ => 2 * data.len(),
+        };
 
         self.reset_buf(&mut mutex, next_capacity)?;
 
@@ -620,8 +618,12 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.buffer.inner.key() + self.index as u64
+    fn conflict_key(&self) -> (u64, usize) {
+        (
+            self.buffer.inner.key(),
+            // ensure the special cased empty buffers dont collide with a regular buffer starting at 0
+            if self.requested_len == 0 { usize::max_value() } else { self.index }
+        )
     }
 
     #[inline]
@@ -751,7 +753,7 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
+    fn conflict_key(&self) -> (u64, usize) {
         self.chunk.conflict_key()
     }
 

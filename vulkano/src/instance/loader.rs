@@ -168,18 +168,17 @@ macro_rules! statically_linked_vulkan_loader {
 /// This function tries to auto-guess where to find the Vulkan implementation, and loads it in a
 /// `lazy_static!`. The content of the lazy_static is then returned, or an error if we failed to
 /// load Vulkan.
-pub fn auto_loader(
-    )
+pub fn auto_loader()
     -> Result<&'static FunctionPointers<Box<Loader + Send + Sync>>, LoadingError>
 {
-    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    #[cfg(target_os = "ios")]
     #[allow(non_snake_case)]
     fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
         let loader = statically_linked_vulkan_loader!();
         Ok(Box::new(loader))
     }
 
-    #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+    #[cfg(not(target_os = "ios"))]
     fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
         #[cfg(windows)]
         fn get_path() -> &'static Path {
@@ -188,6 +187,10 @@ pub fn auto_loader(
         #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
         fn get_path() -> &'static Path {
             Path::new("libvulkan.so.1")
+        }
+        #[cfg(target_os = "macos")]
+        fn get_path() -> &'static Path {
+            Path::new("libvulkan.1.dylib")
         }
         #[cfg(target_os = "android")]
         fn get_path() -> &'static Path {
