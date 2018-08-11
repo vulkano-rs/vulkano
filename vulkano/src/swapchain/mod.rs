@@ -120,7 +120,7 @@
 //! on the device (and not on the instance like `VK_KHR_surface`):
 //!
 //! ```no_run
-//! # use vulkano::instance::DeviceExtensions;
+//! # use vulkano::device::DeviceExtensions;
 //! let ext = DeviceExtensions {
 //!     khr_swapchain: true,
 //!     .. DeviceExtensions::none()

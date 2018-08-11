@@ -30,9 +30,9 @@ use instance::loader::Loader;
 use instance::loader::LoadingError;
 use vk;
 
-use features::Features;
 use instance::{InstanceExtensions, RawInstanceExtensions};
 use version::Version;
+use features::Features;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.

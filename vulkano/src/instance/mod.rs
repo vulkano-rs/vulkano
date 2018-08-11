@@ -106,9 +106,7 @@
 //! `device` module for more info.
 //!
 
-pub use self::extensions::DeviceExtensions;
 pub use self::extensions::InstanceExtensions;
-pub use self::extensions::RawDeviceExtensions;
 pub use self::extensions::RawInstanceExtensions;
 pub use self::instance::ApplicationInfo;
 pub use self::instance::Instance;
@@ -128,7 +126,6 @@ pub use self::layers::LayersListError;
 pub use self::layers::layers_list;
 pub use self::limits::Limits;
 pub use self::loader::LoadingError;
-pub use features::Features;
 pub use version::Version;
 
 pub mod debug;
