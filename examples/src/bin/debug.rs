@@ -50,7 +50,7 @@ fn main() {
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
     let layer = "VK_LAYER_LUNARG_standard_validation";
-    let layers = vec![&layer];
+    let layers = vec![layer];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance = Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
