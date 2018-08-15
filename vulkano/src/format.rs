@@ -790,7 +790,7 @@ impl FormatTy {
 }
 
 /// Describes a uniform value that will be used to fill an image.
-// TODO: should have the same layout as `vk::ClearValue` for performances
+// TODO: should have the same layout as `vk::ClearValue` for performance
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ClearValue {
     /// Entry for attachments that aren't cleared.

@@ -8,10 +8,12 @@ extern crate cocoa;
 #[cfg(target_os = "macos")]
 extern crate metal_rs as metal;
 
+use std::borrow::Borrow;
 use std::error;
 use std::fmt;
 #[cfg(target_os = "windows")]
 use std::ptr;
+use std::rc::Rc;
 use std::sync::Arc;
 
 use vulkano::instance::Instance;
@@ -53,16 +55,29 @@ pub fn required_extensions() -> InstanceExtensions {
     }
 }
 
+/// Create a surface from the window type `W`. The surface borrows the window
+/// to prevent it from being dropped before the surface.
+pub fn create_vk_surface<W>(
+    window: W, instance: Arc<Instance>,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError>
+where
+    W: SafeBorrow<winit::Window>,
+{
+    unsafe { winit_to_surface(instance, window) }
+}
+
 pub trait VkSurfaceBuild {
-    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>)
-                        -> Result<Arc<Surface<winit::Window>>, CreationError>;
+    fn build_vk_surface(
+        self, events_loop: &EventsLoop, instance: Arc<Instance>,
+    ) -> Result<Arc<Surface<winit::Window>>, CreationError>;
 }
 
 impl VkSurfaceBuild for WindowBuilder {
-    fn build_vk_surface(self, events_loop: &EventsLoop, instance: Arc<Instance>)
-                        -> Result<Arc<Surface<winit::Window>>, CreationError> {
+    fn build_vk_surface(
+        self, events_loop: &EventsLoop, instance: Arc<Instance>,
+    ) -> Result<Arc<Surface<winit::Window>>, CreationError> {
         let window = self.build(events_loop)?;
-        Ok(unsafe { winit_to_surface(instance, window) }?)
+        Ok(create_vk_surface(window, instance)?)
     }
 }
 
@@ -115,55 +130,65 @@ impl From<WindowCreationError> for CreationError {
 }
 
 #[cfg(target_os = "android")]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: winit::Window)
-                           -> Result<Arc<Surface<winit::Window>>, SurfaceCreationError> {
+unsafe fn winit_to_surface<W: SafeBorrow<winit::Window>>(
+    instance: Arc<Instance>, win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::os::android::WindowExt;
-    Surface::from_anativewindow(instance, win.get_native_window(), win)
+    Surface::from_anativewindow(instance, win.borrow().get_native_window(), win)
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: winit::Window)
-                           -> Result<Arc<Surface<winit::Window>>, SurfaceCreationError> {
+unsafe fn winit_to_surface<W: SafeBorrow<winit::Window>>(
+    instance: Arc<Instance>, win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::os::unix::WindowExt;
-    match (win.get_wayland_display(), win.get_wayland_surface()) {
-        (Some(display), Some(surface)) => Surface::from_wayland(instance,
-                                                                display,
-                                                                surface,
-                                                                win),
+    match (
+        win.borrow().get_wayland_display(),
+        win.borrow().get_wayland_surface(),
+    ) {
+        (Some(display), Some(surface)) => Surface::from_wayland(instance, display, surface, win),
         _ => {
             // No wayland display found, check if we can use xlib.
             // If not, we use xcb.
             if instance.loaded_extensions().khr_xlib_surface {
-                Surface::from_xlib(instance,
-                                   win.get_xlib_display().unwrap(),
-                                   win.get_xlib_window().unwrap() as _,
-                                   win)
+                Surface::from_xlib(
+                    instance,
+                    win.borrow().get_xlib_display().unwrap(),
+                    win.borrow().get_xlib_window().unwrap() as _,
+                    win,
+                )
             } else {
-                Surface::from_xcb(instance,
-                                  win.get_xcb_connection().unwrap(),
-                                  win.get_xlib_window().unwrap() as _,
-                                  win)
+                Surface::from_xcb(
+                    instance,
+                    win.borrow().get_xcb_connection().unwrap(),
+                    win.borrow().get_xlib_window().unwrap() as _,
+                    win,
+                )
             }
         },
     }
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: winit::Window)
-                           -> Result<Arc<Surface<winit::Window>>, SurfaceCreationError> {
+unsafe fn winit_to_surface<W: SafeBorrow<winit::Window>>(
+    instance: Arc<Instance>, win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::os::windows::WindowExt;
-    Surface::from_hwnd(instance,
-                       ptr::null() as *const (), // FIXME
-                       win.get_hwnd(),
-                       win)
+    Surface::from_hwnd(
+        instance,
+        ptr::null() as *const (), // FIXME
+        win.borrow().get_hwnd(),
+        win,
+    )
 }
 
 #[cfg(target_os = "macos")]
-unsafe fn winit_to_surface(instance: Arc<Instance>, win: winit::Window)
-                           -> Result<Arc<Surface<winit::Window>>, SurfaceCreationError> {
+unsafe fn winit_to_surface<W: SafeBorrow<winit::Window>>(
+    instance: Arc<Instance>, win: W,
+) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::os::macos::WindowExt;
 
-    let wnd: cocoa_id = mem::transmute(win.get_nswindow());
+    let wnd: cocoa_id = mem::transmute(win.borrow().get_nswindow());
 
     let layer = CoreAnimationLayer::new();
 
@@ -177,5 +202,16 @@ unsafe fn winit_to_surface(instance: Arc<Instance>, win: winit::Window)
     view.setLayer(mem::transmute(layer.as_ref())); // Bombs here with out of memory
     view.setWantsLayer(YES);
 
-    Surface::from_macos_moltenvk(instance, win.get_nsview() as *const (), win)
+    Surface::from_macos_moltenvk(instance, win.borrow().get_nsview() as *const (), win)
 }
+
+/// An alternative to `Borrow<T>` with the requirement that all calls to
+/// `borrow` return the same object.
+pub unsafe trait SafeBorrow<T>: Borrow<T> {}
+
+unsafe impl<T> SafeBorrow<T> for T {}
+unsafe impl<'a, T> SafeBorrow<T> for &'a T {}
+unsafe impl<'a, T> SafeBorrow<T> for &'a mut T {}
+unsafe impl<T> SafeBorrow<T> for Rc<T> {}
+unsafe impl<T> SafeBorrow<T> for Arc<T> {}
+unsafe impl<T> SafeBorrow<T> for Box<T> {}

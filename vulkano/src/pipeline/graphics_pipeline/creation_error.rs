@@ -117,7 +117,7 @@ pub enum GraphicsPipelineCreationError {
     /// The minimum or maximum bounds of viewports have been exceeded.
     ViewportBoundsExceeded,
 
-    /// The `wide_lines` feature must be enabled in order to use a line width superior to 1.0.
+    /// The `wide_lines` feature must be enabled in order to use a line width greater than 1.0.
     WideLinesFeatureNotEnabled,
 
     /// The `depth_clamp` feature must be enabled in order to use depth clamping.
@@ -257,7 +257,7 @@ impl error::Error for GraphicsPipelineCreationError {
             },
             GraphicsPipelineCreationError::WideLinesFeatureNotEnabled => {
                 "the `wide_lines` feature must be enabled in order to use a line width \
-                 superior to 1.0"
+                 greater than 1.0"
             },
             GraphicsPipelineCreationError::DepthClampFeatureNotEnabled => {
                 "the `depth_clamp` feature must be enabled in order to use depth clamping"

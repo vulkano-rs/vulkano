@@ -1,7 +1,17 @@
 # Unreleased
 
-- Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
+
+# Version 0.10.0 (2018-08-10)
+
+- Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
+- Updated winit to version 0.17.
+- Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
+- Added `vulkano_win::create_vk_surface` which allows creating a surface safely without taking ownership of
+  the window.
+- `AutoCommandBufferBuilder::draw` and friends no longer consume the `DynamicState` argument, allowing reuse between calls.
+- `Instance::new` and `Instance::with_loader` now take in the layers as an iterator of borrowed `str`s, not of references to
+borrowed `str`s.
 
 # Version 0.9.0 (2018-03-13)
 

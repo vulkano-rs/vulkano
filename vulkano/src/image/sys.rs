@@ -50,7 +50,7 @@ use vk;
 /// - The memory that you bind to the image must be manually kept alive.
 /// - The queue family ownership must be manually enforced.
 /// - The usage must be manually enforced.
-/// - The image layout must be manually enforced and transitionned.
+/// - The image layout must be manually enforced and transitioned.
 ///
 pub struct UnsafeImage {
     image: vk::Image,

@@ -57,7 +57,6 @@ use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
-use std::mem;
 
 fn main() {
     // The first step of any vulkan program is to create an instance.
@@ -205,6 +204,10 @@ fn main() {
     //
     // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
     //
+    // An overview of what the `VulkanoShader` derive macro generates can be found in the
+    // `vulkano-shader-derive` crate docs. You can view them at
+    // https://docs.rs/vulkano-shader-derive/*/vulkano_shader_derive/
+    //
     // TODO: explain this in details
     mod vs {
         #[derive(VulkanoShader)]
@@ -326,6 +329,16 @@ void main() {
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
+    let mut dynamic_state = DynamicState {
+        line_width: None,
+        viewports: Some(vec![Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0 .. 1.0,
+        }]),
+        scissors: None,
+    };
+
     loop {
         // It is important to call this function from time to time, otherwise resources will keep
         // accumulating and you will eventually reach an out of memory error.
@@ -350,10 +363,16 @@ void main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            mem::replace(&mut swapchain, new_swapchain);
-            mem::replace(&mut images, new_images);
+            swapchain = new_swapchain;
+            images = new_images;
 
             framebuffers = None;
+
+            dynamic_state.viewports = Some(vec![Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0 .. 1.0,
+            }]);
 
             recreate_swapchain = false;
         }
@@ -361,12 +380,11 @@ void main() {
         // Because framebuffers contains an Arc on the old swapchain, we need to
         // recreate framebuffers as well.
         if framebuffers.is_none() {
-            let new_framebuffers = Some(images.iter().map(|image| {
+            framebuffers = Some(images.iter().map(|image| {
                 Arc::new(Framebuffer::start(render_pass.clone())
                          .add(image.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>());
-            mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
@@ -412,16 +430,7 @@ void main() {
             // The last two parameters contain the list of resources to pass to the shaders.
             // Since we used an `EmptyPipeline` object, the objects have to be `()`.
             .draw(pipeline.clone(),
-                  DynamicState {
-                      line_width: None,
-                      // TODO: Find a way to do this without having to dynamically allocate a Vec every frame.
-                      viewports: Some(vec![Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      scissors: None,
-                  },
+                  &dynamic_state,
                   vertex_buffer.clone(), (), ())
             .unwrap()
 
@@ -473,7 +482,7 @@ void main() {
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
                 _ => ()
             }
         });

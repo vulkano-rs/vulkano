@@ -23,6 +23,9 @@ addons:
 
 script:
     - travis_wait cargo test --all -j 1
+    - cd examples
+    - cargo build
+    - cd .. # this is very important or else the below `cargo publish` will fail
 
 after_success:
     - |

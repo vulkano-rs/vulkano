@@ -318,13 +318,13 @@ impl<P> Hash for BuilderKey<P> {
         match self.resource_ty {
             KeyTy::Buffer => {
                 let c = &commands_lock.commands[self.command_id];
-                c.buffer(self.resource_index).conflict_key()
+                c.buffer(self.resource_index).conflict_key().hash(state)
             },
             KeyTy::Image => {
                 let c = &commands_lock.commands[self.command_id];
-                c.image(self.resource_index).conflict_key()
+                c.image(self.resource_index).conflict_key().hash(state)
             },
-        }.hash(state)
+        }
     }
 }
 
@@ -459,7 +459,7 @@ impl<P> SyncCommandBufferBuilder<P> {
     // `exclusive`, `stages` and `access` must match the way the resource has been used.
     //
     // `start_layout` and `end_layout` designate the image layout that the image is expected to be
-    // in when the command starts, and the image layout that the image will be transitionned to
+    // in when the command starts, and the image layout that the image will be transitioned to
     // during the command. When it comes to buffers, you should pass `Undefined` for both.
     pub(super) fn prev_cmd_resource(&mut self, resource_ty: KeyTy, resource_index: usize,
                                     exclusive: bool, stages: PipelineStages,
@@ -1064,6 +1064,8 @@ impl<P> SyncCommandBuffer<P> {
                     let cmd = &commands_lock[command_id];
                     let buf = cmd.buffer(resource_index);
 
+                    // Because try_gpu_lock needs to be called first,
+                    // this should never return Ok without first returning Err
                     let prev_err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
                         Ok(_) => {
                             unsafe {

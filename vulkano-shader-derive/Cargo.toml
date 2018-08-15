@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-shader-derive"
-version = "0.9.0"
+version = "0.10.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
@@ -13,8 +13,8 @@ name = "vulkano_shader_derive"
 proc-macro = true
 
 [dependencies]
-syn = "0.13"
-vulkano-shaders = { version = "0.9", path = "../vulkano-shaders" }
+syn = "0.14"
+vulkano-shaders = { version = "0.10", path = "../vulkano-shaders" }
 
 [dev-dependencies]
-vulkano = { version = "0.9", path = "../vulkano" }
+vulkano = { version = "0.10", path = "../vulkano" }

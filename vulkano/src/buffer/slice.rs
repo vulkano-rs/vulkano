@@ -205,7 +205,7 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
+    fn conflict_key(&self) -> (u64, usize) {
         self.resource.conflict_key()
     }
 

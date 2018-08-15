@@ -138,6 +138,16 @@ fn main() {
     let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
     let rotation_start = std::time::Instant::now();
 
+    let mut dynamic_state = vulkano::command_buffer::DynamicState {
+        line_width: None,
+        viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+            depth_range: 0.0 .. 1.0,
+        }]),
+        scissors: None,
+    };
+
     loop {
         previous_frame.cleanup_finished();
 
@@ -155,27 +165,31 @@ fn main() {
                 Err(err) => panic!("{:?}", err)
             };
 
-            std::mem::replace(&mut swapchain, new_swapchain);
-            std::mem::replace(&mut images, new_images);
+            swapchain = new_swapchain;
+            images = new_images;
 
-            let new_depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
-            std::mem::replace(&mut depth_buffer, new_depth_buffer);
+            depth_buffer = vulkano::image::attachment::AttachmentImage::transient(device.clone(), dimensions, vulkano::format::D16Unorm).unwrap();
 
             framebuffers = None;
 
             proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { dimensions[0] as f32 / dimensions[1] as f32 }, 0.01, 100.0);
 
+            dynamic_state.viewports = Some(vec![vulkano::pipeline::viewport::Viewport {
+                origin: [0.0, 0.0],
+                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+                depth_range: 0.0 .. 1.0,
+            }]);
+
             recreate_swapchain = false;
         }
 
         if framebuffers.is_none() {
-            let new_framebuffers = Some(images.iter().map(|image| {
+            framebuffers = Some(images.iter().map(|image| {
                 Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
                          .add(image.clone()).unwrap()
                          .add(depth_buffer.clone()).unwrap()
                          .build().unwrap())
             }).collect::<Vec<_>>());
-            std::mem::replace(&mut framebuffers, new_framebuffers);
         }
 
         let uniform_buffer_subbuffer = {
@@ -216,15 +230,7 @@ fn main() {
                 ]).unwrap()
             .draw_indexed(
                 pipeline.clone(),
-                vulkano::command_buffer::DynamicState {
-                      line_width: None,
-                      viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      scissors: None,
-                },
+                &dynamic_state,
                 (vertex_buffer.clone(), normals_buffer.clone()), 
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
@@ -252,7 +258,7 @@ fn main() {
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::Closed, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
                 _ => ()
             }
         });

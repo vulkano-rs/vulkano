@@ -48,7 +48,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 
     /// Returns the description of an attachment.
     ///
-    /// Returns `None` if `num` is superior to `num_attachments()`.
+    /// Returns `None` if `num` is greater than or equal to `num_attachments()`.
     fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription>;
 
     /// Returns an iterator to the list of attachments.
@@ -67,7 +67,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 
     /// Returns the description of a subpass.
     ///
-    /// Returns `None` if `num` is superior to `num_subpasses()`.
+    /// Returns `None` if `num` is greater than or equal to `num_subpasses()`.
     fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription>;
 
     /// Returns an iterator to the list of subpasses.
@@ -86,7 +86,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 
     /// Returns the description of a dependency.
     ///
-    /// Returns `None` if `num` is superior to `num_dependencies()`.
+    /// Returns `None` if `num` is greater than or equal to `num_dependencies()`.
     fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
 
     /// Returns an iterator to the list of dependencies.
@@ -443,10 +443,10 @@ pub struct LayoutAttachmentDescription {
     /// Layout that the image is going to be in at the start of the renderpass.
     ///
     /// The vulkano library will automatically switch to the correct layout if necessary, but it
-    /// is more optimal to set this to the correct value.
+    /// is more efficient to set this to the correct value.
     pub initial_layout: ImageLayout,
 
-    /// Layout that the image will be transitionned to at the end of the renderpass.
+    /// Layout that the image will be transitioned to at the end of the renderpass.
     pub final_layout: ImageLayout,
 }
 

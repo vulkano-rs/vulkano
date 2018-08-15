@@ -11,7 +11,7 @@ extern crate vulkano;
 
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::{ImmutableImage, ImageUsage, ImageLayout};
+use vulkano::image::ImmutableImage;
 use vulkano::image::Dimensions;
 use vulkano::instance;
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
@@ -50,7 +50,7 @@ fn main() {
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
     let layer = "VK_LAYER_LUNARG_standard_validation";
-    let layers = vec![&layer];
+    let layers = vec![layer];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance = Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
@@ -93,14 +93,14 @@ fn main() {
 
     let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
     let queue = physical.queue_families().next().expect("couldn't find a queue family");
-    let (device, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue, 0.5)]).expect("failed to create device");
+    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue, 0.5)]).expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
     let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
-    const data: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
-    let (image, _) = ImmutableImage::from_iter(data.iter().cloned(), dimensions, pixel_format,
+    const DATA: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
+    ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
                                                queue.clone()).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)
