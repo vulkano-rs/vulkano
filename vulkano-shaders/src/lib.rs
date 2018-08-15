@@ -17,7 +17,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
-use shaderc::{Compiler, CompileOptions, OptimizationLevel, TargetEnv};
+use shaderc::{Compiler, CompileOptions, TargetEnv};
 
 pub use shaderc::{CompilationArtifact, ShaderKind};
 pub use parse::ParseError;
@@ -67,7 +67,6 @@ pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
     compile_options.set_target_env(TargetEnv::Vulkan, 0);
-    compile_options.set_optimization_level(OptimizationLevel::Performance);
 
     let content = compiler
         .compile_into_spirv(&code, ty, "shader.glsl", "main", Some(&compile_options))
