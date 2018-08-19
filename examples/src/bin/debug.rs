@@ -92,8 +92,8 @@ fn main() {
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
-    let queue = physical.queue_families().next().expect("couldn't find a queue family");
-    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue, 0.5)]).expect("failed to create device");
+    let queue_family = physical.queue_families().next().expect("couldn't find a queue family");
+    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue_family, 0.5)]).expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:

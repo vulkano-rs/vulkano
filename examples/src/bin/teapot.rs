@@ -7,9 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// For the purpose of this example all unused code is allowed.
-#![allow(dead_code)]
-
 extern crate examples;
 extern crate cgmath;
 extern crate winit;
@@ -42,7 +39,7 @@ fn main() {
 
     let mut dimensions;
 
-    let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
+    let queue_family = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    surface.is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
@@ -52,7 +49,7 @@ fn main() {
     };
 
     let (device, mut queues) = vulkano::device::Device::new(physical, physical.supported_features(),
-                                                            &device_ext, [(queue, 0.5)].iter().cloned())
+                                                            &device_ext, [(queue_family, 0.5)].iter().cloned())
                                .expect("failed to create device");
     let queue = queues.next().unwrap();
 
@@ -289,6 +286,7 @@ void main() {
     gl_Position = uniforms.proj * worldview * vec4(position, 1.0);
 }
 "]
+    #[allow(dead_code)]
     struct Dummy;
 }
 
@@ -311,5 +309,6 @@ void main() {
     f_color = vec4(mix(dark_color, regular_color, brightness), 1.0);
 }
 "]
+    #[allow(dead_code)]
     struct Dummy;
 }
