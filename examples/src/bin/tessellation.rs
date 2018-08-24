@@ -7,11 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// TODO
-// This example doesnt work yet!
-// Maybe it's an issue with the example maybe it's an issue with vulkano.
-// I checked it in so we can use it to test the issue.
-// Delete this comment when the example is working
+// Some relevant documentation:
+// *    Tessellation overview           https://www.khronos.org/opengl/wiki/Tessellation
+// *    Tessellation Control Shader     https://www.khronos.org/opengl/wiki/Tessellation_Control_Shader
+// *    Tessellation Evaluation Shader  https://www.khronos.org/opengl/wiki/Tessellation_Evaluation_Shader
+// *    Tessellation real-world usage 1 http://ogldev.atspace.co.uk/www/tutorial30/tutorial30.html
+// *    Tessellation real-world usage 2 http://prideout.net/blog/?p=48
+
+// Notable elements of this example:
+// *    tessellation control shader and a tessellation evaluation shader
+// *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
 
 #[macro_use]
 extern crate vulkano;
@@ -92,10 +97,15 @@ fn main() {
         impl_vertex!(Vertex, position);
 
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
-            Vertex { position: [-0.5, -0.25] },
-            Vertex { position: [0.0, 0.5] },
-            Vertex { position: [0.25, -0.1] },
-            Vertex { position: [0.25, -0.5] },
+            Vertex { position: [-0.5,  -0.25] },
+            Vertex { position: [ 0.0,   0.5] },
+            Vertex { position: [ 0.25, -0.1] },
+            Vertex { position: [ 0.9,   0.9] },
+            Vertex { position: [ 0.9,   0.8] },
+            Vertex { position: [ 0.8,   0.8] },
+            Vertex { position: [-0.9,   0.9] },
+            Vertex { position: [-0.7,   0.6] },
+            Vertex { position: [-0.5,   0.9] },
         ].iter().cloned()).expect("failed to create buffer")
     };
 
@@ -115,6 +125,73 @@ void main() {
         struct Dummy;
     }
 
+    mod tcs {
+        #[derive(VulkanoShader)]
+        #[ty = "tess_ctrl"]
+        #[src = "
+#version 450
+
+layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
+
+void main(void)
+{
+    // save the position of the patch, so the tes can access it
+    // We could define our own output variables for this,
+    // but gl_out is handily provided.
+    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+
+    gl_TessLevelInner[0] = 10; // many triangles are generated in the center
+    gl_TessLevelOuter[0] = 1;  // no triangles are generated for this edge
+    gl_TessLevelOuter[1] = 10; // many triangles are generated for this edge
+    gl_TessLevelOuter[2] = 10; // many triangles are generated for this edge
+    // gl_TessLevelInner[1] = only used when tes uses layout(quads)
+    // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
+}
+    "]
+        #[allow(dead_code)]
+        struct Dummy;
+    }
+
+    // PG
+    // There is a stage in between tcs and tes called Primitive Generation (PG)
+    // Shaders cannot be defined for it.
+    // It takes gl_TessLevelInner and gl_TessLevelOuter and uses them to generate positions within
+    // the patch and pass them to tes via gl_TessCoord.
+    //
+    // When tes uses layout(triangles) then gl_TessCoord is in barrycentric coordinates.
+    // if layout(quads) is used then gl_TessCoord is in cartesian coordinates.
+    // Barrycentric coordinates are of the form (x, y, z) where x + y + z = 1
+    // and the values x, y and z represent the distance from a vertex of the triangle.
+    // http://mathworld.wolfram.com/BarycentricCoordinates.html
+
+    mod tes {
+        #[derive(VulkanoShader)]
+        #[ty = "tess_eval"]
+        #[src = "
+#version 450
+
+layout(triangles, equal_spacing, cw) in;
+
+void main(void)
+{
+    // retreive the vertex positions set by the tcs
+    vec4 vert_x = gl_in[0].gl_Position;
+    vec4 vert_y = gl_in[1].gl_Position;
+    vec4 vert_z = gl_in[2].gl_Position;
+
+    // convert gl_TessCoord from barycentric coordinates to cartesian coordinates
+    gl_Position = vec4(
+        gl_TessCoord.x * vert_x.x + gl_TessCoord.y * vert_y.x + gl_TessCoord.z * vert_z.x,
+        gl_TessCoord.x * vert_x.y + gl_TessCoord.y * vert_y.y + gl_TessCoord.z * vert_z.y,
+        gl_TessCoord.x * vert_x.z + gl_TessCoord.y * vert_y.z + gl_TessCoord.z * vert_z.z,
+        1.0
+    );
+}
+    "]
+        #[allow(dead_code)]
+        struct Dummy;
+    }
+
     mod fs {
         #[derive(VulkanoShader)]
         #[ty = "fragment"]
@@ -124,51 +201,17 @@ void main() {
 layout(location = 0) out vec4 f_color;
 
 void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+    f_color = vec4(1.0, 1.0, 1.0, 1.0);
 }
 "]
         #[allow(dead_code)]
         struct Dummy;
     }
 
-    mod tcs {
-        #[derive(VulkanoShader)]
-        #[ty = "tess_ctrl"]
-        #[src = "
-#version 450
-
-layout (vertices = 3) out;
-
-void main(void)
-{
-    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-}
-    "]
-        #[allow(dead_code)]
-        struct Dummy;
-    }
-    
-    mod tes {
-        #[derive(VulkanoShader)]
-        #[ty = "tess_eval"]
-        #[src = "
-#version 450
-
-layout(quads, equal_spacing, cw) in;
-
-void main(void)
-{
-    gl_Position = gl_in[0].gl_Position;
-}
-    "]
-        #[allow(dead_code)]
-        struct Dummy;
-    }
-
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
-    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
     let tcs = tcs::Shader::load(device.clone()).expect("failed to create shader module");
     let tes = tes::Shader::load(device.clone()).expect("failed to create shader module");
+    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
 
     let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
         attachments: {
@@ -188,8 +231,14 @@ void main(void)
     let pipeline = Arc::new(GraphicsPipeline::start()
         .vertex_input_single_buffer()
         .vertex_shader(vs.main_entry_point(), ())
+        // Actually use the tessellation shaders.
         .tessellation_shaders(tcs.main_entry_point(), (), tes.main_entry_point(), ())
-        .patch_list(4)
+        // use PrimitiveTopology::PathList(3)
+        // Use a vertices_per_patch of 3, because we want to convert one triangle into lots of
+        // little ones. A value of 4 would convert a rectangle into lots of little triangles.
+        .patch_list(3)
+        // Enable line mode so we can see the generated vertices.
+        .polygon_mode_line()
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -256,7 +305,7 @@ void main(void)
 
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
             .begin_render_pass(framebuffers.as_ref().unwrap()[image_num].clone(), false,
-                               vec![[0.0, 0.0, 1.0, 1.0].into()])
+                               vec![[0.0, 0.0, 0.0, 1.0].into()])
             .unwrap()
             .draw(pipeline.clone(),
                   &dynamic_state,
