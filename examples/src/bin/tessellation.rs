@@ -58,6 +58,11 @@ fn main() {
                             .next().expect("no device available");
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
+    if !physical.supported_features().tessellation_shader {
+        println!("Tessellation shaders not supported on physical device");
+        return;
+    }
+
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
@@ -322,6 +327,11 @@ void main() {
 
         match future {
             Ok(future) => {
+                if cfg!(target_os = "macos") {
+                    // Workaround for moltenvk issue (hang on close)
+                    // FIXME Remove once motenvk is fixed
+                    future.wait(None).expect("waiting on fence failed");
+                }
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {

@@ -104,7 +104,7 @@ fn main() {
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-    
+
     // The next step is to choose which GPU queue will execute our draw commands.
     //
     // Devices can provide multiple queues to run commands in parallel (for example a draw queue
@@ -166,7 +166,7 @@ fn main() {
         // pass values that are allowed by the capabilities.
         let caps = surface.capabilities(physical)
                          .expect("failed to get surface capabilities");
-        
+
         dimensions = caps.current_extent.unwrap_or([1024, 768]);
 
         // We choose the dimensions of the swapchain to match the current extent of the surface.
@@ -352,7 +352,7 @@ void main() {
             dimensions = surface.capabilities(physical)
                         .expect("failed to get surface capabilities")
                         .current_extent.unwrap();
-            
+
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
@@ -457,6 +457,11 @@ void main() {
 
         match future {
             Ok(future) => {
+                if cfg!(target_os = "macos") {
+                    // Workaround for moltenvk issue (hang on close)
+                    // FIXME Remove once motenvk is fixed
+                    future.wait(None).expect("waiting on fence failed");
+                }
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {

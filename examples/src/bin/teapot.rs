@@ -156,7 +156,7 @@ fn main() {
         dimensions = surface.capabilities(physical)
             .expect("failed to get surface capabilities")
             .current_extent.unwrap_or([1024, 768]);
-            
+
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(vulkano::swapchain::SwapchainCreationError::UnsupportedDimensions) => {
@@ -231,11 +231,11 @@ fn main() {
             .draw_indexed(
                 pipeline.clone(),
                 &dynamic_state,
-                (vertex_buffer.clone(), normals_buffer.clone()), 
+                (vertex_buffer.clone(), normals_buffer.clone()),
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
             .build().unwrap();
-        
+
         let future = previous_frame.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
@@ -243,6 +243,11 @@ fn main() {
 
         match future {
             Ok(future) => {
+                if cfg!(target_os = "macos") {
+                    // Workaround for moltenvk issue (hang on close)
+                    // FIXME Remove once motenvk is fixed
+                    future.wait(None).expect("waiting on fence failed");
+                }
                 previous_frame = Box::new(future) as Box<_>;
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {

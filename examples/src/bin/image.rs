@@ -222,6 +222,11 @@ fn main() {
 
         match future {
             Ok(future) => {
+                if cfg!(target_os = "macos") {
+                    // Workaround for moltenvk issue (hang on close)
+                    // FIXME Remove once motenvk is fixed
+                    future.wait(None).expect("waiting on fence failed");
+                }
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
