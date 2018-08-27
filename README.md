@@ -53,23 +53,26 @@ Vulkan is not natively supported by macOS and iOS. However, there exists [Molten
 a Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
 and iOS platforms.
 
-The easiest way to get vulkano up and running on macOS is to install the 
+The easiest way to get vulkano up and running on macOS is to install the
 [Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). To install the SDK so that
 Vulkano will find it and dynamically link with `libvulkan.dylib`:
 
 1. Download the latest macOS release and unpack it somewhere, for the next step
-we'll assume that's `~/vulkan_sdk`.
-2. Modify your environment to contain the SDK bin directory in PATH and the SDK lib directory in 
-DYLD_LIBRARY_PATH. We also need to set VK_ICD_FILENAMES and VK_LAYER_PATH. When using the Bash 
+we'll assume you are using [`brew`](https://brew.sh).
+2. Modify your environment to contain the SDK bin directory in PATH and the SDK lib directory in
+DYLD_LIBRARY_PATH. We also need to set VK_ICD_FILENAMES and VK_LAYER_PATH. When using the Bash
 shell, which is the default for macOS, it's easiest to do this by appending the following to the
 `~/.bash_profile` file and then restarting the terminal.
 
 ```sh
-export VULKAN_SDK=$HOME/vulkan_sdk/macOS
-export PATH=$VULKAN_SDK/bin:$PATH
-export DYLD_LIBRARY_PATH=$VULKAN_SDK/lib:$DYLD_LIBRARY_PATH
-export VK_ICD_FILENAMES=$VULKAN_SDK/etc/vulkan/icd.d/MoltenVK_icd.json
-export VK_LAYER_PATH=$VULKAN_SDK/etc/vulkan/explicit_layer.d
+brew cask install vulkan-sdk
+
+# Replace the version with the version that brew installed above.
+export VULKAN_SDK=/usr/local/Caskroom/vulkan-sdk/1.1.82.0/macOS
+export PATH="$VULKAN_SDK/bin:$PATH"
+export DYLD_LIBRARY_PATH="$VULKAN_SDK/lib:$DYLD_LIBRARY_PATH"
+export VK_ICD_FILENAMES="$VULKAN_SDK/etc/vulkan/icd.d/MoltenVK_icd.json"
+export VK_LAYER_PATH="$VULKAN_SDK/etc/vulkan/explicit_layer.d"
 ```
 
 It is also possible to link with the MoltenVK framework (as vulkano did in previous versions) by adding the
