@@ -12,11 +12,11 @@
 //
 // Note that you will need to do all correctness checking by yourself.
 //
-// runtime-shader.vert.glsl and runtime-shader.frag.glsl must be built by yourself.
+// vert.glsl and frag.glsl must be built by yourself.
 // One way of building them is to build Khronos' glslang and use
 // glslangValidator tool:
-// $ glslangValidator runtime-shader.vert.glsl -V -S vert -o runtime-shader.vert.spv
-// $ glslangValidator runtime-shader.frag.glsl -V -S frag -o runtime-shader.frag.spv
+// $ glslangValidator vert.glsl -V -S vert -o vert.spv
+// $ glslangValidator frag.glsl -V -S frag -o frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
 #[macro_use]
 extern crate vulkano;
@@ -140,8 +140,8 @@ fn main() {
     );
 
     let vs = {
-        let mut f = File::open("src/bin/runtime-shader.vert.spv")
-            .expect("Can't find file src/bin/runtime-shader.vert.spv");
+        let mut f = File::open("src/bin/runtime-shader/vert.spv")
+            .expect("Can't find file src/bin/runtime-shader/vert.spv This example needs to be run from the root of the example crate.");
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
         // Create a ShaderModule on a device the same Shader::load does it.
@@ -150,8 +150,8 @@ fn main() {
     };
 
     let fs = {
-        let mut f = File::open("src/bin/runtime-shader.frag.spv")
-            .expect("Can't find file src/bin/runtime-shader.frag.spv");
+        let mut f = File::open("src/bin/runtime-shader/frag.spv")
+            .expect("Can't find file src/bin/runtime-shader/frag.spv");
         let mut v = vec![];
         f.read_to_end(&mut v).unwrap();
         unsafe { ShaderModule::new(graphics_device.clone(), &v) }.unwrap()

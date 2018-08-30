@@ -45,12 +45,12 @@ fn main() {
     //
     // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
     // that supports compute operations.
-    let queue = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
+    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
 
     // Now initializing the device.
     let (device, mut queues) = {
         Device::new(physical, physical.supported_features(), &DeviceExtensions::none(),
-                    [(queue, 0.5)].iter().cloned()).expect("failed to create device")
+                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
     };
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
