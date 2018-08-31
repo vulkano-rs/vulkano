@@ -1073,7 +1073,11 @@ impl<P> AutoCommandBufferBuilder<P> {
             debug_assert!(self.graphics_allowed);
 
             self.inner
-                .draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
+                .draw_indexed(ib_infos.num_indices as u32,
+                              vb_infos.instance_count as u32,
+                              0,
+                              0,
+                              0);
             Ok(self)
         }
     }
