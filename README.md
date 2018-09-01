@@ -41,11 +41,15 @@ Vulkano is still in heavy development and doesn't yet meet its goals of being ve
 the general structure of the library is most likely definitive, and all future breaking changes
 will likely be straight-forward to fix in user code.
 
-## [Documentation](https://docs.rs/vulkano)
+## Documentation
 
-To get started you are encouraged to read the examples in
-[the `vulkano-examples` repository](https://github.com/vulkano-rs/vulkano-examples), starting with
-[the `triangle` example](https://github.com/vulkano-rs/vulkano-examples/blob/master/triangle/main.rs).
+To get started you are encouraged to use the following resources:
+
+*   The guide on [vulkano.rs](http://vulkano.rs/guide/introduction) - Starts with trivial compute
+    examples (~50 lines of code) then works up to rendering triangles and mandelbrots.
+*   [The `vulkano-examples` repository](https://github.com/vulkano-rs/vulkano-examples) - Includes
+    examples in the repo and also a list of projects that use vulkano.
+*   [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
 
 ## macOS and iOS Setup
 

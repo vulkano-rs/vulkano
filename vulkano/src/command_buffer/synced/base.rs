@@ -53,7 +53,7 @@ use sync::PipelineStages;
 /// trying to copy from a buffer to an image which share the same memory), then an error is
 /// returned.
 /// Note that all methods are still unsafe, because this builder doesn't check the validity of
-/// the commands except for synchronization purposes. The builder may panic if you pass unvalid
+/// the commands except for synchronization purposes. The builder may panic if you pass invalid
 /// commands.
 ///
 /// The `P` generic is the same as `UnsafeCommandBufferBuilder`.
