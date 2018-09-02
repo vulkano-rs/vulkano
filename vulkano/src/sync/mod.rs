@@ -53,7 +53,7 @@
 //! Respecting the order of operations on the GPU is important, as it is what *proves* vulkano that
 //! what you are doing is indeed safe. For example if you submit two operations that modify the
 //! same buffer, then you need to execute one after the other instead of submitting them
-//! independantly. Failing to do so would mean that these two operations could potentially execute
+//! independently. Failing to do so would mean that these two operations could potentially execute
 //! simultaneously on the GPU, which would be unsafe.
 //!
 //! This is done by calling one of the methods of the `GpuFuture` trait. For example calling
@@ -131,7 +131,7 @@ mod semaphore;
 /// Declares in which queue(s) a resource can be used.
 ///
 /// When you create a buffer or an image, you have to tell the Vulkan library in which queue
-/// families it will be used. The vulkano library requires you to tell in which queue famiily
+/// families it will be used. The vulkano library requires you to tell in which queue family
 /// the resource will be used, even for exclusive mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 // TODO: remove

@@ -70,7 +70,7 @@ pub enum PresentMode {
     Mailbox = vk::PRESENT_MODE_MAILBOX_KHR,
 
     /// The action of presenting an image adds it to a queue of images. At each vertical blanking
-    /// period, the queue is poped and an image is presented.
+    /// period, the queue is popped and an image is presented.
     ///
     /// Guaranteed to be always supported.
     ///
@@ -535,7 +535,7 @@ impl Default for SurfaceTransform {
 ///
 /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
 /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
-/// > example. These are all hacks and you should use the sRGB pixel formats intead.
+/// > example. These are all hacks and you should use the sRGB pixel formats instead.
 ///
 /// If you follow these three rules, then everything should render the same way on all platforms.
 ///

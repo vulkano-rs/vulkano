@@ -161,7 +161,7 @@ pub unsafe trait ImageAccess {
     ///
     /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
     /// GPU operation requires an exclusive access to the image (which includes image layout
-    /// transitions) then `exlusive_access` should be true.
+    /// transitions) then `exclusive_access` should be true.
     ///
     /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
     /// actual layout doesn't match this expected layout, then an error should be returned. If

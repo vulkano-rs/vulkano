@@ -56,7 +56,7 @@ use vulkano::sync::GpuFuture;
 use std::sync::Arc;
 
 fn main() {
-    // The first step of any vulkan program is to create an instance.
+    // The first step of any Vulkan program is to create an instance.
     let instance = {
         // When we create an instance, we have to pass a list of extensions that we want to enable.
         //
@@ -147,7 +147,7 @@ fn main() {
     };
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
-    // example we use only one queue, so we just retreive the first and only element of the
+    // example we use only one queue, so we just retrieve the first and only element of the
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
@@ -242,7 +242,7 @@ void main() {
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
-    // implicitely does a lot of computation whenever you draw. In Vulkan, you have to do all this
+    // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
     // The next step is to create a *render pass*, which is an object that describes where the

@@ -122,7 +122,7 @@ impl DescriptorDesc {
     ///
     /// # Panic
     ///
-    /// Panicks if the type is `Sampler`.
+    /// Panics if the type is `Sampler`.
     ///
     pub fn pipeline_stages_and_access(&self) -> (PipelineStages, AccessFlagBits) {
         let stages: PipelineStages = self.stages.into();

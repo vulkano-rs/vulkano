@@ -46,7 +46,7 @@ pub struct FrameSystem {
     // The normal vector is the vector perpendicular to the surface of the object at this point.
     normals_buffer: Arc<AttachmentImage>,
     // Intermediate render target that will contain the depth of each pixel of the scene.
-    // This is a traditionnal depth buffer. `0.0` means "near", and `1.0` means "far".
+    // This is a traditional depth buffer. `0.0` means "near", and `1.0` means "far".
     depth_buffer: Arc<AttachmentImage>,
 
     // Will allow us to add an ambient lighting to a scene during the second subpass.
