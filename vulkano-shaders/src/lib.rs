@@ -142,7 +142,7 @@ impl {name} {{
             name = name
         ));
 
-        // checking whether each required capability is enabled in the vulkan device
+        // checking whether each required capability is enabled in the Vulkan device
         for i in doc.instructions.iter() {
             if let &parse::Instruction::Capability(ref cap) = i {
                 if let Some(cap) = capability_name(cap) {

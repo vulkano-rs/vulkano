@@ -426,7 +426,7 @@ impl Instance {
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever
     /// it needs to allocate memory on the host.
     ///
-    /// Note that this allocator can be overriden when you create a `Device`, a `MemoryPool`, etc.
+    /// Note that this allocator can be overridden when you create a `Device`, a `MemoryPool`, etc.
     pub fn with_alloc(app_infos: Option<&ApplicationInfo>, alloc: Box<Alloc + Send + Sync>) -> Arc<Instance> {
         unimplemented!()
     }*/

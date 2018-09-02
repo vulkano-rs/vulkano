@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
+/// Builds a `RenderPass` object whose template parameter is of indeterminate type.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
@@ -34,7 +34,7 @@ macro_rules! single_pass_renderpass {
     )
 }
 
-/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
+/// Builds a `RenderPass` object whose template parameter is of indeterminate type.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (

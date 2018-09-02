@@ -21,7 +21,7 @@ use std::fmt;
 ///
 /// # Panic
 ///
-/// Panicks if the attachment number is out of range.
+/// Panics if the attachment number is out of range.
 // TODO: add a specializable trait instead, that uses this function
 // TODO: ImageView instead of ImageViewAccess?
 pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usize, image: &I)

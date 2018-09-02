@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 //
-// This example demostrates one way of preparing data structures and loading
+// This example demonstrates one way of preparing data structures and loading
 // SPIRV shaders from external source (file system).
 //
 // Note that you will need to do all correctness checking by yourself.

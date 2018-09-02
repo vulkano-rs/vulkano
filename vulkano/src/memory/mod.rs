@@ -10,7 +10,7 @@
 //! Device memory allocation and memory pools.
 //!
 //! By default, memory allocation is automatically handled by the vulkano library when you create
-//! a buffer or an image. But if you want more control, you have the possibility to costumize the
+//! a buffer or an image. But if you want more control, you have the possibility to customise the
 //! memory allocation strategy.
 //!
 //! # Memory types and heaps
@@ -47,7 +47,7 @@
 //!
 //! Memory types are order from "best" to "worse". In other words, the implementation prefers that
 //! you use the memory types that are earlier in the list. This means that selecting a memory type
-//! should always be done by enumerating them and taking the first one that matches our criterias.
+//! should always be done by enumerating them and taking the first one that matches our criteria.
 //!
 //! ## In practice
 //!

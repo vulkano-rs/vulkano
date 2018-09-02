@@ -54,7 +54,7 @@ fn main() {
     };
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
-    // example we use only one queue, so we just retreive the first and only element of the
+    // example we use only one queue, so we just retrieve the first and only element of the
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
@@ -70,7 +70,7 @@ fn main() {
     // or four by four, a GPU will do it by groups of 32 or 64.
     //
     // Note however that in a real-life situation for such a simple operation the cost of
-    // accessing memory usually outweights the benefits of a faster calculation. Since both the CPU
+    // accessing memory usually outweighs the benefits of a faster calculation. Since both the CPU
     // and the GPU will need to access data, there is no other choice but to transfer the data
     // through the slow PCI express bus.
 
@@ -136,14 +136,14 @@ void main() {
         //
         // Note that we clone the pipeline and the set. Since they are both wrapped around an
         // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
-        // clonable anyway). In this example we would avoid cloning them since this is the last
+        // cloneable anyway). In this example we would avoid cloning them since this is the last
         // time we use them, but in a real code you would probably need to clone them.
         .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
         // Finish building the command buffer by calling `build`.
         .build().unwrap();
 
     // Let's execute this command buffer now.
-    // To do so, we TODO: this is a bit clumsby, probably needs a shortcut
+    // To do so, we TODO: this is a bit clumsy, probably needs a shortcut
     let future = now(device.clone())
         .then_execute(queue.clone(), command_buffer).unwrap()
 

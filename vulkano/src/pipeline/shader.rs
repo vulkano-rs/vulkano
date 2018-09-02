@@ -13,7 +13,7 @@
 //! code and can contain one or more entry points. Note that for the moment the official
 //! GLSL-to-SPIR-V compiler does not support multiple entry points.
 //!
-//! The vulkano library does not provide any functionnality that checks and introspects the SPIR-V
+//! The vulkano library does not provide any functionality that checks and introspects the SPIR-V
 //! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
@@ -628,7 +628,7 @@ unsafe impl SpecializationConstants for () {
     }
 }
 
-/// Describes an indiviual constant to set in the shader. Also a field in the struct.
+/// Describes an individual constant to set in the shader. Also a field in the struct.
 // Implementation note: has the same memory representation as a `VkSpecializationMapEntry`.
 #[repr(C)]
 pub struct SpecializationMapEntry {

@@ -48,7 +48,7 @@ use sampler::Sampler;
 /// > descriptor set in performance-critical paths..
 ///
 /// The template parameter of the `PersistentDescriptorSet` is complex, and you shouldn't try to
-/// express it explicitely. If you want to store your descriptor set in a struct or in a `Vec` for
+/// express it explicitly. If you want to store your descriptor set in a struct or in a `Vec` for
 /// example, you are encouraged to turn the `PersistentDescriptorSet` into a `Box<DescriptorSet>`
 /// or a `Arc<DescriptorSet>`.
 ///
@@ -990,14 +990,14 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
     }
 }
 
-// Part of the PersisitentDescriptorSetError for the case
+// Part of the PersistentDescriptorSetError for the case
 // of missing usage on a buffer.
 #[derive(Debug, Clone)]
 pub enum MissingBufferUsage {
     StorageBuffer, UniformBuffer, StorageTexelBuffer, UniformTexelBuffer
 }
 
-// Part of the PersisitentDescriptorSetError for the case
+// Part of the PersistentDescriptorSetError for the case
 // of missing usage on an image.
 #[derive(Debug, Clone)]
 pub enum MissingImageUsage {

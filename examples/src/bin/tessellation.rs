@@ -174,7 +174,7 @@ layout(triangles, equal_spacing, cw) in;
 
 void main(void)
 {
-    // retreive the vertex positions set by the tcs
+    // retrieve the vertex positions set by the tcs
     vec4 vert_x = gl_in[0].gl_Position;
     vec4 vert_y = gl_in[1].gl_Position;
     vec4 vert_z = gl_in[2].gl_Position;

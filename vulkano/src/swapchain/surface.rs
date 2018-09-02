@@ -510,7 +510,7 @@ impl<W> Surface<W> {
         }
     }
 
-    /// Retreives the capabilities of a surface when used by a certain device.
+    /// Retrieves the capabilities of a surface when used by a certain device.
     ///
     /// # Panic
     ///
@@ -704,7 +704,7 @@ impl From<Error> for SurfaceCreationError {
     }
 }
 
-/// Error that can happen when retreiving a surface's capabilities.
+/// Error that can happen when retrieving a surface's capabilities.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum CapabilitiesError {

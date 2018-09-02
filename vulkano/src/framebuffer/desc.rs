@@ -39,7 +39,7 @@ use vk;
 ///   access it through the `RenderPass::desc()` method that returns a shared borrow to the
 ///   description. It must not be possible for a shared borrow to modify the description in such a
 ///   way that the description changes.
-/// - The provided methods shouldn't be overriden with fancy implementations. For example
+/// - The provided methods shouldn't be overridden with fancy implementations. For example
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
 pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
@@ -423,9 +423,9 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R>
 /// Describes an attachment that will be used in a render pass.
 #[derive(Debug, Clone)]
 pub struct LayoutAttachmentDescription {
-    /// Format of the image that is going to be binded.
+    /// Format of the image that is going to be bound.
     pub format: Format,
-    /// Number of samples of the image that is going to be binded.
+    /// Number of samples of the image that is going to be bound.
     pub samples: u32,
 
     /// What the implementation should do with that attachment at the start of the render pass.
@@ -536,7 +536,7 @@ pub struct LayoutPassDependencyDescription {
     /// subpass is finished for these given pixels.
     ///
     /// In other words, if the previous subpass has some side effects on other parts of an
-    /// attachment, then you sould set it to false.
+    /// attachment, then you should set it to false.
     ///
     /// Passing `false` is always safer than passing `true`, but in practice you rarely need to
     /// pass `false`.

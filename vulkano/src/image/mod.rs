@@ -469,7 +469,7 @@ impl ImageDimensions {
     ///
     /// # Panic
     ///
-    /// In debug mode, panicks if `width`, `height` or `depth` is equal to 0. In release, returns
+    /// In debug mode, Panics if `width`, `height` or `depth` is equal to 0. In release, returns
     /// an unspecified value.
     ///
     pub fn mipmap_dimensions(&self, level: u32) -> Option<ImageDimensions> {

@@ -29,9 +29,9 @@ use vk;
 
 /// A fence is used to know when a command buffer submission has finished its execution.
 ///
-/// When a command buffer accesses a ressource, you have to ensure that the CPU doesn't access
-/// the same ressource simultaneously (except for concurrent reads). Therefore in order to know
-/// when the CPU can access a ressource again, a fence has to be used.
+/// When a command buffer accesses a resource, you have to ensure that the CPU doesn't access
+/// the same resource simultaneously (except for concurrent reads). Therefore in order to know
+/// when the CPU can access a resource again, a fence has to be used.
 #[derive(Debug)]
 pub struct Fence<D = Arc<Device>>
     where D: SafeDeref<Target = Device>

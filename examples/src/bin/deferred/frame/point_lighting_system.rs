@@ -110,7 +110,7 @@ impl PointLightingSystem {
     ///   the result of the deferred pass.
     /// - `screen_to_world` is a matrix that turns coordinates from framebuffer space into world
     ///   space. This matrix is used alongside with `depth_input` to determine the world
-    ///   coorindates of each pixel being processed.
+    ///   coordinates of each pixel being processed.
     /// - `position` is the position of the spot light in world coordinates.
     /// - `color` is the color of the light.
     ///

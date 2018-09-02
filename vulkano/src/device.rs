@@ -344,7 +344,7 @@ impl Device {
     /// # Safety
     ///
     /// This function is not thread-safe. You must not submit anything to any of the queue
-    /// of the device (either explicitely or implicitely, for example with a future's destructor)
+    /// of the device (either explicitly or implicitly, for example with a future's destructor)
     /// while this function is waiting.
     ///
     pub unsafe fn wait(&self) -> Result<(), OomError> {
@@ -447,8 +447,8 @@ impl Device {
 
     /// Used to track the number of allocations on this device.
     ///
-    /// To ensure valid usage of the vulkan API, we cannot call `vkAllocateMemory` when
-    /// `maxMemoryAllocationCount` has been exceeded. See the vulkan specs:
+    /// To ensure valid usage of the Vulkan API, we cannot call `vkAllocateMemory` when
+    /// `maxMemoryAllocationCount` has been exceeded. See the Vulkan specs:
     /// https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
     ///
     /// Warning: You should never modify this value, except in `device_memory` module

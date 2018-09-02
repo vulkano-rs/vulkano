@@ -662,7 +662,7 @@ impl UnsafeImage {
         self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_COLOR_BIT)
     }
 
-    /// Same as `color_linear_layout`, except that it retreives the depth component of the image.
+    /// Same as `color_linear_layout`, except that it retrieves the depth component of the image.
     ///
     /// # Panic
     ///
@@ -678,7 +678,7 @@ impl UnsafeImage {
         self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_DEPTH_BIT)
     }
 
-    /// Same as `color_linear_layout`, except that it retreives the stencil component of the image.
+    /// Same as `color_linear_layout`, except that it retrieves the stencil component of the image.
     ///
     /// # Panic
     ///
@@ -822,7 +822,7 @@ pub enum ImageCreationError {
         obtained: u32,
         valid_range: Range<u32>,
     },
-    /// The requeted number of samples is not supported, or is 0.
+    /// The requested number of samples is not supported, or is 0.
     UnsupportedSamplesCount { obtained: u32 },
     /// The dimensions are too large, or one of the dimensions is 0.
     UnsupportedDimensions { dimensions: ImageDimensions },
@@ -842,7 +842,7 @@ impl error::Error for ImageCreationError {
             ImageCreationError::InvalidMipmapsCount { .. } =>
                 "a wrong number of mipmaps was provided",
             ImageCreationError::UnsupportedSamplesCount { .. } =>
-                "the requeted number of samples is not supported, or is 0",
+                "the requested number of samples is not supported, or is 0",
             ImageCreationError::UnsupportedDimensions { .. } =>
                 "the dimensions are too large, or one of the dimensions is 0",
             ImageCreationError::FormatNotSupported =>

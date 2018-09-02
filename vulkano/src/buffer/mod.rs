@@ -70,7 +70,7 @@
 //! - As a storage buffer. Storage buffers can be read and written.
 //! - As a uniform texel buffer. Contrary to a uniform buffer, the data is interpreted by the
 //!   GPU and can be for example normalized.
-//! - As a storage texel buffer. Additionnally, some data formats can be modified with atomic
+//! - As a storage texel buffer. Additionally, some data formats can be modified with atomic
 //!   operations.
 //!
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module

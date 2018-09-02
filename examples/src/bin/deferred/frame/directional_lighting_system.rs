@@ -27,7 +27,7 @@ use cgmath::Vector3;
 
 use std::sync::Arc;
 
-/// Allows applying a directional ligh source to a scene.
+/// Allows applying a directional light source to a scene.
 pub struct DirectionalLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,

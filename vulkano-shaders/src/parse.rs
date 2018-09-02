@@ -44,7 +44,7 @@ pub fn parse_spirv(data: &[u8]) -> Result<Spirv, ParseError> {
 
 /// Parses a SPIR-V document from a list of u32s.
 ///
-/// Endianess has already been handled.
+/// Endianness has already been handled.
 fn parse_u32s(i: &[u32]) -> Result<Spirv, ParseError> {
     if i.len() < 5 {
         return Err(ParseError::MissingHeader);

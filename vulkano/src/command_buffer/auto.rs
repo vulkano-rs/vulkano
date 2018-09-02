@@ -1189,7 +1189,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that writes the content of a buffer.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
-    /// that will be repeatidely written through the entire buffer.
+    /// that will be repeatedly written through the entire buffer.
     ///
     /// > **Note**: This function is technically safe because buffers can only contain integers or
     /// > floating point numbers, which are always valid whatever their memory representation is.
