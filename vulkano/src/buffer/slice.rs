@@ -132,6 +132,17 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
             size: size,
         }
     }
+
+    #[inline]
+    pub unsafe fn reinterpret<R: ?Sized>(self) -> BufferSlice<R, B>
+    {
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset,
+            size: self.size,
+        }
+    }
 }
 
 impl<T, B> BufferSlice<[T], B> {
