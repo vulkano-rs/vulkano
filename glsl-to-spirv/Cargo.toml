@@ -1,9 +1,9 @@
 [package]
 name = "glsl-to-spirv"
-version = "0.1.6"
+version = "0.1.7"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
-description = "Wrapper around the official GLSL to SPIR-V compiler"
+description = "Deprecated. Use shaderc-rs instead."
 license = "MIT/Apache-2.0"
 build = "build/build.rs"
 categories = ["rendering::graphics-api"]
