@@ -133,6 +133,27 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
         }
     }
 
+    /// Changes the `T` generic parameter of the `BufferSlice` to the desired type. This can be
+    /// useful when you have a buffer with various types of data and want to create a typed slice
+    /// of a region that contains a single type of data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use vulkano::buffer::BufferSlice;
+    /// # use vulkano::buffer::immutable::ImmutableBuffer;
+    /// # struct VertexImpl;
+    /// let blob_slice: BufferSlice<[u8], Arc<ImmutableBuffer<[u8]>>> = return;
+    /// let vertex_slice: BufferSlice<[VertexImpl], Arc<ImmutableBuffer<[u8]>>> = unsafe {
+    ///     blob_slice.reinterpret::<[VertexImpl]>()
+    /// };
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// Correct `offset` and `size` must be ensured before using this `BufferSlice` on the device.
+    /// See `BufferSlice::slice` for adjusting these properties.
     #[inline]
     pub unsafe fn reinterpret<R: ?Sized>(self) -> BufferSlice<R, B>
     {
