@@ -4,6 +4,7 @@
   each with a matching enum indicating the usage that was missing.
 - Fix instance_count when using draw_index with instance buffers
 - Added a `reinterpret` function to `BufferSlice`
+- Made `AttributeInfo` derive `Copy`, `Clone` and `Debug`
 
 # Version 0.10.0 (2018-08-10)
 
