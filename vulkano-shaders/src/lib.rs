@@ -66,7 +66,6 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
 pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String> {
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
-    compile_options.set_target_env(TargetEnv::Vulkan, 0);
 
     let content = compiler
         .compile_into_spirv(&code, ty, "shader.glsl", "main", Some(&compile_options))

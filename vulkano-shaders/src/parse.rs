@@ -9,7 +9,7 @@
 
 use enums::*;
 
-/// Parses a SPIR-V document from a list of instructions.
+/// Parses a SPIR-V document from a list of words.
 pub fn parse_spirv(i: &[u32]) -> Result<Spirv, ParseError> {
     if i.len() < 5 {
         return Err(ParseError::MissingHeader);
