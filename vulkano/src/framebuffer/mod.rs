@@ -34,7 +34,7 @@
 //! In vulkano a render pass is represented by the `RenderPass` struct. This struct has a template
 //! parameter that contains the description of the render pass. The `RenderPassAbstract` trait is
 //! implemented on all instances of `RenderPass<_>` and makes it easier to store render passes
-//! without having to explicitely write its type.
+//! without having to explicitly write its type.
 //!
 //! The template parameter of the `RenderPass` struct must implement the `RenderPassDesc` trait.
 //! In order to create a render pass, you can create an object that implements this trait, then

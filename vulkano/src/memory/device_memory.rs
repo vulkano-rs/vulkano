@@ -40,7 +40,7 @@ use vk;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
 /// let mem_ty = device.physical_device().memory_types().next().unwrap();
 ///
-/// // Allocates 1kB of memory.
+/// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::alloc(device.clone(), mem_ty, 1024).unwrap();
 /// ```
 pub struct DeviceMemory {
@@ -83,7 +83,7 @@ impl DeviceMemory {
                    memory_type.physical_device().internal_object());
 
         // Note: This check is disabled because MoltenVK doesn't report correct heap sizes yet.
-        // More generally, whether or not this check is useful is questionnable.
+        // More generally, whether or not this check is useful is questionable.
         // TODO: ^
         /*if size > memory_type.heap().size() {
             return Err(OomError::OutOfDeviceMemory);
@@ -271,7 +271,7 @@ impl Drop for DeviceMemory {
 ///                     .filter(|t| t.is_host_visible())
 ///                     .next().unwrap();    // Vk specs guarantee that this can't fail
 ///
-/// // Allocates 1kB of memory.
+/// // Allocates 1KB of memory.
 /// let memory = DeviceMemory::alloc_and_map(device.clone(), mem_ty, 1024).unwrap();
 ///
 /// // Get access to the content. Note that this is very unsafe for two reasons: 1) the content is

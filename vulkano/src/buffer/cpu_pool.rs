@@ -300,7 +300,7 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// # Panic
     ///
-    /// Panicks if the length of the iterator didn't match the actual number of element.
+    /// Panics if the length of the iterator didn't match the actual number of element.
     ///
     pub fn chunk<I>(&self, data: I) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = T>,
@@ -398,7 +398,7 @@ impl<T, A> CpuBufferPool<T, A>
     //
     // # Panic
     //
-    // Panicks if the length of the iterator didn't match the actual number of element.
+    // Panics if the length of the iterator didn't match the actual number of element.
     //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
                         mut data: I)
@@ -621,7 +621,7 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     fn conflict_key(&self) -> (u64, usize) {
         (
             self.buffer.inner.key(),
-            // ensure the special cased empty buffers dont collide with a regular buffer starting at 0
+            // ensure the special cased empty buffers don't collide with a regular buffer starting at 0
             if self.requested_len == 0 { usize::max_value() } else { self.index }
         )
     }

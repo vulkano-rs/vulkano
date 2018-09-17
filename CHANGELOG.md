@@ -1,4 +1,9 @@
-# Unreleased
+# Unreleased (Breaking)
+
+- Split `PersistentDescriptorSetError::MissingUsage` into `MissingImageUsage` and `MissingBufferUsage`
+  each with a matching enum indicating the usage that was missing.
+- Fix instance_count when using draw_index with instance buffers
+- Added a `reinterpret` function to `BufferSlice`
 
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
 

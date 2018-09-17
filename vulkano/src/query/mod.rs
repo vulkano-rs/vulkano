@@ -94,7 +94,7 @@ impl UnsafeQueryPool {
     ///
     /// # Panic
     ///
-    /// Panicks if `count` is 0.
+    /// Panics if `count` is 0.
     #[inline]
     pub fn queries_range(&self, first_index: u32, count: u32) -> Option<UnsafeQueriesRange> {
         assert!(count >= 1);

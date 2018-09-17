@@ -17,9 +17,6 @@
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
 
-// For the purpose of this example all unused code is allowed.
-#![allow(dead_code)]
-
 // The `vulkano` crate is the main crate that you must use to use Vulkan.
 #[macro_use]
 extern crate vulkano;
@@ -59,7 +56,7 @@ use vulkano::sync::GpuFuture;
 use std::sync::Arc;
 
 fn main() {
-    // The first step of any vulkan program is to create an instance.
+    // The first step of any Vulkan program is to create an instance.
     let instance = {
         // When we create an instance, we have to pass a list of extensions that we want to enable.
         //
@@ -104,7 +101,7 @@ fn main() {
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-    
+
     // The next step is to choose which GPU queue will execute our draw commands.
     //
     // Devices can provide multiple queues to run commands in parallel (for example a draw queue
@@ -115,7 +112,7 @@ fn main() {
     // queue to handle data transfers in parallel. In this example we only use one queue.
     //
     // We have to choose which queues to use early on, because we will need this info very soon.
-    let queue = physical.queue_families().find(|&q| {
+    let queue_family = physical.queue_families().find(|&q| {
         // We take the first queue that supports drawing to our window.
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
     }).expect("couldn't find a graphical queue family");
@@ -146,11 +143,11 @@ fn main() {
         };
 
         Device::new(physical, physical.supported_features(), &device_ext,
-                    [(queue, 0.5)].iter().cloned()).expect("failed to create device")
+                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
     };
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
-    // example we use only one queue, so we just retreive the first and only element of the
+    // example we use only one queue, so we just retrieve the first and only element of the
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
@@ -166,7 +163,7 @@ fn main() {
         // pass values that are allowed by the capabilities.
         let caps = surface.capabilities(physical)
                          .expect("failed to get surface capabilities");
-        
+
         dimensions = caps.current_extent.unwrap_or([1024, 768]);
 
         // We choose the dimensions of the swapchain to match the current extent of the surface.
@@ -221,6 +218,7 @@ void main() {
     gl_Position = vec4(position, 0.0, 1.0);
 }
 "]
+        #[allow(dead_code)]
         struct Dummy;
     }
 
@@ -236,6 +234,7 @@ void main() {
     f_color = vec4(1.0, 0.0, 0.0, 1.0);
 }
 "]
+        #[allow(dead_code)]
         struct Dummy;
     }
 
@@ -243,7 +242,7 @@ void main() {
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
 
     // At this point, OpenGL initialization would be finished. However in Vulkan it is not. OpenGL
-    // implicitely does a lot of computation whenever you draw. In Vulkan, you have to do all this
+    // implicitly does a lot of computation whenever you draw. In Vulkan, you have to do all this
     // manually.
 
     // The next step is to create a *render pass*, which is an object that describes where the
@@ -352,7 +351,7 @@ void main() {
             dimensions = surface.capabilities(physical)
                         .expect("failed to get surface capabilities")
                         .current_extent.unwrap();
-            
+
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.

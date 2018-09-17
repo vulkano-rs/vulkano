@@ -7,9 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// For the purpose of this example all unused code is allowed.
-#![allow(dead_code)]
-
 extern crate examples;
 extern crate cgmath;
 extern crate winit;
@@ -42,7 +39,7 @@ fn main() {
 
     let mut dimensions;
 
-    let queue = physical.queue_families().find(|&q| q.supports_graphics() &&
+    let queue_family = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    surface.is_supported(q).unwrap_or(false))
                                                 .expect("couldn't find a graphical queue family");
 
@@ -52,7 +49,7 @@ fn main() {
     };
 
     let (device, mut queues) = vulkano::device::Device::new(physical, physical.supported_features(),
-                                                            &device_ext, [(queue, 0.5)].iter().cloned())
+                                                            &device_ext, [(queue_family, 0.5)].iter().cloned())
                                .expect("failed to create device");
     let queue = queues.next().unwrap();
 
@@ -87,7 +84,7 @@ fn main() {
                                 .expect("failed to create buffer");
 
     // note: this teapot was meant for OpenGL where the origin is at the lower left
-    //       instead the origin is at the upper left in vulkan, so we reverse the Y axis
+    //       instead the origin is at the upper left in Vulkan, so we reverse the Y axis
     let mut proj = cgmath::perspective(cgmath::Rad(std::f32::consts::FRAC_PI_2), { dimensions[0] as f32 / dimensions[1] as f32 }, 0.01, 100.0);
     let view = cgmath::Matrix4::look_at(cgmath::Point3::new(0.3, 0.3, 1.0), cgmath::Point3::new(0.0, 0.0, 0.0), cgmath::Vector3::new(0.0, -1.0, 0.0));
     let scale = cgmath::Matrix4::from_scale(0.01);
@@ -289,6 +286,7 @@ void main() {
     gl_Position = uniforms.proj * worldview * vec4(position, 1.0);
 }
 "]
+    #[allow(dead_code)]
     struct Dummy;
 }
 
@@ -311,5 +309,6 @@ void main() {
     f_color = vec4(mix(dark_color, regular_color, brightness), 1.0);
 }
 "]
+    #[allow(dead_code)]
     struct Dummy;
 }

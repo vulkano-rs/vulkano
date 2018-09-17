@@ -126,9 +126,9 @@ pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
 }
 
 /// Same as `swapchain::present`, except it allows specifying a present region.
-/// Areas outside the present region may be ignored by vulkan in order to optimize presentation.
+/// Areas outside the present region may be ignored by Vulkan in order to optimize presentation.
 ///
-/// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
+/// This is just an optimization hint, as the Vulkan driver is free to ignore the given present region.
 ///
 /// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
 pub fn present_incremental<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,

@@ -59,7 +59,7 @@ impl<D> RenderPass<D>
     ///
     /// # Panic
     ///
-    /// - Can panic if it detects some violations in the restrictions. Only unexpensive checks are
+    /// - Can panic if it detects some violations in the restrictions. Only inexpensive checks are
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///

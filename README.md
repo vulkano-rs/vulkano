@@ -41,11 +41,15 @@ Vulkano is still in heavy development and doesn't yet meet its goals of being ve
 the general structure of the library is most likely definitive, and all future breaking changes
 will likely be straight-forward to fix in user code.
 
-## [Documentation](https://docs.rs/vulkano)
+## Documentation
 
-To get started you are encouraged to read the examples in
-[the `vulkano-examples` repository](https://github.com/vulkano-rs/vulkano-examples), starting with
-[the `triangle` example](https://github.com/vulkano-rs/vulkano-examples/blob/master/triangle/main.rs).
+To get started you are encouraged to use the following resources:
+
+*   The guide on [vulkano.rs](http://vulkano.rs/guide/introduction) - Starts with trivial compute
+    examples (~50 lines of code) then works up to rendering triangles and mandelbrots.
+*   The [vulkano-examples](https://github.com/vulkano-rs/vulkano-examples) repository - Includes
+    examples in the repo and also a list of projects that use vulkano.
+*   [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
 
 ## macOS and iOS Setup
 
@@ -54,9 +58,25 @@ a Vulkan implementation on top of Apple's Metal API. This allows vulkano to buil
 and iOS platforms.
 
 The easiest way to get vulkano up and running on macOS is to install the 
-[Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). Vulkano will by default, as it does on
-other platforms, look for `libvulkan.1.dylib` (included as part of the SDK). Note that it is still
-possible to link with the MoltenVK framework (as vulkano did in previous versions) by adding the
+[Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). To install the SDK so that
+Vulkano will find it and dynamically link with `libvulkan.dylib`:
+
+1. Download the latest macOS release and unpack it somewhere, for the next step
+we'll assume that's `~/vulkan_sdk`.
+2. Modify your environment to contain the SDK bin directory in PATH and the SDK lib directory in 
+DYLD_LIBRARY_PATH. We also need to set VK_ICD_FILENAMES and VK_LAYER_PATH. When using the Bash 
+shell, which is the default for macOS, it's easiest to do this by appending the following to the
+`~/.bash_profile` file and then restarting the terminal.
+
+```sh
+export VULKAN_SDK=$HOME/vulkan_sdk/macOS
+export PATH=$VULKAN_SDK/bin:$PATH
+export DYLD_LIBRARY_PATH=$VULKAN_SDK/lib:$DYLD_LIBRARY_PATH
+export VK_ICD_FILENAMES=$VULKAN_SDK/etc/vulkan/icd.d/MoltenVK_icd.json
+export VK_LAYER_PATH=$VULKAN_SDK/etc/vulkan/explicit_layer.d
+```
+
+It is also possible to link with the MoltenVK framework (as vulkano did in previous versions) by adding the
 appropriate cargo output lines to your build script and implementing your own
 `vulkano::instance::loader::Loader` that calls the MoltenVK `vkGetInstanceProcAddr` implementation.
 

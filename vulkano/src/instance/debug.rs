@@ -77,7 +77,7 @@ impl DebugCallback {
         }
 
         // Note that we need to double-box the callback, because a `*const Fn()` is a fat pointer
-        // that can't be casted to a `*const c_void`.
+        // that can't be cast to a `*const c_void`.
         let user_callback = Box::new(Box::new(user_callback) as Box<_>);
 
         extern "system" fn callback(ty: vk::DebugReportFlagsEXT, _: vk::DebugReportObjectTypeEXT,

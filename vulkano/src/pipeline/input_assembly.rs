@@ -20,13 +20,13 @@ use vk;
 pub struct InputAssembly {
     /// The type of primitives.
     ///
-    /// Note that some tologies don't support primitive restart.
+    /// Note that some topologies don't support primitive restart.
     pub topology: PrimitiveTopology,
 
     /// If true, then the special index value `0xffff` or `0xffffffff` will tell the GPU that it is
     /// the end of the current primitive. A new primitive will restart at the next index.
     ///
-    /// Note that some tologies don't support primitive restart.
+    /// Note that some topologies don't support primitive restart.
     pub primitive_restart_enable: bool,
 }
 

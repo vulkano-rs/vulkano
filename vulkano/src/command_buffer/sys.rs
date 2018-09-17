@@ -1798,7 +1798,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///
     /// Also adds an execution dependency similar to `add_execution_dependency`.
     ///
-    /// Also allows transfering buffer ownership between queues.
+    /// Also allows transferring buffer ownership between queues.
     ///
     /// # Safety
     ///
@@ -1849,7 +1849,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     /// Adds an image memory barrier. This is the equivalent of `add_buffer_memory_barrier` but
     /// for images.
     ///
-    /// In addition to transfering image ownership between queues, it also allows changing the
+    /// In addition to transferring image ownership between queues, it also allows changing the
     /// layout of images.
     ///
     /// Also adds an execution dependency similar to `add_execution_dependency`.

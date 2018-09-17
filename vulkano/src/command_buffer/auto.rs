@@ -1073,7 +1073,11 @@ impl<P> AutoCommandBufferBuilder<P> {
             debug_assert!(self.graphics_allowed);
 
             self.inner
-                .draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
+                .draw_indexed(ib_infos.num_indices as u32,
+                              vb_infos.instance_count as u32,
+                              0,
+                              0,
+                              0);
             Ok(self)
         }
     }
@@ -1185,7 +1189,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that writes the content of a buffer.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
-    /// that will be repeatidely written through the entire buffer.
+    /// that will be repeatedly written through the entire buffer.
     ///
     /// > **Note**: This function is technically safe because buffers can only contain integers or
     /// > floating point numbers, which are always valid whatever their memory representation is.

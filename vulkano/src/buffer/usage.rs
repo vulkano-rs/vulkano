@@ -10,7 +10,7 @@
 use std::ops::BitOr;
 use vk;
 
-/// Describes how a buffer is going to be used. This is **not** an optimization.
+/// Describes how a buffer is going to be used. This is **not** just an optimization.
 ///
 /// If you try to use a buffer in a way that you didn't declare, a panic will happen.
 ///
