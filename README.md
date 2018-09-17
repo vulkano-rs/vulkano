@@ -51,7 +51,17 @@ To get started you are encouraged to use the following resources:
     examples in the repo and also a list of projects that use vulkano.
 *   [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
 
-## macOS and iOS Setup
+## Setup
+
+Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation. In order to
+build the shaderc-rs crate the following tools must be installed and available on `PATH`:
+- [CMake](https://cmake.org/)
+- [Python](https://www.python.org/) (works with both Python 2.x and 3.x)
+
+These requirements can be either installed with your favourite package manager or with installers
+from the projects' websites.
+
+### macOS and iOS Specific Setup
 
 Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
 a Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
