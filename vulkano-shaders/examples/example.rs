@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-extern crate glsl_to_spirv;
 extern crate vulkano_shaders;
 
 fn main() {
@@ -40,7 +39,7 @@ void main() {
 
 "#;
 
-    let content = glsl_to_spirv::compile(shader, glsl_to_spirv::ShaderType::Fragment).unwrap();
-    let output = vulkano_shaders::reflect("Shader", content).unwrap();
+    let content = vulkano_shaders::compile(shader, vulkano_shaders::ShaderKind::Fragment).unwrap();
+    let output = vulkano_shaders::reflect("Shader", content.as_binary()).unwrap();
     println!("{}", output);
 }

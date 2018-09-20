@@ -155,7 +155,6 @@
 //! [SpecializationConstants]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/trait.SpecializationConstants.html
 //! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
 
-extern crate glsl_to_spirv;
 extern crate proc_macro;
 extern crate syn;
 extern crate vulkano_shaders;
@@ -235,19 +234,18 @@ pub fn derive(input: TokenStream) -> TokenStream {
     }).next().expect("Can't find `ty` attribute ; put #[ty = \"vertex\"] for example.");
 
     let ty = match &ty_str[..] {
-        "vertex" => glsl_to_spirv::ShaderType::Vertex,
-        "fragment" => glsl_to_spirv::ShaderType::Fragment,
-        "geometry" => glsl_to_spirv::ShaderType::Geometry,
-        "tess_ctrl" => glsl_to_spirv::ShaderType::TessellationControl,
-        "tess_eval" => glsl_to_spirv::ShaderType::TessellationEvaluation,
-        "compute" => glsl_to_spirv::ShaderType::Compute,
+        "vertex" => vulkano_shaders::ShaderKind::Vertex,
+        "fragment" => vulkano_shaders::ShaderKind::Fragment,
+        "geometry" => vulkano_shaders::ShaderKind::Geometry,
+        "tess_ctrl" => vulkano_shaders::ShaderKind::TessControl,
+        "tess_eval" => vulkano_shaders::ShaderKind::TessEvaluation,
+        "compute" => vulkano_shaders::ShaderKind::Compute,
         _ => panic!("Unexpected shader type ; valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
     };
-
-    let spirv_data = match glsl_to_spirv::compile(&source_code, ty) {
-        Ok(compiled) => compiled,
-        Err(message) => panic!("{}\nfailed to compile shader", message),
-    };
-
-    vulkano_shaders::reflect("Shader", spirv_data).unwrap().parse().unwrap()
+    let content = vulkano_shaders::compile(&source_code, ty).unwrap();
+    
+    vulkano_shaders::reflect("Shader", content.as_binary())
+        .unwrap()
+        .parse()
+        .unwrap()
 }

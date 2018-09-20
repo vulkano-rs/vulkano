@@ -13,7 +13,6 @@ stages:
 job1:
   stage: test
   script:
-    - cargo test -v --manifest-path glsl-to-spirv/Cargo.toml
     - cargo test -v --manifest-path vulkano-shaders/Cargo.toml
     - cargo test --no-run -v --manifest-path vulkano/Cargo.toml
 

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-extern crate glsl_to_spirv;
+extern crate shaderc;
 
 use std::env;
 use std::fs;
@@ -17,7 +17,9 @@ use std::io::Read;
 use std::io::Write;
 use std::path::Path;
 
-pub use glsl_to_spirv::ShaderType;
+use shaderc::{Compiler, CompileOptions};
+
+pub use shaderc::{CompilationArtifact, ShaderKind};
 pub use parse::ParseError;
 
 mod descriptor_sets;
@@ -28,7 +30,7 @@ mod spec_consts;
 mod structs;
 
 pub fn build_glsl_shaders<'a, I>(shaders: I)
-    where I: IntoIterator<Item = (&'a str, ShaderType)>
+    where I: IntoIterator<Item = (&'a str, ShaderKind)>
 {
     let destination = env::var("OUT_DIR").unwrap();
     let destination = Path::new(&destination);
@@ -55,23 +57,25 @@ pub fn build_glsl_shaders<'a, I>(shaders: I)
         let mut file_output = File::create(&destination.join("shaders").join(shader))
             .expect("failed to open shader output");
 
-        let content = match glsl_to_spirv::compile(&shader_content, ty) {
-            Ok(compiled) => compiled,
-            Err(message) => panic!("{}\nfailed to compile shader", message),
-        };
-        let output = reflect("Shader", content).unwrap();
+        let content = compile(&shader_content, ty).unwrap();
+        let output = reflect("Shader", content.as_binary()).unwrap();
         write!(file_output, "{}", output).unwrap();
     }
 }
 
-pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
-    where R: Read
-{
-    let mut data = Vec::new();
-    spirv.read_to_end(&mut data)?;
+pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String> {
+    let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
+    let compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
 
-    // now parsing the document
-    let doc = parse::parse_spirv(&data)?;
+    let content = compiler
+        .compile_into_spirv(&code, ty, "shader.glsl", "main", Some(&compile_options))
+        .map_err(|e| e.to_string())?;
+
+    Ok(content)
+}
+
+pub fn reflect(name: &str, spirv: &[u32]) -> Result<String, Error> {
+    let doc = parse::parse_spirv(spirv)?;
 
     let mut output = String::new();
     output.push_str(
@@ -118,8 +122,8 @@ pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
 
     {
         // contains the data that was passed as input to this function
-        let spirv_data = data.iter()
-            .map(|&byte| byte.to_string())
+        let spirv_words = spirv.iter()
+            .map(|&word| word.to_string())
             .collect::<Vec<String>>()
             .join(", ");
 
@@ -162,10 +166,10 @@ impl {name} {{
         output.push_str(&format!(
             r#"
         unsafe {{
-            let data = [{spirv_data}];
-
+            let words = [{spirv_words}];
+ 
             Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
+                shader: try!(::vulkano::pipeline::shader::ShaderModule::from_words(device, &words))
             }})
         }}
     }}
@@ -178,7 +182,7 @@ impl {name} {{
     }}
         "#,
             name = name,
-            spirv_data = spirv_data
+            spirv_words = spirv_words
         ));
 
         // writing one method for each entry point of this module

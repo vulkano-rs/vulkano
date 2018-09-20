@@ -5,6 +5,8 @@
 - Fix instance_count when using draw_index with instance buffers
 - Added a `reinterpret` function to `BufferSlice`
 
+- Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
+
 # Version 0.10.0 (2018-08-10)
 
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS

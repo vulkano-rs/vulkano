@@ -51,7 +51,17 @@ To get started you are encouraged to use the following resources:
     examples in the repo and also a list of projects that use vulkano.
 *   [docs.rs](https://docs.rs/vulkano) - Full Vulkano API documentation
 
-## macOS and iOS Setup
+## Setup
+
+Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation. In order to
+build the shaderc-rs crate the following tools must be installed and available on `PATH`:
+- [CMake](https://cmake.org/)
+- [Python](https://www.python.org/) (works with both Python 2.x and 3.x)
+
+These requirements can be either installed with your favourite package manager or with installers
+from the projects' websites.
+
+### macOS and iOS Specific Setup
 
 Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
 a Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
@@ -107,14 +117,10 @@ This repository contains six libraries:
   easily integrate your GLSL shaders within the rest of your source code.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
-- `glsl-to-spirv` can compile GLSL to SPIR-V by wrapping around `glslang`. `glsl-to-spirv` is an
-  implementation detail that you don't need to use manually if you use vulkano.
 - `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.
 
 Once procedural macros are stabilized in Rust, the `vulkano-shaders` and `vulkano-shader-derive`
-crates will be merged with the `vulkano` crate. The `glsl-to-spirv` crate is an implementation
-detail of vulkano and is not supposed to be used directly if you use vulkano. You are, however,
-free to use it if you want to write an alternative to vulkano.
+crates will be merged with the `vulkano` crate.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
 driver is up to date before doing so.
