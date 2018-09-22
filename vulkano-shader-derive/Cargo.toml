@@ -13,7 +13,7 @@ name = "vulkano_shader_derive"
 proc-macro = true
 
 [dependencies]
-syn = "0.14"
+syn = "0.15"
 vulkano-shaders = { version = "0.10", path = "../vulkano-shaders" }
 
 [dev-dependencies]
