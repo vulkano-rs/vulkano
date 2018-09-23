@@ -9,6 +9,6 @@ vulkano = { path = "../vulkano" }
 vulkano-shader-derive = { path = "../vulkano-shader-derive" }
 vulkano-win = { path = "../vulkano-win" }
 cgmath = "0.16.1"
-image = "0.19.0"
+image = "0.20.0"
 winit = "0.17"
 time = "0.1.38"
