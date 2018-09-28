@@ -556,6 +556,7 @@ unsafe impl<T> DeviceOwned for T
 }
 
 /// Iterator that returns the queues produced when creating a device.
+#[derive(Clone, Debug)]
 pub struct QueuesIter {
     next_queue: usize,
     device: Arc<Device>,
