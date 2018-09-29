@@ -9,13 +9,7 @@
 
 extern crate shaderc;
 
-use std::env;
-use std::fs;
-use std::fs::File;
 use std::io::Error as IoError;
-use std::io::Read;
-use std::io::Write;
-use std::path::Path;
 
 use shaderc::{Compiler, CompileOptions};
 
@@ -28,40 +22,6 @@ mod enums;
 mod parse;
 mod spec_consts;
 mod structs;
-
-pub fn build_glsl_shaders<'a, I>(shaders: I)
-    where I: IntoIterator<Item = (&'a str, ShaderKind)>
-{
-    let destination = env::var("OUT_DIR").unwrap();
-    let destination = Path::new(&destination);
-
-    let shaders = shaders.into_iter().collect::<Vec<_>>();
-    for &(shader, _) in &shaders {
-        // Run this first so that a panic won't interfere with rerun
-        println!("cargo:rerun-if-changed={}", shader);
-    }
-
-    for (shader, ty) in shaders {
-        let shader = Path::new(shader);
-
-        let shader_content = {
-            let mut s = String::new();
-            File::open(shader)
-                .expect("failed to open shader")
-                .read_to_string(&mut s)
-                .expect("failed to read shader content");
-            s
-        };
-
-        fs::create_dir_all(&destination.join("shaders").join(shader.parent().unwrap())).unwrap();
-        let mut file_output = File::create(&destination.join("shaders").join(shader))
-            .expect("failed to open shader output");
-
-        let content = compile(&shader_content, ty).unwrap();
-        let output = reflect("Shader", content.as_binary()).unwrap();
-        write!(file_output, "{}", output).unwrap();
-    }
-}
 
 pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String> {
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
