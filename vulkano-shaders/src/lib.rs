@@ -536,3 +536,66 @@ fn capability_name(cap: &enums::Capability) -> Option<&'static str> {
         enums::Capability::CapabilityMultiViewport => Some("multi_viewport"),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bad_alignment() {
+        // vec3/mat3/mat3x* are problematic in arrays since their rust
+        // representations don't have the same array stride as the SPIR-V
+        // ones. E.g. in a vec3[2], the second element starts on the 16th
+        // byte, but in a rust [[f32;3];2], the second element starts on the
+        // 12th byte. Since we can't generate code for these types, we should
+        // create an error instead of generating incorrect code.
+        let comp = compile("
+        #version 450
+        struct MyStruct {
+            vec3 vs[2];
+        };
+        layout(binding=0) uniform UBO {
+            MyStruct s;
+        };
+        void main() {}
+        ", ShaderKind::Vertex).unwrap();
+        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        let res = std::panic::catch_unwind(|| structs::write_structs(&doc));
+        assert!(res.is_err());
+    }
+    #[test]
+    fn test_trivial_alignment() {
+        let comp = compile("
+        #version 450
+        struct MyStruct {
+            vec4 vs[2];
+        };
+        layout(binding=0) uniform UBO {
+            MyStruct s;
+        };
+        void main() {}
+        ", ShaderKind::Vertex).unwrap();
+        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        structs::write_structs(&doc);
+    }
+    #[test]
+    fn test_wrap_alignment() {
+        // This is a workaround suggested in the case of test_bad_alignment,
+        // so we should make sure it works.
+        let comp = compile("
+        #version 450
+        struct Vec3Wrap {
+            vec3 v;
+        };
+        struct MyStruct {
+            Vec3Wrap vs[2];
+        };
+        layout(binding=0) uniform UBO {
+            MyStruct s;
+        };
+        void main() {}
+        ", ShaderKind::Vertex).unwrap();
+        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        structs::write_structs(&doc);
+    }
+}

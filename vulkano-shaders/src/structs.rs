@@ -386,6 +386,7 @@ pub fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
                 let (t, t_size, t_align) = type_from_id(doc, type_id);
+                let t_size = t_size.expect("array components must be sized");
                 let len = doc.instructions
                     .iter()
                     .filter_map(|e| match e {
@@ -399,7 +400,24 @@ pub fn type_from_id(doc: &parse::Spirv, searched: u32) -> (String, Option<usize>
                     .next()
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                return (format!("[{}; {}]", t, len), t_size.map(|s| s * len as usize), t_align); // FIXME:
+                let stride = doc.instructions.iter().filter_map(|e| match e {
+                    parse::Instruction::Decorate{
+                        target_id,
+                        decoration: enums::Decoration::DecorationArrayStride,
+                        ref params,
+                    } if *target_id == searched => {
+                        Some(params[0])
+                    },
+                    _ => None,
+                })
+                .next().expect("failed to find ArrayStride decoration");
+                if stride as usize > t_size {
+                    panic!("Not possible to generate a rust array with the correct alignment since the SPIR-V \
+                            ArrayStride is larger than the size of the array element in rust. Try wrapping \
+                            the array element in a struct or rounding up the size of a vector or matrix \
+                            (e.g. increase a vec3 to a vec4)")
+                }
+                return (format!("[{}; {}]", t, len), Some(t_size * len as usize), t_align);
             },
             &parse::Instruction::TypeRuntimeArray { result_id, type_id }
                 if result_id == searched => {
