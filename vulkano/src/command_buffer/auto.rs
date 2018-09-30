@@ -76,13 +76,10 @@ use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
 
-///
-///
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
 /// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
 /// is built, however, it *does* implement `Send` and `Sync`.
-///
 pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     inner: SyncCommandBufferBuilder<P>,
     state_cacher: StateCacher,
@@ -981,8 +978,11 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Draw once, using the `vertex_buffer`.
+    ///
+    /// To use only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &DynamicState, vertices: V, sets: S,
+    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &DynamicState, vertex_buffer: V, sets: S,
                               constants: Pc)
                               -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -995,7 +995,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1026,9 +1026,12 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Draw once, using the `vertex_buffer` and the `index_buffer`.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
-                                             vertices: V, index_buffer: Ib, sets: S, constants: Pc)
+                                             vertex_buffer: V, index_buffer: Ib, sets: S, constants: Pc)
                                              -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
@@ -1043,7 +1046,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1083,9 +1086,13 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Performs multiple draws, one draw for each `vulkano::command_buffer::DrawIndirectCommand` struct in `indirect_buffer`.
+    /// The `vertex_buffer` is used by all draws.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: &DynamicState,
-                                           vertices: V, indirect_buffer: Ib, sets: S, constants: Pc)
+                                           vertex_buffer: V, indirect_buffer: Ib, sets: S, constants: Pc)
                                            -> Result<Self, DrawIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
@@ -1102,7 +1109,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
 
@@ -1135,9 +1142,13 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Performs multiple draws, one draw for each `vulkano::command_buffer::DrawIndexedIndirectCommand` struct in `indirect_buffer`.
+    /// The `index_buffer` and `vertex_buffer` are used by all draws.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
-                                           vertices: V, index_buffer: Ib, indirect_buffer: Inb, sets: S, constants: Pc)
+                                           vertex_buffer: V, index_buffer: Ib, indirect_buffer: Inb, sets: S, constants: Pc)
                                            -> Result<Self, DrawIndexedIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
@@ -1157,7 +1168,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
 
