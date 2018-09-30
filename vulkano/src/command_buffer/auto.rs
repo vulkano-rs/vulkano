@@ -22,6 +22,7 @@ use buffer::TypedBufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
 use command_buffer::DrawIndirectCommand;
+use command_buffer::DrawIndexedIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::StateCacher;
 use command_buffer::StateCacherOutcome;
@@ -1134,6 +1135,67 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    #[inline]
+    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
+                                           vertices: V, index_buffer: Ib, indirect_buffer: Inb, sets: S, constants: Pc)
+                                           -> Result<Self, DrawIndexedIndirectError>
+        where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+              S: DescriptorSetsCollection,
+              Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+              Inb: BufferAccess
+                      + TypedBufferAccess<Content = [DrawIndexedIndirectCommand]>
+                      + Send
+                      + Sync
+                      + 'static,
+              I: Index + 'static
+    {
+        unsafe {
+            // TODO: must check that pipeline is compatible with render pass
+
+            self.ensure_inside_render_pass_inline(&pipeline)?;
+            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+
+            let draw_count = indirect_buffer.len() as u32;
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_graphics_pipeline(&pipeline)
+            {
+                self.inner.bind_pipeline_graphics(pipeline.clone());
+            }
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_index_buffer(&index_buffer, I::ty())
+            {
+                self.inner.bind_index_buffer(index_buffer, I::ty())?;
+            }
+
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            set_state(&mut self.inner, &dynamic);
+            descriptor_sets(&mut self.inner,
+                            &mut self.state_cacher,
+                            true,
+                            pipeline.clone(),
+                            sets)?;
+            vertex_buffers(&mut self.inner,
+                           &mut self.state_cacher,
+                           vb_infos.vertex_buffers)?;
+
+            debug_assert!(self.graphics_allowed);
+
+            self.inner
+                .draw_indexed_indirect(indirect_buffer,
+                               draw_count,
+                               mem::size_of::<DrawIndexedIndirectCommand>() as u32)?;
+            Ok(self)
+        }
+    }
+
     /// Adds a command that ends the current render pass.
     ///
     /// This must be called after you went through all the subpasses and before you can build
@@ -1624,6 +1686,16 @@ err_gen!(DrawIndirectError {
              CheckPushConstantsValidityError,
              CheckDescriptorSetsValidityError,
              CheckVertexBufferError,
+             SyncCommandBufferBuilderError,
+         });
+
+err_gen!(DrawIndexedIndirectError {
+             AutoCommandBufferBuilderContextError,
+             CheckDynamicStateValidityError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             CheckVertexBufferError,
+             CheckIndexBufferError,
              SyncCommandBufferBuilderError,
          });
 
