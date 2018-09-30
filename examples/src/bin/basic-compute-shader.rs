@@ -153,7 +153,7 @@ void main() {
         // We need to signal a fence here because below we want to block the CPU until the GPU has
         // reached that point in the execution.
         .then_signal_fence_and_flush().unwrap();
-    
+
     // Blocks execution until the GPU has finished the operation. This method only exists on the
     // future that corresponds to a signalled fence. In other words, this method wouldn't be
     // available if we didn't call `.then_signal_fence_and_flush()` earlier.

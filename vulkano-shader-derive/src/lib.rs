@@ -156,6 +156,8 @@
 //! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
 
 extern crate proc_macro;
+extern crate proc_macro2;
+extern crate quote;
 extern crate syn;
 extern crate vulkano_shaders;
 
@@ -164,15 +166,13 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
-use proc_macro::TokenStream;
-
 enum SourceKind {
     Src(String),
     Path(String),
 }
 
 #[proc_macro_derive(VulkanoShader, attributes(src, path, ty))]
-pub fn derive(input: TokenStream) -> TokenStream {
+pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let syn_item: syn::DeriveInput = syn::parse(input).unwrap();
 
     let source_code = {
@@ -244,8 +244,5 @@ pub fn derive(input: TokenStream) -> TokenStream {
     };
     let content = vulkano_shaders::compile(&source_code, ty).unwrap();
     
-    vulkano_shaders::reflect("Shader", content.as_binary())
-        .unwrap()
-        .parse()
-        .unwrap()
+    vulkano_shaders::reflect("Shader", content.as_binary()).unwrap().into()
 }
