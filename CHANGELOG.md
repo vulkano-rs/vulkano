@@ -1,5 +1,6 @@
 # Unreleased (Breaking)
 
+- Removed mir support, as it is being removed from the vulkan spec.
 - Remove vulkano_shaders::build_glsl_shaders
 - Split `PersistentDescriptorSetError::MissingUsage` into `MissingImageUsage` and `MissingBufferUsage`
   each with a matching enum indicating the usage that was missing.

@@ -41,7 +41,6 @@ pub fn required_extensions() -> InstanceExtensions {
         khr_xlib_surface: true,
         khr_xcb_surface: true,
         khr_wayland_surface: true,
-        khr_mir_surface: true,
         khr_android_surface: true,
         khr_win32_surface: true,
         mvk_ios_surface: true,

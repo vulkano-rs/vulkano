@@ -31,12 +31,11 @@
 //!
 //! ## Creating a surface from a window
 //!
-//! There are 6 extensions that each allow you to create a surface from a type of window:
+//! There are 5 extensions that each allow you to create a surface from a type of window:
 //!
 //! - `VK_KHR_xlib_surface`
 //! - `VK_KHR_xcb_surface`
 //! - `VK_KHR_wayland_surface`
-//! - `VK_KHR_mir_surface`
 //! - `VK_KHR_android_surface`
 //! - `VK_KHR_win32_surface`
 //!

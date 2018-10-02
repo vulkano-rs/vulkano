@@ -291,50 +291,6 @@ impl<W> Surface<W> {
                     }))
     }
 
-    /// Creates a `Surface` from a MIR window.
-    ///
-    /// If the swapchain's dimensions does not match the window's dimensions, the image will
-    /// automatically be scaled during presentation.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that the `connection` and the `surface` are both correct and stay
-    /// alive for the entire lifetime of the surface. The `win` parameter can be used to ensure this.
-    pub unsafe fn from_mir<C, S>(instance: Arc<Instance>, connection: *const C,
-                                 surface: *const S,
-                                 win: W)
-                                 -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
-
-        if !instance.loaded_extensions().khr_mir_surface {
-            return Err(SurfaceCreationError::MissingExtension { name: "VK_KHR_mir_surface" });
-        }
-
-        let surface = {
-            let infos = vk::MirSurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                connection: connection as *mut _,
-                mirSurface: surface as *mut _,
-            };
-
-            let mut output = mem::uninitialized();
-            check_errors(vk.CreateMirSurfaceKHR(instance.internal_object(),
-                                                &infos,
-                                                ptr::null(),
-                                                &mut output))?;
-            output
-        };
-
-        Ok(Arc::new(Surface {
-                        window: win,
-                        instance: instance.clone(),
-                        surface: surface,
-                        has_swapchain: AtomicBool::new(false),
-                    }))
-    }
-
     /// Creates a `Surface` from an Android window.
     ///
     /// # Safety
@@ -798,15 +754,6 @@ mod tests {
         match unsafe {
             Surface::from_wayland(instance, ptr::null::<u8>(), ptr::null::<u8>(), ())
         } {
-            Err(SurfaceCreationError::MissingExtension { .. }) => (),
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn khr_mir_surface_ext_missing() {
-        let instance = instance!();
-        match unsafe { Surface::from_mir(instance, ptr::null::<u8>(), ptr::null::<u8>(), ()) } {
             Err(SurfaceCreationError::MissingExtension { .. }) => (),
             _ => panic!(),
         }
