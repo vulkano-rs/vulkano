@@ -377,7 +377,6 @@ instance_extensions! {
     khr_xlib_surface => b"VK_KHR_xlib_surface",
     khr_xcb_surface => b"VK_KHR_xcb_surface",
     khr_wayland_surface => b"VK_KHR_wayland_surface",
-    khr_mir_surface => b"VK_KHR_mir_surface",
     khr_android_surface => b"VK_KHR_android_surface",
     khr_win32_surface => b"VK_KHR_win32_surface",
     ext_debug_report => b"VK_EXT_debug_report",

@@ -161,7 +161,6 @@ pub const STRUCTURE_TYPE_DISPLAY_PRESENT_INFO_KHR: u32 = 1000003000;
 pub const STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR: u32 = 1000004000;
 pub const STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR: u32 = 1000005000;
 pub const STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR: u32 = 1000006000;
-pub const STRUCTURE_TYPE_MIR_SURFACE_CREATE_INFO_KHR: u32 = 1000007000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
 #[deprecated(note = "Use STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT instead")]
@@ -2394,18 +2393,6 @@ pub struct WaylandSurfaceCreateInfoKHR {
     pub surface: *mut c_void,
 }
 
-
-pub type MirSurfaceCreateFlagsKHR = Flags;
-
-#[repr(C)]
-pub struct MirSurfaceCreateInfoKHR {
-    pub sType: StructureType,
-    pub pNext: *const c_void,
-    pub flags: MirSurfaceCreateFlagsKHR,
-    pub connection: *mut c_void,
-    pub mirSurface: *mut c_void,
-}
-
 pub type AndroidSurfaceCreateFlagsKHR = Flags;
 
 #[repr(C)]
@@ -2757,8 +2744,6 @@ ptrs!(InstancePointers, {
     GetPhysicalDeviceXcbPresentationSupportKHR => (physicalDevice: PhysicalDevice, queueFamilyIndex: u32, connection: *mut c_void, visual_id: u32 /* FIXME: xcb_visualid */) -> Bool32,
     CreateWaylandSurfaceKHR => (instance: Instance, pCreateInfo: *const WaylandSurfaceCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
     GetPhysicalDeviceWaylandPresentationSupportKHR => (physicalDevice: PhysicalDevice, queueFamilyIndex: u32, display: *mut c_void) -> Bool32,
-    CreateMirSurfaceKHR => (instance: Instance, pCreateInfo: *const MirSurfaceCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
-    GetPhysicalDeviceMirPresentationSupportKHR => (physicalDevice: PhysicalDevice, queueFamilyIndex: u32, connection: *mut c_void) -> Bool32,
     CreateAndroidSurfaceKHR => (instance: Instance, pCreateInfo: *const AndroidSurfaceCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
     CreateWin32SurfaceKHR => (instance: Instance, pCreateInfo: *const Win32SurfaceCreateInfoKHR, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
     GetPhysicalDeviceWin32PresentationSupportKHR => (physicalDevice: PhysicalDevice, queueFamilyIndex: u32) -> Bool32,
