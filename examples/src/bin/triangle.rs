@@ -22,10 +22,9 @@
 // The `vulkano` crate is the main crate that you must use to use Vulkan.
 #[macro_use]
 extern crate vulkano;
-// The `vulkano_shader_derive` crate allows us to use the `VulkanoShader` custom derive that we use
-// in this example.
-extern crate vulkano_shader_derive;
-// However the Vulkan library doesn't provide any functionality to create and handle windows, as
+// Provides the `vulkano_shader` macro that is used to generate code for using shaders.
+extern crate vulkano_shaders;
+// The Vulkan library doesn't provide any functionality to create and handle windows, as
 // this would be out of scope. In order to open a window, we are going to use the `winit` crate.
 extern crate winit;
 // The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about
@@ -54,7 +53,7 @@ use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
-use vulkano_shader_derive::vulkano_shader;
+use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 

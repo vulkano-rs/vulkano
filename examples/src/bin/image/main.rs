@@ -13,12 +13,12 @@ extern crate winit;
 
 #[macro_use]
 extern crate vulkano;
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
-use vulkano_shader_derive::vulkano_shader;
+use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 

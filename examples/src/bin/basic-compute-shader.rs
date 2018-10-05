@@ -17,7 +17,7 @@
 
 // Note that since we don't create any window, fewer imports are needed.
 extern crate vulkano;
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
@@ -30,7 +30,7 @@ use vulkano::instance::InstanceExtensions;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
-use vulkano_shader_derive::vulkano_shader;
+use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 

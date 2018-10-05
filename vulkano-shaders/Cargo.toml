@@ -3,10 +3,13 @@ name = "vulkano-shaders"
 version = "0.10.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
-description = "Shaders "
+description = "Shaders rust code generation macro"
 license = "MIT/Apache-2.0"
 documentation = "http://tomaka.github.io/vulkano/vulkano/index.html"
 categories = ["rendering::graphics-api"]
+
+[lib]
+proc-macro = true
 
 [dependencies]
 shaderc = "0.3"

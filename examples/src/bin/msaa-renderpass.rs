@@ -69,7 +69,7 @@
 extern crate image;
 #[macro_use]
 extern crate vulkano;
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 
 use std::sync::Arc;
 use image::ImageBuffer;
@@ -93,7 +93,7 @@ use vulkano::instance::PhysicalDevice;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sync::GpuFuture;
-use vulkano_shader_derive::vulkano_shader;
+use vulkano_shaders::vulkano_shader;
 
 fn main() {
     // The usual Vulkan initialization.

@@ -23,7 +23,7 @@ use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano_shader_derive::vulkano_shader;
+use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 
