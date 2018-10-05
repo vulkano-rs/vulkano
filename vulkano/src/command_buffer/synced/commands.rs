@@ -13,6 +13,7 @@ use std::borrow::Cow;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::ffi::CString;
 
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
@@ -298,6 +299,48 @@ impl<P> SyncCommandBufferBuilder<P> {
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
             buffers: Vec::new(),
         }
+    }
+
+    #[inline]
+    pub fn debug_marker_begin(&mut self, name: &str, color : [f32;4]) {
+        struct Cmd{
+            name : CString,
+            color : [f32;4]
+        };
+        impl<P> Command<P> for Cmd{
+            fn name(&self) -> &'static str {
+                "vkCmdDebugMarkerBegin"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.debug_marker_begin(self.name.as_c_str(), self.color);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                Box::new("vkCmdDebugMarkerBegin")
+            }
+        }
+
+        self.append_command(Cmd{ name: CString::new(name).unwrap(),color: color});
+    }
+
+    #[inline]
+    pub fn debug_marker_end(&mut self){
+        struct Cmd;
+        impl<P> Command<P> for Cmd{
+            fn name(&self) -> &'static str {
+                "vkCmdDebugMarkerEnd"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.debug_marker_end();
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                Box::new("vkCmdDebugMarkerEnd")
+            }
+        }
+        
     }
 
     /// Calls `vkCmdCopyImage` on the builder.
