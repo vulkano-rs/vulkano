@@ -23,6 +23,7 @@ use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano_shader_derive::vulkano_shader;
 use cgmath::Vector3;
 
 use std::sync::Arc;
@@ -154,27 +155,23 @@ struct Vertex {
 }
 impl_vertex!(Vertex, position);
 
-mod vs {
-    #[derive(VulkanoShader)]
-    #[allow(dead_code)]
-    #[ty = "vertex"]
-    #[src = "
+vulkano_shader!{
+    mod_name: vs,
+    ty: "vertex",
+    src: "
 #version 450
 
 layout(location = 0) in vec2 position;
 
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
-}
-"]
-    struct Dummy;
+}"
 }
 
-mod fs {
-    #[derive(VulkanoShader)]
-    #[allow(dead_code)]
-    #[ty = "fragment"]
-    #[src = "
+vulkano_shader!{
+    mod_name: fs,
+    ty: "fragment",
+    src: "
 #version 450
 
 // The `color_input` parameter of the `draw` method.
@@ -203,7 +200,5 @@ void main() {
     vec3 in_diffuse = subpassLoad(u_diffuse).rgb;
     f_color.rgb = light_percent * push_constants.color.rgb * in_diffuse;
     f_color.a = 1.0;
-}
-"]
-    struct Dummy;
+}"
 }

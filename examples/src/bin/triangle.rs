@@ -1,3 +1,5 @@
+#![feature(proc_macro_non_items)]
+
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -22,7 +24,6 @@
 extern crate vulkano;
 // The `vulkano_shader_derive` crate allows us to use the `VulkanoShader` custom derive that we use
 // in this example.
-#[macro_use]
 extern crate vulkano_shader_derive;
 // However the Vulkan library doesn't provide any functionality to create and handle windows, as
 // this would be out of scope. In order to open a window, we are going to use the `winit` crate.
@@ -52,6 +53,8 @@ use vulkano::swapchain::AcquireError;
 use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+
+use vulkano_shader_derive::vulkano_shader;
 
 use std::sync::Arc;
 
@@ -206,26 +209,23 @@ fn main() {
     // https://docs.rs/vulkano-shader-derive/*/vulkano_shader_derive/
     //
     // TODO: explain this in details
-    mod vs {
-        #[derive(VulkanoShader)]
-        #[ty = "vertex"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: vs,
+        ty: "vertex",
+        src: "
 #version 450
 
 layout(location = 0) in vec2 position;
 
 void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}
-"]
-        #[allow(dead_code)]
-        struct Dummy;
+gl_Position = vec4(position, 0.0, 1.0);
+}"
     }
 
-    mod fs {
-        #[derive(VulkanoShader)]
-        #[ty = "fragment"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: fs,
+        ty: "fragment",
+        src: "
 #version 450
 
 layout(location = 0) out vec4 f_color;
@@ -233,9 +233,7 @@ layout(location = 0) out vec4 f_color;
 void main() {
     f_color = vec4(1.0, 0.0, 0.0, 1.0);
 }
-"]
-        #[allow(dead_code)]
-        struct Dummy;
+"
     }
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");

@@ -1,3 +1,4 @@
+#![feature(proc_macro_non_items)]
 // Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -9,7 +10,6 @@
 
 // TODO: Give a paragraph about what specialization are and what problems they solve
 extern crate vulkano;
-#[macro_use]
 extern crate vulkano_shader_derive;
 
 use vulkano::buffer::BufferUsage;
@@ -23,6 +23,7 @@ use vulkano::instance::InstanceExtensions;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+use vulkano_shader_derive::vulkano_shader;
 
 use std::sync::Arc;
 
@@ -36,10 +37,10 @@ fn main() {
     };
     let queue = queues.next().unwrap();
 
-    mod cs {
-        #[derive(VulkanoShader)]
-        #[ty = "compute"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: cs,
+        ty: "compute",
+        src: "
 #version 450
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -59,9 +60,6 @@ void main() {
         data.data[idx] += uint(addend);
     }
 }"
-]
-        #[allow(dead_code)]
-        struct Dummy;
     }
 
     let shader = cs::Shader::load(device.clone())

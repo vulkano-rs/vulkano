@@ -157,8 +157,7 @@
 
 extern crate proc_macro;
 extern crate proc_macro2;
-extern crate quote;
-extern crate syn;
+#[macro_use] extern crate syn;
 extern crate vulkano_shaders;
 
 use std::env;
@@ -166,83 +165,154 @@ use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 
+use syn::parse::{Parse, ParseStream, Result};
+use syn::{Ident, LitStr, LitBool};
+use vulkano_shaders::ShaderKind;
+
 enum SourceKind {
     Src(String),
     Path(String),
 }
 
-#[proc_macro_derive(VulkanoShader, attributes(src, path, ty))]
-pub fn derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let syn_item: syn::DeriveInput = syn::parse(input).unwrap();
+struct MacroInput {
+    mod_ident: Ident,
+    shader_kind: ShaderKind,
+    source_kind: SourceKind,
+    dump: bool,
+}
 
-    let source_code = {
-        let mut iter = syn_item.attrs.iter().filter_map(|attr| {
-            attr.interpret_meta().and_then(|meta| {
-                match meta {
-                    syn::Meta::NameValue(syn::MetaNameValue { ident, lit: syn::Lit::Str(lit_str), .. }) => {
-                        match ident.to_string().as_ref() {
-                            "src"  => Some(SourceKind::Src(lit_str.value())),
-                            "path" => Some(SourceKind::Path(lit_str.value())),
-                            _      => None,
-                        }
-                    },
 
-                    _ => None
-                }
-            })
-        });
+/// TODO: Alternative macro syntax:
+/// ```
+///     vulkano_shader! {
+///         mod vs {
+///             Arguments {
+///                 ty: "vertex",
+///                 src: "
+/// #version 450
+///
+/// layout(location = 0) in vec2 position;
+///
+/// void main() {
+/// gl_Position = vec4(position, 0.0, 1.0);
+/// }"
+///             }
+///         }
+///     }
+/// ```
 
-        let source = iter.next().expect("No source attribute given ; put #[src = \"...\"] or #[path = \"...\"]");
 
-        if iter.next().is_some() {
-            panic!("Multiple src or path attributes given ; please provide only one");
-        }
+impl Parse for MacroInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut dump = None;
+        let mut mod_ident = None;
+        let mut shader_kind = None;
+        let mut source_kind = None;
 
-        match source {
-            SourceKind::Src(source) => source,
+        while !input.is_empty() {
+            let name: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
 
-            SourceKind::Path(path) => {
-                let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
-                let full_path = Path::new(&root).join(&path);
-
-                if full_path.is_file() {
-                    let mut buf = String::new();
-                    File::open(full_path)
-                        .and_then(|mut file| file.read_to_string(&mut buf))
-                        .expect(&format!("Error reading source from {:?}", path));
-                    buf
-                } else {
-                    panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
-                }
-            }
-        }
-    };
-
-    let ty_str = syn_item.attrs.iter().filter_map(|attr| {
-        attr.interpret_meta().and_then(|meta| {
-            match meta {
-                syn::Meta::NameValue(syn::MetaNameValue { ident, lit: syn::Lit::Str(lit_str), .. }) => {
-                    match ident.to_string().as_ref() {
-                        "ty" => Some(lit_str.value()),
-                        _    => None
+            match name.to_string().as_ref() {
+                "mod_name" => {
+                    if mod_ident.is_some() {
+                        panic!("Only one `mod` can be defined")
                     }
+
+                    let mod_name: Ident = input.parse()?;
+                    mod_ident = Some(mod_name);
                 }
+                "ty" => {
+                    if shader_kind.is_some() {
+                        panic!("Only one `ty` can be defined")
+                    }
 
-                _ => None
+                    let ty: LitStr = input.parse()?;
+                    let ty = match ty.value().as_ref() {
+                        "vertex" => ShaderKind::Vertex,
+                        "fragment" => ShaderKind::Fragment,
+                        "geometry" => ShaderKind::Geometry,
+                        "tess_ctrl" => ShaderKind::TessControl,
+                        "tess_eval" => ShaderKind::TessEvaluation,
+                        "compute" => ShaderKind::Compute,
+                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
+                    };
+                    shader_kind = Some(ty);
+                }
+                "src" => {
+                    if source_kind.is_some() {
+                        panic!("Only one `src` or `path` can be defined")
+                    }
+
+                    let src: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Src(src.value()));
+                }
+                "path" => {
+                    if source_kind.is_some() {
+                        panic!("Only one `src` or `path` can be defined")
+                    }
+
+                    let path: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Path(path.value()));
+                }
+                "dump" => {
+                    if dump.is_some() {
+                        panic!("Only one `dump` can be defined")
+                    }
+                    let dump_lit: LitBool = input.parse()?;
+                    dump = Some(dump_lit.value);
+                }
+                name => panic!(format!("Unknown field name: {}", name))
             }
-        })
-    }).next().expect("Can't find `ty` attribute ; put #[ty = \"vertex\"] for example.");
 
-    let ty = match &ty_str[..] {
-        "vertex" => vulkano_shaders::ShaderKind::Vertex,
-        "fragment" => vulkano_shaders::ShaderKind::Fragment,
-        "geometry" => vulkano_shaders::ShaderKind::Geometry,
-        "tess_ctrl" => vulkano_shaders::ShaderKind::TessControl,
-        "tess_eval" => vulkano_shaders::ShaderKind::TessEvaluation,
-        "compute" => vulkano_shaders::ShaderKind::Compute,
-        _ => panic!("Unexpected shader type ; valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
+            if !input.is_empty() {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        let shader_kind = match shader_kind {
+            Some(shader_kind) => shader_kind,
+            None => panic!("Please provide a shader type e.g. `ty: \"vertex\"`")
+        };
+
+        let source_kind = match source_kind {
+            Some(source_kind) => source_kind,
+            None => panic!("Please provide a source e.g. `path: \"foo.glsl\"` or `src: \"glsl source code here ...\"`")
+        };
+
+        let mod_ident = match mod_ident {
+            Some(mod_ident) => mod_ident,
+            None => panic!("Please provide a mod e.g. `mod: fs` ")
+        };
+
+        let dump = dump.unwrap_or(false);
+
+        Ok(MacroInput { shader_kind, source_kind, mod_ident, dump })
+    }
+}
+
+#[proc_macro]
+pub fn vulkano_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as MacroInput);
+
+    let source_code = match input.source_kind {
+        SourceKind::Src(source) => source,
+        SourceKind::Path(path) => {
+            let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+            let full_path = Path::new(&root).join(&path);
+
+            if full_path.is_file() {
+                let mut buf = String::new();
+                File::open(full_path)
+                    .and_then(|mut file| file.read_to_string(&mut buf))
+                    .expect(&format!("Error reading source from {:?}", path));
+                buf
+            } else {
+                panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
+            }
+        }
     };
-    let content = vulkano_shaders::compile(&source_code, ty).unwrap();
+    let content = vulkano_shaders::compile(&source_code, input.shader_kind).unwrap();
     
-    vulkano_shaders::reflect("Shader", content.as_binary()).unwrap().into()
+    vulkano_shaders::reflect("Shader", content.as_binary(), &input.mod_ident, input.dump).unwrap().into()
 }

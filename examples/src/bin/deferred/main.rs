@@ -1,3 +1,5 @@
+#![feature(proc_macro_non_items)]
+
 // Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -29,7 +31,6 @@
 extern crate cgmath;
 #[macro_use]
 extern crate vulkano;
-#[macro_use]
 extern crate vulkano_shader_derive;
 extern crate winit;
 extern crate vulkano_win;

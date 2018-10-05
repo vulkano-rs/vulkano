@@ -1,3 +1,5 @@
+#![feature(proc_macro_non_items)]
+
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -20,7 +22,6 @@
 
 #[macro_use]
 extern crate vulkano;
-#[macro_use]
 extern crate vulkano_shader_derive;
 extern crate winit;
 extern crate vulkano_win;
@@ -45,6 +46,7 @@ use vulkano::swapchain::AcquireError;
 use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+use vulkano_shader_derive::vulkano_shader;
 
 use std::sync::Arc;
 
@@ -109,26 +111,23 @@ fn main() {
         ].iter().cloned()).expect("failed to create buffer")
     };
 
-    mod vs {
-        #[derive(VulkanoShader)]
-        #[ty = "vertex"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: vs,
+        ty: "vertex",
+        src: "
 #version 450
 
 layout(location = 0) in vec2 position;
 
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
-}
-"]
-        #[allow(dead_code)]
-        struct Dummy;
+}"
     }
 
-    mod tcs {
-        #[derive(VulkanoShader)]
-        #[ty = "tess_ctrl"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: tcs,
+        ty: "tess_ctrl",
+        src: "
 #version 450
 
 layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
@@ -146,10 +145,7 @@ void main(void)
     gl_TessLevelOuter[2] = 10; // many triangles are generated for this edge
     // gl_TessLevelInner[1] = only used when tes uses layout(quads)
     // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
-}
-    "]
-        #[allow(dead_code)]
-        struct Dummy;
+}"
     }
 
     // PG
@@ -164,10 +160,10 @@ void main(void)
     // and the values x, y and z represent the distance from a vertex of the triangle.
     // http://mathworld.wolfram.com/BarycentricCoordinates.html
 
-    mod tes {
-        #[derive(VulkanoShader)]
-        #[ty = "tess_eval"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: tes,
+        ty: "tess_eval",
+        src: "
 #version 450
 
 layout(triangles, equal_spacing, cw) in;
@@ -186,26 +182,20 @@ void main(void)
         gl_TessCoord.x * vert_x.z + gl_TessCoord.y * vert_y.z + gl_TessCoord.z * vert_z.z,
         1.0
     );
-}
-    "]
-        #[allow(dead_code)]
-        struct Dummy;
+}"
     }
 
-    mod fs {
-        #[derive(VulkanoShader)]
-        #[ty = "fragment"]
-        #[src = "
+    vulkano_shader!{
+        mod_name: fs,
+        ty: "fragment",
+        src: "
 #version 450
 
 layout(location = 0) out vec4 f_color;
 
 void main() {
     f_color = vec4(1.0, 1.0, 1.0, 1.0);
-}
-"]
-        #[allow(dead_code)]
-        struct Dummy;
+}"
     }
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
