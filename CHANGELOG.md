@@ -1,6 +1,8 @@
 # Unreleased (Breaking)
 
-- `vulkano_shaders::reflect` now returns `Result<proc_macro2::TokenStream, Error>` instead of `Result<String, Error>`
+- Added `vulkano_shaders::vulkano_shader` proc macro, use this instead of `vulkano_shader_deriver::VulkanoShaders`.
+- The entire `vulkano_shader_derive` crate is deprecated.
+- `vulkano_shaders::{reflect, compile, Error}` are no longer public.
 - Removed mir support, as it is being removed from the vulkan spec.
 - Remove vulkano_shaders::build_glsl_shaders
 - Split `PersistentDescriptorSetError::MissingUsage` into `MissingImageUsage` and `MissingBufferUsage`

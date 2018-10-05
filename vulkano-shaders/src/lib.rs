@@ -1,40 +1,29 @@
-//! Procedural Macro glue for compile-time compilation of GLSL into SPIR-V
+//! The procedural macro for vulkano's shader system.
+//! Manages the compile-time compilation of GLSL into SPIR-V and generation of assosciated rust code.
 //!
 //! # Basic usage
 //!
 //! ```
 //! #[macro_use]
-//! extern crate vulkano_shader_derive;
+//! extern crate vulkano_shaders;
 //! extern crate vulkano;
 //! # fn main() {}
-//! #[allow(unused)]
-//! mod vertex_shader {
-//!     #[derive(VulkanoShader)]
-//!     #[ty = "vertex"]
-//!     #[src = "
+//! vulkano_shader!{
+//!     mod_name: vertex_shader,
+//!     ty: "vertex",
+//!     src: "
 //! #version 450
 //!
 //! layout(location = 0) in vec3 position;
 //!
 //! void main() {
 //!     gl_Position = vec4(position, 1.0);
-//! }
-//! "]
-//!     struct Dummy;
+//! }"
 //! }
 //! ```
 //!
 //! # Details
 //!
-//! Due to the current limitations of procedural shaders in Rust, the current
-//! functionality of this crate is to base everything off of deriving
-//! `VulkanoShader` for a dummy struct that never actually gets used. When
-//! derived, the unused struct itself will be replaced by the functionality
-//! needed to use the shader in a Vulkano application. Due to the fact that
-//! a lot of what is generated will never be used, it's a good idea to put
-//! `#[allow(unused)]` on the module itself if you don't want to see irrelevant
-//! errors.
-//! 
 //! If you want to take a look at what the macro generates, your best options
 //! are to either read through the code that handles the generation (the
 //! [`reflect`][reflect] function in the `vulkano-shaders` crate) or use a tool
@@ -72,9 +61,9 @@
 //! `Default` and [`SpecializationConstants`][SpecializationConstants] are also
 //! generated for the struct.
 //! 
-//! All of these generated items will be accessed through the module that you
-//! wrote to use the derive macro in. If you wanted to store the `Shader` in
-//! a struct of your own, you could do something like this:
+//! All of these generated items will be accessed through the module specified
+//! by `mod_name: foo` If you wanted to store the `Shader` in a struct of your own,
+//! you could do something like this:
 //! 
 //! ```
 //! # #[macro_use]
@@ -85,20 +74,17 @@
 //! # use vulkano::OomError;
 //! # use vulkano::device::Device;
 //! #
-//! # #[allow(unused)]
-//! # mod vertex_shader {
-//! #     #[derive(VulkanoShader)]
-//! #     #[ty = "vertex"]
-//! #     #[src = "
+//! # vulkano_shader!{
+//! #     mod_name: vertex_shader,
+//! #     ty: "vertex",
+//! #     src: "
 //! # #version 450
 //! #
 //! # layout(location = 0) in vec3 position;
 //! #
 //! # void main() {
 //! #     gl_Position = vec4(position, 1.0);
-//! # }
-//! # "]
-//! #     struct Dummy;
+//! # }"
 //! # }
 //! // various use statements
 //! // `vertex_shader` module with shader derive
@@ -120,7 +106,11 @@
 //! 
 //! The options available are in the form of the following attributes:
 //!
-//! ## `#[ty = "..."]`
+//! ## `mod_name: ...`
+//!
+//! Specifies the identifier for the module that the generated code goes in.
+//!
+//! ## `ty: "..."`
 //!
 //! This defines what shader type the given GLSL source will be compiled into.
 //! The type can be any of the following:
@@ -134,15 +124,19 @@
 //!
 //! For details on what these shader types mean, [see Vulkano's documentation][pipeline].
 //!
-//! ## `#[src = "..."]`
+//! ## `src: "..."`
 //!
 //! Provides the raw GLSL source to be compiled in the form of a string. Cannot
-//! be used in conjunction with the `#[path]` attribute.
+//! be used in conjunction with the `path` field.
 //!
-//! ## `#[path = "..."]`
+//! ## `path: "..."`
 //!
 //! Provides the path to the GLSL source to be compiled, relative to `Cargo.toml`.
-//! Cannot be used in conjunction with the `#[src]` attribute.
+//! Cannot be used in conjunction with the `src` field.
+//!
+//! ## `dump: true`
+//!
+//! The crate fails to compile but prints the generated rust code to stdout.
 //! 
 //! [reflect]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/lib.rs#L67
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
@@ -195,27 +189,6 @@ struct MacroInput {
     source_kind: SourceKind,
     dump: bool,
 }
-
-
-/// TODO: Alternative macro syntax:
-/// ```
-///     vulkano_shader! {
-///         mod vs {
-///             Arguments {
-///                 ty: "vertex",
-///                 src: "
-/// #version 450
-///
-/// layout(location = 0) in vec2 position;
-///
-/// void main() {
-/// gl_Position = vec4(position, 0.0, 1.0);
-/// }"
-///             }
-///         }
-///     }
-/// ```
-
 
 impl Parse for MacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
