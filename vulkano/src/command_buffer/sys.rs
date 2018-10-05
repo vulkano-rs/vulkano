@@ -1472,63 +1472,41 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                              query.index());
     }
 
-    /// Calls `vkCmdDebugMarkerBeginEXT` on the builder.
-    ///
-    /// # Panics
-    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
-    ///
-    /// # Safety
-    /// The command pool that this command buffer was allocated from must support graphics or
-    /// compute operations
+    /// Calls "vkCmdBeginDebugUtilsLabel" on the builder
     #[inline]
-    pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
+    pub unsafe fn begin_debug_label(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        let info = vk::DebugMarkerMarkerInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+        let info = vk::DebugUtilsLabelEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
             pNext: ptr::null(),
-            pMarkerName: name.as_ptr(),
+            pLabelName: name.as_ptr(),
             color: color,
         };
-        vk.CmdDebugMarkerBeginEXT(cmd, &info);
+        vk.CmdBeginDebugUtilsLabelEXT(cmd, &info);
     }
 
-    /// Calls `vkCmdDebugMarkerEndEXT` on the builder.
-    ///
-    /// # Panics
-    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
-    ///
-    /// # Safety
-    /// There must be an outstanding `vkCmdDebugMarkerBeginEXT` command prior to the
-    /// `vkCmdDebugMarkerEndEXT` on the queue that this command buffer is submitted to. If the
-    /// matching `vkCmdDebugMarkerBeginEXT` command was in a secondary command buffer, the
-    /// `vkCmdDebugMarkerEndEXT` must be in the same command buffer.
+    /// Calls "vkInsertBeginDebugUtilsLabel" on the builder
     #[inline]
-    pub unsafe fn debug_marker_end(&mut self) {
+    pub unsafe fn insert_debug_label(&mut self, name: &CStr, color: [f32; 4]){
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdDebugMarkerEndEXT(cmd);
-    }
-
-    /// Calls `vkCmdDebugMarkerInsertEXT` on the builder.
-    ///
-    /// # Panics
-    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
-    ///
-    /// # Safety
-    /// The command pool that this command buffer was allocated from must support graphics or
-    /// compute operations
-    #[inline]
-    pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
-        let vk = self.device().pointers();
-        let cmd = self.internal_object();
-        let info = vk::DebugMarkerMarkerInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+        let info = vk::DebugUtilsLabelEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
             pNext: ptr::null(),
-            pMarkerName: name.as_ptr(),
+            pLabelName: name.as_ptr(),
             color: color,
         };
-        vk.CmdDebugMarkerInsertEXT(cmd, &info);
+        vk.CmdInsertDebugUtilsLabelEXT(cmd, &info);
+    }
+
+    /// Calls "vkEndBeginDebugUtilsLabel" on the builder
+    #[inline]
+    pub unsafe fn end_debug_label(&mut self) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        vk.CmdEndDebugUtilsLabelEXT(cmd);
     }
 }
 
@@ -1542,7 +1520,7 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBufferBuilder<P> {
 unsafe impl<P> VulkanObject for UnsafeCommandBufferBuilder<P> {
     type Object = vk::CommandBuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
@@ -1952,7 +1930,7 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBuffer<P> {
 unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> {
     type Object = vk::CommandBuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {

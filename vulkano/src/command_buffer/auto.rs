@@ -90,6 +90,8 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     // True if the queue family supports compute operations.
     compute_allowed: bool,
 
+    debug_utils_allowed: bool,
+
     // If we're inside a render pass, contains the render pass and the subpass index.
     render_pass: Option<(Box<RenderPassAbstract>, u32)>,
 
@@ -383,12 +385,14 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 
             let graphics_allowed = queue_family.supports_graphics();
             let compute_allowed = queue_family.supports_compute();
+            let debug_utils_allowed = device.instance().loaded_extensions().ext_debug_utils;
 
             Ok(AutoCommandBufferBuilder {
                    inner: inner?,
                    state_cacher,
                    graphics_allowed,
                    compute_allowed,
+                   debug_utils_allowed,
                    render_pass,
                    secondary_cb,
                    subpass_secondary: false,
@@ -563,6 +567,38 @@ impl<P> AutoCommandBufferBuilder<P> {
             self.subpass_secondary = secondary;
             Ok(self)
         }
+    }
+
+    /// Adds a command that adds a debug begin label 
+    /// 
+    /// If the `InstanceExtension``ext_debug_utils` is not available this method will fail silently.
+    /// If it seems that this method does not have any effect make sure that the InstanceExtension is available and loaded.
+    pub fn begin_debug_label(mut self, name: &str, color : [f32;4]) -> Self {
+        if self.debug_utils_allowed {
+            self.inner.begin_debug_label(name, color);
+        }
+
+        self
+    }
+
+    /// Adds a command that adds a debug end label 
+    /// 
+    /// If the `InstanceExtension``ext_debug_utils` is not available this method will fail silently.
+    /// If it seems that this method does not have any effect make sure that the InstanceExtension is available and loaded.
+    pub fn end_debug_label(mut self) -> Self {
+        if self.debug_utils_allowed {
+            self.inner.end_debug_label();
+        }
+
+        self
+    }
+
+    pub fn insert_debug_label(mut self, name: &str, color:[f32;4]) -> Self {
+        if self.debug_utils_allowed {
+            self.inner.insert_debug_label(name,color);
+        }
+
+        self
     }
 
     /// Adds a command that copies an image to another.

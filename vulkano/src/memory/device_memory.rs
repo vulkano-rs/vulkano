@@ -229,7 +229,7 @@ impl fmt::Debug for DeviceMemory {
 unsafe impl VulkanObject for DeviceMemory {
     type Object = vk::DeviceMemory;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DEVICE_MEMORY;
 
     #[inline]
     fn internal_object(&self) -> vk::DeviceMemory {

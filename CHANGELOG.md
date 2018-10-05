@@ -10,6 +10,11 @@
 - Made `AttributeInfo` derive `Copy`, `Clone` and `Debug`
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
 - Reject generation of rust types for SPIR-V arrays that would have incorrect array stride.
+- Removed the `Layout` prefix of the descriptions used for a render pass.
+- Implemented `VK_EXT_debug_utils`. This replaces both `VK_EXT_debug_report` and `VK_EXT_debug_utils`.
+    + Debug messages now have a `MessageSeverity` flag and a `MessageType` flag.
+    + Debug messages now give info about relevant objects, queue labels and command buffer labels
+    + The `CommandBufferBuilders` now implement functions `begin_debug_label`, `insert_debug_label` and `end_debug_label`.
 
 # Version 0.10.0 (2018-08-10)
 

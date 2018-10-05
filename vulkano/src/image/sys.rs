@@ -22,6 +22,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use device::Device;
+use device::DeviceOwned;
 use format::Format;
 use format::FormatTy;
 use image::ImageDimensions;
@@ -604,10 +605,7 @@ impl UnsafeImage {
         Ok(())
     }
 
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
+
 
     #[inline]
     pub fn format(&self) -> Format {
@@ -780,10 +778,17 @@ impl UnsafeImage {
     }
 }
 
+unsafe impl DeviceOwned for UnsafeImage {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
 unsafe impl VulkanObject for UnsafeImage {
     type Object = vk::Image;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_IMAGE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_IMAGE;
 
     #[inline]
     fn internal_object(&self) -> vk::Image {
@@ -1083,7 +1088,7 @@ impl UnsafeImageView {
 unsafe impl VulkanObject for UnsafeImageView {
     type Object = vk::ImageView;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_IMAGE_VIEW_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_IMAGE_VIEW;
 
     #[inline]
     fn internal_object(&self) -> vk::ImageView {

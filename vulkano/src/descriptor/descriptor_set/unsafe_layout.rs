@@ -127,7 +127,7 @@ impl fmt::Debug for UnsafeDescriptorSetLayout {
 unsafe impl VulkanObject for UnsafeDescriptorSetLayout {
     type Object = vk::DescriptorSetLayout;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT;
 
     #[inline]
     fn internal_object(&self) -> vk::DescriptorSetLayout {

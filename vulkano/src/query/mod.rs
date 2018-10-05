@@ -114,7 +114,7 @@ impl UnsafeQueryPool {
 unsafe impl VulkanObject for UnsafeQueryPool {
     type Object = vk::QueryPool;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_QUERY_POOL_EXT;
+    const TYPE: vk::ObjectType= vk::OBJECT_TYPE_QUERY_POOL;
 
     #[inline]
     fn internal_object(&self) -> vk::QueryPool {

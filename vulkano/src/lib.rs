@@ -127,8 +127,8 @@ pub unsafe trait VulkanObject {
     /// The type of the object.
     type Object: VulkanHandle;
 
-    /// The `DebugReportObjectTypeEXT` of the internal Vulkan handle.
-    const TYPE: vk::DebugReportObjectTypeEXT;
+    /// The `ObjectType` of the internal Vulkan handle.
+    const TYPE: vk::ObjectType;
 
     /// Returns a reference to the object.
     fn internal_object(&self) -> Self::Object;

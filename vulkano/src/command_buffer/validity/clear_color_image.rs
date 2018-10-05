@@ -12,6 +12,7 @@ use std::fmt;
 
 use VulkanObject;
 use device::Device;
+use device::DeviceOwned;
 use image::ImageAccess;
 
 /// Checks whether a clear color image command is valid.

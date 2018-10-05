@@ -13,6 +13,7 @@ use std::borrow::Cow;
 use std::mem;
 use std::ptr;
 use std::sync::Arc;
+use std::ffi::CString;
 
 use buffer::BufferAccess;
 use command_buffer::CommandBuffer;
@@ -298,6 +299,72 @@ impl<P> SyncCommandBufferBuilder<P> {
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
             buffers: Vec::new(),
         }
+    }
+
+    #[inline]
+    pub fn begin_debug_label(&mut self, name: &str, color : [f32;4]) {
+        struct Cmd{
+            name : CString,
+            color : [f32;4]
+        };
+        impl<P> Command<P> for Cmd{
+            fn name(&self) -> &'static str {
+                "vkCmdBeginDebugUtilsLabelExt"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.begin_debug_label(self.name.as_c_str(), self.color);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                Box::new("vkCmdBeginDebugUtilsLabelExt")
+            }
+        }
+
+        self.append_command(Cmd{ name: CString::new(name).unwrap(),color: color});
+    }
+
+    #[inline]
+    pub fn insert_debug_label(&mut self, name: &str, color : [f32;4]) {
+        struct Cmd{
+            name : CString,
+            color : [f32;4]
+        };
+        impl<P> Command<P> for Cmd{
+            fn name(&self) -> &'static str {
+                "vkCmdInsertDebugUtilsLabelExt"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.insert_debug_label(self.name.as_c_str(), self.color);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                Box::new("vkCmdInsertDebugUtilsLabelExt")
+            }
+        }
+
+        self.append_command(Cmd{ name: CString::new(name).unwrap(),color: color});
+    }
+
+    #[inline]
+    pub fn end_debug_label(&mut self){
+        struct Cmd;
+        impl<P> Command<P> for Cmd{
+            fn name(&self) -> &'static str {
+                "vkCmdEndDebugUtilsLabelEXT"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.end_debug_label();
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync> {
+                Box::new("vkCmdEndDebugUtilsLabelEXT")
+            }
+        }
+        self.append_command(Cmd{});
+        
     }
 
     /// Calls `vkCmdCopyImage` on the builder.

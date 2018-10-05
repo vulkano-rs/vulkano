@@ -25,9 +25,9 @@ use descriptor::pipeline_layout::PipelineLayoutSys;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
@@ -265,7 +265,7 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         self.render_pass.attachment_desc(num)
     }
 
@@ -275,7 +275,7 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         self.render_pass.subpass_desc(num)
     }
 
@@ -285,7 +285,7 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         self.render_pass.dependency_desc(num)
     }
 }
@@ -302,7 +302,7 @@ unsafe impl<C, Mv, L, Rp> RenderPassDescClearValues<C> for GraphicsPipeline<Mv, 
 unsafe impl<Mv, L, Rp> VulkanObject for GraphicsPipeline<Mv, L, Rp> {
     type Object = vk::Pipeline;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
@@ -479,7 +479,7 @@ pub struct GraphicsPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     type Object = vk::Pipeline;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {

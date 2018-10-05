@@ -12,6 +12,7 @@ use std::fmt;
 
 use VulkanObject;
 use device::Device;
+use device::DeviceOwned;
 use format::FormatTy;
 use format::PossibleCompressedFormatDesc;
 use image::ImageAccess;

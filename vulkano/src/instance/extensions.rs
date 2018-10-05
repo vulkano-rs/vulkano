@@ -149,6 +149,7 @@ instance_extensions! {
     khr_android_surface => b"VK_KHR_android_surface",
     khr_win32_surface => b"VK_KHR_win32_surface",
     ext_debug_report => b"VK_EXT_debug_report",
+    ext_debug_utils => b"VK_EXT_debug_utils",
     mvk_ios_surface => b"VK_MVK_ios_surface",
     mvk_macos_surface => b"VK_MVK_macos_surface",
     mvk_moltenvk => b"VK_MVK_moltenvk",     // TODO: confirm that it's an instance extension

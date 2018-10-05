@@ -253,7 +253,7 @@ pub struct PipelineLayoutSys<'a>(&'a vk::PipelineLayout);
 unsafe impl<'a> VulkanObject for PipelineLayoutSys<'a> {
     type Object = vk::PipelineLayout;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_LAYOUT_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_LAYOUT;
 
     #[inline]
     fn internal_object(&self) -> vk::PipelineLayout {

@@ -20,9 +20,9 @@ use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::LoadOp;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
@@ -417,7 +417,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         self.desc.attachment_desc(num)
     }
 
@@ -427,7 +427,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         self.desc.subpass_desc(num)
     }
 
@@ -437,7 +437,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         self.desc.dependency_desc(num)
     }
 }
@@ -496,7 +496,7 @@ pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
     type Object = vk::RenderPass;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_RENDER_PASS;
 
     #[inline]
     fn internal_object(&self) -> vk::RenderPass {

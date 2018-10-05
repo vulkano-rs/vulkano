@@ -487,17 +487,19 @@ impl Device {
     ///
     /// # Safety
     /// `object` must be a Vulkan handle owned by this device, and its type must be accurately described by `ty`.
-    pub unsafe fn set_object_name_raw(&self, ty: vk::DebugReportObjectTypeEXT, object: u64, name: &CStr) -> Result<(), OomError> {
-        let info = vk::DebugMarkerObjectNameInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT,
+    pub unsafe fn set_object_name_raw(&self, ty: vk::ObjectType, object: u64, name: &CStr) -> Result<(), OomError> {
+        let info = vk::DebugUtilsObjectNameInfoEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             pNext: ptr::null(),
             objectType: ty,
-            object: object,
-            name: name.as_ptr(),
+            objectHandle: object,
+            pObjectName: name.as_ptr(),
         };
-        check_errors(self.vk.DebugMarkerSetObjectNameEXT(self.device, &info))?;
+        check_errors(self.vk.SetDebugUtilsObjectNameEXT(self.device, &info))?;
         Ok(())
     }
+
+
 }
 
 impl fmt::Debug for Device {
@@ -510,7 +512,7 @@ impl fmt::Debug for Device {
 unsafe impl VulkanObject for Device {
     type Object = vk::Device;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DEVICE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DEVICE;
 
     #[inline]
     fn internal_object(&self) -> vk::Device {

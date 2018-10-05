@@ -12,6 +12,7 @@ use std::fmt;
 
 use VulkanObject;
 use device::Device;
+use device::DeviceOwned;
 use format::FormatTy;
 use image::ImageAccess;
 use image::ImageDimensions;
@@ -25,6 +26,7 @@ use sampler::Filter;
 ///
 /// - Panics if the source or the destination was not created with `device`.
 ///
+
 pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32; 3],
                               source_bottom_right: [i32; 3], source_base_array_layer: u32,
                               source_mip_level: u32, destination: &D,
