@@ -73,6 +73,8 @@ pub extern crate half;
 #[macro_use]
 mod tests;
 
+#[macro_use]
+mod extensions;
 mod features;
 mod version;
 

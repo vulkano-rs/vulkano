@@ -20,16 +20,17 @@ macro_rules! features {
         /// # Example
         ///
         /// ```
+        /// use vulkano::device::Features;
         /// # let physical_device: vulkano::instance::PhysicalDevice = return;
-        /// let minimal_features = vulkano::instance::Features {
+        /// let minimal_features = Features {
         ///     geometry_shader: true,
-        ///     .. vulkano::instance::Features::none()
+        ///     .. Features::none()
         /// };
         ///
-        /// let optimal_features = vulkano::instance::Features {
+        /// let optimal_features = vulkano::device::Features {
         ///     geometry_shader: true,
         ///     tessellation_shader: true,
-        ///     .. vulkano::instance::Features::none()
+        ///     .. Features::none()
         /// };
         ///
         /// if !physical_device.supported_features().superset_of(&minimal_features) {
