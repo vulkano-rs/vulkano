@@ -16,8 +16,8 @@
 //!
 //! ```no_run
 //! use vulkano::device::Device;
-//! use vulkano::instance::DeviceExtensions;
-//! use vulkano::instance::Features;
+//! use vulkano::device::DeviceExtensions;
+//! use vulkano::device::Features;
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
@@ -107,7 +107,6 @@ use std::ffi::CStr;
 
 use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::StdDescriptorPool;
-use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
@@ -121,7 +120,10 @@ use VulkanHandle;
 use check_errors;
 use vk;
 
-pub use instance::{DeviceExtensions, RawDeviceExtensions};
+pub use self::extensions::DeviceExtensions;
+pub use self::extensions::RawDeviceExtensions;
+pub use ::features::Features;
+mod extensions;
 
 /// Represents a Vulkan context.
 pub struct Device {

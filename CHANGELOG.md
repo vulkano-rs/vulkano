@@ -13,6 +13,10 @@
 
 # Version 0.10.0 (2018-08-10)
 
+- Export features and device extensions from the device module instead of the instance module
+    +   `instance::Features` -> `device::Features`
+    +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
+    +   `instance::RawDeviceExtensions` -> `device::RawDeviceExtensions`
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
 - Updated winit to version 0.17.
 - Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
