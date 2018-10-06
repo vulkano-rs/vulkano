@@ -1,5 +1,3 @@
-#![feature(proc_macro_non_items)]
-
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -56,6 +54,40 @@ use vulkano::sync::GpuFuture;
 use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
+
+// TODO: Move this back to the middle of the example, it makes for a more coherent sequential explanation (check git history)
+// The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
+//
+// An overview of what the `vulkano_shader` macro generates can be found in the
+// `vulkano-shaders` crate docs. You can view them at https://docs.rs/vulkano-shaders/
+//
+// TODO: explain this in details
+vulkano_shader!{
+    mod_name: vs,
+    ty: "vertex",
+    src: "
+#version 450
+
+layout(location = 0) in vec2 position;
+
+void main() {
+gl_Position = vec4(position, 0.0, 1.0);
+}"
+    }
+
+vulkano_shader!{
+    mod_name: fs,
+    ty: "fragment",
+    src: "
+#version 450
+
+layout(location = 0) out vec4 f_color;
+
+void main() {
+    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"
+}
 
 fn main() {
     // The first step of any Vulkan program is to create an instance.
@@ -198,42 +230,6 @@ fn main() {
             Vertex { position: [0.25, -0.1] }
         ].iter().cloned()).expect("failed to create buffer")
     };
-
-    // The next step is to create the shaders.
-    //
-    // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
-    //
-    // An overview of what the `VulkanoShader` derive macro generates can be found in the
-    // `vulkano-shader-derive` crate docs. You can view them at
-    // https://docs.rs/vulkano-shader-derive/*/vulkano_shader_derive/
-    //
-    // TODO: explain this in details
-    vulkano_shader!{
-        mod_name: vs,
-        ty: "vertex",
-        src: "
-#version 450
-
-layout(location = 0) in vec2 position;
-
-void main() {
-gl_Position = vec4(position, 0.0, 1.0);
-}"
-    }
-
-    vulkano_shader!{
-        mod_name: fs,
-        ty: "fragment",
-        src: "
-#version 450
-
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"
-    }
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");

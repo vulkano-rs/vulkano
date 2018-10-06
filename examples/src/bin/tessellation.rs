@@ -1,5 +1,3 @@
-#![feature(proc_macro_non_items)]
-
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -49,6 +47,94 @@ use vulkano::sync::GpuFuture;
 use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
+
+vulkano_shader!{
+    mod_name: vs,
+    ty: "vertex",
+    src: "
+#version 450
+
+layout(location = 0) in vec2 position;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+}"
+}
+
+vulkano_shader!{
+    mod_name: tcs,
+    ty: "tess_ctrl",
+    src: "
+#version 450
+
+layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
+
+void main(void)
+{
+    // save the position of the patch, so the tes can access it
+    // We could define our own output variables for this,
+    // but gl_out is handily provided.
+    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
+
+    gl_TessLevelInner[0] = 10; // many triangles are generated in the center
+    gl_TessLevelOuter[0] = 1;  // no triangles are generated for this edge
+    gl_TessLevelOuter[1] = 10; // many triangles are generated for this edge
+    gl_TessLevelOuter[2] = 10; // many triangles are generated for this edge
+    // gl_TessLevelInner[1] = only used when tes uses layout(quads)
+    // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
+}"
+}
+
+// PG
+// There is a stage in between tcs and tes called Primitive Generation (PG)
+// Shaders cannot be defined for it.
+// It takes gl_TessLevelInner and gl_TessLevelOuter and uses them to generate positions within
+// the patch and pass them to tes via gl_TessCoord.
+//
+// When tes uses layout(triangles) then gl_TessCoord is in barrycentric coordinates.
+// if layout(quads) is used then gl_TessCoord is in cartesian coordinates.
+// Barrycentric coordinates are of the form (x, y, z) where x + y + z = 1
+// and the values x, y and z represent the distance from a vertex of the triangle.
+// http://mathworld.wolfram.com/BarycentricCoordinates.html
+
+vulkano_shader!{
+    mod_name: tes,
+    ty: "tess_eval",
+    src: "
+#version 450
+
+layout(triangles, equal_spacing, cw) in;
+
+void main(void)
+{
+    // retrieve the vertex positions set by the tcs
+    vec4 vert_x = gl_in[0].gl_Position;
+    vec4 vert_y = gl_in[1].gl_Position;
+    vec4 vert_z = gl_in[2].gl_Position;
+
+    // convert gl_TessCoord from barycentric coordinates to cartesian coordinates
+    gl_Position = vec4(
+        gl_TessCoord.x * vert_x.x + gl_TessCoord.y * vert_y.x + gl_TessCoord.z * vert_z.x,
+        gl_TessCoord.x * vert_x.y + gl_TessCoord.y * vert_y.y + gl_TessCoord.z * vert_z.y,
+        gl_TessCoord.x * vert_x.z + gl_TessCoord.y * vert_y.z + gl_TessCoord.z * vert_z.z,
+        1.0
+    );
+}"
+}
+
+vulkano_shader!{
+    mod_name: fs,
+    ty: "fragment",
+    src: "
+#version 450
+
+layout(location = 0) out vec4 f_color;
+
+void main() {
+    f_color = vec4(1.0, 1.0, 1.0, 1.0);
+}"
+}
+
 
 fn main() {
     let instance = {
@@ -110,93 +196,6 @@ fn main() {
             Vertex { position: [-0.5,   0.9] },
         ].iter().cloned()).expect("failed to create buffer")
     };
-
-    vulkano_shader!{
-        mod_name: vs,
-        ty: "vertex",
-        src: "
-#version 450
-
-layout(location = 0) in vec2 position;
-
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}"
-    }
-
-    vulkano_shader!{
-        mod_name: tcs,
-        ty: "tess_ctrl",
-        src: "
-#version 450
-
-layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
-
-void main(void)
-{
-    // save the position of the patch, so the tes can access it
-    // We could define our own output variables for this,
-    // but gl_out is handily provided.
-    gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-
-    gl_TessLevelInner[0] = 10; // many triangles are generated in the center
-    gl_TessLevelOuter[0] = 1;  // no triangles are generated for this edge
-    gl_TessLevelOuter[1] = 10; // many triangles are generated for this edge
-    gl_TessLevelOuter[2] = 10; // many triangles are generated for this edge
-    // gl_TessLevelInner[1] = only used when tes uses layout(quads)
-    // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
-}"
-    }
-
-    // PG
-    // There is a stage in between tcs and tes called Primitive Generation (PG)
-    // Shaders cannot be defined for it.
-    // It takes gl_TessLevelInner and gl_TessLevelOuter and uses them to generate positions within
-    // the patch and pass them to tes via gl_TessCoord.
-    //
-    // When tes uses layout(triangles) then gl_TessCoord is in barrycentric coordinates.
-    // if layout(quads) is used then gl_TessCoord is in cartesian coordinates.
-    // Barrycentric coordinates are of the form (x, y, z) where x + y + z = 1
-    // and the values x, y and z represent the distance from a vertex of the triangle.
-    // http://mathworld.wolfram.com/BarycentricCoordinates.html
-
-    vulkano_shader!{
-        mod_name: tes,
-        ty: "tess_eval",
-        src: "
-#version 450
-
-layout(triangles, equal_spacing, cw) in;
-
-void main(void)
-{
-    // retrieve the vertex positions set by the tcs
-    vec4 vert_x = gl_in[0].gl_Position;
-    vec4 vert_y = gl_in[1].gl_Position;
-    vec4 vert_z = gl_in[2].gl_Position;
-
-    // convert gl_TessCoord from barycentric coordinates to cartesian coordinates
-    gl_Position = vec4(
-        gl_TessCoord.x * vert_x.x + gl_TessCoord.y * vert_y.x + gl_TessCoord.z * vert_z.x,
-        gl_TessCoord.x * vert_x.y + gl_TessCoord.y * vert_y.y + gl_TessCoord.z * vert_z.y,
-        gl_TessCoord.x * vert_x.z + gl_TessCoord.y * vert_y.z + gl_TessCoord.z * vert_z.z,
-        1.0
-    );
-}"
-    }
-
-    vulkano_shader!{
-        mod_name: fs,
-        ty: "fragment",
-        src: "
-#version 450
-
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(1.0, 1.0, 1.0, 1.0);
-}"
-    }
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let tcs = tcs::Shader::load(device.clone()).expect("failed to create shader module");

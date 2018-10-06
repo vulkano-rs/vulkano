@@ -1,5 +1,3 @@
-#![feature(proc_macro_non_items)]
-
 // Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -33,6 +31,24 @@ use vulkano::sync::GpuFuture;
 use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
+
+vulkano_shader!{
+    mod_name: cs,
+    ty: "compute",
+    src: "
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    uint data[];
+} data;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    data.data[idx] *= 12;
+}"
+}
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -81,24 +97,6 @@ fn main() {
     // If you are familiar with graphics pipeline, the principle is the same except that compute
     // pipelines are much simpler to create.
     let pipeline = Arc::new({
-        vulkano_shader!{
-            mod_name: cs,
-            ty: "compute",
-            src: "
-#version 450
-
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
-
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    data.data[idx] *= 12;
-}"
-        }
-
         let shader = cs::Shader::load(device.clone())
             .expect("failed to create shader module");
         ComputePipeline::new(device.clone(), &shader.main_entry_point(), &())

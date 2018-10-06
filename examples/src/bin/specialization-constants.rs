@@ -1,4 +1,3 @@
-#![feature(proc_macro_non_items)]
 // Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
@@ -27,20 +26,10 @@ use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 
-fn main() {
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
-    let (device, mut queues) = {
-        Device::new(physical, physical.supported_features(), &DeviceExtensions::none(),
-                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
-    };
-    let queue = queues.next().unwrap();
-
-    vulkano_shader!{
-        mod_name: cs,
-        ty: "compute",
-        src: "
+vulkano_shader!{
+    mod_name: cs,
+    ty: "compute",
+    src: "
 #version 450
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -60,7 +49,17 @@ void main() {
         data.data[idx] += uint(addend);
     }
 }"
-    }
+}
+
+fn main() {
+    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance).next().unwrap();
+    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
+    let (device, mut queues) = {
+        Device::new(physical, physical.supported_features(), &DeviceExtensions::none(),
+                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
+    };
+    let queue = queues.next().unwrap();
 
     let shader = cs::Shader::load(device.clone())
         .expect("failed to create shader module");

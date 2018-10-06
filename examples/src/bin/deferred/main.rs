@@ -1,5 +1,3 @@
-#![feature(proc_macro_non_items)]
-
 // Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or

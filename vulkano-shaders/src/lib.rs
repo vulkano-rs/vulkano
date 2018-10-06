@@ -4,10 +4,11 @@
 //! # Basic usage
 //!
 //! ```
-//! #[macro_use]
 //! extern crate vulkano_shaders;
 //! extern crate vulkano;
-//! # fn main() {}
+//!
+//! use vulkano_shaders::vulkano_shader;
+//!
 //! vulkano_shader!{
 //!     mod_name: vertex_shader,
 //!     ty: "vertex",
@@ -20,6 +21,7 @@
 //!     gl_Position = vec4(position, 1.0);
 //! }"
 //! }
+//! # fn main() {}
 //! ```
 //!
 //! # Details
@@ -66,13 +68,13 @@
 //! you could do something like this:
 //! 
 //! ```
-//! # #[macro_use]
-//! # extern crate vulkano_shader_derive;
+//! # extern crate vulkano_shaders;
 //! # extern crate vulkano;
 //! # fn main() {}
 //! # use std::sync::Arc;
 //! # use vulkano::OomError;
 //! # use vulkano::device::Device;
+//! # use vulkano_shaders::vulkano_shader;
 //! #
 //! # vulkano_shader!{
 //! #     mod_name: vertex_shader,

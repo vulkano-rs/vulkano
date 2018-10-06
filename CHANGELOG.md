@@ -1,5 +1,9 @@
 # Unreleased (Breaking)
 
+- Export features and device extensions from the device module instead of the instance module
+    +   `instance::Features` -> `device::Features`
+    +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
+    +   `instance::RawDeviceExtensions` -> `device::RawDeviceExtensions`
 - Added `vulkano_shaders::vulkano_shader` proc macro, use this instead of `vulkano_shader_deriver::VulkanoShaders`.
 - The entire `vulkano_shader_derive` crate is deprecated.
 - `vulkano_shaders::{reflect, compile, Error}` are no longer public.
@@ -16,10 +20,6 @@
 
 # Version 0.10.0 (2018-08-10)
 
-- Export features and device extensions from the device module instead of the instance module
-    +   `instance::Features` -> `device::Features`
-    +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
-    +   `instance::RawDeviceExtensions` -> `device::RawDeviceExtensions`
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
 - Updated winit to version 0.17.
 - Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
