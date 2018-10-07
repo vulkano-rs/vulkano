@@ -49,7 +49,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns the description of an attachment.
     ///
     /// Returns `None` if `num` is greater than or equal to `num_attachments()`.
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription>;
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription>;
 
     /// Returns an iterator to the list of attachments.
     #[inline]
@@ -68,7 +68,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns the description of a subpass.
     ///
     /// Returns `None` if `num` is greater than or equal to `num_subpasses()`.
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription>;
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription>;
 
     /// Returns an iterator to the list of subpasses.
     #[inline]
@@ -87,7 +87,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns the description of a dependency.
     ///
     /// Returns `None` if `num` is greater than or equal to `num_dependencies()`.
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription>;
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription>;
 
     /// Returns an iterator to the list of dependencies.
     #[inline]
@@ -320,7 +320,7 @@ unsafe impl<T> RenderPassDesc for T
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         (**self).attachment_desc(num)
     }
 
@@ -330,7 +330,7 @@ unsafe impl<T> RenderPassDesc for T
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         (**self).subpass_desc(num)
     }
 
@@ -340,7 +340,7 @@ unsafe impl<T> RenderPassDesc for T
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         (**self).dependency_desc(num)
     }
 }
@@ -355,9 +355,9 @@ pub struct RenderPassDescAttachments<'a, R: ?Sized + 'a> {
 impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R>
     where R: RenderPassDesc
 {
-    type Item = LayoutAttachmentDescription;
+    type Item = AttachmentDescription;
 
-    fn next(&mut self) -> Option<LayoutAttachmentDescription> {
+    fn next(&mut self) -> Option<AttachmentDescription> {
         if self.num < self.render_pass.num_attachments() {
             let n = self.num;
             self.num += 1;
@@ -380,9 +380,9 @@ pub struct RenderPassDescSubpasses<'a, R: ?Sized + 'a> {
 impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R>
     where R: RenderPassDesc
 {
-    type Item = LayoutPassDescription;
+    type Item = PassDescription;
 
-    fn next(&mut self) -> Option<LayoutPassDescription> {
+    fn next(&mut self) -> Option<PassDescription> {
         if self.num < self.render_pass.num_subpasses() {
             let n = self.num;
             self.num += 1;
@@ -405,9 +405,9 @@ pub struct RenderPassDescDependencies<'a, R: ?Sized + 'a> {
 impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R>
     where R: RenderPassDesc
 {
-    type Item = LayoutPassDependencyDescription;
+    type Item = PassDependencyDescription;
 
-    fn next(&mut self) -> Option<LayoutPassDependencyDescription> {
+    fn next(&mut self) -> Option<PassDependencyDescription> {
         if self.num < self.render_pass.num_dependencies() {
             let n = self.num;
             self.num += 1;
@@ -422,7 +422,7 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R>
 
 /// Describes an attachment that will be used in a render pass.
 #[derive(Debug, Clone)]
-pub struct LayoutAttachmentDescription {
+pub struct AttachmentDescription {
     /// Format of the image that is going to be bound.
     pub format: Format,
     /// Number of samples of the image that is going to be bound.
@@ -450,11 +450,11 @@ pub struct LayoutAttachmentDescription {
     pub final_layout: ImageLayout,
 }
 
-impl LayoutAttachmentDescription {
+impl AttachmentDescription {
     /// Returns true if this attachment is compatible with another attachment, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     #[inline]
-    pub fn is_compatible_with(&self, other: &LayoutAttachmentDescription) -> bool {
+    pub fn is_compatible_with(&self, other: &AttachmentDescription) -> bool {
         self.format == other.format && self.samples == other.samples
     }
 }
@@ -483,7 +483,7 @@ impl LayoutAttachmentDescription {
 // TODO: add tests for all these restrictions
 // TODO: allow unused attachments (for example attachment 0 and 2 are used, 1 is unused)
 #[derive(Debug, Clone)]
-pub struct LayoutPassDescription {
+pub struct PassDescription {
     /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>, // TODO: Vec is slow
 
@@ -509,7 +509,7 @@ pub struct LayoutPassDescription {
 /// you specify that there exists a dependency between two passes (ie. the result of one will be
 /// used as the input of another one).
 #[derive(Debug, Clone)]
-pub struct LayoutPassDependencyDescription {
+pub struct PassDependencyDescription {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,
 

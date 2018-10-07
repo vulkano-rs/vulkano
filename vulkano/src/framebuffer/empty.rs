@@ -8,9 +8,9 @@
 // according to those terms.
 
 use format::ClearValue;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use std::iter;
@@ -39,7 +39,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn attachment_desc(&self, _: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, _: usize) -> Option<AttachmentDescription> {
         None
     }
 
@@ -49,9 +49,9 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         if num == 0 {
-            Some(LayoutPassDescription {
+            Some(PassDescription {
                      color_attachments: vec![],
                      depth_stencil: None,
                      input_attachments: vec![],
@@ -69,7 +69,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn dependency_desc(&self, _: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, _: usize) -> Option<PassDependencyDescription> {
         None
     }
 
