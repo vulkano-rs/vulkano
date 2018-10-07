@@ -22,9 +22,9 @@ use format::ClearValue;
 use framebuffer::AttachmentsList;
 use framebuffer::FramebufferAbstract;
 use framebuffer::IncompatibleRenderPassAttachmentError;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
@@ -390,7 +390,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         self.render_pass.attachment_desc(num)
     }
 
@@ -400,7 +400,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         self.render_pass.subpass_desc(num)
     }
 
@@ -410,7 +410,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         self.render_pass.dependency_desc(num)
     }
 }
