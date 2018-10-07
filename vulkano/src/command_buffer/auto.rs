@@ -565,6 +565,18 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Starts a debug marker group
+    pub fn debug_marker_begin(mut self, name: &str, color : [f32;4]) -> Result<Self, ()> {
+        self.inner.debug_marker_begin(name, color);
+        Ok(self)
+    }
+
+    /// Ends a debug marker group
+    pub fn debug_marker_end(mut self) -> Result<Self, ()> {
+        self.inner.debug_marker_end();
+        Ok(self)
+    }
+
     /// Adds a command that copies an image to another.
     ///
     /// Copy operations have several restrictions:
