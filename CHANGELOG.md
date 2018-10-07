@@ -10,6 +10,7 @@
 - Made `AttributeInfo` derive `Copy`, `Clone` and `Debug`
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
 - Reject generation of rust types for SPIR-V arrays that would have incorrect array stride.
+- Removed the `Layout` prefix of the descriptions used for a render pass.
 
 # Version 0.10.0 (2018-08-10)
 
