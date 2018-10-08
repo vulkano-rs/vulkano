@@ -21,6 +21,7 @@
 use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -343,7 +344,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError> {
         if exclusive_access {
             return Err(AccessError::ExclusiveDenied);
         }
@@ -356,11 +357,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, range: Range<usize>) {
     }
 }
 
@@ -409,7 +410,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
         if self.buffer.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }
@@ -422,12 +423,12 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
         debug_assert!(self.used.load(Ordering::Relaxed));
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, range: Range<usize>) {
         self.buffer.initialized.store(true, Ordering::Relaxed);
     }
 }

@@ -242,18 +242,39 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        self.resource.try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+        // TODO: subranges. at the time of writing we should never hit this
+        // assert because the only place calling this function is
+        // SyncCommandBuffer and it's always locking the entire BufferAccess (so
+        // the entire slice in this case)
+        assert_eq!(range, 0..self.size());
+
+        let offset = self.inner().offset;
+        self.resource.try_gpu_lock(exclusive_access, queue, offset..offset + self.size())
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.resource.increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
+        // TODO: subranges. at the time of writing we should never hit this
+        // assert because the only place calling this function is
+        // SyncCommandBuffer and it's always locking the entire BufferAccess (so
+        // the entire slice in this case)
+        assert_eq!(range, 0..self.size());
+
+        let offset = self.inner().offset;
+        self.resource.increase_gpu_lock(offset..offset + self.size())
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        self.resource.unlock()
+    unsafe fn unlock(&self, range: Range<usize>) {
+        // TODO: subranges. at the time of writing we should never hit this
+        // assert because the only place calling this function is
+        // SyncCommandBuffer and it's always locking the entire BufferAccess (so
+        // the entire slice in this case)
+        assert_eq!(range, 0..self.size());
+
+        let offset = self.inner().offset;
+        self.resource.unlock(offset..offset + self.size())
     }
 }
 

@@ -1069,7 +1069,7 @@ impl<P> SyncCommandBuffer<P> {
                     let prev_err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
                         Ok(_) => {
                             unsafe {
-                                buf.increase_gpu_lock();
+                                buf.increase_gpu_lock(0..buf.size());
                             }
                             locked_resources += 1;
                             continue;
@@ -1077,7 +1077,7 @@ impl<P> SyncCommandBuffer<P> {
                         Err(err) => err,
                     };
 
-                    match (buf.try_gpu_lock(entry.exclusive, queue), prev_err) {
+                    match (buf.try_gpu_lock(entry.exclusive, queue, 0..buf.size()), prev_err) {
                         (Ok(_), _) => (),
                         (Err(err), AccessCheckError::Unknown) |
                         (_, AccessCheckError::Denied(err)) => {
@@ -1148,7 +1148,7 @@ impl<P> SyncCommandBuffer<P> {
                         let cmd = &commands_lock[command_id];
                         let buf = cmd.buffer(resource_index);
                         unsafe {
-                            buf.unlock();
+                            buf.unlock(0..buf.size());
                         }
                     },
 
@@ -1196,7 +1196,7 @@ impl<P> SyncCommandBuffer<P> {
                 KeyTy::Buffer => {
                     let cmd = &commands_lock[command_id];
                     let buf = cmd.buffer(resource_index);
-                    buf.unlock();
+                    buf.unlock(0..buf.size());
                 },
                 KeyTy::Image => {
                     let cmd = &commands_lock[command_id];

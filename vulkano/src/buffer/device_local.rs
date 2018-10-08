@@ -16,6 +16,7 @@
 use smallvec::SmallVec;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -62,18 +63,20 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemo
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
-    // Number of times this buffer is locked on the GPU side.
-    gpu_lock: Mutex<GpuAccess>,
+    // Number of times this buffer is locked on the GPU side. This is a Mutex
+    // because we want interior mutability for this field, but RefCell is not
+    // thread-safe.
+    accesses: Mutex<SmallVec<[GpuAccess; 4]>>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum GpuAccess {
-    None,
-    NonExclusive { num: u32 },
-    Exclusive { num: u32 },
+#[derive(Debug)]
+struct GpuAccess {
+    range: Range<usize>,
+    locks: u32,
+    exclusive: bool
 }
 
 impl<T> DeviceLocalBuffer<T> {
@@ -149,7 +152,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                         inner: buffer,
                         memory: mem,
                         queue_families: queue_families,
-                        gpu_lock: Mutex::new(GpuAccess::None),
+                        accesses: Mutex::new(smallvec![]),
                         marker: PhantomData,
                     }))
     }
@@ -211,71 +214,89 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive: bool, _: &Queue) -> Result<(), AccessError> {
-        let mut lock = self.gpu_lock.lock().unwrap();
-        match &mut *lock {
-            a @ &mut GpuAccess::None => {
-                if exclusive {
-                    *a = GpuAccess::Exclusive { num: 1 };
-                } else {
-                    *a = GpuAccess::NonExclusive { num: 1 };
-                }
+    fn try_gpu_lock(&self, exclusive: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+        let mut accesses = self.accesses.lock().unwrap();
 
-                Ok(())
-            },
-            &mut GpuAccess::NonExclusive { ref mut num } => {
-                if exclusive {
-                    Err(AccessError::AlreadyInUse)
-                } else {
-                    *num += 1;
-                    Ok(())
-                }
-            },
-            &mut GpuAccess::Exclusive { .. } => {
-                Err(AccessError::AlreadyInUse)
-            },
+        // If there are no other locks yet, we can go ahead and lock
+        if accesses.is_empty() {
+            accesses.push(GpuAccess {
+                range,
+                locks: 1,
+                exclusive
+            });
+
+            return Ok(());
         }
+
+        let mut range_already_locked = false;
+
+        // Find all ranges that intersect with the range we're looking to lock
+        // TODO: if we need to make this loop faster, we can use an interval
+        // tree to do so, which is a data structure for efficiently finding
+        // overlapping ranges
+        for access in accesses
+            .iter_mut()
+            .take_while(|x| x.range.start <= range.end && x.range.end <= range.start) {
+            // Can't exclusively lock the range if it's already locked by
+            // someone else
+            if exclusive {
+                return Err(AccessError::AlreadyInUse);
+            }
+
+            // Can't lock the range if it's exclusively locked by someone else
+            if access.exclusive {
+                return Err(AccessError::AlreadyInUse);
+            }
+
+            // If this is the same range we're trying to lock, increase the lock
+            // count
+            if access.range == range {
+                debug_assert!(!range_already_locked);
+                range_already_locked = true;
+
+                access.locks += 1;
+            }
+        }
+
+        // Didn't find this range already locked, so go ahead and lock
+        if !range_already_locked {
+            accesses.push(GpuAccess {
+                range,
+                locks: 1,
+                exclusive
+            });
+        }
+
+        Ok(())
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        let mut lock = self.gpu_lock.lock().unwrap();
-        match *lock {
-            GpuAccess::None => panic!(),
-            GpuAccess::NonExclusive { ref mut num } => {
-                debug_assert!(*num >= 1);
-                *num += 1;
-            },
-            GpuAccess::Exclusive { ref mut num } => {
-                debug_assert!(*num >= 1);
-                *num += 1;
-            },
-        }
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
+        let mut accesses = self.accesses.lock().unwrap();
+        let access = accesses
+            .iter_mut()
+            .find(|x| x.range == range)
+            .expect("Tried to increase lock for a buffer range that is not locked");
+
+        debug_assert!(access.locks >= 1);
+        access.locks += 1;
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        let mut lock = self.gpu_lock.lock().unwrap();
+    unsafe fn unlock(&self, range: Range<usize>) {
+        let mut accesses = self.accesses.lock().unwrap();
+        let (i, _) = accesses
+            .iter_mut()
+            .enumerate()
+            .find(|(_, x)| x.range == range)
+            .expect("Tried to unlock a buffer range that isn't locked");
 
-        match *lock {
-            GpuAccess::None => panic!("Tried to unlock a buffer that isn't locked"),
-            GpuAccess::NonExclusive { ref mut num } => {
-                assert!(*num >= 1);
-                *num -= 1;
-                if *num >= 1 {
-                    return;
-                }
-            },
-            GpuAccess::Exclusive { ref mut num } => {
-                assert!(*num >= 1);
-                *num -= 1;
-                if *num >= 1 {
-                    return;
-                }
-            },
-        };
+        assert!(accesses[i].locks >= 1);
+        accesses[i].locks -= 1;
 
-        *lock = GpuAccess::None;
+        if accesses[i].locks == 0 {
+            accesses.remove(i);
+        }
     }
 }
 

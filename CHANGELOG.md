@@ -11,6 +11,8 @@
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
 - Reject generation of rust types for SPIR-V arrays that would have incorrect array stride.
 - Removed the `Layout` prefix of the descriptions used for a render pass.
+- Added the ability to lock a range of `DeviceLocalBuffer` with `try_gpu_lock`
+- Changed the GPU to lock a range of `DeviceLocalBuffer` instead of the entire buffer when `BufferSlice`s are used
 
 # Version 0.10.0 (2018-08-10)
 

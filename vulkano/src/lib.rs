@@ -66,6 +66,7 @@ extern crate fnv;
 #[macro_use]
 extern crate lazy_static;
 extern crate shared_library;
+#[macro_use]
 extern crate smallvec;
 extern crate vk_sys as vk;
 pub extern crate half;

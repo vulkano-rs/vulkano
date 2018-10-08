@@ -110,32 +110,36 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// verify whether they actually overlap.
     fn conflict_key(&self) -> (u64, usize);
 
-    /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
+    /// Locks a range of the resource for usage on the GPU. Returns an error if
+    /// the lock can't be acquired.
     ///
-    /// This function exists to prevent the user from causing a data race by reading and writing
-    /// to the same resource at the same time.
+    /// This function exists to prevent the user from causing a data race by
+    /// reading and writing to overlapping ranges at the same time.
     ///
-    /// If you call this function, you should call `unlock()` once the resource is no longer in use
-    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
-    /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError>;
+    /// If you call this function, you should call `unlock()` once the range is
+    /// no longer in use by the GPU. The implementation is not expected to
+    /// automatically perform any unlocking and can rely on the fact that
+    /// `unlock()` is going to be called.
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError>;
 
-    /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
-    /// simply increases the lock by one.
+    /// Locks a range of the resource for usage on the GPU. Supposes that the
+    /// range is already locked, and simply increases the lock by one.
     ///
     /// Must only be called after `try_gpu_lock()` succeeded.
     ///
-    /// If you call this function, you should call `unlock()` once the resource is no longer in use
-    /// by the GPU. The implementation is not expected to automatically perform any unlocking and
-    /// can rely on the fact that `unlock()` is going to be called.
-    unsafe fn increase_gpu_lock(&self);
+    /// If you call this function, you should call `unlock()` once the range is
+    /// no longer in use by the GPU. The implementation is not expected to
+    /// automatically perform any unlocking and can rely on the fact that
+    /// `unlock_range()` is going to be called.
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>);
 
-    /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
+    /// Unlocks the range previously acquired with `try_gpu_lock` or
+    /// `increase_gpu_lock`.
     ///
     /// # Safety
     ///
     /// Must only be called once per previous lock.
-    unsafe fn unlock(&self);
+    unsafe fn unlock(&self, range: Range<usize>);
 }
 
 /// Inner information about a buffer.
@@ -178,18 +182,18 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, queue)
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(exclusive_access, queue, range)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        (**self).increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
+        (**self).increase_gpu_lock(range)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        (**self).unlock()
+    unsafe fn unlock(&self, range: Range<usize>) {
+        (**self).unlock(range)
     }
 }
 

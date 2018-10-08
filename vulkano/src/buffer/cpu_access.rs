@@ -24,6 +24,7 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::Deref;
 use std::ops::DerefMut;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -333,7 +334,10 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+        // TODO: ranges
+        assert_eq!(range, 0..self.size());
+
         if exclusive_access {
             let mut lock = match self.access.try_write() {
                 Ok(lock) => lock,
@@ -366,7 +370,10 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
+        // TODO: ranges
+        assert_eq!(range, 0..self.size());
+
         // First, handle if we have a non-exclusive access.
         {
             // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
@@ -393,7 +400,10 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, range: Range<usize>) {
+        // TODO: ranges
+        assert_eq!(range, 0..self.size());
+
         // First, handle if we had a non-exclusive access.
         {
             // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to

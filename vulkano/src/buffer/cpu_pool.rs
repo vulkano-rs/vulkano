@@ -11,6 +11,7 @@ use std::cmp;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -627,7 +628,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+        // TODO: ranges
+        // assert_eq!(range, 0..self.size());
+
         if self.requested_len == 0 {
             return Ok(());
         }
@@ -647,7 +651,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
+    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
+        // TODO: ranges
+        // assert_eq!(range, 0..self.size());
+
         if self.requested_len == 0 {
             return;
         }
@@ -666,7 +673,10 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
+    unsafe fn unlock(&self, range: Range<usize>) {
+        // TODO: ranges
+        // assert_eq!(range, 0..self.size());
+
         if self.requested_len == 0 {
             return;
         }
@@ -758,18 +768,18 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, e: bool, q: &Queue) -> Result<(), AccessError> {
-        self.chunk.try_gpu_lock(e, q)
+    fn try_gpu_lock(&self, e: bool, q: &Queue, r: Range<usize>) -> Result<(), AccessError> {
+        self.chunk.try_gpu_lock(e, q, r)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.chunk.increase_gpu_lock()
+    unsafe fn increase_gpu_lock(&self, r: Range<usize>) {
+        self.chunk.increase_gpu_lock(r)
     }
 
     #[inline]
-    unsafe fn unlock(&self) {
-        self.chunk.unlock()
+    unsafe fn unlock(&self, r: Range<usize>) {
+        self.chunk.unlock(r)
     }
 }
 
