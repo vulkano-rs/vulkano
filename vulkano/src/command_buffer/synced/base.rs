@@ -1077,7 +1077,7 @@ impl<P> SyncCommandBuffer<P> {
                         Err(err) => err,
                     };
 
-                    match (buf.try_gpu_lock(entry.exclusive, queue, 0..buf.size()), prev_err) {
+                    match (buf.try_gpu_lock(entry.exclusive, 0..buf.size()), prev_err) {
                         (Ok(_), _) => (),
                         (Err(err), AccessCheckError::Unknown) |
                         (_, AccessCheckError::Denied(err)) => {

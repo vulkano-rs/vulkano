@@ -30,7 +30,6 @@ use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
-use device::Queue;
 use image::ImageAccess;
 use instance::QueueFamily;
 use memory::DedicatedAlloc;
@@ -208,7 +207,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, e: bool, _: &Queue, r: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, e: bool, r: Range<usize>) -> Result<(), AccessError> {
         let mut gpu_access = self.gpu_access.lock().unwrap();
         gpu_access.try_lock(e, r)
     }

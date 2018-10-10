@@ -14,6 +14,7 @@
 - Added the ability to lock a range of a buffer with `try_gpu_lock`
     +   Applicable to `DeviceLocalBuffer` and `CpuAccessibleBuffer`
     +   `CpuBufferPool` still locks the entire buffer chunk
+- Removed unused `&Queue` parameter from `BufferAccess::try_gpu_lock()`
 - Changed the GPU to lock a range of the buffer instead of the entire buffer when `BufferSlice`s are used
 
 # Version 0.10.0 (2018-08-10)

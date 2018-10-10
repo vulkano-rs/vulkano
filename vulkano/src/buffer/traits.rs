@@ -12,7 +12,6 @@ use std::ops::Range;
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
 use device::DeviceOwned;
-use device::Queue;
 use image::ImageAccess;
 use memory::Content;
 use sync::AccessError;
@@ -120,7 +119,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// no longer in use by the GPU. The implementation is not expected to
     /// automatically perform any unlocking and can rely on the fact that
     /// `unlock()` is going to be called.
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError>;
+    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError>;
 
     /// Locks a range of the resource for usage on the GPU. Supposes that the
     /// range is already locked, and simply increases the lock by one.
@@ -182,8 +181,8 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, queue, range)
+    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(exclusive_access, range)
     }
 
     #[inline]

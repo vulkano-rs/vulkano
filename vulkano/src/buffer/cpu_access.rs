@@ -42,7 +42,6 @@ use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
-use device::Queue;
 use image::ImageAccess;
 use instance::QueueFamily;
 use memory::Content;
@@ -319,7 +318,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive: bool, range: Range<usize>) -> Result<(), AccessError> {
         match self.access.try_write() {
             Ok(mut gpu_lock) => gpu_lock.try_lock(exclusive, range),
             Err(_) => Err(AccessError::AlreadyInUse),

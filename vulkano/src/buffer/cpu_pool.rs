@@ -28,7 +28,6 @@ use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
-use device::Queue;
 use image::ImageAccess;
 use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
@@ -628,7 +627,7 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, range: Range<usize>) -> Result<(), AccessError> {
         // TODO: ranges
         // assert_eq!(range, 0..self.size());
 
@@ -768,8 +767,8 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, e: bool, q: &Queue, r: Range<usize>) -> Result<(), AccessError> {
-        self.chunk.try_gpu_lock(e, q, r)
+    fn try_gpu_lock(&self, e: bool, r: Range<usize>) -> Result<(), AccessError> {
+        self.chunk.try_gpu_lock(e, r)
     }
 
     #[inline]

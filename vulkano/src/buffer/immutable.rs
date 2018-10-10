@@ -344,7 +344,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError> {
         if exclusive_access {
             return Err(AccessError::ExclusiveDenied);
         }
@@ -410,7 +410,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, range: Range<usize>) -> Result<(), AccessError> {
         if self.buffer.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }
