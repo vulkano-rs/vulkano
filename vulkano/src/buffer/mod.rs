@@ -89,6 +89,7 @@ pub use self::traits::TypedBufferAccess;
 pub use self::usage::BufferUsage;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
+pub use self::gpu_access::GpuAccess;
 
 pub mod cpu_access;
 pub mod cpu_pool;
@@ -100,3 +101,4 @@ pub mod view;
 mod slice;
 mod traits;
 mod usage;
+mod gpu_access;

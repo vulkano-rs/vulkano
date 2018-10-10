@@ -9,12 +9,13 @@
 
 //! Buffer whose content is accessible to the CPU.
 //!
-//! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used in any situation
-//! but may not perform as well as other buffer types.
+//! The `CpuAccessibleBuffer` is a basic general-purpose buffer. It can be used
+//! in any situation but may not perform as well as other buffer types.
 //!
-//! Each access from the CPU or from the GPU locks the whole buffer for either reading or writing.
-//! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
-//! or write and write simultaneously will block.
+//! Each access from the CPU locks the whole buffer for either reading or
+//! writing. You can read the buffer multiple times simultaneously. Trying to
+//! read and write simultaneously, or write and write simultaneously will block.
+//! Each access from the GPU locks a range of the buffer.
 
 use smallvec::SmallVec;
 use std::error;
@@ -30,10 +31,9 @@ use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::RwLockReadGuard;
 use std::sync::RwLockWriteGuard;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
 use buffer::BufferUsage;
+use buffer::GpuAccess;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
@@ -72,25 +72,13 @@ pub struct CpuAccessibleBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMe
     // Every time the user tries to read or write the buffer from the CPU, this `RwLock` is kept
     // locked and its content is checked to verify that we are allowed access. Every time the user
     // tries to submit this buffer for the GPU, this `RwLock` is briefly locked and modified.
-    access: RwLock<CurrentGpuAccess>,
+    access: RwLock<GpuAccess>,
 
     // Queue families allowed to access this buffer.
     queue_families: SmallVec<[u32; 4]>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
-}
-
-#[derive(Debug)]
-enum CurrentGpuAccess {
-    NonExclusive {
-        // Number of non-exclusive GPU accesses. Can be 0.
-        num: AtomicUsize,
-    },
-    Exclusive {
-        // Number of exclusive locks. Cannot be 0. If 0 is reached, we must jump to `NonExclusive`.
-        num: usize,
-    },
 }
 
 impl<T> CpuAccessibleBuffer<T> {
@@ -206,9 +194,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
         Ok(Arc::new(CpuAccessibleBuffer {
                         inner: buffer,
                         memory: mem,
-                        access: RwLock::new(CurrentGpuAccess::NonExclusive {
-                                                num: AtomicUsize::new(0),
-                                            }),
+                        access: RwLock::new(GpuAccess::new()),
                         queue_families: queue_families,
                         marker: PhantomData,
                     }))
@@ -255,7 +241,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
             Err(_) => return Err(ReadLockError::CpuWriteLocked),
         };
 
-        if let CurrentGpuAccess::Exclusive { .. } = *lock {
+        if !lock.can_lock(false, 0..self.inner.size()) {
             return Err(ReadLockError::GpuWriteLocked);
         }
 
@@ -287,9 +273,8 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
             Err(_) => return Err(WriteLockError::CpuLocked),
         };
 
-        match *lock {
-            CurrentGpuAccess::NonExclusive { ref num } if num.load(Ordering::SeqCst) == 0 => (),
-            _ => return Err(WriteLockError::GpuLocked),
+        if !lock.can_lock(true, 0..self.inner.size()) {
+            return Err(WriteLockError::GpuLocked);
         }
 
         let offset = self.memory.offset();
@@ -334,106 +319,23 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
-        // TODO: ranges
-        assert_eq!(range, 0..self.size());
-
-        if exclusive_access {
-            let mut lock = match self.access.try_write() {
-                Ok(lock) => lock,
-                Err(_) => return Err(AccessError::AlreadyInUse),
-            };
-
-            match *lock {
-                CurrentGpuAccess::NonExclusive { ref num } if num.load(Ordering::SeqCst) == 0 => (),
-                _ => return Err(AccessError::AlreadyInUse),
-            };
-
-            *lock = CurrentGpuAccess::Exclusive { num: 1 };
-            Ok(())
-
-        } else {
-            let lock = match self.access.try_read() {
-                Ok(lock) => lock,
-                Err(_) => return Err(AccessError::AlreadyInUse),
-            };
-
-            match *lock {
-                CurrentGpuAccess::Exclusive { .. } => return Err(AccessError::AlreadyInUse),
-                CurrentGpuAccess::NonExclusive { ref num } => {
-                    num.fetch_add(1, Ordering::SeqCst)
-                },
-            };
-
-            Ok(())
+    fn try_gpu_lock(&self, exclusive: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
+        match self.access.try_write() {
+            Ok(mut gpu_lock) => gpu_lock.try_lock(exclusive, range),
+            Err(_) => Err(AccessError::AlreadyInUse),
         }
     }
 
     #[inline]
     unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-        // TODO: ranges
-        assert_eq!(range, 0..self.size());
-
-        // First, handle if we have a non-exclusive access.
-        {
-            // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
-            // the buffer. The buffer can still be briefly in a write-locked state for the duration
-            // of the check though.
-            let read_lock = self.access.read().unwrap();
-            if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
-                let prev = num.fetch_add(1, Ordering::SeqCst);
-                debug_assert!(prev >= 1);
-                return;
-            }
-        }
-
-        // If we reach here, this means that `access` contains `CurrentGpuAccess::Exclusive`.
-        {
-            // Same remark as above, but for writing.
-            let mut write_lock = self.access.write().unwrap();
-            if let CurrentGpuAccess::Exclusive { ref mut num } = *write_lock {
-                *num += 1;
-            } else {
-                unreachable!()
-            }
-        }
+        let mut gpu_lock = self.access.write().unwrap();
+        gpu_lock.increase_lock(range)
     }
 
     #[inline]
     unsafe fn unlock(&self, range: Range<usize>) {
-        // TODO: ranges
-        assert_eq!(range, 0..self.size());
-
-        // First, handle if we had a non-exclusive access.
-        {
-            // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
-            // the buffer. The buffer can still be briefly in a write-locked state for the duration
-            // of the check though.
-            let read_lock = self.access.read().unwrap();
-            if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
-                let prev = num.fetch_sub(1, Ordering::SeqCst);
-                debug_assert!(prev >= 1);
-                return;
-            }
-        }
-
-        // If we reach here, this means that `access` contains `CurrentGpuAccess::Exclusive`.
-        {
-            // Same remark as above, but for writing.
-            let mut write_lock = self.access.write().unwrap();
-            if let CurrentGpuAccess::Exclusive { ref mut num } = *write_lock {
-                if *num != 1 {
-                    *num -= 1;
-                    return;
-                }
-            } else {
-                // Can happen if we lock in exclusive mode N times, and unlock N+1 times with the
-                // last two unlocks happen simultaneously.
-                panic!()
-            }
-
-            *write_lock = CurrentGpuAccess::NonExclusive { num: AtomicUsize::new(0) };
-        }
+        let mut gpu_lock = self.access.write().unwrap();
+        gpu_lock.unlock(range)
     }
 }
 
@@ -456,7 +358,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A> {
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 pub struct ReadLock<'a, T: ?Sized + 'a> {
     inner: MemCpuAccess<'a, T>,
-    lock: RwLockReadGuard<'a, CurrentGpuAccess>,
+    lock: RwLockReadGuard<'a, GpuAccess>,
 }
 
 impl<'a, T: ?Sized + 'a> ReadLock<'a, T> {
@@ -517,7 +419,7 @@ impl fmt::Display for ReadLockError {
 /// this buffer's content or tries to submit a GPU command that uses this buffer, it will block.
 pub struct WriteLock<'a, T: ?Sized + 'a> {
     inner: MemCpuAccess<'a, T>,
-    lock: RwLockWriteGuard<'a, CurrentGpuAccess>,
+    lock: RwLockWriteGuard<'a, GpuAccess>,
 }
 
 impl<'a, T: ?Sized + 'a> WriteLock<'a, T> {

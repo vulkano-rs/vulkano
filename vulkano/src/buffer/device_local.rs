@@ -21,6 +21,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use buffer::BufferUsage;
+use buffer::GpuAccess;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
@@ -66,17 +67,10 @@ pub struct DeviceLocalBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemo
     // Number of times this buffer is locked on the GPU side. This is a Mutex
     // because we want interior mutability for this field, but RefCell is not
     // thread-safe.
-    accesses: Mutex<SmallVec<[GpuAccess; 4]>>,
+    gpu_access: Mutex<GpuAccess>,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
-}
-
-#[derive(Debug)]
-struct GpuAccess {
-    range: Range<usize>,
-    locks: u32,
-    exclusive: bool
 }
 
 impl<T> DeviceLocalBuffer<T> {
@@ -152,7 +146,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                         inner: buffer,
                         memory: mem,
                         queue_families: queue_families,
-                        accesses: Mutex::new(smallvec![]),
+                        gpu_access: Mutex::new(GpuAccess::new()),
                         marker: PhantomData,
                     }))
     }
@@ -214,89 +208,21 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive: bool, _: &Queue, range: Range<usize>) -> Result<(), AccessError> {
-        let mut accesses = self.accesses.lock().unwrap();
-
-        // If there are no other locks yet, we can go ahead and lock
-        if accesses.is_empty() {
-            accesses.push(GpuAccess {
-                range,
-                locks: 1,
-                exclusive
-            });
-
-            return Ok(());
-        }
-
-        let mut range_already_locked = false;
-
-        // Find all ranges that intersect with the range we're looking to lock
-        // TODO: if we need to make this loop faster, we can use an interval
-        // tree to do so, which is a data structure for efficiently finding
-        // overlapping ranges
-        for access in accesses
-            .iter_mut()
-            .take_while(|x| x.range.start <= range.end && x.range.end <= range.start) {
-            // Can't exclusively lock the range if it's already locked by
-            // someone else
-            if exclusive {
-                return Err(AccessError::AlreadyInUse);
-            }
-
-            // Can't lock the range if it's exclusively locked by someone else
-            if access.exclusive {
-                return Err(AccessError::AlreadyInUse);
-            }
-
-            // If this is the same range we're trying to lock, increase the lock
-            // count
-            if access.range == range {
-                debug_assert!(!range_already_locked);
-                range_already_locked = true;
-
-                access.locks += 1;
-            }
-        }
-
-        // Didn't find this range already locked, so go ahead and lock
-        if !range_already_locked {
-            accesses.push(GpuAccess {
-                range,
-                locks: 1,
-                exclusive
-            });
-        }
-
-        Ok(())
+    fn try_gpu_lock(&self, e: bool, _: &Queue, r: Range<usize>) -> Result<(), AccessError> {
+        let mut gpu_access = self.gpu_access.lock().unwrap();
+        gpu_access.try_lock(e, r)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-        let mut accesses = self.accesses.lock().unwrap();
-        let access = accesses
-            .iter_mut()
-            .find(|x| x.range == range)
-            .expect("Tried to increase lock for a buffer range that is not locked");
-
-        debug_assert!(access.locks >= 1);
-        access.locks += 1;
+    unsafe fn increase_gpu_lock(&self, r: Range<usize>) {
+        let mut gpu_access = self.gpu_access.lock().unwrap();
+        gpu_access.increase_lock(r)
     }
 
     #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
-        let mut accesses = self.accesses.lock().unwrap();
-        let (i, _) = accesses
-            .iter_mut()
-            .enumerate()
-            .find(|(_, x)| x.range == range)
-            .expect("Tried to unlock a buffer range that isn't locked");
-
-        assert!(accesses[i].locks >= 1);
-        accesses[i].locks -= 1;
-
-        if accesses[i].locks == 0 {
-            accesses.remove(i);
-        }
+    unsafe fn unlock(&self, r: Range<usize>) {
+        let mut gpu_access = self.gpu_access.lock().unwrap();
+        gpu_access.unlock(r)
     }
 }
 
