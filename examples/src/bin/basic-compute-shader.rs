@@ -77,7 +77,7 @@ fn main() {
     // We need to create the compute pipeline that describes our operation.
     //
     // If you are familiar with graphics pipeline, the principle is the same except that compute
-    // pipelines are much more simple to create.
+    // pipelines are much simpler to create.
     let pipeline = Arc::new({
         // TODO: explain
         #[allow(dead_code)]
