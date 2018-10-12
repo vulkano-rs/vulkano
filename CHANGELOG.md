@@ -16,6 +16,7 @@
     + Debug messages now give info about relevant objects, queue labels and command buffer labels
     + The `CommandBufferBuilders` now implement functions `begin_debug_label`, `insert_debug_label` and `end_debug_label`.
 
+
 # Version 0.10.0 (2018-08-10)
 
 - Export features and device extensions from the device module instead of the instance module
