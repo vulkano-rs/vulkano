@@ -51,8 +51,6 @@ use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
 
-use std::mem;
-
 mod frame;
 mod triangle_draw_system;
 
@@ -66,17 +64,10 @@ fn main() {
                             .next().expect("no device available");
 
     let mut events_loop = winit::EventsLoop::new();
-    let window = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-
-    let dimensions = {
-        let window = window.window();
-        let factor = window.get_hidpi_factor();
-        let (width, height) = window.get_inner_size().unwrap().to_physical(factor).into();
-        [width, height]
-    };
+    let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
 
     let queue_family = physical.queue_families().find(|&q| {
-        q.supports_graphics() && window.is_supported(q).unwrap_or(false)
+        q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
     }).expect("couldn't find a graphical queue family");
 
     let (device, mut queues) = {
@@ -91,12 +82,15 @@ fn main() {
 
     let queue = queues.next().unwrap();
 
+    let mut dimensions;
+
     let (mut swapchain, mut images) = {
-        let caps = window.capabilities(physical)
+        let caps = surface.capabilities(physical)
                          .expect("failed to get surface capabilities");
+        dimensions = caps.current_extent.unwrap_or([1024, 768]);
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
-        Swapchain::new(device.clone(), window.clone(), caps.min_image_count, format,
+        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
                        dimensions, 1, caps.supported_usage_flags, &queue,
                        SurfaceTransform::Identity, alpha, PresentMode::Fifo, true,
                        None).expect("failed to create swapchain")
@@ -115,21 +109,20 @@ fn main() {
         previous_frame_end.cleanup_finished();
 
         if recreate_swapchain {
-            let dimensions = {
-                let (new_width, new_height) = window.window().get_inner_size().unwrap().into();
-                [new_width, new_height]
-            };
+            dimensions = surface.capabilities(physical)
+                        .expect("failed to get surface capabilities")
+                        .current_extent.unwrap();
             
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(SwapchainCreationError::UnsupportedDimensions) => {
                     continue;
-                },
+                }
                 Err(err) => panic!("{:?}", err)
             };
 
-            mem::replace(&mut swapchain, new_swapchain);
-            mem::replace(&mut images, new_images);
+            swapchain = new_swapchain;
+            images = new_images;
             recreate_swapchain = false;
         }
 
@@ -139,7 +132,7 @@ fn main() {
             Err(AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
                 continue;
-            },
+            }
             Err(err) => panic!("{:?}", err)
         };
 
@@ -151,30 +144,42 @@ fn main() {
                 frame::Pass::Deferred(mut draw_pass) => {
                     let cb = triangle_draw_system.draw(draw_pass.viewport_dimensions());
                     draw_pass.execute(cb);
-                },
+                }
                 frame::Pass::Lighting(mut lighting) => {
                     lighting.ambient_light([0.1, 0.1, 0.1]);
                     lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
                     lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
                     lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
                     lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
-                },
+                }
                 frame::Pass::Finished(af) => {
                     after_future = Some(af);
-                },
+                }
             }
         }
 
-        let after_frame = after_future.unwrap()
+        let future = after_future.unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence_and_flush().unwrap();
-        previous_frame_end = Box::new(after_frame) as Box<_>;
+            .then_signal_fence_and_flush();
+
+        match future {
+            Ok(future) => {
+                previous_frame_end = Box::new(future) as Box<_>;
+            }
+            Err(vulkano::sync::FlushError::OutOfDate) => {
+                recreate_swapchain = true;
+                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+            }
+            Err(e) => {
+                println!("{:?}", e);
+                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+            }
+        }
 
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
                 winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
-                winit::Event::WindowEvent { event: winit::WindowEvent::Resized (_), .. } => recreate_swapchain = true,
                 _ => ()
             }
         });
