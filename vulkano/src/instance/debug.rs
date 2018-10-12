@@ -45,6 +45,7 @@ use std::os::raw::{c_char, c_void};
 use std::panic;
 use std::ptr;
 use std::sync::Arc;
+use std::slice;
 use std::cmp::PartialEq;
 
 use std::ops::{BitOr,BitOrAssign, BitAnd, BitAndAssign, BitXor, BitXorAssign};
@@ -100,17 +101,17 @@ impl DebugCallback {
                     .to_str()
                     .expect("debug callback message not utf-8");
 
-                let command_buffer_labels : Vec<MessageLabel> = std::slice::from_raw_parts((*callback_data).pCmdBufLabels, (*callback_data).cmdBufLabelCount as usize)
+                let command_buffer_labels : Vec<MessageLabel> = slice::from_raw_parts((*callback_data).pCmdBufLabels, (*callback_data).cmdBufLabelCount as usize)
                         .iter().map(|e| {
                             MessageLabel::from_raw(e)
                         }).collect();
 
-                let queue_labels = std::slice::from_raw_parts((*callback_data).pQueueLabels, (*callback_data).queueLabelCount as usize)
+                let queue_labels = slice::from_raw_parts((*callback_data).pQueueLabels, (*callback_data).queueLabelCount as usize)
                     .iter().map(|e|{
                         MessageLabel::from_raw(e)
                     }).collect();
 
-                let objects = std::slice::from_raw_parts((*callback_data).pObjects, (*callback_data).objectCount as usize)
+                let objects = slice::from_raw_parts((*callback_data).pObjects, (*callback_data).objectCount as usize)
                     .iter().map(|e|{ 
                         ObjectNameInfo::from_raw(e)
                     }).collect();
@@ -357,7 +358,7 @@ pub struct MessageLabel<'a> {
 impl<'a> MessageLabel<'a>{
     fn from_raw(utils_label : &vk::DebugUtilsLabelEXT) -> Self{
         let mut name = "";
-        if utils_label.pLabelName != std::ptr::null(){
+        if utils_label.pLabelName != ptr::null(){
             name = unsafe { CStr::from_ptr(utils_label.pLabelName).to_str().unwrap() };
         }
 
@@ -381,7 +382,7 @@ impl<'a> ObjectNameInfo<'a> {
     /// Constructs and `ObjectNameInfo` from the raw vulkan data structure `DebugUtilsObjectNameInfoEXT` 
     fn from_raw(utils_label : &vk::DebugUtilsObjectNameInfoEXT) -> Self{
         let mut name = "";
-        if utils_label.pObjectName != std::ptr::null() {
+        if utils_label.pObjectName != ptr::null() {
             name = unsafe { 
                 CStr::from_ptr(utils_label.pObjectName).to_str().unwrap() 
             };
