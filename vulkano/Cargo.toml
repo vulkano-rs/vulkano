@@ -18,3 +18,13 @@ smallvec = "0.6.0"
 lazy_static = "1"
 vk-sys = { version = "0.3.3", path = "../vk-sys" }
 half = "1"
+
+[dev-dependencies]
+criterion = "0.2"
+
+[lib]
+bench = false
+
+[[bench]]
+name = "gpu_access"
+harness = false
