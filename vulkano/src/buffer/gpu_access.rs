@@ -168,3 +168,121 @@ impl GpuAccess {
         self.ranges.retain(|x| x.locks > 0);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use buffer::BufferUsage;
+    use buffer::BufferAccess;
+    use buffer::cpu_access::CpuAccessibleBuffer;
+    use command_buffer::AutoCommandBufferBuilder;
+    use command_buffer::CommandBuffer;
+    use command_buffer::CommandBufferExecError;
+
+    #[test]
+    fn write_to_overlapping_ranges_forbidden() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let buffer1: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::uninitialized_array(device.clone(),
+                                                     1000,
+                                                     BufferUsage::all()).unwrap()
+        };
+        let buffer2: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::uninitialized_array(device.clone(),
+                                                     1000,
+                                                     BufferUsage::all()).unwrap()
+        };
+
+        let source = buffer1.clone()
+                            .into_buffer_slice()
+                            .slice(0..100)
+                            .unwrap();
+
+        let destination = buffer2.clone()
+                                 .into_buffer_slice()
+                                 .slice(0..100)
+                                 .unwrap();
+
+        let transfer_future = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+            .unwrap()
+            .copy_buffer(source.clone(), destination)
+            .unwrap()
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap();
+
+        let destination = buffer2.clone()
+                                 .into_buffer_slice()
+                                 .slice(50..150)
+                                 .unwrap();
+
+        let transfer_future = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+            .unwrap()
+            .copy_buffer(source, destination)
+            .unwrap()
+            .build()
+            .unwrap()
+            .execute(queue.clone());
+
+        match transfer_future {
+            Err(CommandBufferExecError::AccessError { command_name, command_param, .. }) => {
+                assert_eq!(command_name, "vkCmdCopyBuffer");
+                assert_eq!(command_param, "destination");
+            },
+            Err(e) => panic!("{:?}", e),
+            Ok(_) => panic!()
+        }
+    }
+
+    #[test]
+    fn write_to_non_overlapping_ranges_allowed() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let buffer1: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::uninitialized_array(device.clone(),
+                                                     1000,
+                                                     BufferUsage::all()).unwrap()
+        };
+        let buffer2: Arc<CpuAccessibleBuffer<[u8]>> = unsafe {
+            CpuAccessibleBuffer::uninitialized_array(device.clone(),
+                                                     1000,
+                                                     BufferUsage::all()).unwrap()
+        };
+
+        let source = buffer1.clone()
+                            .into_buffer_slice()
+                            .slice(0..100)
+                            .unwrap();
+
+        let destination = buffer2.clone()
+                                 .into_buffer_slice()
+                                 .slice(0..100)
+                                 .unwrap();
+
+        let transfer_future = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+            .unwrap()
+            .copy_buffer(source.clone(), destination)
+            .unwrap()
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap();
+
+        let destination = buffer2.clone()
+                                 .into_buffer_slice()
+                                 .slice(100..150)
+                                 .unwrap();
+
+        let transfer_future = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+            .unwrap()
+            .copy_buffer(source, destination)
+            .unwrap()
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap();
+    }
+}
