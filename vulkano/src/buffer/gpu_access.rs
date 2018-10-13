@@ -24,6 +24,12 @@ pub struct GpuAccess {
     ranges: SmallVec<[GpuAccessRange; 4]>
 }
 
+fn ranges_intersect(a: &Range<usize>, b: &Range<usize>) -> bool {
+    a.start < b.end && a.end > b.start
+}
+
+// TODO: to make loops here faster, we could use an interval tree to do so,
+// which is a data structure for efficiently finding overlapping ranges
 impl GpuAccess {
     pub fn new() -> Self {
         GpuAccess {
@@ -34,12 +40,9 @@ impl GpuAccess {
     #[inline]
     pub fn can_lock(&self, exclusive: bool, range: Range<usize>) -> bool {
         // Find all ranges that intersect with the range we're looking to lock
-        // TODO: if we need to make this loop faster, we can use an interval
-        // tree to do so, which is a data structure for efficiently finding
-        // overlapping ranges
         for access in self.ranges
             .iter()
-            .take_while(|x| x.range.start <= range.end && x.range.end <= range.start) {
+            .filter(|x| ranges_intersect(&x.range, &range)) {
             // Can't exclusively lock the range if it's already locked by
             // someone else
             if exclusive {
@@ -71,12 +74,9 @@ impl GpuAccess {
         let mut range_already_locked = false;
 
         // Find all ranges that intersect with the range we're looking to lock
-        // TODO: if we need to make this loop faster, we can use an interval
-        // tree to do so, which is a data structure for efficiently finding
-        // overlapping ranges
         for access in self.ranges
             .iter_mut()
-            .take_while(|x| x.range.start <= range.end && x.range.end <= range.start) {
+            .filter(|x| ranges_intersect(&x.range, &range)) {
             // Can't exclusively lock the range if it's already locked by
             // someone else
             if exclusive {
