@@ -36,18 +36,23 @@ fn main() {
     //
     // This example code will demonstrate using the debug functions of the Vulkano API.
     //
-    // There is documentation here about how to setup debugging:
-    // https://vulkan.lunarg.com/doc/view/1.0.13.0/windows/layers.html
+    // Vulkan has a concept of "Validation Layers". These layers are extra debug tools that will validate
+    // and inform you about incorrect usage of the API. Turning these on while developing is strongly advised. 
+    // The documentation about layers can be found here: 
+    // https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html#extended-functionality-layers
+
+    // Vulkan also has a debug utility extension which you can enable to extend the amount of information to receive when a validation layer
+    // reports a message. More info can be found here:
+    // https://www.khronos.org/registry/vulkan/specs/1.1-extensions/html/vkspec.html#VK_EXT_debug_utils
     //
     // .. but if you just want a template of code that has everything ready to go then follow
     // this example. First, enable debugging using this extension: VK_EXT_debug_report
-    // For extra debugging features also enable: VK_EXT_debug_utils
     let extensions = InstanceExtensions {
         ext_debug_utils: true,
         ..InstanceExtensions::none()
     };
 
-    // You also need to specify (unless you've used the methods linked above) which debugging layers
+    // You also need to specify which debugging layers
     // your code should use. Each layer is a bunch of checks or messages that provide information of
     // some sort.
     //
@@ -76,7 +81,6 @@ fn main() {
 
     // Note: If you let this debug_callback binding fall out of scope then the callback will stop providing events
     // Note: There is a helper method too: DebugCallback::errors_and_warnings(&instance, |msg| {...
-
 
     // Creates a message filter that shows all messages.
     // You can either use the built in functions or construct your filter manually
@@ -107,6 +111,7 @@ fn main() {
             println!(" QueueLabel: {}, {:?}",obj.name, obj.color);
         }
 
+        // These are all the labels inserted in our command buffer when an error is reported related to that command buffer.
         println!("Command Labels({}):", msg.command_buffer_labels.len());
         for obj in msg.command_buffer_labels.iter() {
             println!(" CmdBufLabel: {}, {:?}",obj.name, obj.color);
@@ -145,7 +150,8 @@ fn main() {
     device.set_object_name(buffer1.inner().buffer, &CString::new("DestinationImage").unwrap()).ok();
 
     // Instead of using something like an AutoCommandBufferBuilder this is using a UnsafeCommandBufferBuilder so we can
-    // forcefully insert incorrect function calls and trigger validation errors and a crash. In a real application you should probably. 
+    // forcefully insert incorrect function calls and trigger validation errors and a crash. In a real application you should probably
+    // use the auto command buffer builder. 
     let command_pool = std::sync::Arc::new(vulkano::command_buffer::pool::StandardCommandPool::new(device.clone(), queue_family));
     unsafe{
         let fence = Fence::from_pool(device.clone()).unwrap();
@@ -172,9 +178,8 @@ fn main() {
         builder.insert_debug_label(&CString::new("CopyStarting").unwrap(), [1.0,1.0,1.0,1.0]);
         builder.copy_buffer_to_image(&buffer1, &img, vulkano::image::ImageLayout::TransferDstOptimal, std::iter::once(copy));
         builder.insert_debug_label(&CString::new("CopyDone").unwrap(), [1.0,1.0,1.0,1.0]);
-        
+
         // This draw will trigger an error seeing as we have no pipeline or buffers bound.
-        builder.draw(10,1,0,0);
         builder.end_debug_label();
 
 

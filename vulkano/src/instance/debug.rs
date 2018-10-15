@@ -41,7 +41,7 @@ use std::error;
 use std::ffi::CStr;
 use std::fmt;
 use std::mem;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::c_void;
 use std::panic;
 use std::ptr;
 use std::sync::Arc;
@@ -177,6 +177,14 @@ impl DebugCallback {
     {
         DebugCallback::new(instance, MessageFilter::errors_and_warnings(), user_callback)
     }
+
+    #[inline]
+    pub fn submit_debug_message(&self, severity : MessageSeverity, types : MessageType) {
+        let vk_i = self.instance.pointers();
+        unsafe{
+            vk_i.SubmitDebugUtilsMessageEXT(self.instance.internal_object(), severity.0, types.0, ptr::null());
+        }
+    }
 }
 
 impl Drop for DebugCallback {
@@ -200,6 +208,10 @@ impl MessageType{
     pub const PERFORMANCE   :MessageType = MessageType(0x00000004);
 
     #[inline]
+    pub fn from_bits(mask : u32) -> MessageType {
+        MessageType(mask)
+    }
+    #[inline]
     pub fn all() -> MessageType{
         Self::GENERAL | Self::VALIDATION | Self::PERFORMANCE
     }
@@ -207,6 +219,11 @@ impl MessageType{
     #[inline]
     pub fn none() -> MessageType {
         MessageType(0)
+    }
+
+    #[inline]
+    pub fn value(&self) -> u32 {
+       self.0 
     }
 }
 
@@ -258,6 +275,15 @@ impl MessageSeverity{
     pub const INFO   : MessageSeverity = MessageSeverity(0x00000010);
     pub const WARNING: MessageSeverity = MessageSeverity(0x00000100);
     pub const ERROR  : MessageSeverity = MessageSeverity(0x00001000);
+
+    pub fn from_bits(mask : u32) -> MessageSeverity {
+        MessageSeverity(mask)
+    }
+
+    #[inline]
+    pub fn value(&self) -> u32 {
+       self.0 
+    }
 
     pub fn all() -> MessageSeverity{
         Self::VERBOSE | Self::INFO | Self::WARNING | Self::ERROR
@@ -356,7 +382,7 @@ pub struct MessageLabel<'a> {
 }
 
 impl<'a> MessageLabel<'a>{
-    fn from_raw(utils_label : &vk::DebugUtilsLabelEXT) -> Self{
+    pub fn from_raw(utils_label : &vk::DebugUtilsLabelEXT) -> Self{
         let mut name = "";
         if utils_label.pLabelName != ptr::null(){
             name = unsafe { CStr::from_ptr(utils_label.pLabelName).to_str().unwrap() };
@@ -380,7 +406,7 @@ pub struct ObjectNameInfo<'a> {
 impl<'a> ObjectNameInfo<'a> {
 
     /// Constructs and `ObjectNameInfo` from the raw vulkan data structure `DebugUtilsObjectNameInfoEXT` 
-    fn from_raw(utils_label : &vk::DebugUtilsObjectNameInfoEXT) -> Self{
+    pub fn from_raw(utils_label : &vk::DebugUtilsObjectNameInfoEXT) -> Self{
         let mut name = "";
         if utils_label.pObjectName != ptr::null() {
             name = unsafe { 
@@ -421,7 +447,7 @@ impl MessageFilter {
             types: MessageType::none(),
         }
     }
-
+    
     #[inline]
     pub fn errors_and_warnings() -> MessageFilter{
         MessageFilter{
