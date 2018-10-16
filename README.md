@@ -126,6 +126,11 @@ appropriate cargo output lines to your build script and implementing your own
 On iOS vulkano links directly to the MoltenVK framework. There is nothing else to do besides
 installing it. Note that the Vulkan SDK for macOS also comes with the iOS framework.
 
+Note that as of writing, MoltenVK has some bugs that show up in the examples.
+Some minor modifications may be required as workarounds: see https://github.com/vulkano-rs/vulkano/pull/1027.
+The examples also do not work properly on macOS 10.11 and lower without workarounds due to MoltenVK's Metal backend not getting
+the required features until macOS 10.12. See https://github.com/vulkano-rs/vulkano/issues/1075 for workarounds.
+
 ## Donate
 
 [![Become a patron](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/tomaka)
