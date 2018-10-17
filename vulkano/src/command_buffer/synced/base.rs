@@ -17,7 +17,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use OomError;
+use VulkanObject;
 use buffer::BufferAccess;
+use buffer::GpuAccessType::{Exclusive, NonExclusive};
 use command_buffer::CommandBufferExecError;
 use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolAlloc;
@@ -1064,23 +1066,9 @@ impl<P> SyncCommandBuffer<P> {
                     let cmd = &commands_lock[command_id];
                     let buf = cmd.buffer(resource_index);
 
-                    // Because try_gpu_lock needs to be called first,
-                    // this should never return Ok without first returning Err
-                    let prev_err = match future.check_buffer_access(&buf, entry.exclusive, queue) {
-                        Ok(_) => {
-                            unsafe {
-                                buf.increase_gpu_lock(0..buf.size());
-                            }
-                            locked_resources += 1;
-                            continue;
-                        },
-                        Err(err) => err,
-                    };
-
-                    match (buf.try_gpu_lock(entry.exclusive, 0..buf.size()), prev_err) {
-                        (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown) |
-                        (_, AccessCheckError::Denied(err)) => {
+                    match buf.try_gpu_lock(self.inner.internal_object(), if entry.exclusive { Exclusive } else { NonExclusive }, 0..buf.size()) {
+                        Ok(_) => (),
+                        Err(err) => {
                             ret_value = Err(CommandBufferExecError::AccessError {
                                                 error: err,
                                                 command_name: cmd.name().into(),
@@ -1148,7 +1136,7 @@ impl<P> SyncCommandBuffer<P> {
                         let cmd = &commands_lock[command_id];
                         let buf = cmd.buffer(resource_index);
                         unsafe {
-                            buf.unlock(0..buf.size());
+                            buf.gpu_unlock(self.inner.internal_object());
                         }
                     },
 
@@ -1196,7 +1184,7 @@ impl<P> SyncCommandBuffer<P> {
                 KeyTy::Buffer => {
                     let cmd = &commands_lock[command_id];
                     let buf = cmd.buffer(resource_index);
-                    buf.unlock(0..buf.size());
+                    buf.gpu_unlock(self.inner.internal_object());
                 },
                 KeyTy::Image => {
                     let cmd = &commands_lock[command_id];

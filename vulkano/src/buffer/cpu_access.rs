@@ -34,6 +34,8 @@ use std::sync::RwLockWriteGuard;
 
 use buffer::BufferUsage;
 use buffer::GpuAccess;
+use buffer::GpuAccessType;
+use buffer::GpuAccessType::{Exclusive, NonExclusive};
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
@@ -57,6 +59,7 @@ use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
+use vk::CommandBuffer;
 
 /// Buffer whose content is accessible by the CPU.
 #[derive(Debug)]
@@ -240,7 +243,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
             Err(_) => return Err(ReadLockError::CpuWriteLocked),
         };
 
-        if !lock.can_lock(false, 0..self.inner.size()) {
+        if !lock.can_cpu_lock(NonExclusive, 0..self.inner.size()) {
             return Err(ReadLockError::GpuWriteLocked);
         }
 
@@ -272,7 +275,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
             Err(_) => return Err(WriteLockError::CpuLocked),
         };
 
-        if !lock.can_lock(true, 0..self.inner.size()) {
+        if !lock.can_cpu_lock(Exclusive, 0..self.inner.size()) {
             return Err(WriteLockError::GpuLocked);
         }
 
@@ -318,23 +321,17 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive: bool, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, cb: CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
         match self.access.try_write() {
-            Ok(mut gpu_lock) => gpu_lock.try_lock(exclusive, range),
+            Ok(mut gpu_lock) => gpu_lock.try_gpu_lock(cb, a, r),
             Err(_) => Err(AccessError::AlreadyInUse),
         }
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
+    unsafe fn gpu_unlock(&self, cb: CommandBuffer) {
         let mut gpu_lock = self.access.write().unwrap();
-        gpu_lock.increase_lock(range)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
-        let mut gpu_lock = self.access.write().unwrap();
-        gpu_lock.unlock(range)
+        gpu_lock.gpu_unlock(cb)
     }
 }
 

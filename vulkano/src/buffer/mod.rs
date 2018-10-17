@@ -90,6 +90,7 @@ pub use self::usage::BufferUsage;
 pub use self::view::BufferView;
 pub use self::view::BufferViewRef;
 pub use self::gpu_access::GpuAccess;
+pub use self::gpu_access::GpuAccessType;
 
 pub mod cpu_access;
 pub mod cpu_pool;

@@ -22,6 +22,7 @@ use std::sync::Mutex;
 
 use buffer::BufferUsage;
 use buffer::GpuAccess;
+use buffer::GpuAccessType;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
@@ -43,6 +44,7 @@ use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::Sharing;
+use vk::CommandBuffer;
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -207,21 +209,15 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, e: bool, r: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, cb: CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
         let mut gpu_access = self.gpu_access.lock().unwrap();
-        gpu_access.try_lock(e, r)
+        gpu_access.try_gpu_lock(cb, a, r)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, r: Range<usize>) {
+    unsafe fn gpu_unlock(&self, cb: CommandBuffer) {
         let mut gpu_access = self.gpu_access.lock().unwrap();
-        gpu_access.increase_lock(r)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, r: Range<usize>) {
-        let mut gpu_access = self.gpu_access.lock().unwrap();
-        gpu_access.unlock(r)
+        gpu_access.gpu_unlock(cb)
     }
 }
 

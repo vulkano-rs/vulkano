@@ -12,6 +12,7 @@ use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
 
+use buffer::GpuAccessType;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
@@ -19,6 +20,7 @@ use device::Device;
 use device::DeviceOwned;
 use image::ImageAccess;
 use sync::AccessError;
+use vk::CommandBuffer;
 
 /// A subpart of a buffer.
 ///
@@ -241,39 +243,20 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, cb: CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
         // TODO: subranges. at the time of writing we should never hit this
         // assert because the only place calling this function is
         // SyncCommandBuffer and it's always locking the entire BufferAccess (so
         // the entire slice in this case)
-        assert_eq!(range, 0..self.size());
+        assert_eq!(r, 0..self.size());
 
         let offset = self.inner().offset;
-        self.resource.try_gpu_lock(exclusive_access, offset..offset + self.size())
+        self.resource.try_gpu_lock(cb, a, offset..offset + self.size())
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-        // TODO: subranges. at the time of writing we should never hit this
-        // assert because the only place calling this function is
-        // SyncCommandBuffer and it's always locking the entire BufferAccess (so
-        // the entire slice in this case)
-        assert_eq!(range, 0..self.size());
-
-        let offset = self.inner().offset;
-        self.resource.increase_gpu_lock(offset..offset + self.size())
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
-        // TODO: subranges. at the time of writing we should never hit this
-        // assert because the only place calling this function is
-        // SyncCommandBuffer and it's always locking the entire BufferAccess (so
-        // the entire slice in this case)
-        assert_eq!(range, 0..self.size());
-
-        let offset = self.inner().offset;
-        self.resource.unlock(offset..offset + self.size())
+    unsafe fn gpu_unlock(&self, cb: CommandBuffer) {
+        self.resource.gpu_unlock(cb)
     }
 }
 

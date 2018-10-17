@@ -27,6 +27,8 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use buffer::BufferUsage;
+use buffer::GpuAccessType;
+use buffer::GpuAccessType::Exclusive;
 use buffer::CpuAccessibleBuffer;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
@@ -55,6 +57,7 @@ use memory::pool::StdMemoryPoolAlloc;
 use sync::AccessError;
 use sync::NowFuture;
 use sync::Sharing;
+use vk;
 
 /// Buffer that is written once then read for as long as it is alive.
 // TODO: implement Debug
@@ -344,8 +347,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError> {
-        if exclusive_access {
+    fn try_gpu_lock(&self, cb: vk::CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
+        if let Exclusive = a {
             return Err(AccessError::ExclusiveDenied);
         }
 
@@ -357,11 +360,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
+    unsafe fn gpu_unlock(&self, cb: vk::CommandBuffer) {
     }
 }
 
@@ -410,7 +409,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, range: Range<usize>) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, cb: vk::CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
         if self.buffer.initialized.load(Ordering::Relaxed) {
             return Err(AccessError::AlreadyInUse);
         }
@@ -423,12 +422,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-        debug_assert!(self.used.load(Ordering::Relaxed));
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
+    unsafe fn gpu_unlock(&self, cb: vk::CommandBuffer) {
         self.buffer.initialized.store(true, Ordering::Relaxed);
     }
 }

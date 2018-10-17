@@ -10,11 +10,13 @@
 use std::ops::Range;
 
 use buffer::BufferSlice;
+use buffer::GpuAccessType;
 use buffer::sys::UnsafeBuffer;
 use device::DeviceOwned;
 use image::ImageAccess;
 use memory::Content;
 use sync::AccessError;
+use vk::CommandBuffer;
 
 use SafeDeref;
 
@@ -109,36 +111,20 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// verify whether they actually overlap.
     fn conflict_key(&self) -> (u64, usize);
 
-    /// Locks a range of the resource for usage on the GPU. Returns an error if
-    /// the lock can't be acquired.
+    /// Locks a range of the resource for usage on the GPU by a specific command
+    /// buffer. Returns an error if the lock can't be acquired.
     ///
     /// This function exists to prevent the user from causing a data race by
     /// reading and writing to overlapping ranges at the same time.
     ///
-    /// If you call this function, you should call `unlock()` once the range is
-    /// no longer in use by the GPU. The implementation is not expected to
-    /// automatically perform any unlocking and can rely on the fact that
-    /// `unlock()` is going to be called.
-    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError>;
+    /// If you call this function, you should call `gpu_unlock()` once the
+    /// resource is no longer in use by the GPU. The implementation is not
+    /// expected to automatically perform any unlocking and can rely on the fact
+    /// that `gpu_unlock()` is going to be called.
+    fn try_gpu_lock(&self, command_buffer: CommandBuffer, access: GpuAccessType, range: Range<usize>) -> Result<(), AccessError>;
 
-    /// Locks a range of the resource for usage on the GPU. Supposes that the
-    /// range is already locked, and simply increases the lock by one.
-    ///
-    /// Must only be called after `try_gpu_lock()` succeeded.
-    ///
-    /// If you call this function, you should call `unlock()` once the range is
-    /// no longer in use by the GPU. The implementation is not expected to
-    /// automatically perform any unlocking and can rely on the fact that
-    /// `unlock_range()` is going to be called.
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>);
-
-    /// Unlocks the range previously acquired with `try_gpu_lock` or
-    /// `increase_gpu_lock`.
-    ///
-    /// # Safety
-    ///
-    /// Must only be called once per previous lock.
-    unsafe fn unlock(&self, range: Range<usize>);
+    /// Unlocks all locks held by this command buffer.
+    unsafe fn gpu_unlock(&self, command_buffer: CommandBuffer);
 }
 
 /// Inner information about a buffer.
@@ -181,18 +167,13 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, range: Range<usize>) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, range)
+    fn try_gpu_lock(&self, command_buffer: CommandBuffer, access: GpuAccessType, range: Range<usize>) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(command_buffer, access, range)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-        (**self).increase_gpu_lock(range)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
-        (**self).unlock(range)
+    unsafe fn gpu_unlock(&self, command_buffer: CommandBuffer) {
+        (**self).gpu_unlock(command_buffer)
     }
 }
 

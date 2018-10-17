@@ -20,6 +20,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
 use buffer::BufferUsage;
+use buffer::GpuAccessType;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
@@ -40,6 +41,7 @@ use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
 use sync::AccessError;
 use sync::Sharing;
+use vk::CommandBuffer;
 
 use OomError;
 
@@ -627,9 +629,8 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, range: Range<usize>) -> Result<(), AccessError> {
-        // TODO: ranges
-        // assert_eq!(range, 0..self.size());
+    fn try_gpu_lock(&self, cb: CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
+        // TODO: new GPU lock system
 
         if self.requested_len == 0 {
             return Ok(());
@@ -650,31 +651,8 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, range: Range<usize>) {
-        // TODO: ranges
-        // assert_eq!(range, 0..self.size());
-
-        if self.requested_len == 0 {
-            return;
-        }
-
-        let mut chunks_in_use_lock = self.buffer.chunks_in_use.lock().unwrap();
-        let chunk = chunks_in_use_lock
-            .iter_mut()
-            .find(|c| c.index == self.index)
-            .unwrap();
-
-        debug_assert!(chunk.num_gpu_accesses >= 1);
-        chunk.num_gpu_accesses = chunk
-            .num_gpu_accesses
-            .checked_add(1)
-            .expect("Overflow in GPU usages");
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, range: Range<usize>) {
-        // TODO: ranges
-        // assert_eq!(range, 0..self.size());
+    unsafe fn gpu_unlock(&self, cb: CommandBuffer) {
+        // TODO: new GPU lock system
 
         if self.requested_len == 0 {
             return;
@@ -767,18 +745,13 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, e: bool, r: Range<usize>) -> Result<(), AccessError> {
-        self.chunk.try_gpu_lock(e, r)
+    fn try_gpu_lock(&self, cb: CommandBuffer, a: GpuAccessType, r: Range<usize>) -> Result<(), AccessError> {
+        self.chunk.try_gpu_lock(cb, a, r)
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self, r: Range<usize>) {
-        self.chunk.increase_gpu_lock(r)
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, r: Range<usize>) {
-        self.chunk.unlock(r)
+    unsafe fn gpu_unlock(&self, cb: CommandBuffer) {
+        self.chunk.gpu_unlock(cb)
     }
 }
 
