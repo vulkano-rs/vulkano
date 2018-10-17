@@ -84,11 +84,14 @@ fn main() {
 
     // Creates a message filter that shows all messages.
     // You can either use the built in functions or construct your filter manually
-    let all = MessageFilter::all();
+    let all = MessageFilter{
+        types: MessageType::all(),
+        severity: MessageSeverity::ERROR | MessageSeverity::WARNING,
+    };
 
     // Initializes a DebugUtilsMessenger and binds the callback to our callback.
     // We use our message filter to receive all messages.
-    let _debug_callback = DebugCallback::new(&instance, all, |msg| {
+    let debug_callback = DebugCallback::new(&instance, all, |msg| {
         let ty = if msg.severity & MessageSeverity::ERROR != MessageSeverity::none(){
             "error"
         } else if msg.severity & MessageSeverity::WARNING != MessageSeverity::none() {
@@ -123,7 +126,48 @@ fn main() {
             println!("  Obj: {}, 0x{:x}, {}",obj.name, obj.handle, obj.ty);
         }
 
-    }).ok();
+    }).unwrap();
+    use vulkano::instance::debug::Message;
+
+    fn submit_error(callback : &vulkano::instance::debug::DebugCallback,name: &str, desc : &str, obj : &str) {
+        callback.submit_debug_message(Message{
+            ty: MessageType::GENERAL,
+            severity: MessageSeverity::ERROR,
+            id_number: 0,
+            id_name: name,
+            description: desc,
+            objects: vec![
+                vulkano::instance::debug::ObjectNameInfo{
+                    ty: 100,
+                    handle: 0,
+                    name: obj
+                }
+            ],
+            ..Message::default()
+        });
+    }
+
+    fn submit_warning(callback : &vulkano::instance::debug::DebugCallback,name: &str, desc : &str, obj : &str) {
+        callback.submit_debug_message(Message{
+            ty: MessageType::GENERAL,
+            severity: MessageSeverity::WARNING,
+            id_number: 0,
+            id_name: name,
+            description: desc,
+            objects: vec![
+                vulkano::instance::debug::ObjectNameInfo{
+                    ty: 100,
+                    handle: 0,
+                    name: obj
+                }
+            ],
+            ..Message::default()
+        });
+    }
+
+    submit_error(&debug_callback, "DebugMsg", "This is a debug error message!", "Dummy object");
+    submit_warning(&debug_callback, "DebugMsg", "This is a debug warning message!", "Dummy object");
+
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Vulkan objects in the same way as the other examples                                               //
@@ -141,7 +185,7 @@ fn main() {
     ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
                                                queue.clone()).unwrap();
 
-    let buffer1 = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), (0..512*512).map(|e| e)).unwrap();
+    let buffer1 = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_source(), (0..512*512).map(|e| e)).unwrap();
     let img = StorageImage::new(device.clone(), vulkano::image::Dimensions::Dim2d{width:512,height:512}, Format::R8Uint, Some(queue.family())).unwrap();
 
     // VK_EXT_debug_utils allows setting object tags which will be reported whenever a message that is relevant to these objects

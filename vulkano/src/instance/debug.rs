@@ -38,7 +38,7 @@
 //!
 
 use std::error;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fmt;
 use std::mem;
 use std::os::raw::c_void;
@@ -178,11 +178,65 @@ impl DebugCallback {
         DebugCallback::new(instance, MessageFilter::errors_and_warnings(), user_callback)
     }
 
+    /// Submits a debug message to the callback
+    /// 
+    /// Note: Make sure atleast 1 object is specified for the message to show up.
+    /// This seems to be a vulkan api resctriction but is not actually properly documented.
+    /// Some googling led me to a github thread about this exact issue.
     #[inline]
-    pub fn submit_debug_message(&self, severity : MessageSeverity, types : MessageType) {
+    pub fn submit_debug_message(&self, message : Message) {
         let vk_i = self.instance.pointers();
+
+        let raw_queue_labels : Vec<_> = message.queue_labels.iter().map(|label| {
+            let name = CString::new(label.name).unwrap();
+            vk::DebugUtilsLabelEXT{
+                sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+                pNext: ptr::null(),
+                pLabelName: name.as_ptr() as *const i8,
+                color: label.color
+            }
+        }).collect();
+
+        let raw_cmd_buf_labels : Vec<_> = message.command_buffer_labels.iter().map(|label| {
+            let name = CString::new(label.name).unwrap();
+            vk::DebugUtilsLabelEXT{
+                sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+                pNext: ptr::null(),
+                pLabelName: name.as_ptr() as *const i8,
+                color: label.color
+            }
+        }).collect();
+
+        let raw_objects : Vec<_> = message.objects.iter().map(|obj| {
+            let name = CString::new(obj.name).unwrap();
+            vk::DebugUtilsObjectNameInfoEXT{
+                sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
+                pNext: ptr::null(),
+                objectType: obj.ty,
+                objectHandle: obj.handle,
+                pObjectName: name.as_ptr() as *const i8,
+            }
+        }).collect();
+
+        let id_name = CString::new(message.id_name).unwrap();
+        let msg     = CString::new(message.description).unwrap();
+
+        let data = vk::DebugUtilsMessengerCallbackDataEXT{
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT,
+            pNext : ptr::null(),
+            flags: 0,
+            pMessageIdName: id_name.as_ptr() as *const i8,
+            messageIdNumber: message.id_number,
+            pMessage: msg.as_ptr() as *const i8,
+            queueLabelCount: raw_queue_labels.len() as u32,
+            pQueueLabels: raw_queue_labels.as_ptr(),
+            cmdBufLabelCount: raw_cmd_buf_labels.len() as u32,
+            pCmdBufLabels: raw_cmd_buf_labels.as_ptr(),
+            objectCount: raw_objects.len() as u32,
+            pObjects: raw_objects.as_ptr(),
+        };
         unsafe{
-            vk_i.SubmitDebugUtilsMessageEXT(self.instance.internal_object(), severity.0, types.0, ptr::null());
+            vk_i.SubmitDebugUtilsMessageEXT(self.instance.internal_object(), message.severity.0, message.ty.0, &data);
         }
     }
 }
@@ -371,6 +425,20 @@ pub struct Message<'a> {
 
     /// The objects this message refers to
     pub objects : Vec<ObjectNameInfo<'a>>
+}
+impl<'a> Default for Message<'a> {
+    fn default() -> Self {
+        Message {
+            ty: MessageType::none(),
+            severity: MessageSeverity::none(),
+            id_number: 0,
+            id_name: "",
+            description: "",
+            queue_labels: Vec::new(),
+            command_buffer_labels: Vec::new(),
+            objects: Vec::new(),
+        }
+    }
 }
 
 /// A message label that is a rust version of `DebugUtilsLabelEXT`
