@@ -1,3 +1,5 @@
+#![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
+
 extern crate vulkano;
 extern crate winit;
 

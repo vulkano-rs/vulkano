@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
+
 #![recursion_limit = "1024"]
 #[macro_use] extern crate quote;
              extern crate shaderc;

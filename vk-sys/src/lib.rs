@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
+
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
