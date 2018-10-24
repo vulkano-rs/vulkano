@@ -153,7 +153,12 @@ fn main() {
 
     // The dimensions of the surface.
     // This variable needs to be mutable since the viewport can change size.
-    let mut dimensions;
+    let mut dimensions = {
+        let window = surface.window();
+        let dim = window.get_inner_size().unwrap()
+            .to_physical(window.get_hidpi_factor());
+        [dim.width as u32, dim.height as u32]
+    };
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately
@@ -163,8 +168,6 @@ fn main() {
         // pass values that are allowed by the capabilities.
         let caps = surface.capabilities(physical)
                          .expect("failed to get surface capabilities");
-
-        dimensions = caps.current_extent.unwrap_or([1024, 768]);
 
         // We choose the dimensions of the swapchain to match the current extent of the surface.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
@@ -347,11 +350,6 @@ void main() {
 
         // If the swapchain needs to be recreated, recreate it
         if recreate_swapchain {
-            // Get the new dimensions for the viewport/framebuffers.
-            dimensions = surface.capabilities(physical)
-                        .expect("failed to get surface capabilities")
-                        .current_extent.unwrap();
-
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
@@ -482,6 +480,11 @@ void main() {
         events_loop.poll_events(|ev| {
             match ev {
                 winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Resized(dim), .. } => {
+                    let dim = dim.to_physical(surface.window().get_hidpi_factor());
+                    dimensions = [ dim.width as u32, dim.height as u32];
+                    recreate_swapchain = true;
+                },
                 _ => ()
             }
         });
