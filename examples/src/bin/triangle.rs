@@ -32,26 +32,23 @@ extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::DynamicState;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::Device;
-use vulkano::framebuffer::Framebuffer;
-use vulkano::framebuffer::Subpass;
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
+use vulkano::image::SwapchainImage;
 use vulkano::instance::Instance;
+use vulkano::instance::PhysicalDevice;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
-use vulkano::swapchain::PresentMode;
-use vulkano::swapchain::SurfaceTransform;
-use vulkano::swapchain::Swapchain;
-use vulkano::swapchain::AcquireError;
-use vulkano::swapchain::SwapchainCreationError;
-use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+use vulkano::sync::now;
 
 use vulkano_shaders::vulkano_shader;
+
+use winit::Window;
 
 use std::sync::Arc;
 
@@ -117,8 +114,7 @@ fn main() {
     //
     // For the sake of the example we are just going to use the first device, which should work
     // most of the time.
-    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
-                            .next().expect("no device available");
+    let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
     // Some little debug infos.
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
@@ -135,6 +131,7 @@ fn main() {
     // window and a cross-platform Vulkan surface that represents the surface of the window.
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let window = surface.window();
 
     // The next step is to choose which GPU queue will execute our draw commands.
     //
@@ -185,20 +182,24 @@ fn main() {
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
-    // The dimensions of the surface.
-    // This variable needs to be mutable since the viewport can change size.
-    let mut dimensions;
+    // The dimensions of the window, only used to initially setup the swapchain.
+    let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
+        // convert to physical pixels
+        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+        [dimensions.0, dimensions.1]
+    } else {
+        // The window no longer exists so exit the application.
+        return;
+    };
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately
     // be visible on the screen. These images are returned alongside with the swapchain.
-    let (mut swapchain, mut images) = {
+    let (mut swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
         let caps = surface.capabilities(physical)
                          .expect("failed to get surface capabilities");
-
-        dimensions = caps.current_extent.unwrap_or([1024, 768]);
 
         // We choose the dimensions of the swapchain to match the current extent of the surface.
         // If `caps.current_extent` is `None`, this means that the window size will be determined
@@ -213,7 +214,7 @@ fn main() {
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                       dimensions, 1, caps.supported_usage_flags, &queue,
+                       initial_dimensions, 1, caps.supported_usage_flags, &queue,
                        SurfaceTransform::Identity, alpha, PresentMode::Fifo, true,
                        None).expect("failed to create swapchain")
     };
@@ -293,12 +294,16 @@ fn main() {
         .build(device.clone())
         .unwrap());
 
+    // Dynamic viewports allow us to recreate just the viewport when the window is resized
+    // Otherwise we would have to recreate the whole pipeline.
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
     //
     // Since we need to draw to multiple images, we are going to create a different framebuffer for
     // each image.
-    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
     // Initialization is finally finished!
 
@@ -321,16 +326,6 @@ fn main() {
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
 
-    let mut dynamic_state = DynamicState {
-        line_width: None,
-        viewports: Some(vec![Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0 .. 1.0,
-        }]),
-        scissors: None,
-    };
-
     loop {
         // It is important to call this function from time to time, otherwise resources will keep
         // accumulating and you will eventually reach an out of memory error.
@@ -338,45 +333,31 @@ fn main() {
         // already processed, and frees the resources that are no longer needed.
         previous_frame_end.cleanup_finished();
 
-        // If the swapchain needs to be recreated, recreate it
+        // Whenever the window resizes we need to recreate everything dependent on the window size.
+        // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
         if recreate_swapchain {
             // Get the new dimensions for the viewport/framebuffers.
-            dimensions = surface.capabilities(physical)
-                        .expect("failed to get surface capabilities")
-                        .current_extent.unwrap();
+            let dimensions = if let Some(dimensions) = window.get_inner_size() {
+                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+                [dimensions.0, dimensions.1]
+            } else {
+                return;
+            };
 
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
                 // Simply restarting the loop is the easiest way to fix this issue.
-                Err(SwapchainCreationError::UnsupportedDimensions) => {
-                    continue;
-                },
+                Err(SwapchainCreationError::UnsupportedDimensions) => continue,
                 Err(err) => panic!("{:?}", err)
             };
 
             swapchain = new_swapchain;
-            images = new_images;
-
-            framebuffers = None;
-
-            dynamic_state.viewports = Some(vec![Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0 .. 1.0,
-            }]);
+            // Because framebuffers contains an Arc on the old swapchain, we need to
+            // recreate framebuffers as well.
+            framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
 
             recreate_swapchain = false;
-        }
-
-        // Because framebuffers contains an Arc on the old swapchain, we need to
-        // recreate framebuffers as well.
-        if framebuffers.is_none() {
-            framebuffers = Some(images.iter().map(|image| {
-                Arc::new(Framebuffer::start(render_pass.clone())
-                         .add(image.clone()).unwrap()
-                         .build().unwrap())
-            }).collect::<Vec<_>>());
         }
 
         // Before we can draw on the output, we have to *acquire* an image from the swapchain. If
@@ -386,8 +367,7 @@ fn main() {
         //
         // This function can block if no image is available. The parameter is an optional timeout
         // after which the function call will return an error.
-        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(),
-                                                                              None) {
+        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
@@ -413,7 +393,7 @@ fn main() {
             // The third parameter builds the list of values to clear the attachments with. The API
             // is similar to the list of attachments when building the framebuffers, except that
             // only the attachments that use `load: Clear` appear in the list.
-            .begin_render_pass(framebuffers.as_ref().unwrap()[image_num].clone(), false,
+            .begin_render_pass(framebuffers[image_num].clone(), false,
                                vec![[0.0, 0.0, 1.0, 1.0].into()])
             .unwrap()
 
@@ -475,9 +455,34 @@ fn main() {
         events_loop.poll_events(|ev| {
             match ev {
                 winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Resized(_), .. } => recreate_swapchain = true,
                 _ => ()
             }
         });
         if done { return; }
     }
+}
+
+/// This method is called once during initialization then again whenever the window is resized
+fn window_size_dependent_setup(
+    images: &[Arc<SwapchainImage<Window>>],
+    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    dynamic_state: &mut DynamicState
+) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+    let dimensions = images[0].dimensions();
+
+    let viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+        depth_range: 0.0 .. 1.0,
+    };
+    dynamic_state.viewports = Some(vec!(viewport));
+
+    images.iter().map(|image| {
+        Arc::new(
+            Framebuffer::start(render_pass.clone())
+                .add(image.clone()).unwrap()
+                .build().unwrap()
+        ) as Arc<FramebufferAbstract + Send + Sync>
+    }).collect::<Vec<_>>()
 }

@@ -64,6 +64,7 @@ fn main() {
 
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let window = surface.window();
 
     let queue_family = physical.queue_families().find(|&q| {
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
@@ -86,7 +87,12 @@ fn main() {
     let (mut swapchain, mut images) = {
         let caps = surface.capabilities(physical)
                          .expect("failed to get surface capabilities");
-        dimensions = caps.current_extent.unwrap_or([1024, 768]);
+        let dimensions = if let Some(dimensions) = window.get_inner_size() {
+            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+            [dimensions.0, dimensions.1]
+        } else {
+            return;
+        };
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
@@ -108,9 +114,12 @@ fn main() {
         previous_frame_end.cleanup_finished();
 
         if recreate_swapchain {
-            dimensions = surface.capabilities(physical)
-                        .expect("failed to get surface capabilities")
-                        .current_extent.unwrap();
+            dimensions = if let Some(dimensions) = window.get_inner_size() {
+                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+                [dimensions.0, dimensions.1]
+            } else {
+                return;
+            };
             
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
@@ -125,8 +134,7 @@ fn main() {
             recreate_swapchain = false;
         }
 
-        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(),
-                                                                              None) {
+        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
@@ -179,6 +187,7 @@ fn main() {
         events_loop.poll_events(|ev| {
             match ev {
                 winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Resized(_), .. } => recreate_swapchain = true,
                 _ => ()
             }
         });
