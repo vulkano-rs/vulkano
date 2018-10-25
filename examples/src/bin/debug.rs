@@ -20,8 +20,9 @@ use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::instance::debug::{DebugCallback, MessageType, MessageSeverity,MessageFilter};
 
 use vulkano::image::StorageImage;
-use vulkano::command_buffer::sys::UnsafeCommandBufferBuilder;
-use vulkano::command_buffer::sys::Kind;
+use vulkano::command_buffer::CommandBuffer;
+use vulkano::command_buffer::AutoCommandBufferBuilder;
+
 use vulkano::command_buffer::submit::SubmitCommandBufferBuilder;
 
 use vulkano::sync::Fence;
@@ -185,8 +186,8 @@ fn main() {
     ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
                                                queue.clone()).unwrap();
 
-    let buffer1 = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::transfer_source(), (0..512*512).map(|e| e)).unwrap();
-    let img = StorageImage::new(device.clone(), vulkano::image::Dimensions::Dim2d{width:512,height:512}, Format::R8Uint, Some(queue.family())).unwrap();
+    let buffer1 = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), (0..512*512*4).map(|_| 0)).unwrap();
+    let img = StorageImage::new(device.clone(), vulkano::image::Dimensions::Dim2d{width:512,height:512}, Format::R8G8B8A8Uint, Some(queue.family())).unwrap();
 
     // VK_EXT_debug_utils allows setting object tags which will be reported whenever a message that is relevant to these objects
     // is being reported. See the debug callback for information on how to access them.
@@ -196,44 +197,25 @@ fn main() {
     // Instead of using something like an AutoCommandBufferBuilder this is using a UnsafeCommandBufferBuilder so we can
     // forcefully insert incorrect function calls and trigger validation errors and a crash. In a real application you should probably
     // use the auto command buffer builder. 
-    let command_pool = std::sync::Arc::new(vulkano::command_buffer::pool::StandardCommandPool::new(device.clone(), queue_family));
-    unsafe{
-        let fence = Fence::from_pool(device.clone()).unwrap();
+    let fence = Fence::from_pool(device.clone()).unwrap();
 
-        let copy = vulkano::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy {
-            buffer_offset: 0,
-            buffer_row_length: 0,
-            buffer_image_height: 0,
-            image_aspect: 
-                vulkano::command_buffer::sys::UnsafeCommandBufferBuilderImageAspect {
-                    color: true,
-                    depth: false,
-                    stencil: false,
-            },
-            image_mip_level: 0,
-            image_base_array_layer: 0,
-            image_layer_count: 1,
-            image_offset: [0,0,0],
-            image_extent: [512,512,1],
-        };
-
-        let mut builder = UnsafeCommandBufferBuilder::new(&command_pool, Kind::primary(), vulkano::command_buffer::sys::Flags::OneTimeSubmit).unwrap();
-        builder.begin_debug_label(&CString::new("Begin Of Buffer").unwrap(), [0.9,0.7,1.0,1.0]);
-        builder.insert_debug_label(&CString::new("CopyStarting").unwrap(), [1.0,1.0,1.0,1.0]);
-        builder.copy_buffer_to_image(&buffer1, &img, vulkano::image::ImageLayout::TransferDstOptimal, std::iter::once(copy));
-        builder.insert_debug_label(&CString::new("CopyDone").unwrap(), [1.0,1.0,1.0,1.0]);
-
-        // This draw will trigger an error seeing as we have no pipeline or buffers bound.
-        builder.end_debug_label();
+    let mut builder = AutoCommandBufferBuilder::new(device.clone(), queue_family).unwrap();
+    builder = builder.begin_debug_label("Begin Of Buffer", [0.9,0.7,1.0,1.0]);
+    builder = builder.insert_debug_label("CopyStarting", [1.0,1.0,1.0,1.0]);
+    builder = builder.copy_buffer_to_image(buffer1.clone(), img.clone()).unwrap();
+    builder = builder.insert_debug_label("CopyDone", [1.0,1.0,1.0,1.0]);
+    builder = builder.end_debug_label();
 
 
-        let cmd_buffer = builder.build().unwrap();
+    let cmd_buffer = builder.build().unwrap();
 
-        // Tags can be set on all kinds of objects.
-        device.set_object_name(&cmd_buffer, &CString::new("BadCommandBuffer").unwrap()).ok();
-        
+    // Tags can be set on all kinds of objects.
+    
+    unsafe {
+        device.set_object_name(cmd_buffer.inner(), &CString::new("BadCommandBuffer").unwrap()).ok();
+
         let mut builder = SubmitCommandBufferBuilder::new();
-        builder.add_command_buffer(&cmd_buffer);
+        builder.add_command_buffer(cmd_buffer.inner());
         builder.set_fence_signal(&fence);
         builder.submit(&queue).ok();
 
