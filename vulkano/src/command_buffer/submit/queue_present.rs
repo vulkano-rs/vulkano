@@ -11,7 +11,6 @@ use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
 use std::ptr;
 
 use device::DeviceOwned;
@@ -158,7 +157,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 }
             };
 
-            let mut results = vec![mem::uninitialized(); self.swapchains.len()]; // TODO: alloca
+            let mut results = vec![vk::SUCCESS; self.swapchains.len()];
 
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();
@@ -179,10 +178,9 @@ impl<'a> SubmitPresentBuilder<'a> {
 
             check_errors(vk.QueuePresentKHR(*queue, &infos))?;
 
-            // TODO: AMD driver initially didn't write the results ; check that it's been fixed
-            //for result in results {
-            //try!(check_errors(result));
-            //}
+            for result in results {
+                check_errors(result)?;
+            }
 
             Ok(())
         }
