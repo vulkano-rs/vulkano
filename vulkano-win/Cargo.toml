@@ -1,15 +1,18 @@
 [package]
 name = "vulkano-win"
-version = "0.10.0"
+version = "0.11.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Link between vulkano and winit"
 license = "MIT/Apache-2.0"
+documentation = "https://docs.rs/vulkano"
+homepage = "https://vulkano.rs"
+keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
 [dependencies]
-vulkano = { version = "0.10.0", path = "../vulkano" }
 winit = "0.18"
+vulkano = { version = "0.11.0", path = "../vulkano" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 metal = "0.13"
