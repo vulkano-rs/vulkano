@@ -20,11 +20,9 @@
 // The `vulkano` crate is the main crate that you must use to use Vulkan.
 #[macro_use]
 extern crate vulkano;
-// The `vulkano_shader_derive` crate allows us to use the `VulkanoShader` custom derive that we use
-// in this example.
-#[macro_use]
-extern crate vulkano_shader_derive;
-// However the Vulkan library doesn't provide any functionality to create and handle windows, as
+// Provides the `vulkano_shader` macro that is used to generate code for using shaders.
+extern crate vulkano_shaders;
+// The Vulkan library doesn't provide any functionality to create and handle windows, as
 // this would be out of scope. In order to open a window, we are going to use the `winit` crate.
 extern crate winit;
 // The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about
@@ -53,7 +51,43 @@ use vulkano::swapchain::SwapchainCreationError;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
 
+use vulkano_shaders::vulkano_shader;
+
 use std::sync::Arc;
+
+// TODO: Move this back to the middle of the example, it makes for a more coherent sequential explanation (check git history)
+// The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
+//
+// An overview of what the `vulkano_shader` macro generates can be found in the
+// `vulkano-shaders` crate docs. You can view them at https://docs.rs/vulkano-shaders/
+//
+// TODO: explain this in details
+vulkano_shader!{
+    mod_name: vs,
+    ty: "vertex",
+    src: "
+#version 450
+
+layout(location = 0) in vec2 position;
+
+void main() {
+gl_Position = vec4(position, 0.0, 1.0);
+}"
+    }
+
+vulkano_shader!{
+    mod_name: fs,
+    ty: "fragment",
+    src: "
+#version 450
+
+layout(location = 0) out vec4 f_color;
+
+void main() {
+    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"
+}
 
 fn main() {
     // The first step of any Vulkan program is to create an instance.
@@ -196,47 +230,6 @@ fn main() {
             Vertex { position: [0.25, -0.1] }
         ].iter().cloned()).expect("failed to create buffer")
     };
-
-    // The next step is to create the shaders.
-    //
-    // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
-    //
-    // An overview of what the `VulkanoShader` derive macro generates can be found in the
-    // `vulkano-shader-derive` crate docs. You can view them at
-    // https://docs.rs/vulkano-shader-derive/*/vulkano_shader_derive/
-    //
-    // TODO: explain this in details
-    mod vs {
-        #[derive(VulkanoShader)]
-        #[ty = "vertex"]
-        #[src = "
-#version 450
-
-layout(location = 0) in vec2 position;
-
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}
-"]
-        #[allow(dead_code)]
-        struct Dummy;
-    }
-
-    mod fs {
-        #[derive(VulkanoShader)]
-        #[ty = "fragment"]
-        #[src = "
-#version 450
-
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"]
-        #[allow(dead_code)]
-        struct Dummy;
-    }
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");

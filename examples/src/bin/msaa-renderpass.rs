@@ -67,8 +67,7 @@
 extern crate image;
 #[macro_use]
 extern crate vulkano;
-#[macro_use]
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 
 use std::sync::Arc;
 use image::ImageBuffer;
@@ -92,6 +91,33 @@ use vulkano::instance::PhysicalDevice;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sync::GpuFuture;
+use vulkano_shaders::vulkano_shader;
+
+vulkano_shader!{
+    mod_name: vs,
+    ty: "vertex",
+    src: "
+#version 450
+
+layout(location = 0) in vec2 position;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+}"
+}
+
+vulkano_shader!{
+    mod_name: fs,
+    ty: "fragment",
+    src: "
+#version 450
+
+layout(location = 0) out vec4 f_color;
+
+void main() {
+    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+}"
+}
 
 fn main() {
     // The usual Vulkan initialization.
@@ -164,38 +190,6 @@ fn main() {
     // without multisampling.
     // At the end of the example, we copy the content of `image` (ie. the final image) to a buffer,
     // then read the content of that buffer and save it to a PNG file.
-
-    mod vs {
-        #[derive(VulkanoShader)]
-        #[ty = "vertex"]
-        #[src = "
-    #version 450
-
-    layout(location = 0) in vec2 position;
-
-    void main() {
-        gl_Position = vec4(position, 0.0, 1.0);
-    }
-    "]
-        #[allow(dead_code)]
-        struct Dummy;
-    }
-
-    mod fs {
-        #[derive(VulkanoShader)]
-        #[ty = "fragment"]
-        #[src = "
-    #version 450
-
-    layout(location = 0) out vec4 f_color;
-
-    void main() {
-        f_color = vec4(1.0, 0.0, 0.0, 1.0);
-    }
-    "]
-        #[allow(dead_code)]
-        struct Dummy;
-    }
 
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");

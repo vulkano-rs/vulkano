@@ -13,12 +13,12 @@ extern crate winit;
 
 #[macro_use]
 extern crate vulkano;
-#[macro_use]
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
+use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 
@@ -242,10 +242,10 @@ fn main() {
     }
 }
 
-mod vs {
-    #[derive(VulkanoShader)]
-    #[ty = "vertex"]
-    #[src = "
+vulkano_shader!{
+    mod_name: vs,
+    ty: "vertex",
+    src: "
 #version 450
 
 layout(location = 0) in vec2 position;
@@ -254,16 +254,13 @@ layout(location = 0) out vec2 tex_coords;
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
     tex_coords = position + vec2(0.5);
-}
-"]
-    #[allow(dead_code)]
-    struct Dummy;
+}"
 }
 
-mod fs {
-    #[derive(VulkanoShader)]
-    #[ty = "fragment"]
-    #[src = "
+vulkano_shader!{
+    mod_name: fs,
+    ty: "fragment",
+    src: "
 #version 450
 
 layout(location = 0) in vec2 tex_coords;
@@ -273,8 +270,5 @@ layout(set = 0, binding = 0) uniform sampler2D tex;
 
 void main() {
     f_color = texture(tex, tex_coords);
-}
-"]
-    #[allow(dead_code)]
-    struct Dummy;
+}"
 }

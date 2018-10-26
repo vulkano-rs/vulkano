@@ -15,8 +15,7 @@
 
 // Note that since we don't create any window, fewer imports are needed.
 extern crate vulkano;
-#[macro_use]
-extern crate vulkano_shader_derive;
+extern crate vulkano_shaders;
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
@@ -29,8 +28,27 @@ use vulkano::instance::InstanceExtensions;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
+
+vulkano_shader!{
+    mod_name: cs,
+    ty: "compute",
+    src: "
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    uint data[];
+} data;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    data.data[idx] *= 12;
+}"
+}
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -79,28 +97,6 @@ fn main() {
     // If you are familiar with graphics pipeline, the principle is the same except that compute
     // pipelines are much simpler to create.
     let pipeline = Arc::new({
-        // TODO: explain
-        #[allow(dead_code)]
-        mod cs {
-            #[derive(VulkanoShader)]
-            #[ty = "compute"]
-            #[src = "
-#version 450
-
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
-
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    data.data[idx] *= 12;
-}"
-]
-            struct Dummy;
-        }
-
         let shader = cs::Shader::load(device.clone())
             .expect("failed to create shader module");
         ComputePipeline::new(device.clone(), &shader.main_entry_point(), &())
