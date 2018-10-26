@@ -4,7 +4,6 @@ members = [
     "vk-sys",
     "vulkano",
     "vulkano-shaders",
-    "vulkano-shader-derive",
     "vulkano-win"
 ]
 
