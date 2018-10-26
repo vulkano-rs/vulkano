@@ -150,15 +150,10 @@ If your change adds, removes or modifies a trait or a function, please add an en
 This repository contains six libraries:
 
 - `vulkano` is the main one.
-- `vulkano-shaders` can analyse SPIR-V shaders at compile-time.
-- `vulkano-shader-derive` provides a custom derive that invokes `vulkano-shaders`. It lets you
-  easily integrate your GLSL shaders within the rest of your source code.
+- `vulkano-shaders` Provides the `vulkano_shader!` macro for compiling glsl shaders.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
 - `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.
-
-Once procedural macros are stabilized in Rust, the `vulkano-shaders` and `vulkano-shader-derive`
-crates will be merged with the `vulkano` crate.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
 driver is up to date before doing so.
