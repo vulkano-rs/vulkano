@@ -36,7 +36,7 @@ pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String
     Ok(content)
 }
 
-pub fn reflect(name: &str, spirv: &[u32], mod_name: &Ident, dump: bool) -> Result<TokenStream, Error> {
+pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Error> {
     let struct_name = Ident::new(&name, Span::call_site());
     let doc = parse::parse_spirv(spirv)?;
 
@@ -71,90 +71,88 @@ pub fn reflect(name: &str, spirv: &[u32], mod_name: &Ident, dump: bool) -> Resul
     let descriptor_sets = descriptor_sets::write_descriptor_sets(&doc);
     let specialization_constants = spec_consts::write_specialization_constants(&doc);
     let ast = quote!{
-        mod #mod_name {
-            #[allow(unused_imports)]
-            use std::sync::Arc;
-            #[allow(unused_imports)]
-            use std::vec::IntoIter as VecIntoIter;
+        #[allow(unused_imports)]
+        use std::sync::Arc;
+        #[allow(unused_imports)]
+        use std::vec::IntoIter as VecIntoIter;
 
-            #[allow(unused_imports)]
-            use vulkano::device::Device;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::DescriptorDesc;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::DescriptorDescTy;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::DescriptorBufferDesc;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::DescriptorImageDesc;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::DescriptorImageDescArray;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor::ShaderStages;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor_set::DescriptorSet;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::pipeline_layout::PipelineLayout;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-            #[allow(unused_imports)]
-            use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-            #[allow(unused_imports)]
-            use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
-            #[allow(unused_imports)]
-            use vulkano::pipeline::shader::SpecializationMapEntry;
+        #[allow(unused_imports)]
+        use vulkano::device::Device;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorDescTy;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorImageDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::DescriptorImageDescArray;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor::ShaderStages;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor_set::DescriptorSet;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayout;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
+        #[allow(unused_imports)]
+        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::SpecializationMapEntry;
 
-            pub struct #struct_name {
-                shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
-            }
-
-            impl #struct_name {
-                /// Loads the shader in Vulkan as a `ShaderModule`.
-                #[inline]
-                #[allow(unsafe_code)]
-                pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
-                            -> Result<#struct_name, ::vulkano::OomError>
-                {
-                    #( #cap_checks )*
-                    let words = [ #( #spirv ),* ];
-
-                    unsafe {
-                        Ok(#struct_name {
-                            shader: try!(::vulkano::pipeline::shader::ShaderModule::from_words(device, &words))
-                        })
-                    }
-                }
-
-                /// Returns the module that was created.
-                #[allow(dead_code)]
-                #[inline]
-                pub fn module(&self) -> &::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule> {
-                    &self.shader
-                }
-
-                #( #entry_points_inside_impl )*
-            }
-
-            #( #entry_points_outside_impl )*
-
-            pub mod ty {
-                #structs
-            }
-
-            #descriptor_sets
-            #specialization_constants
+        pub struct #struct_name {
+            shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
         }
+
+        impl #struct_name {
+            /// Loads the shader in Vulkan as a `ShaderModule`.
+            #[inline]
+            #[allow(unsafe_code)]
+            pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
+                        -> Result<#struct_name, ::vulkano::OomError>
+            {
+                #( #cap_checks )*
+                let words = [ #( #spirv ),* ];
+
+                unsafe {
+                    Ok(#struct_name {
+                        shader: try!(::vulkano::pipeline::shader::ShaderModule::from_words(device, &words))
+                    })
+                }
+            }
+
+            /// Returns the module that was created.
+            #[allow(dead_code)]
+            #[inline]
+            pub fn module(&self) -> &::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule> {
+                &self.shader
+            }
+
+            #( #entry_points_inside_impl )*
+        }
+
+        #( #entry_points_outside_impl )*
+
+        pub mod ty {
+            #structs
+        }
+
+        #descriptor_sets
+        #specialization_constants
     };
 
     if dump {
         println!("{}", ast.to_string());
-        panic!("vulkano_shader! rust codegen dumped") // TODO: use span from dump
+        panic!("`shader!` rust codegen dumped") // TODO: use span from dump
     }
 
     Ok(ast)

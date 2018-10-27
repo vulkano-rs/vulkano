@@ -150,7 +150,7 @@ If your change adds, removes or modifies a trait or a function, please add an en
 This repository contains six libraries:
 
 - `vulkano` is the main one.
-- `vulkano-shaders` Provides the `vulkano_shader!` macro for compiling glsl shaders.
+- `vulkano-shaders` Provides the `shader!` macro for compiling glsl shaders.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
 - `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.

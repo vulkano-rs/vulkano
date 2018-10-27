@@ -28,14 +28,13 @@ use vulkano::instance::InstanceExtensions;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
-use vulkano_shaders::vulkano_shader;
 
 use std::sync::Arc;
 
-vulkano_shader!{
-    mod_name: cs,
-    ty: "compute",
-    src: "
+mod cs {
+    vulkano_shaders::shader!{
+        ty: "compute",
+        src: "
 #version 450
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -48,6 +47,7 @@ void main() {
     uint idx = gl_GlobalInvocationID.x;
     data.data[idx] *= 12;
 }"
+    }
 }
 
 fn main() {

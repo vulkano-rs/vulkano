@@ -4,11 +4,11 @@
     +   `instance::Features` -> `device::Features`
     +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
     +   `instance::RawDeviceExtensions` -> `device::RawDeviceExtensions`
-- Added `vulkano_shaders::vulkano_shader` proc macro, use this instead of `vulkano_shader_deriver::VulkanoShaders`.
+- Added `vulkano_shaders::shader!` proc macro, use this instead of `vulkano_shader_deriver::VulkanoShaders`.
 - The entire `vulkano_shader_derive` crate is deprecated.
 - `vulkano_shaders::{reflect, compile, Error}` are no longer public.
-- Removed mir support, as it is being removed from the vulkan spec.
 - Remove vulkano_shaders::build_glsl_shaders
+- Removed mir support, as it is being removed from the vulkan spec.
 - Split `PersistentDescriptorSetError::MissingUsage` into `MissingImageUsage` and `MissingBufferUsage`
   each with a matching enum indicating the usage that was missing.
 - Fix instance_count when using draw_index with instance buffers
