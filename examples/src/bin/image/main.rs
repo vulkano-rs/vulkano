@@ -19,6 +19,12 @@ extern crate vulkano_win;
 use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
 use vulkano_shaders::vulkano_shader;
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract};
+use vulkano::command_buffer::DynamicState;
+use vulkano::image::SwapchainImage;
+use vulkano::pipeline::viewport::Viewport;
+
+use winit::Window;
 
 use std::sync::Arc;
 
@@ -35,8 +41,7 @@ fn main() {
 
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-
-    let mut dimensions;
+    let window = surface.window();
 
     let queue_family = physical.queue_families().find(|&q| q.supports_graphics() &&
                                                    surface.is_supported(q).unwrap_or(false))
@@ -51,10 +56,17 @@ fn main() {
                                .expect("failed to create device");
     let queue = queues.next().unwrap();
 
-    let (mut swapchain, mut images) = {
+    let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).expect("failed to get surface capabilities");
 
-        dimensions = caps.current_extent.unwrap_or([1024, 768]);
+        let dimensions = if let Some(dimensions) = window.get_inner_size() {
+            // convert to physical pixels
+            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+            [dimensions.0, dimensions.1]
+        } else {
+            // The window no longer exists so exit the application.
+            return;
+        };
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
@@ -83,7 +95,7 @@ fn main() {
     let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
     let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
 
-    let renderpass = Arc::new(
+    let render_pass = Arc::new(
         single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
@@ -127,7 +139,7 @@ fn main() {
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
         .blend_alpha_blending()
-        .render_pass(vulkano::framebuffer::Subpass::from(renderpass.clone(), 0).unwrap())
+        .render_pass(vulkano::framebuffer::Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap());
 
@@ -136,74 +148,48 @@ fn main() {
         .build().unwrap()
     );
 
-    let mut framebuffers: Option<Vec<Arc<vulkano::framebuffer::Framebuffer<_,_>>>> = None;
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
     let mut recreate_swapchain = false;
 
     let mut previous_frame_end = Box::new(tex_future) as Box<GpuFuture>;
 
-    let mut dynamic_state =  vulkano::command_buffer::DynamicState {
-        line_width: None,
-        viewports: Some(vec![vulkano::pipeline::viewport::Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-            depth_range: 0.0 .. 1.0,
-        }]),
-        scissors: None,
-    };
-
     loop {
         previous_frame_end.cleanup_finished();
         if recreate_swapchain {
-
-            dimensions = surface.capabilities(physical)
-                .expect("failed to get surface capabilities")
-                .current_extent.unwrap_or([1024, 768]);
+            let dimensions = if let Some(dimensions) = window.get_inner_size() {
+                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+                [dimensions.0, dimensions.1]
+            } else {
+                return;
+            };
 
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
-                Err(vulkano::swapchain::SwapchainCreationError::UnsupportedDimensions) => {
-                    continue;
-                },
+                Err(vulkano::swapchain::SwapchainCreationError::UnsupportedDimensions) => continue,
                 Err(err) => panic!("{:?}", err)
             };
 
             swapchain = new_swapchain;
-            images = new_images;
-
-            framebuffers = None;
-
-            dynamic_state.viewports = Some(vec![vulkano::pipeline::viewport::Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-                depth_range: 0.0 .. 1.0,
-            }]);
+            framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
 
             recreate_swapchain = false;
         }
 
-        if framebuffers.is_none() {
-            framebuffers = Some(images.iter().map(|image| {
-                Arc::new(vulkano::framebuffer::Framebuffer::start(renderpass.clone())
-                         .add(image.clone()).unwrap()
-                         .build().unwrap())
-            }).collect::<Vec<_>>());
-        }
-
-        let (image_num, future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(),
-                                                                              None) {
+        let (image_num, future) = match vulkano::swapchain::acquire_next_image(swapchain.clone(), None) {
             Ok(r) => r,
             Err(vulkano::swapchain::AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
                 continue;
-            },
+            }
             Err(err) => panic!("{:?}", err)
         };
 
         let cb = vulkano::command_buffer::AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
             .unwrap()
             .begin_render_pass(
-                framebuffers.as_ref().unwrap()[image_num].clone(), false,
+                framebuffers[image_num].clone(), false,
                 vec![[0.0, 0.0, 1.0, 1.0].into()]).unwrap()
             .draw(pipeline.clone(),
                   &dynamic_state,
@@ -235,11 +221,36 @@ fn main() {
         events_loop.poll_events(|ev| {
             match ev {
                 winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
+                winit::Event::WindowEvent { event: winit::WindowEvent::Resized(_), .. } => recreate_swapchain = true,
                 _ => ()
             }
         });
         if done { return; }
     }
+}
+
+/// This method is called once during initialization then again whenever the window is resized
+fn window_size_dependent_setup(
+    images: &[Arc<SwapchainImage<Window>>],
+    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    dynamic_state: &mut DynamicState
+) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+    let dimensions = images[0].dimensions();
+
+    let viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
+        depth_range: 0.0 .. 1.0,
+    };
+    dynamic_state.viewports = Some(vec!(viewport));
+
+    images.iter().map(|image| {
+        Arc::new(
+            Framebuffer::start(render_pass.clone())
+                .add(image.clone()).unwrap()
+                .build().unwrap()
+        ) as Arc<FramebufferAbstract + Send + Sync>
+    }).collect::<Vec<_>>()
 }
 
 vulkano_shader!{
