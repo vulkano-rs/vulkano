@@ -18,7 +18,6 @@ extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
 use vulkano::sync::GpuFuture;
-use vulkano_shaders::vulkano_shader;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract};
 use vulkano::command_buffer::DynamicState;
 use vulkano::image::SwapchainImage;
@@ -253,10 +252,10 @@ fn window_size_dependent_setup(
     }).collect::<Vec<_>>()
 }
 
-vulkano_shader!{
-    mod_name: vs,
-    ty: "vertex",
-    src: "
+mod vs {
+    vulkano_shaders::shader!{
+        ty: "vertex",
+        src: "
 #version 450
 
 layout(location = 0) in vec2 position;
@@ -266,12 +265,13 @@ void main() {
     gl_Position = vec4(position, 0.0, 1.0);
     tex_coords = position + vec2(0.5);
 }"
+    }
 }
 
-vulkano_shader!{
-    mod_name: fs,
-    ty: "fragment",
-    src: "
+mod fs {
+    vulkano_shaders::shader!{
+        ty: "fragment",
+        src: "
 #version 450
 
 layout(location = 0) in vec2 tex_coords;
@@ -282,4 +282,5 @@ layout(set = 0, binding = 0) uniform sampler2D tex;
 void main() {
     f_color = texture(tex, tex_coords);
 }"
+    }
 }

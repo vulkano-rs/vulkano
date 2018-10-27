@@ -38,16 +38,15 @@ use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
-use vulkano_shaders::vulkano_shader;
 
 use winit::Window;
 
 use std::sync::Arc;
 
-vulkano_shader!{
-    mod_name: vs,
-    ty: "vertex",
-    src: "
+mod vs {
+    vulkano_shaders::shader!{
+        ty: "vertex",
+        src: "
 #version 450
 
 layout(location = 0) in vec2 position;
@@ -55,12 +54,13 @@ layout(location = 0) in vec2 position;
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
 }"
+    }
 }
 
-vulkano_shader!{
-    mod_name: tcs,
-    ty: "tess_ctrl",
-    src: "
+mod tcs {
+    vulkano_shaders::shader!{
+        ty: "tess_ctrl",
+        src: "
 #version 450
 
 layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
@@ -79,6 +79,7 @@ void main(void)
     // gl_TessLevelInner[1] = only used when tes uses layout(quads)
     // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
 }"
+    }
 }
 
 // PG
@@ -93,10 +94,10 @@ void main(void)
 // and the values x, y and z represent the distance from a vertex of the triangle.
 // http://mathworld.wolfram.com/BarycentricCoordinates.html
 
-vulkano_shader!{
-    mod_name: tes,
-    ty: "tess_eval",
-    src: "
+mod tes {
+    vulkano_shaders::shader!{
+        ty: "tess_eval",
+        src: "
 #version 450
 
 layout(triangles, equal_spacing, cw) in;
@@ -116,12 +117,13 @@ void main(void)
         1.0
     );
 }"
+    }
 }
 
-vulkano_shader!{
-    mod_name: fs,
-    ty: "fragment",
-    src: "
+mod fs {
+    vulkano_shaders::shader!{
+        ty: "fragment",
+        src: "
 #version 450
 
 layout(location = 0) out vec4 f_color;
@@ -129,6 +131,7 @@ layout(location = 0) out vec4 f_color;
 void main() {
     f_color = vec4(1.0, 1.0, 1.0, 1.0);
 }"
+    }
 }
 
 

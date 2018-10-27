@@ -4,15 +4,13 @@
 //! # Basic usage
 //!
 //! ```
-//! extern crate vulkano_shaders;
 //! extern crate vulkano;
+//! extern crate vulkano_shaders;
 //!
-//! use vulkano_shaders::vulkano_shader;
-//!
-//! vulkano_shader!{
-//!     mod_name: vertex_shader,
-//!     ty: "vertex",
-//!     src: "
+//! mod vs {
+//!     vulkano_shaders::shader!{
+//!         ty: "vertex",
+//!         src: "
 //! #version 450
 //!
 //! layout(location = 0) in vec3 position;
@@ -20,6 +18,7 @@
 //! void main() {
 //!     gl_Position = vec4(position, 1.0);
 //! }"
+//!     }
 //! }
 //! # fn main() {}
 //! ```
@@ -74,12 +73,11 @@
 //! # use std::sync::Arc;
 //! # use vulkano::OomError;
 //! # use vulkano::device::Device;
-//! # use vulkano_shaders::vulkano_shader;
 //! #
-//! # vulkano_shader!{
-//! #     mod_name: vertex_shader,
-//! #     ty: "vertex",
-//! #     src: "
+//! # mod vs {
+//! #     vulkano_shaders::shader!{
+//! #         ty: "vertex",
+//! #         src: "
 //! # #version 450
 //! #
 //! # layout(location = 0) in vec3 position;
@@ -87,18 +85,19 @@
 //! # void main() {
 //! #     gl_Position = vec4(position, 1.0);
 //! # }"
+//! #     }
 //! # }
 //! // various use statements
 //! // `vertex_shader` module with shader derive
 //! 
 //! pub struct Shaders {
-//!     pub vertex_shader: vertex_shader::Shader
+//!     pub vs: vs::Shader
 //! }
 //! 
 //! impl Shaders {
 //!     pub fn load(device: Arc<Device>) -> Result<Self, OomError> {
 //!         Ok(Self {
-//!             vertex_shader: vertex_shader::Shader::load(device)?,
+//!             vs: vs::Shader::load(device)?,
 //!         })
 //!     }
 //! }
@@ -186,7 +185,6 @@ enum SourceKind {
 }
 
 struct MacroInput {
-    mod_ident: Ident,
     shader_kind: ShaderKind,
     source_kind: SourceKind,
     dump: bool,
@@ -195,7 +193,6 @@ struct MacroInput {
 impl Parse for MacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut dump = None;
-        let mut mod_ident = None;
         let mut shader_kind = None;
         let mut source_kind = None;
 
@@ -204,14 +201,6 @@ impl Parse for MacroInput {
             input.parse::<Token![:]>()?;
 
             match name.to_string().as_ref() {
-                "mod_name" => {
-                    if mod_ident.is_some() {
-                        panic!("Only one `mod` can be defined")
-                    }
-
-                    let mod_name: Ident = input.parse()?;
-                    mod_ident = Some(mod_name);
-                }
                 "ty" => {
                     if shader_kind.is_some() {
                         panic!("Only one `ty` can be defined")
@@ -270,19 +259,14 @@ impl Parse for MacroInput {
             None => panic!("Please provide a source e.g. `path: \"foo.glsl\"` or `src: \"glsl source code here ...\"`")
         };
 
-        let mod_ident = match mod_ident {
-            Some(mod_ident) => mod_ident,
-            None => panic!("Please provide a mod e.g. `mod: fs` ")
-        };
-
         let dump = dump.unwrap_or(false);
 
-        Ok(MacroInput { shader_kind, source_kind, mod_ident, dump })
+        Ok(MacroInput { shader_kind, source_kind, dump })
     }
 }
 
 #[proc_macro]
-pub fn vulkano_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
 
     let source_code = match input.source_kind {
@@ -304,5 +288,5 @@ pub fn vulkano_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream
     };
 
     let content = codegen::compile(&source_code, input.shader_kind).unwrap();
-    codegen::reflect("Shader", content.as_binary(), &input.mod_ident, input.dump).unwrap().into()
+    codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
 }

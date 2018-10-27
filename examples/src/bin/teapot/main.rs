@@ -14,7 +14,6 @@ extern crate time;
 
 #[macro_use]
 extern crate vulkano;
-extern crate vulkano_shaders;
 extern crate vulkano_win;
 
 use vulkano_win::VkSurfaceBuild;
@@ -35,8 +34,6 @@ use vulkano::pipeline::viewport::Viewport;
 use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
 use vulkano::sync::GpuFuture;
-
-use vulkano_shaders::vulkano_shader;
 
 use winit::Window;
 
@@ -285,14 +282,16 @@ fn window_size_dependent_setup(
     (pipeline, framebuffers)
 }
 
-vulkano_shader!{
-    mod_name: vs,
-    ty: "vertex",
-    path: "src/bin/teapot/vert.glsl"
+mod vs {
+    vulkano_shaders::shader!{
+        ty: "vertex",
+        path: "src/bin/teapot/vert.glsl"
+    }
 }
 
-vulkano_shader!{
-    mod_name: fs,
-    ty: "fragment",
-    path: "src/bin/teapot/frag.glsl"
+mod fs {
+    vulkano_shaders::shader!{
+        ty: "fragment",
+        path: "src/bin/teapot/frag.glsl"
+    }
 }
