@@ -28,25 +28,6 @@ use vulkano::sync;
 
 use std::sync::Arc;
 
-mod cs {
-    vulkano_shaders::shader!{
-        ty: "compute",
-        src: "
-#version 450
-
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
-
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    data.data[idx] *= 12;
-}"
-    }
-}
-
 fn main() {
     // As with other examples, the first step is to create an instance.
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
@@ -90,6 +71,24 @@ fn main() {
     // If you are familiar with graphics pipeline, the principle is the same except that compute
     // pipelines are much simpler to create.
     let pipeline = Arc::new({
+        mod cs {
+            vulkano_shaders::shader!{
+                ty: "compute",
+                src: "
+#version 450
+
+layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer Data {
+    uint data[];
+} data;
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    data.data[idx] *= 12;
+}"
+            }
+        }
         let shader = cs::Shader::load(device.clone()).unwrap();
         ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
     });

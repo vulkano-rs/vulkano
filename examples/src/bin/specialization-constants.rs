@@ -22,10 +22,18 @@ use vulkano::sync;
 
 use std::sync::Arc;
 
-mod cs {
-    vulkano_shaders::shader!{
-        ty: "compute",
-        src: "
+fn main() {
+    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
+    let (device, mut queues) = Device::new(physical, physical.supported_features(),
+        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let queue = queues.next().unwrap();
+
+    mod cs {
+        vulkano_shaders::shader!{
+            ty: "compute",
+            src: "
 #version 450
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
@@ -45,18 +53,11 @@ void main() {
         data.data[idx] += uint(addend);
     }
 }"
+        }
     }
-}
-
-fn main() {
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
-    let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
-    let queue = queues.next().unwrap();
 
     let shader = cs::Shader::load(device.clone()).unwrap();
+
     let spec_consts = cs::SpecializationConstants {
         enable: 1,
         multiple: 1,
