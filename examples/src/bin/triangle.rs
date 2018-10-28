@@ -49,42 +49,6 @@ use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
 
 use std::sync::Arc;
 
-// TODO: Move this back to the middle of the example, it makes for a more coherent sequential explanation (check git history)
-// The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
-//
-// An overview of what the `shader!` macro generates can be found in the
-// `vulkano-shaders` crate docs. You can view them at https://docs.rs/vulkano-shaders/
-//
-// TODO: explain this in details
-mod vs {
-    vulkano_shaders::shader!{
-        ty: "vertex",
-        src: "
-#version 450
-
-layout(location = 0) in vec2 position;
-
-void main() {
-gl_Position = vec4(position, 0.0, 1.0);
-}"
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader!{
-        ty: "fragment",
-        src: "
-#version 450
-
-layout(location = 0) out vec4 f_color;
-
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"
-    }
-}
-
 fn main() {
     // The first step of any Vulkan program is to create an instance.
     let instance = {
@@ -230,6 +194,43 @@ fn main() {
             Vertex { position: [0.25, -0.1] }
         ].iter().cloned()).unwrap()
     };
+
+    // The next step is to create the shaders.
+    //
+    // The raw shader creation API provided by the vulkano library is unsafe, for various reasons.
+    //
+    // An overview of what the `vulkano_shaders::shader!` macro generates can be found in the
+    // `vulkano-shaders` crate docs. You can view them at https://docs.rs/vulkano-shaders/
+    //
+    // TODO: explain this in details
+    mod vs {
+        vulkano_shaders::shader!{
+            ty: "vertex",
+            src: "
+#version 450
+
+layout(location = 0) in vec2 position;
+
+void main() {
+    gl_Position = vec4(position, 0.0, 1.0);
+}"
+        }
+    }
+
+    mod fs {
+        vulkano_shaders::shader!{
+            ty: "fragment",
+            src: "
+#version 450
+
+layout(location = 0) out vec4 f_color;
+
+void main() {
+    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+}
+"
+        }
+    }
 
     let vs = vs::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
