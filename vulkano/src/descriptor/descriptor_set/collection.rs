@@ -88,10 +88,7 @@ unsafe impl<T> DescriptorSetsCollection for Vec<T>
     }
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        match self.get(set) {
-            Some(set) => set.descriptor(binding),
-            None => None,
-        }
+        self.get(set).and_then(|x| x.descriptor(binding))
     }
 }
 
