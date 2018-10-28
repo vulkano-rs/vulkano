@@ -17,6 +17,7 @@
 - Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
 - Reject generation of rust types for SPIR-V arrays that would have incorrect array stride.
 - Removed the `Layout` prefix of the descriptions used for a render pass.
+- Implemented DescriptorSetCollection for `Vec<T>` which allows easier use of construction them for usage when drawing.
 
 # Version 0.10.0 (2018-08-10)
 
