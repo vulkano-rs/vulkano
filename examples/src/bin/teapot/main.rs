@@ -7,20 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-extern crate examples;
-extern crate cgmath;
-extern crate winit;
-extern crate time;
-
 #[macro_use]
 extern crate vulkano;
 extern crate vulkano_win;
-
-use vulkano_win::VkSurfaceBuild;
+extern crate winit;
+extern crate cgmath;
+extern crate time;
+extern crate examples;
 
 use vulkano::buffer::cpu_pool::CpuBufferPool;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
@@ -28,12 +26,15 @@ use vulkano::image::SwapchainImage;
 use vulkano::image::attachment::AttachmentImage;
 use vulkano::instance::Instance;
 use vulkano::instance::PhysicalDevice;
-use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::pipeline::vertex::TwoBuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
 use vulkano::sync::GpuFuture;
+use vulkano::sync;
+
+use vulkano_win::VkSurfaceBuild;
 
 use winit::Window;
 
@@ -41,17 +42,18 @@ use cgmath::{Matrix3, Matrix4, Point3, Vector3, Rad};
 
 use examples::{Vertex, Normal, VERTICES, NORMALS, INDICES};
 
-use std::sync::Arc;
 use std::iter;
+use std::sync::Arc;
+use std::time::Instant;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
     // `triangle` example if you haven't done so yet.
 
     let extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, &extensions, None).expect("failed to create instance");
+    let instance = Instance::new(None, &extensions, None).unwrap();
 
-    let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
     let mut events_loop = winit::EventsLoop::new();
@@ -69,24 +71,24 @@ fn main() {
 
     let queue_family = physical.queue_families().find(|&q|
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
-    ).expect("couldn't find a graphical queue family");
+    ).unwrap();
 
     let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
 
     let (device, mut queues) = Device::new(
         physical, physical.supported_features(), &device_ext, [(queue_family, 0.5)].iter().cloned()
-    ).expect("failed to create device");
+    ).unwrap();
 
     let queue = queues.next().unwrap();
 
     let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical).expect("failed to get surface capabilities");
+        let caps = surface.capabilities(physical).unwrap();
         let usage = caps.supported_usage_flags;
         let format = caps.supported_formats[0].0;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format, dimensions, 1,
-            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None).expect("failed to create swapchain")
+            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None).unwrap()
     };
 
     let vertices = VERTICES.iter().cloned();
@@ -100,8 +102,8 @@ fn main() {
 
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
 
-    let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
-    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
+    let vs = vs::Shader::load(device.clone()).unwrap();
+    let fs = fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(
         single_pass_renderpass!(device.clone(),
@@ -115,7 +117,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: vulkano::format::Format::D16Unorm,
+                    format: Format::D16Unorm,
                     samples: 1,
                 }
             },
@@ -129,8 +131,8 @@ fn main() {
     let (mut pipeline, mut framebuffers) = window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
     let mut recreate_swapchain = false;
 
-    let mut previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<GpuFuture>;
-    let rotation_start = std::time::Instant::now();
+    let mut previous_frame = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let rotation_start = Instant::now();
 
     loop {
         previous_frame.cleanup_finished();
@@ -178,7 +180,7 @@ fn main() {
             uniform_buffer.next(uniform_data).unwrap()
         };
 
-        let set = Arc::new(vulkano::descriptor::descriptor_set::PersistentDescriptorSet::start(pipeline.clone(), 0)
+        let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
             .add_buffer(uniform_buffer_subbuffer).unwrap()
             .build().unwrap()
         );
@@ -198,7 +200,8 @@ fn main() {
                 vec![
                     [0.0, 0.0, 1.0, 1.0].into(),
                     1f32.into()
-                ]).unwrap()
+                ]
+            ).unwrap()
             .draw_indexed(
                 pipeline.clone(),
                 &DynamicState::none(),
@@ -216,13 +219,13 @@ fn main() {
             Ok(future) => {
                 previous_frame = Box::new(future) as Box<_>;
             }
-            Err(vulkano::sync::FlushError::OutOfDate) => {
+            Err(sync::FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame = Box::new(sync::now(device.clone())) as Box<_>;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame = Box::new(sync::now(device.clone())) as Box<_>;
             }
         }
 
@@ -238,7 +241,7 @@ fn main() {
     }
 }
 
-/// This method is called once during initialization then again whenever the window is resized
+/// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     device: Arc<Device>,
     vs: &vs::Shader,

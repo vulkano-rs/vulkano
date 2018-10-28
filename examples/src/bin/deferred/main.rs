@@ -33,18 +33,16 @@ extern crate vulkano_shaders;
 extern crate winit;
 extern crate vulkano_win;
 
+use vulkano::device::{Device, DeviceExtensions};
+use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain;
+use vulkano::sync::{GpuFuture, FlushError};
+use vulkano::sync;
+
 use vulkano_win::VkSurfaceBuild;
 
-use vulkano::device::Device;
-use vulkano::instance::Instance;
-use vulkano::swapchain;
-use vulkano::swapchain::PresentMode;
-use vulkano::swapchain::SurfaceTransform;
-use vulkano::swapchain::Swapchain;
-use vulkano::swapchain::AcquireError;
-use vulkano::swapchain::SwapchainCreationError;
-use vulkano::sync::now;
-use vulkano::sync::GpuFuture;
+use winit::{EventsLoop, WindowBuilder, Event, WindowEvent};
 
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
@@ -53,68 +51,61 @@ use cgmath::Vector3;
 mod frame;
 mod triangle_draw_system;
 
+use frame::*;
+use triangle_draw_system::*;
+
 fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
-    let instance = {
-        let extensions = vulkano_win::required_extensions();
-        Instance::new(None, &extensions, None).expect("failed to create Vulkan instance")
-    };
-    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
-                            .next().expect("no device available");
+    let extensions = vulkano_win::required_extensions();
+    let instance = Instance::new(None, &extensions, None).unwrap();
 
-    let mut events_loop = winit::EventsLoop::new();
-    let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+
+    let mut events_loop = EventsLoop::new();
+    let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
     let window = surface.window();
 
     let queue_family = physical.queue_families().find(|&q| {
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
     }).expect("couldn't find a graphical queue family");
 
-    let (device, mut queues) = {
-        let device_ext = vulkano::device::DeviceExtensions {
-            khr_swapchain: true,
-            .. vulkano::device::DeviceExtensions::none()
-        };
-
-        Device::new(physical, physical.supported_features(), &device_ext,
-                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
-    };
-
+    let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
+    let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
     let queue = queues.next().unwrap();
 
-    let mut dimensions;
-
     let (mut swapchain, mut images) = {
-        let caps = surface.capabilities(physical)
-                         .expect("failed to get surface capabilities");
-        let dimensions = if let Some(dimensions) = window.get_inner_size() {
+        let caps = surface.capabilities(physical).unwrap();
+
+        let usage = caps.supported_usage_flags;
+        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let format = caps.supported_formats[0].0;
+
+        let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
             let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
             [dimensions.0, dimensions.1]
         } else {
             return;
         };
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
+
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-                       dimensions, 1, caps.supported_usage_flags, &queue,
-                       SurfaceTransform::Identity, alpha, PresentMode::Fifo, true,
-                       None).expect("failed to create swapchain")
+            initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
+            PresentMode::Fifo, true, None).unwrap()
     };
 
 
     // Here is the basic initialization for the deferred system.
-    let mut frame_system = frame::FrameSystem::new(queue.clone(), swapchain.format());
-    let triangle_draw_system = triangle_draw_system::TriangleDrawSystem::new(queue.clone(),
-                                                                             frame_system.deferred_subpass());
+    let mut frame_system = FrameSystem::new(queue.clone(), swapchain.format());
+    let triangle_draw_system = TriangleDrawSystem::new(queue.clone(), frame_system.deferred_subpass());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
 
         if recreate_swapchain {
-            dimensions = if let Some(dimensions) = window.get_inner_size() {
+            let dimensions = if let Some(dimensions) = window.get_inner_size() {
                 let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
                 [dimensions.0, dimensions.1]
             } else {
@@ -148,18 +139,18 @@ fn main() {
         let mut after_future = None;
         while let Some(pass) = frame.next_pass() {
             match pass {
-                frame::Pass::Deferred(mut draw_pass) => {
+                Pass::Deferred(mut draw_pass) => {
                     let cb = triangle_draw_system.draw(draw_pass.viewport_dimensions());
                     draw_pass.execute(cb);
                 }
-                frame::Pass::Lighting(mut lighting) => {
+                Pass::Lighting(mut lighting) => {
                     lighting.ambient_light([0.1, 0.1, 0.1]);
                     lighting.directional_light(Vector3::new(0.2, -0.1, -0.7), [0.6, 0.6, 0.6]);
                     lighting.point_light(Vector3::new(0.5, -0.5, -0.1), [1.0, 0.0, 0.0]);
                     lighting.point_light(Vector3::new(-0.9, 0.2, -0.15), [0.0, 1.0, 0.0]);
                     lighting.point_light(Vector3::new(0.0, 0.5, -0.05), [0.0, 0.0, 1.0]);
                 }
-                frame::Pass::Finished(af) => {
+                Pass::Finished(af) => {
                     after_future = Some(af);
                 }
             }
@@ -173,21 +164,21 @@ fn main() {
             Ok(future) => {
                 previous_frame_end = Box::new(future) as Box<_>;
             }
-            Err(vulkano::sync::FlushError::OutOfDate) => {
+            Err(FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
             }
         }
 
         let mut done = false;
         events_loop.poll_events(|ev| {
             match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
-                winit::Event::WindowEvent { event: winit::WindowEvent::Resized(_), .. } => recreate_swapchain = true,
+                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
+                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
                 _ => ()
             }
         });

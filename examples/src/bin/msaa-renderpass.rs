@@ -72,25 +72,17 @@ extern crate vulkano_shaders;
 use std::sync::Arc;
 use image::ImageBuffer;
 use image::Rgba;
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::CommandBuffer;
-use vulkano::command_buffer::DynamicState;
-use vulkano::device::Device;
-use vulkano::device::DeviceExtensions;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState};
+use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::framebuffer::Framebuffer;
-use vulkano::framebuffer::Subpass;
-use vulkano::image::AttachmentImage;
-use vulkano::image::Dimensions;
-use vulkano::image::StorageImage;
-use vulkano::instance::Instance;
-use vulkano::instance::InstanceExtensions;
-use vulkano::instance::PhysicalDevice;
+use vulkano::framebuffer::{Framebuffer, Subpass};
+use vulkano::image::{AttachmentImage, Dimensions, StorageImage};
+use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sync::GpuFuture;
+use vulkano::format::ClearValue;
 
 mod vs {
     vulkano_shaders::shader!{
@@ -122,34 +114,30 @@ void main() {
 
 fn main() {
     // The usual Vulkan initialization.
-    let instance = Instance::new(None, &InstanceExtensions::none(), None)
-        .expect("failed to create instance");
-    let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
-    let queue_family = physical.queue_families()
-        .find(|&q| q.supports_graphics())
-        .expect("couldn't find a graphical queue family");
-    let (device, mut queues) = {
-        Device::new(physical, physical.supported_features(), &DeviceExtensions::none(),
-                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
-    };
+    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+    let queue_family = physical.queue_families().find(|&q| q.supports_graphics()).unwrap();
+    let (device, mut queues) = Device::new(physical, physical.supported_features(),
+        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
     let queue = queues.next().unwrap();
 
     // Creating our intermediate multisampled image.
     //
     // As explained in the introduction, we pass the same dimensions and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
-    let intermediary = AttachmentImage::transient_multisampled(device.clone(), [1024, 1024],
-                                                     4, Format::R8G8B8A8Unorm).unwrap();
+    let intermediary = AttachmentImage::transient_multisampled(device.clone(),
+        [1024, 1024], 4, Format::R8G8B8A8Unorm).unwrap();
 
     // This is the final image that will receive the anti-aliased triangle.
     let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width: 1024, height: 1024 },
-                                  Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
+        Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
-    let render_pass = Arc::new(single_pass_renderpass!(device.clone(),
+    let render_pass = Arc::new(single_pass_renderpass!(
+        device.clone(),
         attachments: {
             // The first framebuffer attachment is the intermediary image.
             intermediary: {
@@ -192,19 +180,20 @@ fn main() {
     // At the end of the example, we copy the content of `image` (ie. the final image) to a buffer,
     // then read the content of that buffer and save it to a PNG file.
 
-    let vs = vs::Shader::load(device.clone()).expect("failed to create shader module");
-    let fs = fs::Shader::load(device.clone()).expect("failed to create shader module");
+    let vs = vs::Shader::load(device.clone()).unwrap();
+    let fs = fs::Shader::load(device.clone()).unwrap();
 
     #[derive(Copy, Clone)]
     struct Vertex {
         position: [f32; 2],
     }
     impl_vertex!(Vertex, position);
+
     let vertex1 = Vertex { position: [-0.5, -0.5] };
     let vertex2 = Vertex { position: [ 0.0,  0.5] };
     let vertex3 = Vertex { position: [ 0.5, -0.25] };
     let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                                    vec![vertex1, vertex2, vertex3].into_iter()).unwrap();
+        vec![vertex1, vertex2, vertex3].into_iter()).unwrap();
 
     let pipeline = Arc::new(GraphicsPipeline::start()
         .vertex_input_single_buffer::<Vertex>()
@@ -225,11 +214,10 @@ fn main() {
     };
 
     let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                             (0 .. 1024 * 1024 * 4).map(|_| 0u8))
-                                             .expect("failed to create buffer");
+        (0 .. 1024 * 1024 * 4).map(|_| 0u8)).unwrap();
 
     let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-        .begin_render_pass(framebuffer.clone(), false, vec![[0.0, 0.0, 1.0, 1.0].into(), vulkano::format::ClearValue::None])
+        .begin_render_pass(framebuffer.clone(), false, vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None])
         .unwrap()
 
         .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ())
@@ -245,8 +233,7 @@ fn main() {
         .unwrap();
 
     let finished = command_buffer.execute(queue.clone()).unwrap();
-    finished.then_signal_fence_and_flush().unwrap()
-        .wait(None).unwrap();
+    finished.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
 
     let buffer_content = buf.read().unwrap();
     let image = ImageBuffer::<Rgba<u8>, _>::from_raw(1024, 1024, &buffer_content[..]).unwrap();

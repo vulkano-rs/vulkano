@@ -107,10 +107,6 @@
 //! 
 //! The options available are in the form of the following attributes:
 //!
-//! ## `mod_name: ...`
-//!
-//! Specifies the identifier for the module that the generated code goes in.
-//!
 //! ## `ty: "..."`
 //!
 //! This defines what shader type the given GLSL source will be compiled into.
