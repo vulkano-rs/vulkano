@@ -11,17 +11,14 @@
 extern crate vulkano;
 extern crate vulkano_shaders;
 
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::Device;
-use vulkano::device::DeviceExtensions;
-use vulkano::instance::Instance;
-use vulkano::instance::InstanceExtensions;
+use vulkano::device::{Device, DeviceExtensions};
+use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
-use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+use vulkano::sync;
 
 use std::sync::Arc;
 
@@ -53,16 +50,13 @@ void main() {
 
 fn main() {
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance).next().unwrap();
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
-    let (device, mut queues) = {
-        Device::new(physical, physical.supported_features(), &DeviceExtensions::none(),
-                    [(queue_family, 0.5)].iter().cloned()).expect("failed to create device")
-    };
+    let (device, mut queues) = Device::new(physical, physical.supported_features(),
+        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
     let queue = queues.next().unwrap();
 
-    let shader = cs::Shader::load(device.clone())
-        .expect("failed to create shader module");
+    let shader = cs::Shader::load(device.clone()).unwrap();
     let spec_consts = cs::SpecializationConstants {
         enable: 1,
         multiple: 1,
@@ -72,8 +66,7 @@ fn main() {
 
     let data_buffer = {
         let data_iter = (0 .. 65536u32).map(|n| n);
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                       data_iter).expect("failed to create buffer")
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
     };
 
     let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
@@ -85,13 +78,13 @@ fn main() {
         .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
         .build().unwrap();
 
-    let future = now(device.clone())
+    let future = sync::now(device.clone())
         .then_execute(queue.clone(), command_buffer).unwrap()
         .then_signal_fence_and_flush().unwrap();
 
     future.wait(None).unwrap();
 
-    let data_buffer_content = data_buffer.read().expect("failed to lock buffer for reading");
+    let data_buffer_content = data_buffer.read().unwrap();
     for n in 0 .. 65536u32 {
         assert_eq!(data_buffer_content[n as usize], n * 1 + 1);
     }

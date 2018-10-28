@@ -34,7 +34,7 @@ use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
-use vulkano::format;
+use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
 use vulkano::image::SwapchainImage;
 use vulkano::pipeline::GraphicsPipeline;
@@ -65,77 +65,55 @@ pub struct Vertex {
 impl_vertex!(Vertex, position, color);
 
 fn main() {
-    let instance = vk::instance::Instance::new(
-        None,
-        &vulkano_win::required_extensions(),
-        None,
-    ).expect("no instance with surface extension");
-    let physical = vk::instance::PhysicalDevice::enumerate(&instance)
-        .next()
-        .expect("no graphics device");
+    let instance = vk::instance::Instance::new(None, &vulkano_win::required_extensions(), None).unwrap();
+    let physical = vk::instance::PhysicalDevice::enumerate(&instance).next().unwrap();
+
     let mut events_loop = winit::EventsLoop::new();
     let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
     let window = surface.window();
+
+    let queue_family = physical.queue_families().find(|&q| {
+        q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
+    }).unwrap();
     let (device, mut queues) = {
-        let graphical_queue_family = physical
-            .queue_families()
-            .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-            .expect("couldn't find a graphic queue family");
-        let device_ext = DeviceExtensions {
-            khr_swapchain: true,
-            ..DeviceExtensions::none()
-        };
-        Device::new(
-            physical.clone(),
-            physical.supported_features(),
-            &device_ext,
-            [(graphical_queue_family, 0.5)].iter().cloned(),
-        ).expect("failed to create device")
+        let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
+        Device::new(physical, physical.supported_features(), &device_ext,
+            [(queue_family, 0.5)].iter().cloned()).unwrap()
     };
-    let graphics_queue = queues.next().unwrap();
+    let queue = queues.next().unwrap();
+
+    let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
+        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+        [dimensions.0, dimensions.1]
+    } else {
+        return;
+    };
 
     let (mut swapchain, images) = {
-        let caps = surface
-            .capabilities(device.physical_device())
-            .expect("failure to get surface capabilities");
+        let caps = surface.capabilities(physical).unwrap();
+        let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
-        let dimensions = caps.current_extent.unwrap_or([1024, 768]);
-        let usage = caps.supported_usage_flags;
 
-        Swapchain::new(
-            device.clone(),
-            surface.clone(),
-            caps.min_image_count,
-            format,
-            dimensions,
-            1,
-            usage,
-            &graphics_queue,
-            SurfaceTransform::Identity,
-            alpha,
-            PresentMode::Fifo,
-            true,
-            None,
-        ).expect("failed to create swapchain")
+        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format, initial_dimensions,
+            1, usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None).unwrap()
     };
 
-    let render_pass = Arc::new(
-        single_pass_renderpass!(
-            device.clone(), attachments: {
-                color: {
-                    load: Clear,
-                    store: Store,
-                    format: swapchain.format(),
-                    samples: 1,
-                }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
+    let render_pass = Arc::new(single_pass_renderpass!(
+        device.clone(),
+        attachments: {
+            color: {
+                load: Clear,
+                store: Store,
+                format: swapchain.format(),
+                samples: 1,
             }
-        ).unwrap(),
-    );
+        },
+        pass: {
+            color: [color],
+            depth_stencil: {}
+        }
+    ).unwrap());
 
     let vs = {
         let mut f = File::open("src/bin/runtime-shader/vert.spv")
@@ -155,10 +133,10 @@ fn main() {
         unsafe { ShaderModule::new(device.clone(), &v) }.unwrap()
     };
 
-    // This structure will tell Vulkan how input entries of our vertex shader
-    // look like.
+    // This structure will tell Vulkan how input entries of our vertex shader look like
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
     struct VertInput;
+
     unsafe impl ShaderInterfaceDef for VertInput {
         type Iter = VertInputIter;
 
@@ -166,8 +144,10 @@ fn main() {
             VertInputIter(0)
         }
     }
+
     #[derive(Debug, Copy, Clone)]
     struct VertInputIter(u16);
+
     impl Iterator for VertInputIter {
         type Item = ShaderInterfaceDefEntry;
 
@@ -182,7 +162,7 @@ fn main() {
                 self.0 += 1;
                 return Some(ShaderInterfaceDefEntry {
                     location: 1..2,
-                    format: format::Format::R32G32B32Sfloat,
+                    format: Format::R32G32B32Sfloat,
                     name: Some(Cow::Borrowed("color"))
                 })
             }
@@ -190,12 +170,13 @@ fn main() {
                 self.0 += 1;
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
-                    format: format::Format::R32G32Sfloat,
+                    format: Format::R32G32Sfloat,
                     name: Some(Cow::Borrowed("position"))
                 })
             }
             None
         }
+
         #[inline]
         fn size_hint(&self) -> (usize, Option<usize>) {
             // We must return exact number of entries left in iterator.
@@ -203,10 +184,12 @@ fn main() {
             (len, Some(len))
         }
     }
-    impl ExactSizeIterator for VertInputIter {
-    }
+
+    impl ExactSizeIterator for VertInputIter { }
+
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
     struct VertOutput;
+
     unsafe impl ShaderInterfaceDef for VertOutput {
         type Iter = VertOutputIter;
 
@@ -214,10 +197,12 @@ fn main() {
             VertOutputIter(0)
         }
     }
+
     // This structure will tell Vulkan how output entries (those passed to next
     // stage) of our vertex shader look like.
     #[derive(Debug, Copy, Clone)]
     struct VertOutputIter(u16);
+
     impl Iterator for VertOutputIter {
         type Item = ShaderInterfaceDefEntry;
 
@@ -227,20 +212,22 @@ fn main() {
                 self.0 += 1;
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
-                    format: format::Format::R32G32B32Sfloat,
+                    format: Format::R32G32B32Sfloat,
                     name: Some(Cow::Borrowed("v_color"))
                 })
             }
             None
         }
+
         #[inline]
         fn size_hint(&self) -> (usize, Option<usize>) {
             let len = (1 - self.0) as usize;
             (len, Some(len))
         }
     }
-    impl ExactSizeIterator for VertOutputIter {
-    }
+
+    impl ExactSizeIterator for VertOutputIter { }
+
     // This structure describes layout of this stage.
     #[derive(Debug, Copy, Clone)]
     struct VertLayout(ShaderStages);
@@ -248,22 +235,13 @@ fn main() {
         // Number of descriptor sets it takes.
         fn num_sets(&self) -> usize { 0 }
         // Number of entries (bindings) in each set.
-        fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-            match set { _ => None, }
-        }
+        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> { None }
         // Descriptor descriptions.
-        fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-            match (set, binding) { _ => None, }
-        }
+        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> { None }
         // Number of push constants ranges (think: number of push constants).
         fn num_push_constants_ranges(&self) -> usize { 0 }
         // Each push constant range in memory.
-        fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-            if num != 0 || 0 == 0 { return None; }
-            Some(PipelineLayoutDescPcRange { offset: 0,
-                                             size: 0,
-                                             stages: ShaderStages::all() })
-        }
+        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> { None }
     }
 
     // Same as with our vertex shader, but for fragment one instead.
@@ -278,6 +256,7 @@ fn main() {
     }
     #[derive(Debug, Copy, Clone)]
     struct FragInputIter(u16);
+
     impl Iterator for FragInputIter {
         type Item = ShaderInterfaceDefEntry;
 
@@ -287,20 +266,22 @@ fn main() {
                 self.0 += 1;
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
-                    format: format::Format::R32G32B32Sfloat,
+                    format: Format::R32G32B32Sfloat,
                     name: Some(Cow::Borrowed("v_color"))
                 })
             }
             None
         }
+
         #[inline]
         fn size_hint(&self) -> (usize, Option<usize>) {
             let len = (1 - self.0) as usize;
             (len, Some(len))
         }
     }
-    impl ExactSizeIterator for FragInputIter {
-    }
+
+    impl ExactSizeIterator for FragInputIter { }
+
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
     struct FragOutput;
     unsafe impl ShaderInterfaceDef for FragOutput {
@@ -310,8 +291,10 @@ fn main() {
             FragOutputIter(0)
         }
     }
+
     #[derive(Debug, Copy, Clone)]
     struct FragOutputIter(u16);
+
     impl Iterator for FragOutputIter {
         type Item = ShaderInterfaceDefEntry;
 
@@ -323,7 +306,7 @@ fn main() {
                 self.0 += 1;
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
-                    format: format::Format::R32G32B32A32Sfloat,
+                    format: Format::R32G32B32A32Sfloat,
                     name: Some(Cow::Borrowed("f_color"))
                 })
             }
@@ -335,26 +318,18 @@ fn main() {
             (len, Some(len))
         }
     }
-    impl ExactSizeIterator for FragOutputIter {
-    }
+
+    impl ExactSizeIterator for FragOutputIter { }
+
     // Layout same as with vertex shader.
     #[derive(Debug, Copy, Clone)]
     struct FragLayout(ShaderStages);
     unsafe impl PipelineLayoutDesc for FragLayout {
         fn num_sets(&self) -> usize { 0 }
-        fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-            match set { _ => None, }
-        }
-        fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-            match (set, binding) { _ => None, }
-        }
+        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> { None }
+        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> { None }
         fn num_push_constants_ranges(&self) -> usize { 0 }
-        fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-            if num != 0 || 0 == 0 { return None; }
-            Some(PipelineLayoutDescPcRange { offset: 0,
-                                             size: 0,
-                                             stages: ShaderStages::all() })
-        }
+        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> { None }
     }
 
     // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
@@ -405,7 +380,7 @@ fn main() {
             Vertex { position: [ 0.0, -1.0], color: [0.0, 1.0, 0.0] },
             Vertex { position: [ 1.0,  1.0], color: [0.0, 0.0, 1.0] },
         ].iter().cloned()
-    ).expect("failed to create vertex buffer");
+    ).unwrap();
 
     // NOTE: We don't create any descriptor sets in this example, but you should
     // note that passing wrong types, providing sets at wrong indexes will cause
@@ -448,28 +423,17 @@ fn main() {
             Err(err) => panic!("{:?}", err)
         };
 
-        let command_buffer = AutoCommandBufferBuilder::new(
-                device.clone(),
-                graphics_queue.family(),
-            ).unwrap()
-            .begin_render_pass(
-                framebuffers[image_num].clone(),
-                false,
-                vec![[0.0, 0.0, 0.0, 1.0].into()],
-            ).unwrap()
-            .draw(
-                graphics_pipeline.clone(),
-                &dynamic_state,
-                vertex_buffer.clone(),
-                (),
-                (),
-            ).unwrap()
+
+        let clear_values = vec!([0.0, 0.0, 0.0, 1.0].into());
+        let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
+            .begin_render_pass(framebuffers[image_num].clone(), false, clear_values).unwrap()
+            .draw(graphics_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ()).unwrap()
             .end_render_pass().unwrap()
             .build().unwrap();
 
         let future = previous_frame_end.join(acquire_future)
-            .then_execute(graphics_queue.clone(), command_buffer).unwrap()
-            .then_swapchain_present(graphics_queue.clone(), swapchain.clone(), image_num)
+            .then_execute(queue.clone(), command_buffer).unwrap()
+            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush();
 
         match future {
@@ -498,7 +462,7 @@ fn main() {
     }
 }
 
-/// This method is called once during initialization then again whenever the window is resized
+/// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPassAbstract + Send + Sync>,
