@@ -84,14 +84,18 @@ unsafe impl<T> DescriptorSetsCollection for Vec<T>
 
     #[inline]
     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        let set  = &self[set];
-        Some(set.num_bindings())
+        match self.get(set) {
+            Some(set) => Some(set.num_bindings()),
+            None => None,
+        }
     }
 
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        let set = &self[set];
-        set.descriptor(binding)
+        match self.get(set) {
+            Some(set) => set.descriptor(binding),
+            None => None,
+        }
     }
 }
 
