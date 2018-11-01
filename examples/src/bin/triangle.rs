@@ -255,7 +255,7 @@ void main() {
                 store: Store,
                 // `format: <ty>` indicates the type of the format of the image. This has to
                 // be one of the types of the `vulkano::format` module (or alternatively one
-                // of your structs that implements the `FormatDesc` trait). Here we use the 
+                // of your structs that implements the `FormatDesc` trait). Here we use the
                 // same format as the swapchain.
                 format: swapchain.format(),
                 // TODO:

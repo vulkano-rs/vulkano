@@ -547,7 +547,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                     None => panic!("Not enough clear values")
                 }
             }
-            
+
             if clear_values_copy.count() != 0 {
                 panic!("Too many clear values")
             }
