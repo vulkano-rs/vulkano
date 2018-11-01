@@ -144,7 +144,7 @@ fn main() {
             } else {
                 return;
             };
-            
+
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(SwapchainCreationError::UnsupportedDimensions) => continue,
@@ -205,11 +205,11 @@ fn main() {
             .draw_indexed(
                 pipeline.clone(),
                 &DynamicState::none(),
-                vec!(vertex_buffer.clone(), normals_buffer.clone()), 
+                vec!(vertex_buffer.clone(), normals_buffer.clone()),
                 index_buffer.clone(), set.clone(), ()).unwrap()
             .end_render_pass().unwrap()
             .build().unwrap();
-        
+
         let future = previous_frame.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)

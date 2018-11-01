@@ -26,7 +26,7 @@ macro_rules! limits_impl {
                     limits
                 }
             }
-            
+
             $(
                 #[inline]
                 pub fn $name(&self) -> $t {

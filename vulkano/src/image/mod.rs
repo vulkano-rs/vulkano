@@ -306,13 +306,13 @@ impl Dimensions {
     #[inline]
     pub fn to_view_type(&self) -> ViewType {
         match *self {
-            Dimensions::Dim1d { .. } => ViewType::Dim1d, 
-            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray, 
-            Dimensions::Dim2d { .. } => ViewType::Dim2d, 
-            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray, 
-            Dimensions::Dim3d { .. } => ViewType::Dim3d, 
-            Dimensions::Cubemap { .. } => ViewType::Cubemap, 
-            Dimensions::CubemapArray { .. } => ViewType::CubemapArray, 
+            Dimensions::Dim1d { .. } => ViewType::Dim1d,
+            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray,
+            Dimensions::Dim2d { .. } => ViewType::Dim2d,
+            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray,
+            Dimensions::Dim3d { .. } => ViewType::Dim3d,
+            Dimensions::Cubemap { .. } => ViewType::Cubemap,
+            Dimensions::CubemapArray { .. } => ViewType::CubemapArray,
         }
     }
 

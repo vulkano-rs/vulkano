@@ -9,19 +9,19 @@
 
 
 // Welcome to the deferred lighting example!
-// 
+//
 // The idea behind deferred lighting is to render the scene in two steps.
-// 
+//
 // First you draw all the objects of the scene. But instead of calculating the color they will
 // have on the screen, you output their characteristics such as their diffuse color and their
 // normals, and write this to images.
-// 
+//
 // After all the objects are drawn, you should obtain several images that contain the
 // characteristics of each pixel.
-// 
+//
 // Then you apply lighting to the scene. In other words you draw to the final image by taking
 // these intermediate images and the various lights of the scene as input.
-// 
+//
 // This technique allows you to apply tons of light sources to a scene, which would be too
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
 // drawn after the lighting, and that the whole process consumes more memory.
@@ -111,7 +111,7 @@ fn main() {
             } else {
                 return;
             };
-            
+
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(SwapchainCreationError::UnsupportedDimensions) => {

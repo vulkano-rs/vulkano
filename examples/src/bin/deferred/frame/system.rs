@@ -349,7 +349,7 @@ impl<'a> Frame<'a> {
                 // If we are in pass 2 then we have finished applying lighting.
                 // We take the builder, call `end_render_pass()`, and then `build()` it to obtain
                 // an actual command buffer.
-                let command_buffer = 
+                let command_buffer =
                     self.command_buffer
                         .take()
                         .unwrap()

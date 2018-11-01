@@ -1020,7 +1020,7 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
                    // submit the command buffer by flushing previous.
                    // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                    self.previous.flush()?;
-                   
+
                    let mut builder = SubmitPresentBuilder::new();
                    builder.add_swapchain(&self.swapchain,
                                          self.image_id as u32,

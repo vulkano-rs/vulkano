@@ -186,7 +186,7 @@ macro_rules! formats {
 
         impl Format {
             /*pub fn is_supported_for_vertex_attributes(&self) -> bool {
-                
+
             }
 
             .. other functions ..

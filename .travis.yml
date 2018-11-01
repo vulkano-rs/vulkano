@@ -22,6 +22,7 @@ addons:
     - cmake-data
 
 script:
+    - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
     - travis_wait cargo test --all -j 1
     - cd examples
     - cargo build

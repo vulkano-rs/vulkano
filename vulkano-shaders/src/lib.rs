@@ -33,9 +33,9 @@
 //! module like some normal macro crates do since derive macros cannot be used from
 //! the crate they are declared in. On the other hand, if you are looking for a
 //! high-level overview, you can see the below section.
-//! 
+//!
 //! # Generated code overview
-//! 
+//!
 //! The macro generates the following items of interest:
 //! * The `Shader` struct. This contains a single field, `shader`, which is an
 //! `Arc<ShaderModule>`.
@@ -61,11 +61,11 @@
 //! specialization constant found in the shader data. Implementations of
 //! `Default` and [`SpecializationConstants`][SpecializationConstants] are also
 //! generated for the struct.
-//! 
+//!
 //! All of these generated items will be accessed through the module specified
 //! by `mod_name: foo` If you wanted to store the `Shader` in a struct of your own,
 //! you could do something like this:
-//! 
+//!
 //! ```
 //! # extern crate vulkano_shaders;
 //! # extern crate vulkano;
@@ -89,11 +89,11 @@
 //! # }
 //! // various use statements
 //! // `vertex_shader` module with shader derive
-//! 
+//!
 //! pub struct Shaders {
 //!     pub vs: vs::Shader
 //! }
-//! 
+//!
 //! impl Shaders {
 //!     pub fn load(device: Arc<Device>) -> Result<Self, OomError> {
 //!         Ok(Self {
@@ -102,9 +102,9 @@
 //!     }
 //! }
 //! ```
-//! 
+//!
 //! # Options
-//! 
+//!
 //! The options available are in the form of the following attributes:
 //!
 //! ## `ty: "..."`
@@ -134,7 +134,7 @@
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
-//! 
+//!
 //! [reflect]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/lib.rs#L67
 //! [cargo-expand]: https://github.com/dtolnay/cargo-expand
 //! [ShaderModule::new]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/struct.ShaderModule.html#method.new

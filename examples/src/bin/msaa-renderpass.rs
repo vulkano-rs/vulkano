@@ -10,53 +10,53 @@
 //! Multisampling anti-aliasing example, using a render pass resolve.
 //!
 //! # Introduction to multisampling
-//! 
+//!
 //! When you draw an object on an image, this object occupies a certain set of pixels. Each pixel
 //! of the image is either fully covered by the object, or not covered at all. There is no such
 //! thing as a pixel that is half-covered by the object that you're drawing. What this means is
 //! that you will sometimes see a "staircase effect" at the border of your object, also called
 //! aliasing.
-//! 
+//!
 //! The root cause of aliasing is that the resolution of the image is not high enough. If you
 //! increase the size of the image you're drawing to, this effect will still exist but will be
 //! much less visible.
-//! 
+//!
 //! In order to decrease aliasing, some games and programs use what we call "Super-Sampling Anti
 //! Aliasing" (SSAA). For example instead of drawing to an image of size 1024x1024, you draw to an
 //! image of size 4096x4096. Then at the end, you scale down your image to 1024x1024 by merging
 //! nearby pixels. Since the intermediate image is 4 times larger than the destination, this would
 //! be x4 SSAA.
-//! 
+//!
 //! However this technique is very expensive in terms of GPU power. The fragment shader and all
 //! its calculations has to run four times more often.
-//! 
+//!
 //! So instead of SSAA, a common alternative is MSAA (MultiSampling Anti Aliasing). The base
 //! principle is more or less the same: you draw to an image of a larger dimension, and then at
 //! the end you scale it down to the final size. The difference is that the fragment shader is
 //! only run once per pixel of the final size, and its value is duplicated to fill to all the
 //! pixels of the intermediate image that are covered by the object.
-//! 
+//!
 //! For example, let's say that you use x4 MSAA, you draw to an intermediate image of size
 //! 4096x4096, and your object covers the whole image. With MSAA, the fragment shader will only
 //! be 1,048,576 times (1024 * 1024), compared to 16,777,216 times (4096 * 4096) with 4x SSAA.
 //! Then the output of each fragment shader invocation is copied in each of the four pixels of the
 //! intermediate image that correspond to each pixel of the final image.
-//! 
+//!
 //! Now, let's say that your object doesn't cover the whole image. In this situation, only the
 //! pixels of the intermediate image that are covered by the object will receive the output of the
 //! fragment shader.
-//! 
+//!
 //! Because of the way it works, this technique requires direct support from the hardware,
 //! contrary to SSAA which can be done on any machine.
-//! 
+//!
 //! # Multisampled images
-//! 
+//!
 //! Using MSAA with Vulkan is done by creating a regular image, but with a number of samples per
 //! pixel different from 1. For example if you want to use 4x MSAA, you should create an image with
 //! 4 samples per pixel. Internally this image will have 4 times as many pixels as its dimensions
 //! would normally require, but this is handled transparently for you. Drawing to a multisampled
 //! image is exactly the same as drawing to a regular image.
-//! 
+//!
 //! However multisampled images have some restrictions, for example you can't show them on the
 //! screen (swapchain images are always single-sampled), and you can't copy them into a buffer.
 //! Therefore when you have finished drawing, you have to blit your multisampled image to a
