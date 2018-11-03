@@ -19,7 +19,7 @@ macro_rules! single_pass_renderpass {
             $(resolve: [$($resolve_atch:ident),*])*$(,)*
         }
     ) => (
-        ordered_passes_renderpass!(
+        $crate::ordered_passes_renderpass!(
             $device,
             attachments: { $($a)* },
             passes: [
