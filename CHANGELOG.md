@@ -1,5 +1,6 @@
 # Unreleased (Breaking)
 
+- Update to winit 0.18
 - Export features and device extensions from the device module instead of the instance module
     +   `instance::Features` -> `device::Features`
     +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
