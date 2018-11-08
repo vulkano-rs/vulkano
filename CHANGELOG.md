@@ -1,4 +1,4 @@
-# Unreleased (Breaking)
+# Version 0.11.0 (2018-11-08)
 
 - Update to winit 0.18
 - Export features and device extensions from the device module instead of the instance module

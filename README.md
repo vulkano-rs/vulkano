@@ -133,7 +133,9 @@ the required features until macOS 10.12. See https://github.com/vulkano-rs/vulka
 
 ## Donate
 
-[![Become a patron](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/tomaka)
+Rukai (Current maintainer) [![Become a patron](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/rukai)
+
+Tomaka (Original developer) [![Become a patron](https://c5.patreon.com/external/logo/become_a_patron_button.png)](https://www.patreon.com/tomaka)
 
 ## Contributing
 
