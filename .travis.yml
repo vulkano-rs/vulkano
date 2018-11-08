@@ -53,8 +53,3 @@ after_success:
         [ $TRAVIS_PULL_REQUEST = false ] &&
         [ $TRAVIS_OS_NAME = linux ] &&
         cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        [ $TRAVIS_OS_NAME = linux ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml
