@@ -1,3 +1,7 @@
+# Unreleased
+
+- Expose `CopyImageError` and `DrawIndexedIndirectError`.
+
 # Version 0.11.0 (2018-11-08)
 
 - Update to winit 0.18
