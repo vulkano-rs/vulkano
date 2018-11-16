@@ -1,8 +1,10 @@
 # Unreleased
 
+# Version 0.11.1 (2018-11-16)
+
 - Expose `CopyImageError` and `DrawIndexedIndirectError`.
 
-# Version 0.11.0 (2018-11-08)
+# Version 0.11.0 (2018-11-08) (**yanked** because vk-sys 0.3.4 was accidentally breaking vulkano 0.10)
 
 - Update to winit 0.18
 - Export features and device extensions from the device module instead of the instance module
