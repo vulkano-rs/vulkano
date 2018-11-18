@@ -353,7 +353,7 @@ mod tests {
         // byte, but in a rust [[f32;3];2], the second element starts on the
         // 12th byte. Since we can't generate code for these types, we should
         // create an error instead of generating incorrect code.
-        let comp = compile("
+        let comp = compile(None, "
         #version 450
         struct MyStruct {
             vec3 vs[2];
@@ -362,14 +362,14 @@ mod tests {
             MyStruct s;
         };
         void main() {}
-        ", ShaderKind::Vertex).unwrap();
+        ", ShaderKind::Vertex, &[]).unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| structs::write_structs(&doc));
         assert!(res.is_err());
     }
     #[test]
     fn test_trivial_alignment() {
-        let comp = compile("
+        let comp = compile(None, "
         #version 450
         struct MyStruct {
             vec4 vs[2];
@@ -378,7 +378,7 @@ mod tests {
             MyStruct s;
         };
         void main() {}
-        ", ShaderKind::Vertex).unwrap();
+        ", ShaderKind::Vertex, &[]).unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         structs::write_structs(&doc);
     }
@@ -386,7 +386,7 @@ mod tests {
     fn test_wrap_alignment() {
         // This is a workaround suggested in the case of test_bad_alignment,
         // so we should make sure it works.
-        let comp = compile("
+        let comp = compile(None, "
         #version 450
         struct Vec3Wrap {
             vec3 v;
@@ -398,7 +398,7 @@ mod tests {
             MyStruct s;
         };
         void main() {}
-        ", ShaderKind::Vertex).unwrap();
+        ", ShaderKind::Vertex, &[]).unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         structs::write_structs(&doc);
     }
