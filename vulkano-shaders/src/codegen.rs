@@ -8,12 +8,14 @@
 // according to those terms.
 
 use std::io::Error as IoError;
+use std::path::Path;
+use std::fs;
 
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
 use shaderc::{Compiler, CompileOptions};
 
-pub use shaderc::{CompilationArtifact, ShaderKind};
+pub use shaderc::{CompilationArtifact, ShaderKind, IncludeType, ResolvedInclude};
 pub use parse::ParseError;
 
 use parse::Instruction;
@@ -24,13 +26,99 @@ use entry_point;
 use structs;
 use descriptor_sets;
 use spec_consts;
+use read_file_to_string;
 
-pub fn compile(code: &str, ty: ShaderKind) -> Result<CompilationArtifact, String> {
+fn include_callback(requested_source_path_raw: &str, directive_type: IncludeType,
+                    contained_within_path_raw: &str, recursion_depth: usize,
+                    include_directories: &[String], root_source_has_path: bool) -> Result<ResolvedInclude, String> {
+    let file_to_include = match directive_type {
+        IncludeType::Relative => {
+            let requested_source_path = Path::new(requested_source_path_raw);
+
+            if !root_source_has_path && recursion_depth == 1 {
+                let requested_source_name = requested_source_path.file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("Could not get the name of the requested source file.");
+                let requested_source_directory = requested_source_path.parent()
+                    .and_then(|parent| parent.to_str())
+                    .unwrap();
+
+                return Err(format!("Usage of relative paths in imports in embedded GLSL is not
+                                    allowed, try using `#include <{}>` and adding the directory
+                                    `{}` to the `include` array in your `shader!` macro call
+                                    instead.",
+                                   requested_source_name, requested_source_directory));
+            }
+
+            let parent_of_current_source = Path::new(contained_within_path_raw).parent()
+                .unwrap_or_else(|| panic!("The file `{}` does not reside in a directory. This is an
+                                           implementation error.",
+                                          contained_within_path_raw));
+            let resolved_requested_source_path = parent_of_current_source.join(requested_source_path);
+
+            if !resolved_requested_source_path.is_file() {
+                return Err(format!("Invalid include path `{}`, the path does not point to a file.",
+                                   requested_source_path_raw));
+            }
+
+            resolved_requested_source_path
+        },
+        IncludeType::Standard => {
+            let requested_source_path = Path::new(requested_source_path_raw);
+            let mut found_requested_source_path = None;
+
+            for include_directory in include_directories {
+                let include_directory_path = Path::new(include_directory);
+                let resolved_requested_source_path = include_directory_path.join(requested_source_path);
+
+                if resolved_requested_source_path.is_file() {
+                    found_requested_source_path = Some(resolved_requested_source_path);
+                    break;
+                }
+            }
+
+            if found_requested_source_path.is_none() {
+                return Err(format!("Could not include the file `{}` from any include directories.", requested_source_path_raw));
+            }
+
+            found_requested_source_path.unwrap()
+        },
+    };
+
+    let canonical_file_to_include = fs::canonicalize(&file_to_include)
+        .unwrap_or_else(|_| file_to_include);
+    let canonical_file_to_include_string = canonical_file_to_include.to_str()
+        .expect("Could not stringify the file to be included. This is an implementation error.")
+        .to_string();
+    let content = read_file_to_string(canonical_file_to_include.as_path())
+        .map_err(|_| format!("Could read the contents of file `{}` to be included in the
+                          shader source.",
+                          &canonical_file_to_include_string))?;
+
+    Ok(ResolvedInclude {
+        resolved_name: canonical_file_to_include_string,
+        content,
+    })
+}
+
+pub fn compile(path: Option<String>, code: &str, ty: ShaderKind, include_directories: &[String]) -> Result<CompilationArtifact, String> {
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
-    let compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
+    let mut compile_options = CompileOptions::new()
+        .ok_or("failed to initialize compile option")?;
+    let root_source_path = if let &Some(ref path) = &path {
+        path
+    } else {
+        "shader.glsl"
+    };
+
+    compile_options.set_include_callback(|requested_source_path, directive_type,
+                                          contained_within_path, recursion_depth| {
+        include_callback(requested_source_path, directive_type, contained_within_path,
+                         recursion_depth, include_directories, path.is_some())
+    });
 
     let content = compiler
-        .compile_into_spirv(&code, ty, "shader.glsl", "main", Some(&compile_options))
+        .compile_into_spirv(&code, ty, root_source_path, "main", Some(&compile_options))
         .map_err(|e| e.to_string())?;
 
     Ok(content)
