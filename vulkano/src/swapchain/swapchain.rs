@@ -192,8 +192,6 @@ pub struct Swapchain<W> {
 struct ImageEntry {
     // The actual image.
     image: UnsafeImage,
-    // If true, then the image is still in the undefined layout and must be transitioned.
-    undefined_layout: AtomicBool,
 }
 
 impl <W> Swapchain<W> {
@@ -443,7 +441,6 @@ impl <W> Swapchain<W> {
 
                 ImageEntry {
                     image: img,
-                    undefined_layout: AtomicBool::new(true),
                 }
             })
             .collect::<Vec<_>>();
@@ -823,15 +820,6 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
             return Err(AccessCheckError::Unknown);
-        }
-
-        if self.swapchain.images[self.image_id]
-            .undefined_layout
-            .load(Ordering::Relaxed) && layout != ImageLayout::Undefined
-        {
-            return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
-                                                    requested: layout,
-                                                }));
         }
 
         if layout != ImageLayout::Undefined && layout != ImageLayout::PresentSrc {
