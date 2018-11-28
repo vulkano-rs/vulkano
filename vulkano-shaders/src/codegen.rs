@@ -119,8 +119,8 @@ fn include_callback(requested_source_path_raw: &str, directive_type: IncludeType
                  valid unicode characters.")
         .to_string();
     let content = read_file_to_string(canonical_file_to_include.as_path())
-        .map_err(|_| format!("Could read the contents of file `{}` to be included in the shader \
-                              source.",
+        .map_err(|_| format!("Could not read the contents of file `{}` to be included in the \
+                              shader source.",
                               &canonical_file_to_include_string))?;
 
     Ok(ResolvedInclude {
