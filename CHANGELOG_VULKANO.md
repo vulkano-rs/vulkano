@@ -1,5 +1,8 @@
 # Unreleased
 
+- Add support for `#include "..."` and `#include <...>` directives within source
+  files.
+
 # Version 0.11.1 (2018-11-16)
 
 - Expose `CopyImageError` and `DrawIndexedIndirectError`.
