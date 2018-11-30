@@ -43,6 +43,7 @@ macro_rules! extensions {
             }
 
             /// Returns the union of this list and another list.
+            #[inline]
             pub fn union(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
