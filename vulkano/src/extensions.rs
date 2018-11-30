@@ -42,6 +42,17 @@ macro_rules! extensions {
                 }
             }
 
+            /// Returns the union of this list and another list.
+            #[inline]
+            pub fn union(&self, other: &$sname) -> $sname {
+                $sname {
+                    $(
+                        $ext: self.$ext || other.$ext,
+                    )*
+                    _unbuildable: Unbuildable(())
+                }
+            }
+
             /// Returns the intersection of this list and another list.
             #[inline]
             pub fn intersection(&self, other: &$sname) -> $sname {
