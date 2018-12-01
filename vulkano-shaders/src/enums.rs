@@ -15,7 +15,7 @@ use parse::ParseError;
 macro_rules! enumeration {
     ($(typedef enum $unused:ident { $($elem:ident = $value:expr,)+ } $name:ident;)+) => (
         $(
-            #[derive(Debug, Clone)]
+            #[derive(Debug, Clone, PartialEq)]
             pub enum $name {
                 $($elem),+
             }

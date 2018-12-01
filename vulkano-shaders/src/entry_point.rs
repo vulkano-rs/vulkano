@@ -10,7 +10,7 @@
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
 
-use enums::{StorageClass, ExecutionModel, ExecutionMode};
+use enums::{StorageClass, ExecutionModel, ExecutionMode, Decoration};
 use parse::{Instruction, Spirv};
 use spirv_search;
 
@@ -221,11 +221,9 @@ fn write_interface_structs(doc: &Spirv, capitalized_ep_name: &str, interface: &[
                         continue;
                     } // FIXME: hack
 
-                    let location = match spirv_search::location_decoration(doc, result_id) {
-                        Some(l) => l,
-                        None => panic!("Attribute `{}` (id {}) is missing a location",
-                                       name,
-                                       result_id),
+                    let location = match doc.get_decoration_params(result_id, Decoration::DecorationLocation) {
+                        Some(l) => l[0],
+                        None => panic!("Attribute `{}` (id {}) is missing a location", name, result_id),
                     };
 
                     let (format, location_len) = spirv_search::format_from_id(doc, result_type_id, ignore_first_array);
