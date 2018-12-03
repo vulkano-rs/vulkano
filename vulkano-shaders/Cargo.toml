@@ -1,12 +1,23 @@
 [package]
 name = "vulkano-shaders"
-version = "0.9.0"
+version = "0.11.1"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
-description = "Shaders "
+description = "Shaders rust code generation macro"
 license = "MIT/Apache-2.0"
-documentation = "http://tomaka.github.io/vulkano/vulkano/index.html"
+documentation = "https://docs.rs/vulkano"
+homepage = "https://vulkano.rs"
+keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
+[lib]
+proc-macro = true
+
 [dependencies]
-glsl-to-spirv = { version = "0.1.6", path = "../glsl-to-spirv" }
+shaderc = "0.3"
+syn = "0.15"
+quote = "0.6"
+proc-macro2 = "0.4"
+
+[dev-dependencies]
+vulkano = { version = "0.11", path = "../vulkano" }

@@ -25,7 +25,7 @@
 //!   commands (ie. everything but drawing, clearing, etc.) and cannot enter a render pass. They
 //!   can only be called from a primary command buffer outside of a render pass.
 //!
-//! Using secondary command buffers leads to slightly lower performances on the GPU, but they have
+//! Using secondary command buffers leads to slightly lower performance on the GPU, but they have
 //! two advantages on the CPU side:
 //!
 //! - Building a command buffer is a single-threaded operation, but by using secondary command
@@ -82,9 +82,11 @@ pub use self::auto::BuildError;
 pub use self::auto::ClearColorImageError;
 pub use self::auto::CopyBufferError;
 pub use self::auto::CopyBufferImageError;
+pub use self::auto::CopyImageError;
 pub use self::auto::DispatchError;
 pub use self::auto::DrawError;
 pub use self::auto::DrawIndexedError;
+pub use self::auto::DrawIndexedIndirectError;
 pub use self::auto::DrawIndirectError;
 pub use self::auto::ExecuteCommandsError;
 pub use self::auto::FillBufferError;

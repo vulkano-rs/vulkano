@@ -1,10 +1,45 @@
-# Unreleased (major)
+# Unreleased
+
+- Add support for `#include "..."` and `#include <...>` directives within source
+  files.
+- Add a `union` method for the extensions types.
+
+# Version 0.11.1 (2018-11-16)
+
+- Expose `CopyImageError` and `DrawIndexedIndirectError`.
+
+# Version 0.11.0 (2018-11-08) (**yanked** because vk-sys 0.3.4 was accidentally breaking vulkano 0.10)
+
+- Update to winit 0.18
+- Export features and device extensions from the device module instead of the instance module
+    +   `instance::Features` -> `device::Features`
+    +   `instance::DeviceExtensions` -> `device::DeviceExtensions`
+    +   `instance::RawDeviceExtensions` -> `device::RawDeviceExtensions`
+- Added `vulkano_shaders::shader!` proc macro, use this instead of `vulkano_shader_deriver::VulkanoShaders`.
+- The entire `vulkano_shader_derive` crate is deprecated.
+- `vulkano_shaders::{reflect, compile, Error}` are no longer public.
+- Remove vulkano_shaders::build_glsl_shaders
+- Removed mir support, as it is being removed from the vulkan spec.
+- Split `PersistentDescriptorSetError::MissingUsage` into `MissingImageUsage` and `MissingBufferUsage`
+  each with a matching enum indicating the usage that was missing.
+- Fix instance_count when using draw_index with instance buffers
+- Added a `reinterpret` function to `BufferSlice`
+- Made `AttributeInfo` derive `Copy`, `Clone` and `Debug`
+- Use [google/shaderc](https://github.com/google/shaderc-rs) for shader compilation
+- Reject generation of rust types for SPIR-V arrays that would have incorrect array stride.
+- Removed the `Layout` prefix of the descriptions used for a render pass.
+- Implemented DescriptorSetCollection for `Vec<T>` which allows easier use of construction them for usage when drawing.
+
+# Version 0.10.0 (2018-08-10)
 
 - Use dynamically loaded `libvulkan` like on other platforms instead of linking to MoltenVK on macOS
-- Updated winit to version 0.16.
+- Updated winit to version 0.17.
 - Allow custom implementations of `RenderPassDesc` to specify `VK_SUBPASS_EXTERNAL` as a dependency source or destination
 - Added `vulkano_win::create_vk_surface` which allows creating a surface safely without taking ownership of
   the window.
+- `AutoCommandBufferBuilder::draw` and friends no longer consume the `DynamicState` argument, allowing reuse between calls.
+- `Instance::new` and `Instance::with_loader` now take in the layers as an iterator of borrowed `str`s, not of references to
+borrowed `str`s.
 
 # Version 0.9.0 (2018-03-13)
 
@@ -17,7 +52,7 @@
 - Allow `Surface` to own the window it references.
 - Clear value validation for `AutoCommandBufferBuilder::begin_render_pass()`
 - Fix occasional truncation of glslang_validator when glsl-to-spirv is rebuilt
-- Fix linking against MoltenVK >= 0.19.0 
+- Fix linking against MoltenVK >= 0.19.0
 - Fix panic on DeviceLost error after resizing swapchain on nvidia/amd hardware
 - Added `AutoCommandBufferBuilder::copy_image`
 - Added `VulkanObject::TYPE` to look up the `DebugReportObjectTypeEXT` of an object

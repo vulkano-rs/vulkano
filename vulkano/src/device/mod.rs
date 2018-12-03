@@ -16,8 +16,8 @@
 //!
 //! ```no_run
 //! use vulkano::device::Device;
-//! use vulkano::instance::DeviceExtensions;
-//! use vulkano::instance::Features;
+//! use vulkano::device::DeviceExtensions;
+//! use vulkano::device::Features;
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
@@ -62,7 +62,7 @@
 //! Not all physical devices support all possible features and extensions. For example mobile
 //! devices tend to not support geometry shaders, because their hardware is not capable of it. You
 //! can query what is supported with respectively `PhysicalDevice::supported_features` and
-//! TODO: oops, there's no method for querying supported extensions in vulkan yet.
+//! `DeviceExtensions::supported_by_device`.
 //!
 //! > **Note**: The fact that you need to manually enable features at initialization also means
 //! > that you don't need to worry about a capability not being supported later on in your code.
@@ -107,7 +107,6 @@ use std::ffi::CStr;
 
 use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::StdDescriptorPool;
-use instance::Features;
 use instance::Instance;
 use instance::PhysicalDevice;
 use instance::QueueFamily;
@@ -121,7 +120,10 @@ use VulkanHandle;
 use check_errors;
 use vk;
 
-pub use instance::{DeviceExtensions, RawDeviceExtensions};
+pub use self::extensions::DeviceExtensions;
+pub use self::extensions::RawDeviceExtensions;
+pub use ::features::Features;
+mod extensions;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -344,7 +346,7 @@ impl Device {
     /// # Safety
     ///
     /// This function is not thread-safe. You must not submit anything to any of the queue
-    /// of the device (either explicitely or implicitely, for example with a future's destructor)
+    /// of the device (either explicitly or implicitly, for example with a future's destructor)
     /// while this function is waiting.
     ///
     pub unsafe fn wait(&self) -> Result<(), OomError> {
@@ -447,8 +449,8 @@ impl Device {
 
     /// Used to track the number of allocations on this device.
     ///
-    /// To ensure valid usage of the vulkan API, we cannot call `vkAllocateMemory` when
-    /// `maxMemoryAllocationCount` has been exceeded. See the vulkan specs:
+    /// To ensure valid usage of the Vulkan API, we cannot call `vkAllocateMemory` when
+    /// `maxMemoryAllocationCount` has been exceeded. See the Vulkan specs:
     /// https://www.khronos.org/registry/vulkan/specs/1.0/html/vkspec.html#vkAllocateMemory
     ///
     /// Warning: You should never modify this value, except in `device_memory` module

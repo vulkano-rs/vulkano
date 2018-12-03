@@ -59,6 +59,7 @@ pub enum InputRate {
 
 /// Information about a single attribute within a vertex.
 /// TODO: change that API
+#[derive(Copy, Clone, Debug)]
 pub struct AttributeInfo {
     /// Number of bytes between the start of a vertex and the location of attribute.
     pub offset: usize,

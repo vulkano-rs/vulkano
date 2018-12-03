@@ -13,7 +13,7 @@ use format::Format;
 /// from a vertex shader.
 ///
 /// At this stage, the vertex is in a "raw" format. For example a `[f32; 4]` can match both a
-/// `vec4` or a `float[4]`. The way the things are binded depends on the shader.
+/// `vec4` or a `float[4]`. The way the things are bound depends on the shader.
 pub unsafe trait Vertex: 'static + Send + Sync {
     /// Returns the characteristics of a vertex member by its name.
     fn member(name: &str) -> Option<VertexMemberInfo>;

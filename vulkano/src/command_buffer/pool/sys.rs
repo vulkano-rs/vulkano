@@ -29,7 +29,7 @@ use vk;
 /// Low-level implementation of a command pool.
 ///
 /// A command pool is always tied to a specific queue family. Command buffers allocated from a pool
-/// can only be executed on the corresponding queue familiy.
+/// can only be executed on the corresponding queue family.
 ///
 /// This struct doesn't implement the `Sync` trait because Vulkan command pools are not thread
 /// safe. In other words, you can only use a pool from one thread at a time.

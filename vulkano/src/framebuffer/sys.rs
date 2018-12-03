@@ -20,9 +20,9 @@ use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::LoadOp;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
@@ -59,7 +59,7 @@ impl<D> RenderPass<D>
     ///
     /// # Panic
     ///
-    /// - Can panic if it detects some violations in the restrictions. Only unexpensive checks are
+    /// - Can panic if it detects some violations in the restrictions. Only inexpensive checks are
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///
@@ -376,7 +376,7 @@ impl<D> RenderPass<D> {
     /// Returns the granularity of this render pass.
     ///
     /// If the render area of a render pass in a command buffer is a multiple of this granularity,
-    /// then the performances will be optimal. Performances are always optimal for render areas
+    /// then the performance will be optimal. Performances are always optimal for render areas
     /// that cover the whole framebuffer.
     pub fn granularity(&self) -> [u32; 2] {
         let mut granularity = self.granularity.lock().unwrap();
@@ -417,7 +417,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         self.desc.attachment_desc(num)
     }
 
@@ -427,7 +427,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         self.desc.subpass_desc(num)
     }
 
@@ -437,7 +437,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         self.desc.dependency_desc(num)
     }
 }

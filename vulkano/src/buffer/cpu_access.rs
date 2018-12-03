@@ -242,7 +242,7 @@ impl<T: ?Sized, A> CpuAccessibleBuffer<T, A>
     /// this function will return an error as well.
     ///
     /// After this function successfully locks the buffer, any attempt to submit a command buffer
-    /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exlusive
+    /// that uses it in exclusive mode will fail. You can still submit this buffer for non-exclusive
     /// accesses (ie. reads).
     #[inline]
     pub fn read(&self) -> Result<ReadLock<T>, ReadLockError> {
@@ -328,8 +328,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.inner.key()
+    fn conflict_key(&self) -> (u64, usize) {
+        (self.inner.key(), 0)
     }
 
     #[inline]

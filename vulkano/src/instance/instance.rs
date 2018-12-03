@@ -30,9 +30,9 @@ use instance::loader::Loader;
 use instance::loader::LoadingError;
 use vk;
 
-use features::Features;
 use instance::{InstanceExtensions, RawInstanceExtensions};
 use version::Version;
+use features::Features;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -52,7 +52,7 @@ use version::Version;
 ///
 /// A layer is a component that will hook and potentially modify the Vulkan function calls.
 /// For example, activating a layer could add a frames-per-second counter on the screen, or it
-/// could send informations to a debugger that will debug your application.
+/// could send information to a debugger that will debug your application.
 ///
 /// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
 /// > and Linux layers can be installed by third party installers or by package managers and can
@@ -68,19 +68,25 @@ use version::Version;
 ///
 /// ## Example
 ///
-/// ```ignore
-/// // FIXME: this example doesn't run because of ownership problems ; Instance::new() needs a tweak
-/// use vulkano::instance;
-/// use vulkano::instance::Instance;
-/// use vulkano::instance::InstanceExtensions;
-///
-/// // For the sake of the example, we activate all the layers that contain the word "foo" in their
-/// // description.
-/// let layers = instance::layers_list().unwrap()
+/// ```
+/// # use vulkano::instance;
+/// # use vulkano::instance::Instance;
+/// # use vulkano::instance::InstanceExtensions;
+/// # use std::sync::Arc;
+/// # use std::error::Error;
+/// # fn test() -> Result<Arc<Instance>, Box<Error>> {
+/// // For the sake of the example, we activate all the layers that
+/// // contain the word "foo" in their description.
+/// let layers: Vec<_> = instance::layers_list()?
 ///     .filter(|l| l.description().contains("foo"))
+///     .collect();
+///
+/// let layer_names = layers.iter()
 ///     .map(|l| l.name());
 ///
-/// let instance = Instance::new(None, &InstanceExtensions::none(), layers).unwrap();
+/// let instance = Instance::new(None, &InstanceExtensions::none(), layer_names)?;
+/// # Ok(instance)
+/// # }
 /// ```
 // TODO: mention that extensions must be supported by layers as well
 pub struct Instance {
@@ -127,12 +133,12 @@ impl Instance {
     //       the choice to Vulkan
     pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
                            -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a &'a str>,
+        where L: IntoIterator<Item = &'a str>,
               Ext: Into<RawInstanceExtensions>
     {
         let layers = layers
             .into_iter()
-            .map(|&layer| CString::new(layer).unwrap())
+            .map(|layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
         Instance::new_inner(app_infos,
@@ -145,12 +151,12 @@ impl Instance {
     pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<Loader + Send + Sync>>,
                                    app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
                                    -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a &'a str>,
+        where L: IntoIterator<Item = &'a str>,
               Ext: Into<RawInstanceExtensions>
     {
         let layers = layers
             .into_iter()
-            .map(|&layer| CString::new(layer).unwrap())
+            .map(|layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
         Instance::new_inner(app_infos,
@@ -420,7 +426,7 @@ impl Instance {
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever
     /// it needs to allocate memory on the host.
     ///
-    /// Note that this allocator can be overriden when you create a `Device`, a `MemoryPool`, etc.
+    /// Note that this allocator can be overridden when you create a `Device`, a `MemoryPool`, etc.
     pub fn with_alloc(app_infos: Option<&ApplicationInfo>, alloc: Box<Alloc + Send + Sync>) -> Arc<Instance> {
         unimplemented!()
     }*/
@@ -1030,6 +1036,28 @@ impl<'a> QueueFamily<'a> {
     #[inline]
     pub fn queues_count(&self) -> usize {
         self.physical_device.infos().queue_families[self.id as usize].queueCount as usize
+    }
+
+    /// If timestamps are supported, returns the number of bits supported by timestamp operations.
+    /// The returned value will be in the range 36..64.
+    /// If timestamps are not supported, returns None.
+    #[inline]
+    pub fn timestamp_valid_bits(&self) -> Option<u32> {
+        let value = self.physical_device.infos().queue_families[self.id as usize].timestampValidBits;
+        if value == 0 {
+            None
+        } else {
+            Some(value)
+        }
+    }
+
+    /// Returns the minimum granularity supported for image transfers in terms
+    /// of `[width, height, depth]`
+    #[inline]
+    pub fn min_image_transfer_granularity(&self) -> [u32; 3] {
+        let ref granularity = self.physical_device.infos().queue_families[self.id as usize]
+            .minImageTransferGranularity;
+        [granularity.width, granularity.height, granularity.depth]
     }
 
     /// Returns true if queues of this family can execute graphics operations.

@@ -499,7 +499,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 };
 
                 match tess.tessellation_evaluation_shader.0.ty() {
-                    GraphicsShaderType::TessellationControl => {},
+                    GraphicsShaderType::TessellationEvaluation => {},
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
@@ -1141,7 +1141,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
     /// Sets the vertex input to a single vertex buffer.
     ///
-    /// You will most likely need to explicitely specify the template parameter to the type of a
+    /// You will most likely need to explicitly specify the template parameter to the type of a
     /// vertex.
     #[inline]
     pub fn vertex_input_single_buffer<V>(self)
@@ -1458,7 +1458,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         self
     }*/
 
-    /// Sets the front-facing faces to couner-clockwise faces. This is the default.
+    /// Sets the front-facing faces to counter-clockwise faces. This is the default.
     ///
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.

@@ -27,7 +27,7 @@
 //! an implementation-defined way to determine which samples get disabled or not. For example if
 //! the alpha value is 0.5, then about half of the samples will be discarded. If you render to a
 //! multisample image, this means that the color will end up being mixed with whatever color was
-//! undernearth, which gives the same effect as alpha blending.
+//! underneath, which gives the same effect as alpha blending.
 //!
 //! If `alpha_to_one` is true, the alpha value of all the samples will be forced to 1.0 (or the
 //! maximum possible value) after the effects of `alpha_to_coverage` have been applied.

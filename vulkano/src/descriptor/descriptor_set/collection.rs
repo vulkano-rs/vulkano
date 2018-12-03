@@ -70,6 +70,28 @@ unsafe impl<T> DescriptorSetsCollection for T
     }
 }
 
+unsafe impl<T> DescriptorSetsCollection for Vec<T>
+    where T: DescriptorSet + Send + Sync + 'static
+{
+    #[inline]
+    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+        let mut v = Vec::new();
+        for o in self {
+            v.push(Box::new(o) as Box<_>);
+        }
+        return v;
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.get(set).map(|x| x.num_bindings())
+    }
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.get(set).and_then(|x| x.descriptor(binding))
+    }
+}
+
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
         unsafe impl<$first$(, $others)+> DescriptorSetsCollection for ($first, $($others),+)

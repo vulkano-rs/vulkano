@@ -1,10 +1,10 @@
 [package]
 name = "vk-sys"
-version = "0.3.3"
+version = "0.4.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Bindings for the Vulkan graphics API"
 license = "MIT/Apache-2.0"
 documentation = "https://docs.rs/vk-sys"
-keywords = ["vulkan", "bindings", "graphics", "gpu"]
+keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]

@@ -38,11 +38,11 @@ pub struct StateCacher {
     // the processing then we will end up in a weird state. This bool is true when we start
     // comparing sets, and is set to false when we end up comparing. If it was true when we start
     // comparing, we know that something bad happened and we flush the cache.
-    poisonned_descriptor_sets: bool,
+    poisoned_descriptor_sets: bool,
     // The vertex buffers currently bound.
     vertex_buffers: SmallVec<[(vk::Buffer, vk::DeviceSize); 12]>,
-    // Same as `poisonned_descriptor_sets` but for vertex buffers.
-    poisonned_vertex_buffers: bool,
+    // Same as `poisoned_descriptor_sets` but for vertex buffers.
+    poisoned_vertex_buffers: bool,
     // The index buffer, offset, and index type currently bound. `None` if nothing bound.
     index_buffer: Option<(vk::Buffer, usize, IndexType)>,
 }
@@ -66,9 +66,9 @@ impl StateCacher {
             graphics_pipeline: 0,
             compute_descriptor_sets: SmallVec::new(),
             graphics_descriptor_sets: SmallVec::new(),
-            poisonned_descriptor_sets: false,
+            poisoned_descriptor_sets: false,
             vertex_buffers: SmallVec::new(),
-            poisonned_vertex_buffers: false,
+            poisoned_vertex_buffers: false,
             index_buffer: None,
         }
     }
@@ -91,13 +91,16 @@ impl StateCacher {
     ///
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
-    pub fn dynamic_state(&mut self, mut incoming: DynamicState) -> DynamicState {
+    pub fn dynamic_state(&mut self, incoming: &DynamicState) -> DynamicState {
+        let mut changed = DynamicState::none();
+
         macro_rules! cmp {
             ($field:ident) => (
-                if self.dynamic_state.$field == incoming.$field {
-                    incoming.$field = None;
-                } else if incoming.$field.is_some() {
-                    self.dynamic_state.$field = incoming.$field.clone();
+                if self.dynamic_state.$field != incoming.$field {
+                    changed.$field = incoming.$field.clone();
+                    if incoming.$field.is_some() {
+                        self.dynamic_state.$field = incoming.$field.clone();
+                    }
                 }
             );
         }
@@ -106,7 +109,7 @@ impl StateCacher {
         cmp!(viewports);
         cmp!(scissors);
 
-        incoming
+        changed
     }
 
     /// Starts the process of comparing a list of descriptor sets to the descriptor sets currently
@@ -120,15 +123,15 @@ impl StateCacher {
     /// changes are going to be performed after the `compare` function returns.
     #[inline]
     pub fn bind_descriptor_sets(&mut self, graphics: bool) -> StateCacherDescriptorSets {
-        if self.poisonned_descriptor_sets {
+        if self.poisoned_descriptor_sets {
             self.compute_descriptor_sets = SmallVec::new();
             self.graphics_descriptor_sets = SmallVec::new();
         }
 
-        self.poisonned_descriptor_sets = true;
+        self.poisoned_descriptor_sets = true;
 
         StateCacherDescriptorSets {
-            poisonned: &mut self.poisonned_descriptor_sets,
+            poisoned: &mut self.poisoned_descriptor_sets,
             state: if graphics {
                 &mut self.graphics_descriptor_sets
             } else {
@@ -186,14 +189,14 @@ impl StateCacher {
     /// changes are going to be performed after the `compare` function returns.
     #[inline]
     pub fn bind_vertex_buffers(&mut self) -> StateCacherVertexBuffers {
-        if self.poisonned_vertex_buffers {
+        if self.poisoned_vertex_buffers {
             self.vertex_buffers = SmallVec::new();
         }
 
-        self.poisonned_vertex_buffers = true;
+        self.poisoned_vertex_buffers = true;
 
         StateCacherVertexBuffers {
-            poisonned: &mut self.poisonned_vertex_buffers,
+            poisoned: &mut self.poisoned_vertex_buffers,
             state: &mut self.vertex_buffers,
             offset: 0,
             first_diff: None,
@@ -229,8 +232,8 @@ impl StateCacher {
 /// > **Note**: For reliability reasons, if you drop/leak this struct before calling `compare` then
 /// > the cache of the currently bound descriptor sets will be reset.
 pub struct StateCacherDescriptorSets<'s> {
-    // Reference to the parent's `poisonned_descriptor_sets`.
-    poisonned: &'s mut bool,
+    // Reference to the parent's `poisoned_descriptor_sets`.
+    poisoned: &'s mut bool,
     // Reference to the descriptor sets list to compare to.
     state: &'s mut SmallVec<[vk::DescriptorSet; 12]>,
     // Next offset within the list to compare to.
@@ -271,7 +274,7 @@ impl<'s> StateCacherDescriptorSets<'s> {
     /// After this function returns, the cache will be updated to match your list.
     #[inline]
     pub fn compare(self) -> Option<u32> {
-        *self.poisonned = false;
+        *self.poisoned = false;
         // Removing from the cache any set that wasn't added with `add`.
         self.state.truncate(self.offset);
         self.found_diff
@@ -283,13 +286,13 @@ impl<'s> StateCacherDescriptorSets<'s> {
 /// > **Note**: For reliability reasons, if you drop/leak this struct before calling `compare` then
 /// > the cache of the currently bound vertex buffers will be reset.
 pub struct StateCacherVertexBuffers<'s> {
-    // Reference to the parent's `poisonned_vertex_buffers`.
-    poisonned: &'s mut bool,
+    // Reference to the parent's `poisoned_vertex_buffers`.
+    poisoned: &'s mut bool,
     // Reference to the vertex buffers list to compare to.
     state: &'s mut SmallVec<[(vk::Buffer, vk::DeviceSize); 12]>,
     // Next offset within the list to compare to.
     offset: usize,
-    // Contains the offet of the first vertex buffer that differs.
+    // Contains the offset of the first vertex buffer that differs.
     first_diff: Option<u32>,
     // Offset of the last vertex buffer that differs.
     last_diff: u32,
@@ -336,7 +339,7 @@ impl<'s> StateCacherVertexBuffers<'s> {
     /// > range `1 .. 2` only contains one element.
     #[inline]
     pub fn compare(self) -> Option<Range<u32>> {
-        *self.poisonned = false;
+        *self.poisoned = false;
 
         // Removing from the cache any set that wasn't added with `add`.
         self.state.truncate(self.offset);

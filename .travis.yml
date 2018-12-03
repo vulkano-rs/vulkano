@@ -1,51 +1,41 @@
+# The shaderc dependencies are already installed on the base images
+# so we dont need to worry about installing them.
+dist: xenial
+os:
+  - linux
+  - osx
 language: rust
 rust:
-    - nightly
-    - stable
-
+  - nightly
+  - stable
 cache:
   cargo
 
-install:
-  - export CXX="g++-4.8"
-
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    - george-edison55-precise-backports     # recent version of cmake
-    packages:
-    - gcc-4.8
-    - g++-4.8       # required to compile glslang
-    - clang
-    - cmake
-    - cmake-data
-
 script:
-    - cargo test --all -j 1
+  - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
+  - travis_wait cargo test --all -j 2
+  - cd examples
+  - cargo build -j 2
+  - cd .. # this is very important or else the below `cargo publish` will fail
 
 after_success:
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path glsl-to-spirv/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml

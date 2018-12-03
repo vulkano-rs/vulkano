@@ -39,7 +39,7 @@
 //! - `Sint` means that the values are signed integers. No conversion is performed.
 //!
 //! - `Ufloat` means that the values are unsigned floating points. No conversion is performed. This
-//!   format is very unsual.
+//!   format is very unusual.
 //!
 //! - `Sfloat` means that the values are regular floating points. No conversion is performed.
 //!
@@ -186,7 +186,7 @@ macro_rules! formats {
 
         impl Format {
             /*pub fn is_supported_for_vertex_attributes(&self) -> bool {
-                
+
             }
 
             .. other functions ..
@@ -790,7 +790,7 @@ impl FormatTy {
 }
 
 /// Describes a uniform value that will be used to fill an image.
-// TODO: should have the same layout as `vk::ClearValue` for performances
+// TODO: should have the same layout as `vk::ClearValue` for performance
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum ClearValue {
     /// Entry for attachments that aren't cleared.

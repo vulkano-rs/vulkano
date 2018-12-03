@@ -596,7 +596,7 @@ impl UnsafeDescriptorSet {
             // sure that it's impossible to have an empty descriptor write.
             debug_assert!(!indiv_write.inner.is_empty());
 
-            // The whole struct that wr write here is valid, except for pImageInfo, pBufferInfo
+            // The whole struct thats written here is valid, except for pImageInfo, pBufferInfo
             // and pTexelBufferView which are placeholder values.
             raw_writes.push(vk::WriteDescriptorSet {
                                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,

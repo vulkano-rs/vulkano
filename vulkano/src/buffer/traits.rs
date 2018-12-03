@@ -108,7 +108,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self) -> u64;
+    fn conflict_key(&self) -> (u64, usize);
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -173,7 +173,7 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
+    fn conflict_key(&self) -> (u64, usize) {
         (**self).conflict_key()
     }
 

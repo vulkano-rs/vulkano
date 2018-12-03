@@ -10,7 +10,7 @@
 use std::ops::BitOr;
 use vk;
 
-/// Describes how an image is going to be used. This is **not** an optimization.
+/// Describes how an image is going to be used. This is **not** just an optimization.
 ///
 /// If you try to use an image in a way that you didn't declare, a panic will happen.
 ///

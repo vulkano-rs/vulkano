@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Images storage (1D, 2D, 3D, arrays, etc.).
+//! Image storage (1D, 2D, 3D, arrays, etc.).
 //!
-//! An *image* is a location in memory whose purpose is to store multi-dimensional data. Its
-//! most common usage is to store a 2D array of color pixels (in other words an *image* in the
+//! An *image* is a region of memory whose purpose is to store multi-dimensional data. Its
+//! most common use is to store a 2D array of color pixels (in other words an *image* in
 //! everyday language), but it can also be used to store arbitrary data.
 //!
 //! The advantage of using an image compared to a buffer is that the memory layout is optimized
@@ -22,8 +22,8 @@
 //!
 //! # Images and image views
 //!
-//! There is a distinction between *images* and *image views*. As its name tells, an image view
-//! describes how the GPU must interpret the image.
+//! There is a distinction between *images* and *image views*. As its name suggests, an image
+//! view describes how the GPU must interpret the image.
 //!
 //! Transfer and memory operations operate on images themselves, while reading/writing an image
 //! operates on image views. You can create multiple image views from the same image.
@@ -41,7 +41,7 @@
 //! - An `ImmutableImage` stores data which never need be changed after the initial upload,
 //!   like a texture.
 //!
-//! # Low-level informations
+//! # Low-level information
 //!
 //! To be written.
 //!
@@ -306,13 +306,13 @@ impl Dimensions {
     #[inline]
     pub fn to_view_type(&self) -> ViewType {
         match *self {
-            Dimensions::Dim1d { .. } => ViewType::Dim1d, 
-            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray, 
-            Dimensions::Dim2d { .. } => ViewType::Dim2d, 
-            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray, 
-            Dimensions::Dim3d { .. } => ViewType::Dim3d, 
-            Dimensions::Cubemap { .. } => ViewType::Cubemap, 
-            Dimensions::CubemapArray { .. } => ViewType::CubemapArray, 
+            Dimensions::Dim1d { .. } => ViewType::Dim1d,
+            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray,
+            Dimensions::Dim2d { .. } => ViewType::Dim2d,
+            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray,
+            Dimensions::Dim3d { .. } => ViewType::Dim3d,
+            Dimensions::Cubemap { .. } => ViewType::Cubemap,
+            Dimensions::CubemapArray { .. } => ViewType::CubemapArray,
         }
     }
 
@@ -469,7 +469,7 @@ impl ImageDimensions {
     ///
     /// # Panic
     ///
-    /// In debug mode, panicks if `width`, `height` or `depth` is equal to 0. In release, returns
+    /// In debug mode, Panics if `width`, `height` or `depth` is equal to 0. In release, returns
     /// an unspecified value.
     ///
     pub fn mipmap_dimensions(&self, level: u32) -> Option<ImageDimensions> {

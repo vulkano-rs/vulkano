@@ -1,534 +1,316 @@
-// Copyright (c) 2016 The vulkano developers
-// Licensed under the Apache License, Version 2.0
-// <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
-// at your option. All files in the project carrying such
-// notice may not be copied, modified, or distributed except
-// according to those terms.
+//! The procedural macro for vulkano's shader system.
+//! Manages the compile-time compilation of GLSL into SPIR-V and generation of assosciated rust code.
+//!
+//! # Basic usage
+//!
+//! ```
+//! extern crate vulkano;
+//! extern crate vulkano_shaders;
+//!
+//! mod vs {
+//!     vulkano_shaders::shader!{
+//!         ty: "vertex",
+//!         src: "
+//! #version 450
+//!
+//! layout(location = 0) in vec3 position;
+//!
+//! void main() {
+//!     gl_Position = vec4(position, 1.0);
+//! }"
+//!     }
+//! }
+//! # fn main() {}
+//! ```
+//!
+//! # Details
+//!
+//! If you want to take a look at what the macro generates, your best options
+//! are to either read through the code that handles the generation (the
+//! [`reflect`][reflect] function in the `vulkano-shaders` crate) or use a tool
+//! such as [cargo-expand][cargo-expand] to view the expansion of the macro in your
+//! own code. It is unfortunately not possible to provide a `generated_example`
+//! module like some normal macro crates do since derive macros cannot be used from
+//! the crate they are declared in. On the other hand, if you are looking for a
+//! high-level overview, you can see the below section.
+//!
+//! # Generated code overview
+//!
+//! The macro generates the following items of interest:
+//! * The `Shader` struct. This contains a single field, `shader`, which is an
+//! `Arc<ShaderModule>`.
+//! * The `Shader::load` constructor. This method takes an `Arc<Device>`, calls
+//! [`ShaderModule::new`][ShaderModule::new] with the passed-in device and the
+//! shader data provided via the macro, and returns `Result<Shader, OomError>`.
+//! Before doing so, it loops through every capability instruction in the shader
+//! data, verifying that the passed-in `Device` has the appropriate features
+//! enabled. **This function currently panics if a feature required by the shader
+//! is not enabled on the device.** At some point in the future it will return
+//! an error instead.
+//! * The `Shader::module` method. This method simply returns a reference to the
+//! `Arc<ShaderModule>` contained within the `shader` field of the `Shader`
+//! struct.
+//! * Methods for each entry point of the shader module. These construct and
+//! return the various entry point structs that can be found in the
+//! [vulkano::pipeline::shader][pipeline::shader] module.
+//! * A Rust struct translated from each struct contained in the shader data.
+//! * The `Layout` newtype. This contains a [`ShaderStages`][ShaderStages] struct.
+//! An implementation of [`PipelineLayoutDesc`][PipelineLayoutDesc] is also
+//! generated for the newtype.
+//! * The `SpecializationConstants` struct. This contains a field for every
+//! specialization constant found in the shader data. Implementations of
+//! `Default` and [`SpecializationConstants`][SpecializationConstants] are also
+//! generated for the struct.
+//!
+//! All of these generated items will be accessed through the module specified
+//! by `mod_name: foo` If you wanted to store the `Shader` in a struct of your own,
+//! you could do something like this:
+//!
+//! ```
+//! # extern crate vulkano_shaders;
+//! # extern crate vulkano;
+//! # fn main() {}
+//! # use std::sync::Arc;
+//! # use vulkano::OomError;
+//! # use vulkano::device::Device;
+//! #
+//! # mod vs {
+//! #     vulkano_shaders::shader!{
+//! #         ty: "vertex",
+//! #         src: "
+//! # #version 450
+//! #
+//! # layout(location = 0) in vec3 position;
+//! #
+//! # void main() {
+//! #     gl_Position = vec4(position, 1.0);
+//! # }"
+//! #     }
+//! # }
+//! // various use statements
+//! // `vertex_shader` module with shader derive
+//!
+//! pub struct Shaders {
+//!     pub vs: vs::Shader
+//! }
+//!
+//! impl Shaders {
+//!     pub fn load(device: Arc<Device>) -> Result<Self, OomError> {
+//!         Ok(Self {
+//!             vs: vs::Shader::load(device)?,
+//!         })
+//!     }
+//! }
+//! ```
+//!
+//! # Options
+//!
+//! The options available are in the form of the following attributes:
+//!
+//! ## `ty: "..."`
+//!
+//! This defines what shader type the given GLSL source will be compiled into.
+//! The type can be any of the following:
+//!
+//! * `vertex`
+//! * `fragment`
+//! * `geometry`
+//! * `tess_ctrl`
+//! * `tess_eval`
+//! * `compute`
+//!
+//! For details on what these shader types mean, [see Vulkano's documentation][pipeline].
+//!
+//! ## `src: "..."`
+//!
+//! Provides the raw GLSL source to be compiled in the form of a string. Cannot
+//! be used in conjunction with the `path` field.
+//!
+//! ## `path: "..."`
+//!
+//! Provides the path to the GLSL source to be compiled, relative to `Cargo.toml`.
+//! Cannot be used in conjunction with the `src` field.
+//!
+//! ## `include: ["...", "...", ..., "..."]`
+//!
+//! Specifies the standard include directories to be searched through when using the
+//! `#include <...>` directive within a shader source.
+//! If `path` was specified, relative paths can also be used (`#include "..."`), without the need
+//! to specify one or more standard include directories. Relative paths are relative to the
+//! directory, which contains the source file the `#include "..."` directive is declared in.
+//!
+//! ## `dump: true`
+//!
+//! The crate fails to compile but prints the generated rust code to stdout.
+//!
+//! [reflect]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/lib.rs#L67
+//! [cargo-expand]: https://github.com/dtolnay/cargo-expand
+//! [ShaderModule::new]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/struct.ShaderModule.html#method.new
+//! [OomError]: https://docs.rs/vulkano/*/vulkano/enum.OomError.html
+//! [pipeline::shader]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/index.html
+//! [descriptor]: https://docs.rs/vulkano/*/vulkano/descriptor/index.html
+//! [ShaderStages]: https://docs.rs/vulkano/*/vulkano/descriptor/descriptor/struct.ShaderStages.html
+//! [PipelineLayoutDesc]: https://docs.rs/vulkano/*/vulkano/descriptor/pipeline_layout/trait.PipelineLayoutDesc.html
+//! [SpecializationConstants]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/trait.SpecializationConstants.html
+//! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
 
-extern crate glsl_to_spirv;
+#![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
+
+#![recursion_limit = "1024"]
+#[macro_use] extern crate quote;
+             extern crate shaderc;
+             extern crate proc_macro;
+             extern crate proc_macro2;
+#[macro_use] extern crate syn;
+
 
 use std::env;
-use std::fs;
 use std::fs::File;
-use std::io::Error as IoError;
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Result as IoResult};
 use std::path::Path;
 
-pub use glsl_to_spirv::ShaderType;
-pub use parse::ParseError;
+use syn::parse::{Parse, ParseStream, Result};
+use syn::{Ident, LitStr, LitBool};
 
+mod codegen;
 mod descriptor_sets;
 mod entry_point;
 mod enums;
 mod parse;
 mod spec_consts;
 mod structs;
+mod spirv_search;
 
-pub fn build_glsl_shaders<'a, I>(shaders: I)
-    where I: IntoIterator<Item = (&'a str, ShaderType)>
-{
-    let destination = env::var("OUT_DIR").unwrap();
-    let destination = Path::new(&destination);
+use codegen::ShaderKind;
 
-    let shaders = shaders.into_iter().collect::<Vec<_>>();
-    for &(shader, _) in &shaders {
-        // Run this first so that a panic won't interfere with rerun
-        println!("cargo:rerun-if-changed={}", shader);
-    }
-
-    for (shader, ty) in shaders {
-        let shader = Path::new(shader);
-
-        let shader_content = {
-            let mut s = String::new();
-            File::open(shader)
-                .expect("failed to open shader")
-                .read_to_string(&mut s)
-                .expect("failed to read shader content");
-            s
-        };
-
-        fs::create_dir_all(&destination.join("shaders").join(shader.parent().unwrap())).unwrap();
-        let mut file_output = File::create(&destination.join("shaders").join(shader))
-            .expect("failed to open shader output");
-
-        let content = match glsl_to_spirv::compile(&shader_content, ty) {
-            Ok(compiled) => compiled,
-            Err(message) => panic!("{}\nfailed to compile shader", message),
-        };
-        let output = reflect("Shader", content).unwrap();
-        write!(file_output, "{}", output).unwrap();
-    }
+enum SourceKind {
+    Src(String),
+    Path(String),
 }
 
-pub fn reflect<R>(name: &str, mut spirv: R) -> Result<String, Error>
-    where R: Read
-{
-    let mut data = Vec::new();
-    spirv.read_to_end(&mut data)?;
+struct MacroInput {
+    shader_kind: ShaderKind,
+    source_kind: SourceKind,
+    include_directories: Vec<String>,
+    dump: bool,
+}
 
-    // now parsing the document
-    let doc = parse::parse_spirv(&data)?;
+impl Parse for MacroInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut dump = None;
+        let mut shader_kind = None;
+        let mut source_kind = None;
+        let mut include_directories = Vec::new();
 
-    let mut output = String::new();
-    output.push_str(
-        r#"
-        #[allow(unused_imports)]
-        use std::sync::Arc;
-        #[allow(unused_imports)]
-        use std::vec::IntoIter as VecIntoIter;
+        while !input.is_empty() {
+            let name: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
 
-        #[allow(unused_imports)]
-        use vulkano::device::Device;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorDescTy;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorBufferDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDescArray;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::ShaderStages;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::DescriptorSet;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayout;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::shader::SpecializationMapEntry;
-    "#,
-    );
+            match name.to_string().as_ref() {
+                "ty" => {
+                    if shader_kind.is_some() {
+                        panic!("Only one `ty` can be defined")
+                    }
 
-    {
-        // contains the data that was passed as input to this function
-        let spirv_data = data.iter()
-            .map(|&byte| byte.to_string())
-            .collect::<Vec<String>>()
-            .join(", ");
-
-        // writing the header
-        output.push_str(&format!(
-            r#"
-pub struct {name} {{
-    shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
-}}
-
-impl {name} {{
-    /// Loads the shader in Vulkan as a `ShaderModule`.
-    #[inline]
-    #[allow(unsafe_code)]
-    pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
-                -> Result<{name}, ::vulkano::OomError>
-    {{
-
-        "#,
-            name = name
-        ));
-
-        // checking whether each required capability is enabled in the vulkan device
-        for i in doc.instructions.iter() {
-            if let &parse::Instruction::Capability(ref cap) = i {
-                if let Some(cap) = capability_name(cap) {
-                    output.push_str(&format!(
-                        r#"
-                        if !device.enabled_features().{cap} {{
-                            panic!("capability {{:?}} not enabled", "{cap}")  // FIXME: error
-                            //return Err(CapabilityNotEnabled);
-                        }}"#,
-                        cap = cap
-                    ));
+                    let ty: LitStr = input.parse()?;
+                    let ty = match ty.value().as_ref() {
+                        "vertex" => ShaderKind::Vertex,
+                        "fragment" => ShaderKind::Fragment,
+                        "geometry" => ShaderKind::Geometry,
+                        "tess_ctrl" => ShaderKind::TessControl,
+                        "tess_eval" => ShaderKind::TessEvaluation,
+                        "compute" => ShaderKind::Compute,
+                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
+                    };
+                    shader_kind = Some(ty);
                 }
-            }
-        }
+                "src" => {
+                    if source_kind.is_some() {
+                        panic!("Only one `src` or `path` can be defined")
+                    }
 
-        // follow-up of the header
-        output.push_str(&format!(
-            r#"
-        unsafe {{
-            let data = [{spirv_data}];
-
-            Ok({name} {{
-                shader: try!(::vulkano::pipeline::shader::ShaderModule::new(device, &data))
-            }})
-        }}
-    }}
-
-    /// Returns the module that was created.
-    #[allow(dead_code)]
-    #[inline]
-    pub fn module(&self) -> &::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule> {{
-        &self.shader
-    }}
-        "#,
-            name = name,
-            spirv_data = spirv_data
-        ));
-
-        // writing one method for each entry point of this module
-        let mut outside_impl = String::new();
-        for instruction in doc.instructions.iter() {
-            if let &parse::Instruction::EntryPoint { .. } = instruction {
-                let (outside, entry_point) = entry_point::write_entry_point(&doc, instruction);
-                output.push_str(&entry_point);
-                outside_impl.push_str(&outside);
-            }
-        }
-
-        // footer
-        output.push_str(&format!(
-            r#"
-}}
-        "#
-        ));
-
-        output.push_str(&outside_impl);
-
-        // struct definitions
-        output.push_str("pub mod ty {");
-        output.push_str(&structs::write_structs(&doc));
-        output.push_str("}");
-
-        // descriptor sets
-        output.push_str(&descriptor_sets::write_descriptor_sets(&doc));
-
-        // specialization constants
-        output.push_str(&spec_consts::write_specialization_constants(&doc));
-    }
-
-    Ok(output)
-}
-
-#[derive(Debug)]
-pub enum Error {
-    IoError(IoError),
-    ParseError(ParseError),
-}
-
-impl From<IoError> for Error {
-    #[inline]
-    fn from(err: IoError) -> Error {
-        Error::IoError(err)
-    }
-}
-
-impl From<ParseError> for Error {
-    #[inline]
-    fn from(err: ParseError) -> Error {
-        Error::ParseError(err)
-    }
-}
-
-/// Returns the vulkano `Format` and number of occupied locations from an id.
-///
-/// If `ignore_first_array` is true, the function expects the outermost instruction to be
-/// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
-/// panic.
-fn format_from_id(doc: &parse::Spirv, searched: u32, ignore_first_array: bool) -> (String, usize) {
-    for instruction in doc.instructions.iter() {
-        match instruction {
-            &parse::Instruction::TypeInt {
-                result_id,
-                width,
-                signedness,
-            } if result_id == searched => {
-                assert!(!ignore_first_array);
-                return (match (width, signedness) {
-                    (8, true) => "R8Sint",
-                    (8, false) => "R8Uint",
-                    (16, true) => "R16Sint",
-                    (16, false) => "R16Uint",
-                    (32, true) => "R32Sint",
-                    (32, false) => "R32Uint",
-                    (64, true) => "R64Sint",
-                    (64, false) => "R64Uint",
-                    _ => panic!(),
-                }.to_owned(),
-                        1);
-            },
-            &parse::Instruction::TypeFloat { result_id, width } if result_id == searched => {
-                assert!(!ignore_first_array);
-                return (match width {
-                    32 => "R32Sfloat",
-                    64 => "R64Sfloat",
-                    _ => panic!(),
-                }.to_owned(),
-                        1);
-            },
-            &parse::Instruction::TypeVector {
-                result_id,
-                component_id,
-                count,
-            } if result_id == searched => {
-                assert!(!ignore_first_array);
-                let (format, sz) = format_from_id(doc, component_id, false);
-                assert!(format.starts_with("R32"));
-                assert_eq!(sz, 1);
-                let format = if count == 1 {
-                    format
-                } else if count == 2 {
-                    format!("R32G32{}", &format[3 ..])
-                } else if count == 3 {
-                    format!("R32G32B32{}", &format[3 ..])
-                } else if count == 4 {
-                    format!("R32G32B32A32{}", &format[3 ..])
-                } else {
-                    panic!("Found vector type with more than 4 elements")
-                };
-                return (format, sz);
-            },
-            &parse::Instruction::TypeMatrix {
-                result_id,
-                column_type_id,
-                column_count,
-            } if result_id == searched => {
-                assert!(!ignore_first_array);
-                let (format, sz) = format_from_id(doc, column_type_id, false);
-                return (format, sz * column_count as usize);
-            },
-            &parse::Instruction::TypeArray {
-                result_id,
-                type_id,
-                length_id,
-            } if result_id == searched => {
-                if ignore_first_array {
-                    return format_from_id(doc, type_id, false);
+                    let src: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Src(src.value()));
                 }
+                "path" => {
+                    if source_kind.is_some() {
+                        panic!("Only one `src` or `path` can be defined")
+                    }
 
-                let (format, sz) = format_from_id(doc, type_id, false);
-                let len = doc.instructions
-                    .iter()
-                    .filter_map(|e| match e {
-                                    &parse::Instruction::Constant {
-                                        result_id,
-                                        ref data,
-                                        ..
-                                    } if result_id == length_id => Some(data.clone()),
-                                    _ => None,
-                                })
-                    .next()
-                    .expect("failed to find array length");
-                let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                return (format, sz * len as usize);
-            },
-            &parse::Instruction::TypePointer { result_id, type_id, .. }
-                if result_id == searched => {
-                return format_from_id(doc, type_id, ignore_first_array);
-            },
-            _ => (),
-        }
-    }
+                    let path: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Path(path.value()));
+                }
+                "include" => {
+                    let in_brackets;
+                    bracketed!(in_brackets in input);
 
-    panic!("Type #{} not found or invalid", searched)
-}
+                    while !in_brackets.is_empty() {
+                        let path: LitStr = in_brackets.parse()?;
 
-fn name_from_id(doc: &parse::Spirv, searched: u32) -> String {
-    doc.instructions
-        .iter()
-        .filter_map(|i| if let &parse::Instruction::Name {
-            target_id,
-            ref name,
-        } = i
-        {
-            if target_id == searched {
-                Some(name.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        })
-        .next()
-        .and_then(|n| if !n.is_empty() { Some(n) } else { None })
-        .unwrap_or("__unnamed".to_owned())
-}
+                        include_directories.push(path.value());
 
-fn member_name_from_id(doc: &parse::Spirv, searched: u32, searched_member: u32) -> String {
-    doc.instructions
-        .iter()
-        .filter_map(|i| if let &parse::Instruction::MemberName {
-            target_id,
-            member,
-            ref name,
-        } = i
-        {
-            if target_id == searched && member == searched_member {
-                Some(name.clone())
-            } else {
-                None
-            }
-        } else {
-            None
-        })
-        .next()
-        .and_then(|n| if !n.is_empty() { Some(n) } else { None })
-        .unwrap_or("__unnamed".to_owned())
-}
-
-fn location_decoration(doc: &parse::Spirv, searched: u32) -> Option<u32> {
-    doc.instructions
-        .iter()
-        .filter_map(|i| if let &parse::Instruction::Decorate {
-            target_id,
-            decoration: enums::Decoration::DecorationLocation,
-            ref params,
-        } = i
-        {
-            if target_id == searched {
-                Some(params[0])
-            } else {
-                None
-            }
-        } else {
-            None
-        })
-        .next()
-}
-
-/// Returns true if a `BuiltIn` decorator is applied on an id.
-fn is_builtin(doc: &parse::Spirv, id: u32) -> bool {
-    for instruction in &doc.instructions {
-        match *instruction {
-            parse::Instruction::Decorate {
-                target_id,
-                decoration: enums::Decoration::DecorationBuiltIn,
-                ..
-            } if target_id == id => {
-                return true;
-            },
-            parse::Instruction::MemberDecorate {
-                target_id,
-                decoration: enums::Decoration::DecorationBuiltIn,
-                ..
-            } if target_id == id => {
-                return true;
-            },
-            _ => (),
-        }
-    }
-
-    for instruction in &doc.instructions {
-        match *instruction {
-            parse::Instruction::Variable {
-                result_type_id,
-                result_id,
-                ..
-            } if result_id == id => {
-                return is_builtin(doc, result_type_id);
-            },
-            parse::Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {
-                return is_builtin(doc, type_id);
-            },
-            parse::Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
-                return is_builtin(doc, type_id);
-            },
-            parse::Instruction::TypeStruct {
-                result_id,
-                ref member_types,
-            } if result_id == id => {
-                for &mem in member_types {
-                    if is_builtin(doc, mem) {
-                        return true;
+                        if !in_brackets.is_empty() {
+                            in_brackets.parse::<Token![,]>()?;
+                        }
                     }
                 }
-            },
-            parse::Instruction::TypePointer { result_id, type_id, .. } if result_id == id => {
-                return is_builtin(doc, type_id);
-            },
-            _ => (),
-        }
-    }
+                "dump" => {
+                    if dump.is_some() {
+                        panic!("Only one `dump` can be defined")
+                    }
+                    let dump_lit: LitBool = input.parse()?;
+                    dump = Some(dump_lit.value);
+                }
+                name => panic!(format!("Unknown field name: {}", name))
+            }
 
-    false
+            if !input.is_empty() {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        let shader_kind = match shader_kind {
+            Some(shader_kind) => shader_kind,
+            None => panic!("Please provide a shader type e.g. `ty: \"vertex\"`")
+        };
+
+        let source_kind = match source_kind {
+            Some(source_kind) => source_kind,
+            None => panic!("Please provide a source e.g. `path: \"foo.glsl\"` or `src: \"glsl source code here ...\"`")
+        };
+
+        let dump = dump.unwrap_or(false);
+
+        Ok(MacroInput { shader_kind, source_kind, include_directories, dump })
+    }
 }
 
-/// Returns the name of the Vulkan something that corresponds to an `OpCapability`.
-///
-/// Returns `None` if irrelevant.
-// TODO: this function is a draft, as the actual names may not be the same
-fn capability_name(cap: &enums::Capability) -> Option<&'static str> {
-    match *cap {
-        enums::Capability::CapabilityMatrix => None,        // always supported
-        enums::Capability::CapabilityShader => None,        // always supported
-        enums::Capability::CapabilityGeometry => Some("geometry_shader"),
-        enums::Capability::CapabilityTessellation => Some("tessellation_shader"),
-        enums::Capability::CapabilityAddresses => panic!(), // not supported
-        enums::Capability::CapabilityLinkage => panic!(),   // not supported
-        enums::Capability::CapabilityKernel => panic!(),    // not supported
-        enums::Capability::CapabilityVector16 => panic!(),  // not supported
-        enums::Capability::CapabilityFloat16Buffer => panic!(), // not supported
-        enums::Capability::CapabilityFloat16 => panic!(),   // not supported
-        enums::Capability::CapabilityFloat64 => Some("shader_f3264"),
-        enums::Capability::CapabilityInt64 => Some("shader_int64"),
-        enums::Capability::CapabilityInt64Atomics => panic!(),  // not supported
-        enums::Capability::CapabilityImageBasic => panic!(),    // not supported
-        enums::Capability::CapabilityImageReadWrite => panic!(),    // not supported
-        enums::Capability::CapabilityImageMipmap => panic!(),   // not supported
-        enums::Capability::CapabilityPipes => panic!(), // not supported
-        enums::Capability::CapabilityGroups => panic!(),    // not supported
-        enums::Capability::CapabilityDeviceEnqueue => panic!(), // not supported
-        enums::Capability::CapabilityLiteralSampler => panic!(),    // not supported
-        enums::Capability::CapabilityAtomicStorage => panic!(), // not supported
-        enums::Capability::CapabilityInt16 => Some("shader_int16"),
-        enums::Capability::CapabilityTessellationPointSize =>
-            Some("shader_tessellation_and_geometry_point_size"),
-        enums::Capability::CapabilityGeometryPointSize =>
-            Some("shader_tessellation_and_geometry_point_size"),
-        enums::Capability::CapabilityImageGatherExtended => Some("shader_image_gather_extended"),
-        enums::Capability::CapabilityStorageImageMultisample =>
-            Some("shader_storage_image_multisample"),
-        enums::Capability::CapabilityUniformBufferArrayDynamicIndexing =>
-            Some("shader_uniform_buffer_array_dynamic_indexing"),
-        enums::Capability::CapabilitySampledImageArrayDynamicIndexing =>
-            Some("shader_sampled_image_array_dynamic_indexing"),
-        enums::Capability::CapabilityStorageBufferArrayDynamicIndexing =>
-            Some("shader_storage_buffer_array_dynamic_indexing"),
-        enums::Capability::CapabilityStorageImageArrayDynamicIndexing =>
-            Some("shader_storage_image_array_dynamic_indexing"),
-        enums::Capability::CapabilityClipDistance => Some("shader_clip_distance"),
-        enums::Capability::CapabilityCullDistance => Some("shader_cull_distance"),
-        enums::Capability::CapabilityImageCubeArray => Some("image_cube_array"),
-        enums::Capability::CapabilitySampleRateShading => Some("sample_rate_shading"),
-        enums::Capability::CapabilityImageRect => panic!(), // not supported
-        enums::Capability::CapabilitySampledRect => panic!(),   // not supported
-        enums::Capability::CapabilityGenericPointer => panic!(),    // not supported
-        enums::Capability::CapabilityInt8 => panic!(),  // not supported
-        enums::Capability::CapabilityInputAttachment => None,       // always supported
-        enums::Capability::CapabilitySparseResidency => Some("shader_resource_residency"),
-        enums::Capability::CapabilityMinLod => Some("shader_resource_min_lod"),
-        enums::Capability::CapabilitySampled1D => None,        // always supported
-        enums::Capability::CapabilityImage1D => None,        // always supported
-        enums::Capability::CapabilitySampledCubeArray => Some("image_cube_array"),
-        enums::Capability::CapabilitySampledBuffer => None,         // always supported
-        enums::Capability::CapabilityImageBuffer => None,        // always supported
-        enums::Capability::CapabilityImageMSArray => Some("shader_storage_image_multisample"),
-        enums::Capability::CapabilityStorageImageExtendedFormats =>
-            Some("shader_storage_image_extended_formats"),
-        enums::Capability::CapabilityImageQuery => None,        // always supported
-        enums::Capability::CapabilityDerivativeControl => None,        // always supported
-        enums::Capability::CapabilityInterpolationFunction => Some("sample_rate_shading"),
-        enums::Capability::CapabilityTransformFeedback => panic!(), // not supported
-        enums::Capability::CapabilityGeometryStreams => panic!(),   // not supported
-        enums::Capability::CapabilityStorageImageReadWithoutFormat =>
-            Some("shader_storage_image_read_without_format"),
-        enums::Capability::CapabilityStorageImageWriteWithoutFormat =>
-            Some("shader_storage_image_write_without_format"),
-        enums::Capability::CapabilityMultiViewport => Some("multi_viewport"),
-    }
+pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
+    let mut buf = String::new();
+    File::open(full_path)
+        .and_then(|mut file| file.read_to_string(&mut buf))?;
+    Ok(buf)
+}
+
+#[proc_macro]
+pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as MacroInput);
+
+    let (path, source_code) = match input.source_kind {
+        SourceKind::Src(source) => (None, source),
+        SourceKind::Path(path) => (Some(path.clone()), {
+            let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+            let full_path = Path::new(&root).join(&path);
+
+            if full_path.is_file() {
+                read_file_to_string(&full_path)
+                    .expect(&format!("Error reading source from {:?}", path))
+            } else {
+                panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
+            }
+        })
+    };
+
+    let content = codegen::compile(path, &source_code, input.shader_kind, &input.include_directories).unwrap();
+    codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
 }

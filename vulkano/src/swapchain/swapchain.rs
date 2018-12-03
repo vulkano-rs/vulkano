@@ -126,9 +126,9 @@ pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
 }
 
 /// Same as `swapchain::present`, except it allows specifying a present region.
-/// Areas outside the present region may be ignored by vulkan in order to optimize presentation.
+/// Areas outside the present region may be ignored by Vulkan in order to optimize presentation.
 ///
-/// This is just an optimizaion hint, as the vulkan driver is free to ignore the given present region.
+/// This is just an optimization hint, as the Vulkan driver is free to ignore the given present region.
 ///
 /// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
 pub fn present_incremental<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
@@ -192,7 +192,7 @@ pub struct Swapchain<W> {
 struct ImageEntry {
     // The actual image.
     image: UnsafeImage,
-    // If true, then the image is still in the undefined layout and must be transitionned.
+    // If true, then the image is still in the undefined layout and must be transitioned.
     undefined_layout: AtomicBool,
 }
 
@@ -1020,7 +1020,7 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
                    // submit the command buffer by flushing previous.
                    // Since the implementation should remember being flushed it's safe to call build_submission multiple times
                    self.previous.flush()?;
-                   
+
                    let mut builder = SubmitPresentBuilder::new();
                    builder.add_swapchain(&self.swapchain,
                                          self.image_id as u32,

@@ -20,7 +20,7 @@ use vulkano::instance::debug::{DebugCallback, MessageTypes};
 fn main() {
     // Vulkano Debugging Example Code
     //
-    // This example code will demonstrate using the debug functions of the Vulkano api.
+    // This example code will demonstrate using the debug functions of the Vulkano API.
     //
     // There is documentation here about how to setup debugging:
     // https://vulkan.lunarg.com/doc/view/1.0.13.0/windows/layers.html
@@ -39,8 +39,8 @@ fn main() {
     // The main layer you might want is: VK_LAYER_LUNARG_standard_validation
     // This includes a number of the other layers for you and is quite detailed.
     //
-    // Additional layers can be installed (gpu vendor provided, something you found on github, etc)
-    // and you should verify that list for safety - Volkano will return an error if you specify
+    // Additional layers can be installed (gpu vendor provided, something you found on GitHub, etc)
+    // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
     let mut layers = instance::layers_list().unwrap();
@@ -50,7 +50,7 @@ fn main() {
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
     let layer = "VK_LAYER_LUNARG_standard_validation";
-    let layers = vec![&layer];
+    let layers = vec![layer];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance = Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
@@ -88,12 +88,12 @@ fn main() {
     }).ok();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Create vulkan objects in the same way as the other examples                                               //
+    // Create Vulkan objects in the same way as the other examples                                               //
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
-    let queue = physical.queue_families().next().expect("couldn't find a queue family");
-    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue, 0.5)]).expect("failed to create device");
+    let queue_family = physical.queue_families().next().expect("couldn't find a queue family");
+    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue_family, 0.5)]).expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:

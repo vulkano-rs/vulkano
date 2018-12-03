@@ -1,3 +1,5 @@
+#![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
+
 extern crate vulkano;
 extern crate winit;
 
@@ -6,7 +8,7 @@ extern crate objc;
 #[cfg(target_os = "macos")]
 extern crate cocoa;
 #[cfg(target_os = "macos")]
-extern crate metal_rs as metal;
+extern crate metal;
 
 use std::borrow::Borrow;
 use std::error;
@@ -41,7 +43,6 @@ pub fn required_extensions() -> InstanceExtensions {
         khr_xlib_surface: true,
         khr_xcb_surface: true,
         khr_wayland_surface: true,
-        khr_mir_surface: true,
         khr_android_surface: true,
         khr_win32_surface: true,
         mvk_ios_surface: true,
@@ -58,7 +59,7 @@ pub fn required_extensions() -> InstanceExtensions {
 /// Create a surface from the window type `W`. The surface borrows the window
 /// to prevent it from being dropped before the surface.
 pub fn create_vk_surface<W>(
-    window: W, instance: Arc<Instance>,
+    window: W, instance: Arc<Instance>
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError>
 where
     W: SafeBorrow<winit::Window>,
