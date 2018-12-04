@@ -72,15 +72,8 @@ pub fn write_specialization_constants(doc: &Spirv) -> TokenStream {
         let (rust_ty, rust_size, rust_alignment) = spec_const_type_from_id(doc, type_id);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
-        let constant_id = doc.instructions
-            .iter()
-            .filter_map(|i| match i {
-                &Instruction::Decorate { target_id, decoration: Decoration::DecorationSpecId, ref params }
-                    if target_id == result_id => Some(params[0]),
-                _ => None,
-            })
-            .next()
-            .expect("Found a specialization constant with no SpecId decoration");
+        let constant_id = doc.get_decoration_params(result_id, Decoration::DecorationSpecId)
+            .unwrap()[0];
 
         spec_consts.push(SpecConst {
             name: spirv_search::name_from_id(doc, result_id),

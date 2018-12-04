@@ -57,29 +57,13 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
 
         // Ignore the whole struct is a member is built in, which includes
         // `gl_Position` for example.
-        if is_builtin_member(doc, struct_id, num as u32) {
+        if doc.get_member_decoration_params(struct_id, num as u32, Decoration::DecorationBuiltIn).is_some() {
             return (quote!{}, None); // TODO: is this correct? shouldn't it return a correct struct but with a flag or something?
         }
 
         // Finding offset of the current member, as requested by the SPIR-V code.
-        let spirv_offset = doc.instructions
-            .iter()
-            .filter_map(|i| {
-                match *i {
-                    Instruction::MemberDecorate {
-                        target_id,
-                        member,
-                        decoration: Decoration::DecorationOffset,
-                        ref params,
-                    } if target_id == struct_id && member as usize == num => {
-                        return Some(params[0]);
-                    },
-                    _ => (),
-                };
-
-                None
-            })
-            .next();
+        let spirv_offset = doc.get_member_decoration_params(struct_id, num as u32, Decoration::DecorationOffset)
+            .map(|x| x[0]);
 
         // Some structs don't have `Offset` decorations, in the case they are used as local
         // variables only. Ignoring these.
@@ -128,39 +112,22 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
     }
 
     // Try determine the total size of the struct in order to add padding at the end of the struct.
-    let spirv_req_total_size = doc.instructions
-        .iter()
-        .filter_map(|i| match *i {
-                        Instruction::Decorate {
-                            target_id,
-                            decoration: Decoration::DecorationArrayStride,
-                            ref params,
-                        } => {
-                            for inst in doc.instructions.iter() {
-                                match *inst {
-                                    Instruction::TypeArray {
-                                        result_id, type_id, ..
-                                    } if result_id == target_id && type_id == struct_id => {
-                                        return Some(params[0]);
-                                    },
-                                    Instruction::TypeRuntimeArray { result_id, type_id }
-                                        if result_id == target_id && type_id == struct_id => {
-                                        return Some(params[0]);
-                                    },
-                                    _ => (),
-                                }
-                            }
-
-                            None
-                        },
-                        _ => None,
-                    })
-        .fold(None, |a, b| if let Some(a) = a {
-            assert_eq!(a, b);
-            Some(a)
-        } else {
-            Some(b)
-        });
+    let mut spirv_req_total_size = None;
+    for inst in doc.instructions.iter() {
+        match *inst {
+            Instruction::TypeArray { result_id, type_id, .. } if type_id == struct_id => {
+                if let Some(params) = doc.get_decoration_params(result_id, Decoration::DecorationArrayStride) {
+                    spirv_req_total_size = Some(params[0]);
+                }
+            }
+            Instruction::TypeRuntimeArray { result_id, type_id } if type_id == struct_id => {
+                if let Some(params) = doc.get_decoration_params(result_id, Decoration::DecorationArrayStride) {
+                    spirv_req_total_size = Some(params[0]);
+                }
+            }
+            _ => ()
+        }
+    }
 
     // Adding the final padding members.
     if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
@@ -216,19 +183,6 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
     };
 
     (ast, spirv_req_total_size.map(|sz| sz as usize).or(current_rust_offset))
-}
-
-/// Returns true if a `BuiltIn` decorator is applied on a struct member.
-fn is_builtin_member(doc: &Spirv, id: u32, member_id: u32) -> bool {
-    for instruction in &doc.instructions {
-        match *instruction {
-            Instruction::MemberDecorate { target_id, member, decoration: Decoration::DecorationBuiltIn, .. }
-                if target_id == id && member == member_id => { return true }
-            _ => (),
-        }
-    }
-
-    false
 }
 
 /// Returns the type name to put in the Rust struct, and its size and alignment.
@@ -381,15 +335,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                     .next()
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                let stride = doc.instructions.iter().filter_map(|e| match e {
-                    Instruction::Decorate {
-                        target_id,
-                        decoration: Decoration::DecorationArrayStride,
-                        ref params,
-                    } if *target_id == searched => Some(params[0]),
-                    _ => None,
-                })
-                .next().expect("failed to find ArrayStride decoration");
+                let stride = doc.get_decoration_params(searched, Decoration::DecorationArrayStride).unwrap()[0];
                 if stride as usize > t_size {
                     panic!("Not possible to generate a rust array with the correct alignment since the SPIR-V \
                             ArrayStride is larger than the size of the array element in rust. Try wrapping \

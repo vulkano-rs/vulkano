@@ -29,12 +29,9 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
     }
 
     // Looping to find all the elements that have the `DescriptorSet` decoration.
-    for instruction in doc.instructions.iter() {
-        let (variable_id, set) = match instruction {
-            &Instruction::Decorate { target_id, decoration: Decoration::DecorationDescriptorSet, ref params }
-              => (target_id, params[0]),
-            _ => continue,
-        };
+    for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
+        let variable_id = set_decoration.target_id;
+        let set = set_decoration.params[0];
 
         // Find which type is pointed to by this variable.
         let pointed_ty = pointer_variable_ty(doc, variable_id);
@@ -42,20 +39,8 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
         let name = spirv_search::name_from_id(doc, variable_id);
 
         // Find the binding point of this descriptor.
-        let binding = doc.instructions
-            .iter()
-            .filter_map(|i| {
-                match i {
-                    &Instruction::Decorate {
-                        target_id,
-                        decoration: Decoration::DecorationBinding,
-                        ref params,
-                    } if target_id == variable_id => Some(params[0]),
-                    _ => None, // TODO: other types
-                }
-            })
-            .next()
-            .expect(&format!("Uniform `{}` is missing a binding", name));
+        // TODO: There was a previous todo here, I think it was asking for this to be implemented for member decorations? check git history
+        let binding = doc.get_decoration_params(variable_id, Decoration::DecorationBinding).unwrap()[0];
 
         // Find information about the kind of binding for this descriptor.
         let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false)
@@ -200,18 +185,10 @@ fn descriptor_infos(doc: &Spirv, pointed_ty: u32, force_combined_image_sampled: 
         match i {
             &Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
                 // Determine whether there's a Block or BufferBlock decoration.
-                let is_ssbo = doc.instructions.iter().filter_map(|i| {
-                    match i {
-                        &Instruction::Decorate
-                            { target_id, decoration: Decoration::DecorationBufferBlock, .. }
-                            if target_id == pointed_ty => Some(true),
-                        &Instruction::Decorate
-                            { target_id, decoration: Decoration::DecorationBlock, .. }
-                            if target_id == pointed_ty => Some(false),
-                        _ => None,
-                    }
-                }).next().expect("Found a buffer uniform with neither the Block nor BufferBlock \
-                                  decorations");
+                let decoration_buffer_block = doc.get_decoration_params(pointed_ty, Decoration::DecorationBufferBlock).is_some();
+                let decoration_block = doc.get_decoration_params(pointed_ty, Decoration::DecorationBlock).is_some();
+                assert!(decoration_buffer_block ^ decoration_block, "Found a buffer uniform with neither the Block nor BufferBlock decorations, or both.");
+                let is_ssbo = decoration_buffer_block && !decoration_block;
 
                 // Determine whether there's a NonWritable decoration.
                 //let non_writable = false;       // TODO: tricky because the decoration is on struct members
