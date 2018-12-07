@@ -7,14 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_win;
-extern crate winit;
-extern crate cgmath;
-extern crate time;
-extern crate examples;
-
 use vulkano::buffer::cpu_pool::CpuBufferPool;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
@@ -106,7 +98,7 @@ fn main() {
     let fs = fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(
-        single_pass_renderpass!(device.clone(),
+        vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,

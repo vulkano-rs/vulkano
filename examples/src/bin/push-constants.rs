@@ -8,8 +8,6 @@
 // according to those terms.
 
 // TODO: Give a paragraph about what push constants are and what problems they solve
-extern crate vulkano;
-extern crate vulkano_shaders;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;

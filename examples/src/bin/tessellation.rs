@@ -18,12 +18,6 @@
 // *    tessellation control shader and a tessellation evaluation shader
 // *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
 
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate winit;
-extern crate vulkano_win;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
@@ -175,7 +169,7 @@ fn main() {
     let vertex_buffer = {
         #[derive(Debug, Clone)]
         struct Vertex { position: [f32; 2] }
-        impl_vertex!(Vertex, position);
+        vulkano::impl_vertex!(Vertex, position);
 
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
             Vertex { position: [-0.5,  -0.25] },
@@ -195,7 +189,7 @@ fn main() {
     let tes = tes::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
 
-    let render_pass = Arc::new(single_pass_renderpass!(
+    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
             color: {

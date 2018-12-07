@@ -18,10 +18,6 @@
 // $ glslangValidator vert.glsl -V -S vert -o vert.spv
 // $ glslangValidator frag.glsl -V -S frag -o frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_win;
-extern crate winit;
 
 use vulkano as vk;
 use vulkano::buffer::BufferUsage;
@@ -62,7 +58,7 @@ pub struct Vertex {
     pub color: [f32; 3],
 }
 
-impl_vertex!(Vertex, position, color);
+vulkano::impl_vertex!(Vertex, position, color);
 
 fn main() {
     let instance = vk::instance::Instance::new(None, &vulkano_win::required_extensions(), None).unwrap();
@@ -99,7 +95,7 @@ fn main() {
             1, usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None).unwrap()
     };
 
-    let render_pass = Arc::new(single_pass_renderpass!(
+    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
             color: {

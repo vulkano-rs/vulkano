@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-
 // Welcome to the triangle example!
 //
 // This is the only example that is entirely detailed. All the other examples avoid code
@@ -16,19 +15,6 @@
 // This example assumes that you are already more or less familiar with graphics programming
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
-
-// The `vulkano` crate is the main crate that you must use to use Vulkan.
-#[macro_use]
-extern crate vulkano;
-// Provides the `shader!` macro that is used to generate code for using shaders.
-extern crate vulkano_shaders;
-// The Vulkan library doesn't provide any functionality to create and handle windows, as
-// this would be out of scope. In order to open a window, we are going to use the `winit` crate.
-extern crate winit;
-// The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about
-// winit, and winit doesn't know about vulkano, so import a crate that will provide a link between
-// the two.
-extern crate vulkano_win;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
@@ -186,7 +172,7 @@ fn main() {
     let vertex_buffer = {
         #[derive(Debug, Clone)]
         struct Vertex { position: [f32; 2] }
-        impl_vertex!(Vertex, position);
+        vulkano::impl_vertex!(Vertex, position);
 
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
             Vertex { position: [-0.5, -0.25] },
@@ -242,7 +228,7 @@ void main() {
     // The next step is to create a *render pass*, which is an object that describes where the
     // output of the graphics pipeline will go. It describes the layout of the images
     // where the colors, depth and/or stencil information will be written.
-    let render_pass = Arc::new(single_pass_renderpass!(
+    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
             // `color` is a custom name we give to the first and only attachment.

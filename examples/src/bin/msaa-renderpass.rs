@@ -64,11 +64,6 @@
 //! an error), instead it is called *resolving* the image.
 //!
 
-extern crate image;
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-
 use std::sync::Arc;
 use image::ImageBuffer;
 use image::Rgba;
@@ -108,7 +103,7 @@ fn main() {
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
-    let render_pass = Arc::new(single_pass_renderpass!(
+    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
             // The first framebuffer attachment is the intermediary image.
@@ -187,7 +182,7 @@ void main() {
     struct Vertex {
         position: [f32; 2],
     }
-    impl_vertex!(Vertex, position);
+    vulkano::impl_vertex!(Vertex, position);
 
     let vertex1 = Vertex { position: [-0.5, -0.5] };
     let vertex2 = Vertex { position: [ 0.0,  0.5] };
