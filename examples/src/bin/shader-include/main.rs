@@ -11,9 +11,6 @@
 // shader source code. The boilerplate is taken from the "basic-compute-shader.rs" example, where
 // most of the boilerplate is explained.
 
-extern crate vulkano;
-extern crate vulkano_shaders;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;

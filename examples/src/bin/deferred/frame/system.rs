@@ -25,9 +25,9 @@ use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAccess;
 use vulkano::sync::GpuFuture;
 
-use frame::ambient_lighting_system::AmbientLightingSystem;
-use frame::directional_lighting_system::DirectionalLightingSystem;
-use frame::point_lighting_system::PointLightingSystem;
+use crate::frame::ambient_lighting_system::AmbientLightingSystem;
+use crate::frame::directional_lighting_system::DirectionalLightingSystem;
+use crate::frame::point_lighting_system::PointLightingSystem;
 
 /// System that contains the necessary facilities for rendering a single frame.
 pub struct FrameSystem {
@@ -95,7 +95,7 @@ impl FrameSystem {
         // but can't deal with these restrictions, then you should create multiple render passes
         // instead.
         let render_pass = Arc::new(
-            ordered_passes_renderpass!(gfx_queue.device().clone(),
+            vulkano::ordered_passes_renderpass!(gfx_queue.device().clone(),
             attachments: {
                 // The image that will contain the final rendering (in this example the swapchain
                 // image, but it could be another image).

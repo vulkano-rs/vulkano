@@ -140,7 +140,7 @@ impl AmbientLightingSystem {
 struct Vertex {
     position: [f32; 2]
 }
-impl_vertex!(Vertex, position);
+vulkano::impl_vertex!(Vertex, position);
 
 mod vs {
     vulkano_shaders::shader!{

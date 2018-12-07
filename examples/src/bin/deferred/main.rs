@@ -26,13 +26,6 @@
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
 // drawn after the lighting, and that the whole process consumes more memory.
 
-extern crate cgmath;
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate winit;
-extern crate vulkano_win;
-
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
@@ -51,8 +44,8 @@ use cgmath::Vector3;
 mod frame;
 mod triangle_draw_system;
 
-use frame::*;
-use triangle_draw_system::*;
+use crate::frame::*;
+use crate::triangle_draw_system::*;
 
 fn main() {
     // Basic initialization. See the triangle example if you want more details about this.

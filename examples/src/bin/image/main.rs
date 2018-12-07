@@ -7,15 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate vulkano_win;
-extern crate winit;
-extern crate cgmath;
-extern crate image;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
@@ -87,7 +78,7 @@ fn main() {
 
     #[derive(Debug, Clone)]
     struct Vertex { position: [f32; 2] }
-    impl_vertex!(Vertex, position);
+    vulkano::impl_vertex!(Vertex, position);
 
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
@@ -104,7 +95,7 @@ fn main() {
     let fs = fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(
-        single_pass_renderpass!(device.clone(),
+        vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
