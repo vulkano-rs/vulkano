@@ -344,9 +344,9 @@ impl DisplayMode {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
+            check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
                                                       display.display, &infos, ptr::null(),
-                                                      &mut output)));
+                                                      &mut output))?;
             output
         };
 

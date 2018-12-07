@@ -243,7 +243,7 @@ pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Err
 
                 unsafe {
                     Ok(#struct_name {
-                        shader: try!(::vulkano::pipeline::shader::ShaderModule::from_words(device, &words))
+                        shader: ::vulkano::pipeline::shader::ShaderModule::from_words(device, &words)?
                     })
                 }
             }

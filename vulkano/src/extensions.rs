@@ -79,15 +79,15 @@ macro_rules! extensions {
         impl fmt::Debug for $sname {
             #[allow(unused_assignments)]
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                try!(write!(f, "["));
+                write!(f, "[")?;
 
                 let mut first = true;
 
                 $(
                     if self.$ext {
-                        if !first { try!(write!(f, ", ")); }
+                        if !first { write!(f, ", ")? }
                         else { first = false; }
-                        try!(f.write_str(str::from_utf8($s).unwrap()));
+                        f.write_str(str::from_utf8($s).unwrap())?;
                     }
                 )*
 
