@@ -34,12 +34,14 @@ macro_rules! device_extensions {
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
+                    ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
+                    ))?;
                     properties.set_len(num as usize);
                     properties
                 };
@@ -63,12 +65,14 @@ macro_rules! device_extensions {
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
+                    ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
+                    ))?;
                     properties.set_len(num as usize);
                     properties
                 };

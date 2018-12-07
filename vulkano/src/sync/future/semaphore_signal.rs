@@ -108,7 +108,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
                     unimplemented!() // TODO: how to do that?
                     /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
                     builder.add_signal_semaphore(&self.semaphore);
-                    try!(builder.submit(&queue));*/
+                    builder.submit(&queue)?;*/
                 },
                 SubmitAnyBuilder::QueuePresent(present) => {
                     present.submit(&queue)?;
