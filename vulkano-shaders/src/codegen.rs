@@ -15,17 +15,17 @@ use proc_macro2::{Span, TokenStream};
 use shaderc::{Compiler, CompileOptions};
 
 pub use shaderc::{CompilationArtifact, ShaderKind, IncludeType, ResolvedInclude};
-pub use parse::ParseError;
+pub use crate::parse::ParseError;
 
-use parse::Instruction;
-use enums::Capability;
+use crate::parse::Instruction;
+use crate::enums::Capability;
 
-use parse;
-use entry_point;
-use structs;
-use descriptor_sets;
-use spec_consts;
-use read_file_to_string;
+use crate::parse;
+use crate::entry_point;
+use crate::structs;
+use crate::descriptor_sets;
+use crate::spec_consts;
+use crate::read_file_to_string;
 
 fn include_callback(requested_source_path_raw: &str, directive_type: IncludeType,
                     contained_within_path_raw: &str, recursion_depth: usize,

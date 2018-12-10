@@ -12,10 +12,10 @@ use std::mem;
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
 
-use enums::Decoration;
-use parse::{Instruction, Spirv};
-use spirv_search;
-use structs;
+use crate::enums::Decoration;
+use crate::parse::{Instruction, Spirv};
+use crate::spirv_search;
+use crate::structs;
 
 /// Returns true if the document has specialization constants.
 pub fn has_specialization_constants(doc: &Spirv) -> bool {

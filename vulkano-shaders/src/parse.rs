@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use enums::*;
+use crate::enums::*;
 
 /// Parses a SPIR-V document from a list of words.
 pub fn parse_spirv(i: &[u32]) -> Result<Spirv, ParseError> {
@@ -526,7 +526,7 @@ impl Spirv {
 
 #[cfg(test)]
 mod test {
-    use parse;
+    use crate::parse;
 
     #[test]
     fn test() {

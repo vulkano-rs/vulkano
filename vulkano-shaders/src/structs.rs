@@ -12,9 +12,9 @@ use std::mem;
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
 
-use parse::{Instruction, Spirv};
-use enums::Decoration;
-use spirv_search;
+use crate::parse::{Instruction, Spirv};
+use crate::enums::Decoration;
+use crate::spirv_search;
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
 pub fn write_structs(doc: &Spirv) -> TokenStream {

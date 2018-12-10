@@ -4,9 +4,6 @@
 //! # Basic usage
 //!
 //! ```
-//! extern crate vulkano;
-//! extern crate vulkano_shaders;
-//!
 //! mod vs {
 //!     vulkano_shaders::shader!{
 //!         ty: "vertex",
@@ -67,8 +64,6 @@
 //! you could do something like this:
 //!
 //! ```
-//! # extern crate vulkano_shaders;
-//! # extern crate vulkano;
 //! # fn main() {}
 //! # use std::sync::Arc;
 //! # use vulkano::OomError;
@@ -158,11 +153,8 @@
 
 #![recursion_limit = "1024"]
 #[macro_use] extern crate quote;
-             extern crate shaderc;
-             extern crate proc_macro;
-             extern crate proc_macro2;
 #[macro_use] extern crate syn;
-
+             extern crate proc_macro;
 
 use std::env;
 use std::fs::File;
@@ -181,7 +173,7 @@ mod spec_consts;
 mod structs;
 mod spirv_search;
 
-use codegen::ShaderKind;
+use crate::codegen::ShaderKind;
 
 enum SourceKind {
     Src(String),

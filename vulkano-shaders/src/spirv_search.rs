@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use parse::{Instruction, Spirv};
-use enums::Decoration;
+use crate::parse::{Instruction, Spirv};
+use crate::enums::Decoration;
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///

@@ -7,15 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#[macro_use]
-extern crate vulkano;
-
 #[derive(Copy, Clone)]
 pub struct Vertex {
     position: (f32, f32, f32)
 }
 
-impl_vertex!(Vertex, position);
+vulkano::impl_vertex!(Vertex, position);
 
 pub const VERTICES: [Vertex; 531] = [
     Vertex { position: (0.0, 0.0, 0.0) },   // dummy vector because in the original model indices
@@ -557,7 +554,7 @@ pub struct Normal {
     normal: (f32, f32, f32)
 }
 
-impl_vertex!(Normal, normal);
+vulkano::impl_vertex!(Normal, normal);
 
 pub const NORMALS: [Normal; 531] = [
     Normal { normal: (0.0, 0.0, 0.0) },     // dummy vector because in the original model indices
