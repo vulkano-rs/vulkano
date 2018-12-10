@@ -200,7 +200,17 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                                     |_| AllocFromRequirementsFilter::Allowed)?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
+        match mem.mapped_memory() {
+            Some(ref mm) => {
+                mm.disable_map()
+            },
+            None => eprintln!("Failed to get memory to disable map"),
+        }
         buffer.bind_memory(mem.memory(), mem.offset())?;
+        match mem.mapped_memory() {
+            Some(ref mm) => mm.activate_map(),
+            None => eprintln!("Failed to get memory to re map"),
+        }
 
         Ok(Arc::new(CpuAccessibleBuffer {
                         inner: buffer,
