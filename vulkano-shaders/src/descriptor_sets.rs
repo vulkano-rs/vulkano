@@ -11,9 +11,9 @@ use std::cmp;
 
 use proc_macro2::TokenStream;
 
-use enums::{Dim, Decoration, StorageClass, ImageFormat};
-use parse::{Instruction, Spirv};
-use spirv_search;
+use crate::enums::{Dim, Decoration, StorageClass, ImageFormat};
+use crate::parse::{Instruction, Spirv};
+use crate::spirv_search;
 
 pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
     // TODO: not implemented correctly
@@ -61,7 +61,7 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
             _ => continue,
         };
 
-        let (_, size, _) = ::structs::type_from_id(doc, type_id);
+        let (_, size, _) = crate::structs::type_from_id(doc, type_id);
         let size = size.expect("Found runtime-sized push constants");
         push_constants_size = cmp::max(push_constants_size, size);
     }

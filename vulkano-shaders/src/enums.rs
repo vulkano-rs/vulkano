@@ -10,7 +10,7 @@
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
 
-use parse::ParseError;
+use crate::parse::ParseError;
 
 macro_rules! enumeration {
     ($(typedef enum $unused:ident { $($elem:ident = $value:expr,)+ } $name:ident;)+) => (
