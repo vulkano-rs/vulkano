@@ -54,6 +54,12 @@ macro_rules! impl_vertex {
 }
 
 /// Trait for data types that can be used as vertex members. Used by the `impl_vertex!` macro.
+///
+/// By default, Vulkano implements this for integers and floats and tuples of them up to 4 elements. Vulkano also
+/// implements this for integer and float arrays up to 16 elements and then 32 and 64 elements exactly. If the "cgmath"
+/// or "nalgebra" [features are
+/// enabled](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#choosing-features), Vulkano will
+/// implement this trait for the respective vector types from those crates.
 pub unsafe trait VertexMember {
     /// Returns the format and array size of the member.
     fn format() -> (VertexMemberTy, usize);
@@ -186,3 +192,165 @@ impl_vm_array!(15);
 impl_vm_array!(16);
 impl_vm_array!(32);
 impl_vm_array!(64);
+
+macro_rules! impl_cgmath_vector {
+    ($vector:ident, $components:expr) => (
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<i8>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::I8, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<u8>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::U8, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<i16>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::I16, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<u16>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::U16, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<i32>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::I32, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<u32>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::U32, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<f32>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::F32, $components)
+            }
+        }
+
+        #[cfg(feature = "cgmath")]
+        unsafe impl VertexMember for cgmath::$vector<f64>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::F64, $components)
+            }
+        }
+    );
+}
+
+impl_cgmath_vector!(Vector1, 1);
+impl_cgmath_vector!(Vector2, 2);
+impl_cgmath_vector!(Vector3, 3);
+impl_cgmath_vector!(Vector4, 4);
+
+macro_rules! impl_nalgebra_vector {
+    ($vector:ident, $components:expr) => (
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<i8>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::I8, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<u8>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::U8, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<i16>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::I16, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<u16>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::U16, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<i32>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::I32, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<u32>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::U32, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<f32>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::F32, $components)
+            }
+        }
+
+        #[cfg(feature = "nalgebra")]
+        unsafe impl VertexMember for nalgebra::$vector<f64>
+        {
+            #[inline]
+            fn format() -> (VertexMemberTy, usize) {
+                (VertexMemberTy::F64, $components)
+            }
+        }
+    );
+}
+
+impl_nalgebra_vector!(Vector1, 1);
+impl_nalgebra_vector!(Vector2, 2);
+impl_nalgebra_vector!(Vector3, 3);
+impl_nalgebra_vector!(Vector4, 4);

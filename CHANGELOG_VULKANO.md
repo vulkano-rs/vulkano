@@ -3,6 +3,8 @@
 - Add support for `#include "..."` and `#include <...>` directives within source
   files.
 - Add a `union` method for the extensions types.
+- Implement `VertexMember` for [rustgd/cgmath](https://github.com/rustgd/cgmath) vector types (only if the "cgmath" feature is enabled)
+- Implement `VertexMember` for [rustsim/nalgebra](https://github.com/rustsim/nalgebra) vector types (only if the "nalgebra" feature is enabled)
 
 # Version 0.11.1 (2018-11-16)
 

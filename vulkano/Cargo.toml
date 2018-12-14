@@ -12,6 +12,9 @@ categories = ["rendering::graphics-api"]
 readme = "../README.md"
 build = "build.rs"
 
+[package.metadata.docs.rs]
+features = ["cgmath", "nalgebra"]
+
 [dependencies]
 crossbeam = "0.5"
 fnv = "1.0.6"
@@ -20,3 +23,5 @@ smallvec = "0.6.0"
 lazy_static = "1"
 vk-sys = { version = "0.4.0", path = "../vk-sys" }
 half = "1"
+cgmath = { version = "0.16", optional = true }
+nalgebra = { version = "0.16", optional = true }

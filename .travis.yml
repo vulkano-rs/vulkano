@@ -10,10 +10,22 @@ rust:
   - stable
 cache:
   cargo
+env:
+  - VULKANO_FEATURES=""
+  - VULKANO_FEATURES="cgmath nalgebra"
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
-  - travis_wait cargo test --all -j 2
+  # At the moment of writing cargo has some really bizarre behaviour when it
+  # comes to the --features option. It doesn't work in the workspace scope or in
+  # combination with --all or --package, and we must be in the folder of a
+  # specific package in order to specify the features for it.. See
+  # https://github.com/rust-lang/cargo/issues/5364
+  - cd vulkano
+  - travis_wait cargo test -j 2 --features "$VULKANO_FEATURES"
+  - cd ..
+  # Exclude the vulkano package because we just tested it above..
+  - travis_wait cargo test --all --exclude vulkano -j 2
   - cd examples
   - cargo build -j 2
   - cd .. # this is very important or else the below `cargo publish` will fail
@@ -23,19 +35,23 @@ after_success:
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
+    [ -z "$VULKANO_FEATURES" ] &&
     cargo publish --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
+    [ -z "$VULKANO_FEATURES" ] &&
     cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
+    [ -z "$VULKANO_FEATURES" ] &&
     cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
+    [ -z "$VULKANO_FEATURES" ] &&
     cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
