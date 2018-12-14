@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 # The `vulkano` crate is the main crate that you must use to use Vulkan.
-vulkano = { path = "../vulkano" }
+vulkano = { path = "../vulkano", features = ["cgmath"] }
 # Provides the `shader!` macro that is used to generate code for using shaders.
 vulkano-shaders = { path = "../vulkano-shaders" }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
