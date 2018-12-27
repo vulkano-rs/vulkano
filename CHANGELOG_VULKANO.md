@@ -3,6 +3,7 @@
 - Add support for `#include "..."` and `#include <...>` directives within source
   files.
 - Add a `union` method for the extensions types.
+- Add MoltenVK auto installer for macOS
 
 # Version 0.11.1 (2018-11-16)
 
