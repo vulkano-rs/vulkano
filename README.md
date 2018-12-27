@@ -105,6 +105,7 @@ The easiest way to get vulkano up and running on macOS is to install the
 Vulkano will find it and dynamically link with `libvulkan.dylib`:
 
 Vulkano will attempt to automatically download and install the latest Vulkan SDK for macOS.
+The sdk will be installed at `$HOME/.vulkan_sdk`.
 If you would prefer a manual installation complete the following instructions before
 building vulkano.
 
