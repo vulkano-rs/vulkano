@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#[cfg(target_os = "macos")]
 extern crate moltenvk_deps;
 
 use std::env;
