@@ -25,6 +25,7 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Foundation");
     }
     if target.contains("apple-darwin") {
+        #[cfg(target_os = "macos")]
         moltenvk_deps::check_or_install();
     }
 }
