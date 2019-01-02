@@ -107,8 +107,10 @@ Vulkano will find it and dynamically link with `libvulkan.dylib`:
 Vulkano will attempt to automatically download and install the latest Vulkan SDK for macOS.
 The sdk will be installed at `$HOME/.vulkan_sdk`.
 If you get an error the first time you run vulkano then
-you will need to source your `source ~/.profile` or `source ~/.bash_profile`
+you will need to source your `source ~/.bash_profile`
 or simply reopen your terminal.
+If you are not using bash as your shell you will need to manually add
+the following environment variables.
 If you would prefer a manual installation complete the following instructions before
 building vulkano.
 
