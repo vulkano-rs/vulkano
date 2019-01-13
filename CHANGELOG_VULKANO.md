@@ -3,6 +3,8 @@
 - Add support for `#include "..."` and `#include <...>` directives within source
   files.
 - Add a `union` method for the extensions types.
+- Add `inner_mut` method for `FixedSizeDescriptorSet` and `PersistentDescriptorSet` providing mutable access to inner `UnsafeDescriptorSet`.
+- Add `empty()` method for `FixedSizeDescriptorSet` and `next_empty()` method for `PersistentDescriptorSet` that construct descriptor sets without any bound descriptors.
 
 # Version 0.11.1 (2018-11-16)
 
