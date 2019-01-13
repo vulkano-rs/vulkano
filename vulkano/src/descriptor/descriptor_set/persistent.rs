@@ -62,6 +62,12 @@ pub struct PersistentDescriptorSet<L, R, P = StdDescriptorPoolAlloc> {
     layout: Arc<UnsafeDescriptorSetLayout>,
 }
 
+impl<L, R, P> PersistentDescriptorSet<L, R, P>
+    where P: DescriptorPoolAlloc
+{
+    pub fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet { self.inner.inner_mut() }
+}
+
 impl<L> PersistentDescriptorSet<L, ()> {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
     ///
@@ -83,6 +89,36 @@ impl<L> PersistentDescriptorSet<L, ()> {
             writes: Vec::with_capacity(cap),
             resources: (),
         }
+    }
+
+    /// Constructs empty `PersistentDescriptorSet`.
+    pub fn empty(layout: L, set_id: usize) -> Result<PersistentDescriptorSet<L, ()>, PersistentDescriptorSetBuildError>
+        where L: PipelineLayoutAbstract
+    {
+        let mut pool = Device::standard_descriptor_pool(layout.device());
+        Self::empty_with_pool(layout, set_id, &mut pool)
+    }
+
+    pub fn empty_with_pool<P>(layout: L, set_id: usize, pool: &mut P) -> Result<PersistentDescriptorSet<L, (), P::Alloc>, PersistentDescriptorSetBuildError>
+        where L: PipelineLayoutAbstract,
+              P: ?Sized + DescriptorPool
+    {
+        assert!(layout.num_sets() > set_id);
+
+        let set_layout = layout
+            .descriptor_set_layout(set_id)
+            .expect("Unable to get the descriptor set layout")
+            .clone();
+
+        let set = pool.alloc(&set_layout)?;
+
+        Ok(PersistentDescriptorSet {
+            inner: set,
+            resources: (),
+            pipeline_layout: layout,
+            set_id,
+            layout: set_layout,
+        })
     }
 }
 

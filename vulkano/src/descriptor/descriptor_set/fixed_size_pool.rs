@@ -123,11 +123,26 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
             inner: inner,
         }
     }
+
+    /// Constructs empty `FixedSizeDescriptorSet`.
+    #[inline]
+    pub fn next_empty(&mut self) -> Result<FixedSizeDescriptorSet<L, ()>, PersistentDescriptorSetBuildError>
+        where L: PipelineLayoutAbstract + Clone
+    {
+        let inner = PersistentDescriptorSet::empty_with_pool(self.pipeline_layout.clone(), self.set_id, &mut self.pool)?;
+
+        Ok(FixedSizeDescriptorSet { inner: inner })
+    }
 }
 
 /// A descriptor set created from a `FixedSizeDescriptorSetsPool`.
 pub struct FixedSizeDescriptorSet<L, R> {
     inner: PersistentDescriptorSet<L, R, LocalPoolAlloc>,
+}
+
+impl<L, R> FixedSizeDescriptorSet<L, R> {
+    #[inline]
+    pub fn inner_mut(&mut self) -> &mut UnsafeDescriptorSet { self.inner.inner_mut() }
 }
 
 unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
