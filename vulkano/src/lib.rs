@@ -70,6 +70,8 @@ extern crate shared_library;
 extern crate smallvec;
 extern crate vk_sys as vk;
 pub extern crate half;
+#[cfg(target_os = "macos")]
+extern crate moltenvk_deps;
 
 #[macro_use]
 mod tests;

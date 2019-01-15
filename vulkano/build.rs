@@ -7,9 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#[cfg(target_os = "macos")]
-extern crate moltenvk_deps;
-
 use std::env;
 
 fn main() {
@@ -23,9 +20,5 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=QuartzCore");
         println!("cargo:rustc-link-lib=framework=UIKit");
         println!("cargo:rustc-link-lib=framework=Foundation");
-    }
-    if target.contains("apple-darwin") {
-        #[cfg(target_os = "macos")]
-        moltenvk_deps::check_or_install();
     }
 }

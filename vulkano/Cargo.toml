@@ -21,5 +21,6 @@ lazy_static = "1"
 vk-sys = { version = "0.4.0", path = "../vk-sys" }
 half = "1"
 
-[target.'cfg(target_os = "macos")'.build-dependencies]
-moltenvk_deps = "0.1"
+[target.'cfg(target_os = "macos")'.dependencies]
+#moltenvk_deps = "0.1"
+moltenvk_deps = { path = "../../moltenvk_deps" } 

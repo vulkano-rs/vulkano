@@ -28,7 +28,8 @@ use std::mem;
 use std::ops::Deref;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::env;
 
 use SafeDeref;
 use vk;
@@ -189,8 +190,17 @@ pub fn auto_loader()
             Path::new("libvulkan.so.1")
         }
         #[cfg(target_os = "macos")]
-        fn get_path() -> &'static Path {
-            Path::new("libvulkan.1.dylib")
+        fn get_path() -> PathBuf {
+            moltenvk_deps::check_or_install();
+            let lib_name = "libvulkan.1.dylib";
+            match env::var_os("VULKAN_LIB_PATH") {
+                Some(p) => {
+                    let p = p.into_string().expect("Failed to receive temporary vulkan sdk path");
+                    let temp_path = format!("{}/{}", p, lib_name);
+                    PathBuf::from(temp_path)
+                },
+                None => PathBuf::from(lib_name),
+            }
         }
         #[cfg(target_os = "android")]
         fn get_path() -> &'static Path {
