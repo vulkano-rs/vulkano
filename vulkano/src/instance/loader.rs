@@ -191,6 +191,11 @@ pub fn auto_loader()
         }
         #[cfg(target_os = "macos")]
         fn get_path() -> PathBuf {
+            // Checks if the mac dependencies are install
+            // and offers to autmatically install them.
+            // VULKAN_LIB_PATH needs to be passed because
+            // shared_library cannot detect temporary 
+            // environment variables on macOS.
             moltenvk_deps::check_or_install();
             let lib_name = "libvulkan.1.dylib";
             match env::var_os("VULKAN_LIB_PATH") {

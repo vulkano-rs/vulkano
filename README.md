@@ -96,23 +96,29 @@ sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-utils
 
 ### macOS and iOS Specific Setup
 
+TLDR; In the best case, vulkano should work on macOS without having to take any further action, read on if you need more information or something goes wrong.
+
 Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
 a Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
 and iOS platforms.
 
-The easiest way to get vulkano up and running on macOS is to install the
-[Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). To install the SDK so that
-Vulkano will find it and dynamically link with `libvulkan.dylib`:
+The Vulkan SDK for macOS also comes with the iOS framework.
+
+Note that as of writing, MoltenVK has some bugs that show up in the examples.
+Some minor modifications may be required as workarounds: see https://github.com/vulkano-rs/vulkano/pull/1027.
+The examples also do not work properly on macOS 10.11 and lower without workarounds due to MoltenVK's Metal backend not getting
+the required features until macOS 10.12. See https://github.com/vulkano-rs/vulkano/issues/1075 for workarounds.
+
+#### macOS and iOS Automatic Setup
 
 Vulkano will attempt to automatically download and install the latest Vulkan SDK for macOS.
-The sdk will be installed at `$HOME/.vulkan_sdk`.
-If you get an error the first time you run vulkano then
-you will need to source your `source ~/.bash_profile`
-or simply reopen your terminal.
-If you are not using bash as your shell you will need to manually add
-the following environment variables.
-If you would prefer a manual installation complete the following instructions before
-building vulkano.
+The SDK will be installed at `$HOME/.vulkan_sdk`.
+If you are not using bash as your shell you will need to manually add the environment variables listed in step 2 of "macOS and iOS Manual Setup".
+
+#### macOS and iOS Manual Setup
+
+Follow these steps to manually install the [Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home) so that
+Vulkano will find it and dynamically link with `libvulkan.dylib`.
 
 1. Download the latest macOS release and unpack it somewhere, for the next step
 we'll assume that's `~/vulkan_sdk`.
