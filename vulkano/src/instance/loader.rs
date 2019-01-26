@@ -194,7 +194,7 @@ pub fn auto_loader()
             // Checks if the mac dependencies are install
             // and offers to autmatically install them.
             // VULKAN_LIB_PATH needs to be passed because
-            // shared_library cannot detect temporary 
+            // shared_library cannot detect temporary
             // environment variables on macOS.
             moltenvk_deps::check_or_install();
             let lib_name = "libvulkan.1.dylib";
