@@ -196,6 +196,7 @@ pub fn auto_loader()
             // VULKAN_LIB_PATH needs to be passed because
             // shared_library cannot detect temporary
             // environment variables on macOS.
+            #[cfg(not(test))]
             moltenvk_deps::check_or_install();
             let lib_name = "libvulkan.1.dylib";
             match env::var_os("VULKAN_LIB_PATH") {
