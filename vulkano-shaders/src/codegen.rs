@@ -19,6 +19,7 @@ pub use crate::parse::ParseError;
 
 use crate::parse::Instruction;
 use crate::enums::Capability;
+use crate::enums::StorageClass;
 
 use crate::parse;
 use crate::entry_point;
@@ -161,16 +162,39 @@ pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Err
     // checking whether each required capability is enabled in the Vulkan device
     let mut cap_checks: Vec<TokenStream> = vec!();
     for i in doc.instructions.iter() {
-        if let &Instruction::Capability(ref cap) = i {
-            if let Some(cap_string) = capability_name(cap) {
-                let cap = Ident::new(cap_string, Span::call_site());
-                cap_checks.push(quote!{
-                    if !device.enabled_features().#cap {
-                        panic!("capability {:?} not enabled", #cap_string); // TODO: error
-                        //return Err(CapabilityNotEnabled);
-                    }
-                });
+        let dev_req = {
+            match i {
+                Instruction::Variable{result_type_id: _, result_id: _, storage_class, initializer: _}
+                    => storage_class_requirement(storage_class),
+                Instruction::TypePointer{result_id: _, storage_class, type_id: _}
+                    => storage_class_requirement(storage_class),
+                Instruction::Capability(cap) => capability_requirement(cap),
+                _ => DeviceRequirement::None,
             }
+        };
+
+        match dev_req {
+            DeviceRequirement::None => continue,
+            DeviceRequirement::Features(features) => {
+                for feature in features {
+                    let ident = Ident::new(feature, Span::call_site());
+                    cap_checks.push(quote! {
+                        if !device.enabled_features().#ident {
+                            panic!("Device feature {:?} required", #feature);
+                        }
+                    });
+                }
+            },
+            DeviceRequirement::Extensions(extensions) => {
+                for extension in extensions {
+                    let ident = Ident::new(extension, Span::call_site());
+                    cap_checks.push(quote! {
+                        if !device.loaded_extensions().#ident {
+                            panic!("Device extension {:?} required", #extension);
+                        }
+                    });
+                }
+            },
         }
     }
 
@@ -296,79 +320,133 @@ impl From<ParseError> for Error {
     }
 }
 
-/// Returns the name of the Vulkan something that corresponds to an `OpCapability`.
-///
-/// Returns `None` if irrelevant.
+/// Returns the Vulkan device requirement for a SPIR-V `OpCapability`.
 // TODO: this function is a draft, as the actual names may not be the same
-fn capability_name(cap: &Capability) -> Option<&'static str> {
+fn capability_requirement(cap: &Capability) -> DeviceRequirement {
     match *cap {
-        Capability::CapabilityMatrix => None,        // always supported
-        Capability::CapabilityShader => None,        // always supported
-        Capability::CapabilityGeometry => Some("geometry_shader"),
-        Capability::CapabilityTessellation => Some("tessellation_shader"),
+        Capability::CapabilityMatrix => DeviceRequirement::None,
+        Capability::CapabilityShader => DeviceRequirement::None,
+        Capability::CapabilityGeometry =>
+            DeviceRequirement::Features(&["geometry_shader"]),
+        Capability::CapabilityTessellation =>
+            DeviceRequirement::Features(&["tessellation_shader"]),
         Capability::CapabilityAddresses => panic!(), // not supported
-        Capability::CapabilityLinkage => panic!(),   // not supported
-        Capability::CapabilityKernel => panic!(),    // not supported
-        Capability::CapabilityVector16 => panic!(),  // not supported
+        Capability::CapabilityLinkage => panic!(), // not supported
+        Capability::CapabilityKernel => panic!(), // not supported
+        Capability::CapabilityVector16 => panic!(), // not supported
         Capability::CapabilityFloat16Buffer => panic!(), // not supported
-        Capability::CapabilityFloat16 => panic!(),   // not supported
-        Capability::CapabilityFloat64 => Some("shader_f3264"),
-        Capability::CapabilityInt64 => Some("shader_int64"),
-        Capability::CapabilityInt64Atomics => panic!(),  // not supported
-        Capability::CapabilityImageBasic => panic!(),    // not supported
-        Capability::CapabilityImageReadWrite => panic!(),    // not supported
-        Capability::CapabilityImageMipmap => panic!(),   // not supported
+        Capability::CapabilityFloat16 => panic!(), // not supported
+        Capability::CapabilityFloat64 =>
+            DeviceRequirement::Features(&["shader_f3264"]),
+        Capability::CapabilityInt64 =>
+            DeviceRequirement::Features(&["shader_int64"]),
+        Capability::CapabilityInt64Atomics => panic!(), // not supported
+        Capability::CapabilityImageBasic => panic!(), // not supported
+        Capability::CapabilityImageReadWrite => panic!(), // not supported
+        Capability::CapabilityImageMipmap => panic!(), // not supported
         Capability::CapabilityPipes => panic!(), // not supported
-        Capability::CapabilityGroups => panic!(),    // not supported
+        Capability::CapabilityGroups => panic!(), // not supported
         Capability::CapabilityDeviceEnqueue => panic!(), // not supported
-        Capability::CapabilityLiteralSampler => panic!(),    // not supported
+        Capability::CapabilityLiteralSampler => panic!(), // not supported
         Capability::CapabilityAtomicStorage => panic!(), // not supported
-        Capability::CapabilityInt16 => Some("shader_int16"),
+        Capability::CapabilityInt16 =>
+            DeviceRequirement::Features(&["shader_int16"]),
         Capability::CapabilityTessellationPointSize =>
-            Some("shader_tessellation_and_geometry_point_size"),
+            DeviceRequirement::Features(&["shader_tessellation_and_geometry_point_size"]),
         Capability::CapabilityGeometryPointSize =>
-            Some("shader_tessellation_and_geometry_point_size"),
-        Capability::CapabilityImageGatherExtended => Some("shader_image_gather_extended"),
+            DeviceRequirement::Features(&["shader_tessellation_and_geometry_point_size"]),
+        Capability::CapabilityImageGatherExtended =>
+            DeviceRequirement::Features(&["shader_image_gather_extended"]),
         Capability::CapabilityStorageImageMultisample =>
-            Some("shader_storage_image_multisample"),
+            DeviceRequirement::Features(&["shader_storage_image_multisample"]),
         Capability::CapabilityUniformBufferArrayDynamicIndexing =>
-            Some("shader_uniform_buffer_array_dynamic_indexing"),
+            DeviceRequirement::Features(&["shader_uniform_buffer_array_dynamic_indexing"]),
         Capability::CapabilitySampledImageArrayDynamicIndexing =>
-            Some("shader_sampled_image_array_dynamic_indexing"),
+            DeviceRequirement::Features(&["shader_sampled_image_array_dynamic_indexing"]),
         Capability::CapabilityStorageBufferArrayDynamicIndexing =>
-            Some("shader_storage_buffer_array_dynamic_indexing"),
+            DeviceRequirement::Features(&["shader_storage_buffer_array_dynamic_indexing"]),
         Capability::CapabilityStorageImageArrayDynamicIndexing =>
-            Some("shader_storage_image_array_dynamic_indexing"),
-        Capability::CapabilityClipDistance => Some("shader_clip_distance"),
-        Capability::CapabilityCullDistance => Some("shader_cull_distance"),
-        Capability::CapabilityImageCubeArray => Some("image_cube_array"),
-        Capability::CapabilitySampleRateShading => Some("sample_rate_shading"),
+            DeviceRequirement::Features(&["shader_storage_image_array_dynamic_indexing"]),
+        Capability::CapabilityClipDistance =>
+            DeviceRequirement::Features(&["shader_clip_distance"]),
+        Capability::CapabilityCullDistance =>
+            DeviceRequirement::Features(&["shader_cull_distance"]),
+        Capability::CapabilityImageCubeArray =>
+            DeviceRequirement::Features(&["image_cube_array"]),
+        Capability::CapabilitySampleRateShading =>
+            DeviceRequirement::Features(&["sample_rate_shading"]),
         Capability::CapabilityImageRect => panic!(), // not supported
-        Capability::CapabilitySampledRect => panic!(),   // not supported
-        Capability::CapabilityGenericPointer => panic!(),    // not supported
-        Capability::CapabilityInt8 => panic!(),  // not supported
-        Capability::CapabilityInputAttachment => None,       // always supported
-        Capability::CapabilitySparseResidency => Some("shader_resource_residency"),
-        Capability::CapabilityMinLod => Some("shader_resource_min_lod"),
-        Capability::CapabilitySampled1D => None,        // always supported
-        Capability::CapabilityImage1D => None,        // always supported
-        Capability::CapabilitySampledCubeArray => Some("image_cube_array"),
-        Capability::CapabilitySampledBuffer => None,         // always supported
-        Capability::CapabilityImageBuffer => None,        // always supported
-        Capability::CapabilityImageMSArray => Some("shader_storage_image_multisample"),
+        Capability::CapabilitySampledRect => panic!(), // not supported
+        Capability::CapabilityGenericPointer => panic!(), // not supported
+        Capability::CapabilityInt8 => panic!(), // not supported
+        Capability::CapabilityInputAttachment => DeviceRequirement::None,
+        Capability::CapabilitySparseResidency =>
+            DeviceRequirement::Features(&["shader_resource_residency"]),
+        Capability::CapabilityMinLod =>
+            DeviceRequirement::Features(&["shader_resource_min_lod"]),
+        Capability::CapabilitySampled1D => DeviceRequirement::None,
+        Capability::CapabilityImage1D => DeviceRequirement::None,
+        Capability::CapabilitySampledCubeArray =>
+            DeviceRequirement::Features(&["image_cube_array"]),
+        Capability::CapabilitySampledBuffer => DeviceRequirement::None,
+        Capability::CapabilityImageBuffer => DeviceRequirement::None,
+        Capability::CapabilityImageMSArray =>
+            DeviceRequirement::Features(&["shader_storage_image_multisample"]),
         Capability::CapabilityStorageImageExtendedFormats =>
-            Some("shader_storage_image_extended_formats"),
-        Capability::CapabilityImageQuery => None,        // always supported
-        Capability::CapabilityDerivativeControl => None,        // always supported
-        Capability::CapabilityInterpolationFunction => Some("sample_rate_shading"),
+            DeviceRequirement::Features(&["shader_storage_image_extended_formats"]),
+        Capability::CapabilityImageQuery => DeviceRequirement::None,
+        Capability::CapabilityDerivativeControl => DeviceRequirement::None,
+        Capability::CapabilityInterpolationFunction =>
+            DeviceRequirement::Features(&["sample_rate_shading"]),
         Capability::CapabilityTransformFeedback => panic!(), // not supported
-        Capability::CapabilityGeometryStreams => panic!(),   // not supported
+        Capability::CapabilityGeometryStreams => panic!(), // not supported
         Capability::CapabilityStorageImageReadWithoutFormat =>
-            Some("shader_storage_image_read_without_format"),
+            DeviceRequirement::Features(&["shader_storage_image_read_without_format"]),
         Capability::CapabilityStorageImageWriteWithoutFormat =>
-            Some("shader_storage_image_write_without_format"),
-        Capability::CapabilityMultiViewport => Some("multi_viewport"),
+            DeviceRequirement::Features(&["shader_storage_image_write_without_format"]),
+        Capability::CapabilityMultiViewport =>
+            DeviceRequirement::Features(&["multi_viewport"]),
+        Capability::CapabilityStorageUniformBufferBlock16 =>
+            DeviceRequirement::Extensions(&["khr_16bit_storage"]),
+        Capability::CapabilityStorageUniform16 =>
+            DeviceRequirement::Extensions(&["khr_16bit_storage"]),
+        Capability::CapabilityStoragePushConstant16 =>
+            DeviceRequirement::Extensions(&["khr_16bit_storage"]),
+        Capability::CapabilityStorageInputOutput16 =>
+            DeviceRequirement::Extensions(&["khr_16bit_storage"]),
+        Capability::CapabilityStorageBuffer16BitAccess =>
+            DeviceRequirement::Extensions(
+                &["khr_16bit_storage", "khr_storage_buffer_storage_class"]),
+        Capability::CapabilityUniformAndStorageBuffer16BitAccess =>
+            DeviceRequirement::Extensions(
+                &["khr_16bit_storage", "khr_storage_buffer_storage_class"]),
     }
+}
+
+/// Returns the Vulkan device requirement for a SPIR-V storage class.
+fn storage_class_requirement(storage_class: &StorageClass) -> DeviceRequirement {
+    match *storage_class {
+        StorageClass::StorageClassUniformConstant => DeviceRequirement::None,
+        StorageClass::StorageClassInput => DeviceRequirement::None,
+        StorageClass::StorageClassUniform => DeviceRequirement::None,
+        StorageClass::StorageClassOutput => DeviceRequirement::None,
+        StorageClass::StorageClassWorkgroup => DeviceRequirement::None,
+        StorageClass::StorageClassCrossWorkgroup => DeviceRequirement::None,
+        StorageClass::StorageClassPrivate => DeviceRequirement::None,
+        StorageClass::StorageClassFunction => DeviceRequirement::None,
+        StorageClass::StorageClassGeneric => DeviceRequirement::None,
+        StorageClass::StorageClassPushConstant => DeviceRequirement::None,
+        StorageClass::StorageClassAtomicCounter => DeviceRequirement::None,
+        StorageClass::StorageClassImage => DeviceRequirement::None,
+        StorageClass::StorageClassStorageBuffer =>
+            DeviceRequirement::Extensions(&["khr_storage_buffer_storage_class"]),
+    }
+}
+
+enum DeviceRequirement {
+    None,
+    Features(&'static[&'static str]),
+    Extensions(&'static[&'static str]),
 }
 
 #[cfg(test)]

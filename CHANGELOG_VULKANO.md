@@ -3,6 +3,7 @@
 - Add support for `#include "..."` and `#include <...>` directives within source
   files.
 - Add a `union` method for the extensions types.
+- Add support for `VK_KHR_16bit_storage` and `VK_KHR_storage_buffer_storage_class` device extensions.
 
 # Version 0.11.1 (2018-11-16)
 
