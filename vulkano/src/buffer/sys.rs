@@ -60,8 +60,8 @@ impl UnsafeBuffer {
     ///
     /// # Panic
     ///
-    /// Panics if `sparse.sparse` is false and `sparse.sparse_residency` or
-    /// `sparse.sparse_aliased` is true.
+    /// - Panics if `sparse.sparse` is false and `sparse.sparse_residency` or `sparse.sparse_aliased` is true.
+    /// - Panics if `usage` is empty.
     ///
     pub unsafe fn new<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
                              sharing: Sharing<I>, sparse: SparseLevel)
@@ -79,6 +79,10 @@ impl UnsafeBuffer {
         };
 
         let usage_bits = usage.to_vulkan_bits();
+
+        // Checking for empty BufferUsage.
+        assert!(usage_bits != 0,
+                "Can't create buffer with empty BufferUsage");
 
         // Checking sparse features.
         assert!(sparse.sparse || !sparse.sparse_residency,
