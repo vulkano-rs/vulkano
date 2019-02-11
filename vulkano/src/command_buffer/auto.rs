@@ -1244,13 +1244,15 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// **This function is unsafe for now because safety checks and synchronization are not
     /// implemented.**
     // TODO: implement correctly
-    pub unsafe fn execute_commands<C>(mut self, command_buffer: C)
+    pub unsafe fn execute_commands<C>(mut self, command_buffers: Vec<C>)
                                       -> Result<Self, ExecuteCommandsError>
         where C: CommandBuffer + Send + Sync + 'static
     {
         {
             let mut builder = self.inner.execute_commands();
-            builder.add(command_buffer);
+            for cmd_buffer in command_buffers {
+                builder.add(cmd_buffer);
+            }
             builder.submit()?;
         }
 
