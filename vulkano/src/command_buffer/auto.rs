@@ -1239,7 +1239,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
-    /// Adds a command that executes a secondary command buffer.
+    /// Adds a command that executes anumber of secondary command buffers.
     ///
     /// **This function is unsafe for now because safety checks and synchronization are not
     /// implemented.**
