@@ -176,7 +176,7 @@ pub unsafe trait AcceptsPixels<T> {
 macro_rules! formats {
     ($($name:ident => $vk:ident [$sz:expr] [$($f_ty:tt)*] {$($d_ty:tt)*},)+) => (
         /// An enumeration of all the possible formats.
-        #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+        #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         #[repr(u32)]
         #[allow(missing_docs)]
         #[allow(non_camel_case_types)]
