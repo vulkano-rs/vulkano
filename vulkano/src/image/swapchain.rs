@@ -82,6 +82,10 @@ impl<W> SwapchainImage<W> {
     fn my_image(&self) -> ImageInner {
         self.swapchain.raw_image(self.image_offset).unwrap()
     }
+
+    fn initialized(&self) {
+        self.swapchain.initialized(self.image_offset);
+    }
 }
 
 unsafe impl<W> ImageAccess for SwapchainImage<W> {
@@ -119,6 +123,10 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
         // Swapchain image are only accessible after being acquired.
         Err(AccessError::SwapchainImageAcquireOnly)
+    }
+
+    fn initialized(&self) {
+        self.initialized();
     }
 
     #[inline]

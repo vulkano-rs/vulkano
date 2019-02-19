@@ -92,6 +92,8 @@ pub unsafe trait ImageAccess {
         self.inner().image.supports_blit_destination()
     }
 
+    fn initialized(&self) {}
+
     /// Returns the layout that the image has when it is first used in a primary command buffer.
     ///
     /// The first time you use an image in an `AutoCommandBufferBuilder`, vulkano will suppose that
@@ -276,6 +278,10 @@ unsafe impl<T> ImageAccess for T
     #[inline]
     unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
         (**self).unlock(transitioned_layout)
+    }
+
+    fn initialized(&self) {
+        (**self).initialized();
     }
 }
 

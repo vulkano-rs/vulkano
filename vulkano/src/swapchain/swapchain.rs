@@ -555,6 +555,13 @@ impl <W> Swapchain<W> {
     pub fn clipped(&self) -> bool {
         self.clipped
     }
+
+    pub fn initialized(&self, image_offset: usize) {
+        let image_entry = self.images.get(image_offset);
+        if let Some(ref image_entry) = image_entry {
+            image_entry.undefined_layout.store(false, Ordering::SeqCst);
+        } 
+    }
 }
 
 unsafe impl<W> VulkanObject for Swapchain<W> {

@@ -632,6 +632,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let commands_lock = self.commands.lock().unwrap();
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
                     let initial_layout_requirement = img.initial_layout_requirement();
+                    img.initialized();
 
                     if initial_layout_requirement != start_layout {
                         actually_exclusive = true;
