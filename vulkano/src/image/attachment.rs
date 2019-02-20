@@ -498,7 +498,8 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
         debug_assert!(prev_val >= 1);
     }
 
-    fn initialized(&self) {
+    #[inline]
+    unsafe fn initialized(&self) {
        self.initialized.store(true, Ordering::SeqCst); 
     }
 }

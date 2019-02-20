@@ -83,6 +83,7 @@ impl<W> SwapchainImage<W> {
         self.swapchain.raw_image(self.image_offset).unwrap()
     }
 
+    #[inline]
     fn initialized(&self) {
         self.swapchain.initialized(self.image_offset);
     }
@@ -125,7 +126,8 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
         Err(AccessError::SwapchainImageAcquireOnly)
     }
 
-    fn initialized(&self) {
+    #[inline]
+    unsafe fn initialized(&self) {
         self.initialized();
     }
 
