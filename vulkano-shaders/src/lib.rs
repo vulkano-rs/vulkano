@@ -303,6 +303,11 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         })
     };
 
-    let content = codegen::compile(path, &source_code, input.shader_kind, &input.include_directories).unwrap();
-    codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
+    match codegen::compile(path, &source_code, input.shader_kind, &input.include_directories) {
+        Ok(content) => codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into(),
+        Err(e) => {
+            panic!(e.replace("(s): ", "(s):\n"));
+        }
+    }
+
 }
