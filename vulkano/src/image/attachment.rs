@@ -500,7 +500,7 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
 
     #[inline]
     unsafe fn initialized(&self) {
-       self.initialized.store(true, Ordering::SeqCst); 
+       self.initialized.store(true, Ordering::SeqCst);
     }
 }
 

@@ -560,7 +560,7 @@ impl <W> Swapchain<W> {
         let image_entry = self.images.get(image_offset);
         if let Some(ref image_entry) = image_entry {
             image_entry.undefined_layout.store(false, Ordering::SeqCst);
-        } 
+        }
     }
 }
 
