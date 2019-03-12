@@ -1,5 +1,6 @@
-# Unreleased
+# Unreleased (breaking)
 
+- Update to winit 0.19
 - Add support for `#include "..."` and `#include <...>` directives within source
   files.
 - Add a `union` method for the extensions types.
