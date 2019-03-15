@@ -50,7 +50,7 @@ struct Vertex {
 }
 impl_vertex!(Vertex, position);
 
-// 2. `InstanceData` is the vertex type describes the unique data per instance.
+// 2. `InstanceData` is the vertex type that describes the unique data per instance.
 #[derive(Debug, Clone)]
 struct InstanceData {
     position_offset: [f32; 2],
