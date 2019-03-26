@@ -40,7 +40,7 @@ fn main() {
 //                ty: "compute",
 //                // We declare what directories to search for when using the `#include <...>`
 //                // syntax. Specified directories have descending priorities based on their order.
-//                include: [ "examples/src/bin/shader-include/standard-shaders" ],
+//                include: [ "src/bin/shader-include/standard-shaders" ],
 //                src: "
 //#version 450
 //// Substitutes this line with the contents of the file `common.glsl` found in one of the standard
