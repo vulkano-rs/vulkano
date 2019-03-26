@@ -159,7 +159,7 @@
 use std::env;
 use std::fs::File;
 use std::io::{Read, Result as IoResult};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{Ident, LitStr, LitBool};
@@ -284,9 +284,23 @@ pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
     Ok(buf)
 }
 
+/// Obtains the prefix needed for crate-relative path to become workspace-relative.
+fn get_workspace_prefix() -> PathBuf {
+	let crate_root_string = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string());
+	let crate_root = Path::new(&crate_root_string);
+
+	let workspace_root = Path::new(".").canonicalize().unwrap();
+	match crate_root.strip_prefix(workspace_root) {
+		Err(_) => Path::new("").to_path_buf(),
+		Ok(prefix) => prefix.to_path_buf()
+	}
+}
+
 #[proc_macro]
 pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
+
+	let workspace_prefix = get_workspace_prefix();
 
     let (path, source_code) = match input.source_kind {
         SourceKind::Src(source) => (None, source),
@@ -308,13 +322,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             // works with paths relative to workspace, which in case of virtual workspaces
             // is not the same as CARGO_MANIFEST_DIR
             let path = {
-                // If this fails we have bigger problems
-                let workspace_root = Path::new(".").canonicalize().unwrap();
-                let workspace_prefix = match crate_root.strip_prefix(workspace_root) {
-                    Err(_) => Path::new(""),
-                    Ok(prefix) => prefix
-                };
-
                 let prefixed_path = workspace_prefix.join(&path);
                 match prefixed_path.to_str() {
                     None => path.clone(),
@@ -326,6 +333,15 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     };
 
-    let content = codegen::compile(path, &source_code, input.shader_kind, &input.include_directories).unwrap();
+	let mut include_directories = Vec::with_capacity(input.include_directories.len());
+	for include_directory in input.include_directories {
+		let prefixed_path = workspace_prefix.join(Path::new(&include_directory));
+		match prefixed_path.to_str() {
+			None => include_directories.push(include_directory),
+			Some(new_path) => include_directories.push(new_path.to_string())
+		};
+	}
+
+    let content = codegen::compile(path, &source_code, input.shader_kind, &include_directories).unwrap();
     codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
 }
