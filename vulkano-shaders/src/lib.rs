@@ -125,11 +125,13 @@
 //!
 //! Provides the path to the GLSL source to be compiled, relative to `Cargo.toml`.
 //! Cannot be used in conjunction with the `src` field.
+//! This path is always crate root-relative, even in virtual workspaces.
 //!
 //! ## `include: ["...", "...", ..., "..."]`
 //!
 //! Specifies the standard include directories to be searched through when using the
 //! `#include <...>` directive within a shader source.
+//! These paths are always crate root-relative, even in virtual workspaces.
 //! If `path` was specified, relative paths can also be used (`#include "..."`), without the need
 //! to specify one or more standard include directories. Relative paths are relative to the
 //! directory, which contains the source file the `#include "..."` directive is declared in.
