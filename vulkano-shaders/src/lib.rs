@@ -288,21 +288,21 @@ pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
 
 /// Obtains the prefix needed for crate-relative path to become workspace-relative.
 fn get_workspace_prefix() -> PathBuf {
-	let crate_root_string = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string());
-	let crate_root = Path::new(&crate_root_string);
+    let crate_root_string = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string());
+    let crate_root = Path::new(&crate_root_string);
 
-	let workspace_root = Path::new(".").canonicalize().unwrap();
-	match crate_root.strip_prefix(workspace_root) {
-		Err(_) => Path::new("").to_path_buf(),
-		Ok(prefix) => prefix.to_path_buf()
-	}
+    let workspace_root = Path::new(".").canonicalize().unwrap();
+    match crate_root.strip_prefix(workspace_root) {
+        Err(_) => Path::new("").to_path_buf(),
+        Ok(prefix) => prefix.to_path_buf()
+    }
 }
 
 #[proc_macro]
 pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
 
-	let workspace_prefix = get_workspace_prefix();
+    let workspace_prefix = get_workspace_prefix();
 
     let (path, source_code) = match input.source_kind {
         SourceKind::Src(source) => (None, source),
@@ -335,14 +335,14 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         }
     };
 
-	let mut include_directories = Vec::with_capacity(input.include_directories.len());
-	for include_directory in input.include_directories {
-		let prefixed_path = workspace_prefix.join(Path::new(&include_directory));
-		match prefixed_path.to_str() {
-			None => include_directories.push(include_directory),
-			Some(new_path) => include_directories.push(new_path.to_string())
-		};
-	}
+    let mut include_directories = Vec::with_capacity(input.include_directories.len());
+    for include_directory in input.include_directories {
+        let prefixed_path = workspace_prefix.join(Path::new(&include_directory));
+        match prefixed_path.to_str() {
+            None => include_directories.push(include_directory),
+            Some(new_path) => include_directories.push(new_path.to_string())
+        };
+    }
 
     let content = codegen::compile(path, &source_code, input.shader_kind, &include_directories).unwrap();
     codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
