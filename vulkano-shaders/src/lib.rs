@@ -290,40 +290,40 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let (path, source_code) = match input.source_kind {
         SourceKind::Src(source) => (None, source),
-		SourceKind::Path(path) => {
-			let crate_root_string = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string());
-			let crate_root = Path::new(&crate_root_string);
-			let source = {
-				let full_path = crate_root.join(&path);
+        SourceKind::Path(path) => {
+            let crate_root_string = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".to_string());
+            let crate_root = Path::new(&crate_root_string);
+            let source = {
+                let full_path = crate_root.join(&path);
 
-				if full_path.is_file() {
-					read_file_to_string(&full_path)
-						.expect(&format!("Error reading source from {:?}", path))
-				} else {
-					panic!("File {:?} was not found; note that the path must be relative to your Cargo.toml", path);
-				}
-			};
+                if full_path.is_file() {
+                    read_file_to_string(&full_path)
+                        .expect(&format!("Error reading source from {:?}", path))
+                } else {
+                    panic!("File {:?} was not found; note that the path must be relative to your Cargo.toml", path);
+                }
+            };
 
-			// We need to take into account that `path` has to be crate-relative, but this proc macro
-			// works with paths relative to workspace, which in case of virtual workspaces
-			// is not the same as CARGO_MANIFEST_DIR
-			let path = {
-				// If this fails we have bigger problems
-				let workspace_root = Path::new(".").canonicalize().unwrap();
-				let workspace_prefix = match crate_root.strip_prefix(workspace_root) {
-					Err(_) => Path::new(""),
-					Ok(prefix) => prefix
-				};
+            // We need to take into account that `path` has to be crate-relative, but this proc macro
+            // works with paths relative to workspace, which in case of virtual workspaces
+            // is not the same as CARGO_MANIFEST_DIR
+            let path = {
+                // If this fails we have bigger problems
+                let workspace_root = Path::new(".").canonicalize().unwrap();
+                let workspace_prefix = match crate_root.strip_prefix(workspace_root) {
+                    Err(_) => Path::new(""),
+                    Ok(prefix) => prefix
+                };
 
-				let prefixed_path = workspace_prefix.join(&path);
-				match prefixed_path.to_str() {
-					None => path.clone(),
-					Some(s) => s.to_string()
-				}
-			};
+                let prefixed_path = workspace_prefix.join(&path);
+                match prefixed_path.to_str() {
+                    None => path.clone(),
+                    Some(s) => s.to_string()
+                }
+            };
 
-			(Some(path), source)
-		}
+            (Some(path), source)
+        }
     };
 
     let content = codegen::compile(path, &source_code, input.shader_kind, &input.include_directories).unwrap();
