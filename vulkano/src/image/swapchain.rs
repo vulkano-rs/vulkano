@@ -85,7 +85,7 @@ impl<W> SwapchainImage<W> {
 
     #[inline]
     fn layout_initialized(&self) {
-        self.swapchain.initialized(self.image_offset);
+        self.swapchain.image_layout_initialized(self.image_offset);
     }
 }
 
