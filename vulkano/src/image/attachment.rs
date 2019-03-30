@@ -499,7 +499,7 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    unsafe fn initialized(&self) {
+    unsafe fn layout_initialized(&self) {
        self.initialized.store(true, Ordering::SeqCst);
     }
 }

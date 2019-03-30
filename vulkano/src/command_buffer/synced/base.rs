@@ -632,8 +632,11 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let commands_lock = self.commands.lock().unwrap();
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
                     let initial_layout_requirement = img.initial_layout_requirement();
+
+                    // Indicate to the image that a memory barrier has been inserted that
+                    // transitions it out of an undefined state.
                     unsafe {
-                        img.initialized();
+                        img.layout_initialized();
                     }
 
                     if initial_layout_requirement != start_layout {
