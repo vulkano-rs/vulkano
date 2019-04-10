@@ -414,12 +414,6 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
             DeviceRequirement::Extensions(&["khr_16bit_storage"]),
         Capability::CapabilityStorageInputOutput16 =>
             DeviceRequirement::Extensions(&["khr_16bit_storage"]),
-        Capability::CapabilityStorageBuffer16BitAccess =>
-            DeviceRequirement::Extensions(
-                &["khr_16bit_storage", "khr_storage_buffer_storage_class"]),
-        Capability::CapabilityUniformAndStorageBuffer16BitAccess =>
-            DeviceRequirement::Extensions(
-                &["khr_16bit_storage", "khr_storage_buffer_storage_class"]),
     }
 }
 
