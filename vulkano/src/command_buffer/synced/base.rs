@@ -510,7 +510,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // collision. But since the pipeline barrier is going to be submitted before
                     // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                     // been flushed yet.
-                    if collision_cmd_id >= first_unflushed_cmd_id {
+                    if collision_cmd_id >= first_unflushed_cmd_id || entry.current_layout != start_layout {
                         unsafe {
                             // Flush the pending barrier.
                             self.inner.pipeline_barrier(&self.pending_barrier);
@@ -553,7 +553,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                     command.send(&mut self.inner);
                                 }
                                 commands_lock.first_unflushed = end;
-                            }
+                                }
                         }
                     }
 
@@ -651,7 +651,11 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                         access,
                                                         true,
                                                         None,
-                                                        ImageLayout::Undefined,
+                                                        if img.preinitialized_layout() {
+                                                            ImageLayout::Preinitialized
+                                                        } else {
+                                                            ImageLayout::Undefined
+                                                        },
                                                         initial_layout_requirement);
                             self.inner.pipeline_barrier(&b);
                             img.layout_initialized();

@@ -109,6 +109,10 @@ pub unsafe trait ImageAccess {
     
     unsafe fn is_layout_initialized(&self) -> bool {false}
 
+    unsafe fn preinitialized_layout(&self) -> bool {
+        self.inner().image.preinitialized_layout()
+    }
+
     /// Returns the layout that the image has when it is first used in a primary command buffer.
     ///
     /// The first time you use an image in an `AutoCommandBufferBuilder`, vulkano will suppose that
