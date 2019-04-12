@@ -638,26 +638,33 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // transitions it out of an undefined state.
                     unsafe {
                         if !img.is_layout_initialized() {
-                            let mut b = UnsafeCommandBufferBuilderPipelineBarrier::new();
-                            b.add_image_memory_barrier(img,
-                                                        0 .. img.mipmap_levels(),
-                                                        0 .. img.dimensions().array_layers(),
-                                                        PipelineStages {
-                                                            bottom_of_pipe: true,
-                                                            ..PipelineStages::none()
-                                                        },
-                                                        AccessFlagBits::none(),
-                                                        stages,
-                                                        access,
-                                                        true,
-                                                        None,
-                                                        if img.preinitialized_layout() {
-                                                            ImageLayout::Preinitialized
-                                                        } else {
-                                                            ImageLayout::Undefined
-                                                        },
-                                                        initial_layout_requirement);
-                            self.inner.pipeline_barrier(&b);
+                            let init_layout = if img.preinitialized_layout() {
+                                ImageLayout::Preinitialized
+                            } else {
+                                ImageLayout::Undefined
+                            };
+                            if initial_layout_requirement != init_layout {
+                                let mut b = UnsafeCommandBufferBuilderPipelineBarrier::new();
+                                b.add_image_memory_barrier(img,
+                                                            0 .. img.mipmap_levels(),
+                                                            0 .. img.dimensions().array_layers(),
+                                                            PipelineStages {
+                                                                bottom_of_pipe: true,
+                                                                ..PipelineStages::none()
+                                                            },
+                                                            AccessFlagBits::none(),
+                                                            stages,
+                                                            access,
+                                                            true,
+                                                            None,
+                                                            if img.preinitialized_layout() {
+                                                                ImageLayout::Preinitialized
+                                                            } else {
+                                                                ImageLayout::Undefined
+                                                            },
+                                                            initial_layout_requirement);
+                                self.inner.pipeline_barrier(&b);
+                            }
                             img.layout_initialized();
                         }
                     }
