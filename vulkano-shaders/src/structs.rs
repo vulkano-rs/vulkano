@@ -135,7 +135,7 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
         if diff >= 1 {
             rust_members.push(Member {
                 name: Ident::new(&format!("_dummy{}", next_padding_num), Span::call_site()),
-                ty: quote!{ [u8; {}] },
+                ty: quote!{ [u8; #diff as usize] },
             });
         }
     }
