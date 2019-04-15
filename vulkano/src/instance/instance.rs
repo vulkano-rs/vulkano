@@ -1073,15 +1073,13 @@ impl<'a> QueueFamily<'a> {
     }
 
     /// Returns true if queues of this family can execute transfer operations.
-    ///
-    /// > **Note**: Queues that support graphics or compute operations also always support transfer
-    /// > operations. As of writing this, this function will always return true. The purpose of
-    /// > this function is to be future-proofed in case queues that don't support transfer
-    /// > operations are ever added to Vulkan.
+    /// > **Note**: While all queues that can perform graphics or compute operations can implicitly perform
+    /// > transfer operations, graphics & compute queues only optionally indicate support for tranfers.
+    /// > Many discrete cards will have one queue family that exclusively sets the VK_QUEUE_TRANSFER_BIT
+    /// > to indicate a special relationship with the DMA module and more efficient transfers.
     #[inline]
-    pub fn supports_transfers(&self) -> bool {
-        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 || self.supports_graphics() ||
-            self.supports_compute()
+    pub fn explicitly_supports_transfers(&self) -> bool {
+        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
     }
 
     /// Returns true if queues of this family can execute sparse resources binding operations.
