@@ -53,8 +53,9 @@ To get started you are encouraged to use the following resources:
 
 ## Setup
 
-Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation. In order to
-build the shaderc-rs crate the following tools must be installed and available on `PATH`:
+Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation.  Refer to shaderc-rs documentation to provide a pre-built libshaderc for faster build times.
+
+Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
 - [CMake](https://cmake.org/)
 - [Python](https://www.python.org/) (works with both Python 2.x and 3.x, on windows the executable must be named `python.exe`)
 
