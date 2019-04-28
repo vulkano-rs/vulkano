@@ -57,6 +57,7 @@ Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compi
 
 Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
 - [CMake](https://cmake.org/)
+- [Ninja](https://ninja-build.org/) Is optional except when building with MSVC.  It may speed up build time for libshaderc.
 - [Python](https://www.python.org/) (works with both Python 2.x and 3.x, on windows the executable must be named `python.exe`)
 
 These requirements can be either installed with your favourite package manager or with installers
