@@ -106,6 +106,12 @@ pub unsafe trait ImageAccess {
     /// an image in an invalid layout. The same problem must be considered by the implementer
     /// of the method.
     unsafe fn layout_initialized(&self) {}
+    
+    unsafe fn is_layout_initialized(&self) -> bool {false}
+
+    unsafe fn preinitialized_layout(&self) -> bool {
+        self.inner().image.preinitialized_layout()
+    }
 
     /// Returns the layout that the image has when it is first used in a primary command buffer.
     ///
@@ -296,6 +302,11 @@ unsafe impl<T> ImageAccess for T
     #[inline]
     unsafe fn layout_initialized(&self) {
         (**self).layout_initialized();
+    }
+    
+    #[inline]
+    unsafe fn is_layout_initialized(&self) -> bool {
+        (**self).is_layout_initialized()
     }
 }
 

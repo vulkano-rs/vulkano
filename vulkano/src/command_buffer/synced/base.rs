@@ -510,7 +510,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // collision. But since the pipeline barrier is going to be submitted before
                     // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                     // been flushed yet.
-                    if collision_cmd_id >= first_unflushed_cmd_id {
+                    if collision_cmd_id >= first_unflushed_cmd_id || entry.current_layout != start_layout {
                         unsafe {
                             // Flush the pending barrier.
                             self.inner.pipeline_barrier(&self.pending_barrier);
@@ -553,7 +553,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                     command.send(&mut self.inner);
                                 }
                                 commands_lock.first_unflushed = end;
-                            }
+                                }
                         }
                     }
 
@@ -624,6 +624,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 // is different from the first layout usage.
                 let mut actually_exclusive = exclusive;
                 let mut actual_start_layout = start_layout;
+                
 
                 if !self.is_secondary && resource_ty == KeyTy::Image &&
                     start_layout != ImageLayout::Undefined &&
@@ -636,7 +637,36 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // Indicate to the image that a memory barrier has been inserted that
                     // transitions it out of an undefined state.
                     unsafe {
-                        img.layout_initialized();
+                        if !img.is_layout_initialized() {
+                            let init_layout = if img.preinitialized_layout() {
+                                ImageLayout::Preinitialized
+                            } else {
+                                ImageLayout::Undefined
+                            };
+                            if initial_layout_requirement != init_layout {
+                                let mut b = UnsafeCommandBufferBuilderPipelineBarrier::new();
+                                b.add_image_memory_barrier(img,
+                                                            0 .. img.mipmap_levels(),
+                                                            0 .. img.dimensions().array_layers(),
+                                                            PipelineStages {
+                                                                bottom_of_pipe: true,
+                                                                ..PipelineStages::none()
+                                                            },
+                                                            AccessFlagBits::none(),
+                                                            stages,
+                                                            access,
+                                                            true,
+                                                            None,
+                                                            if img.preinitialized_layout() {
+                                                                ImageLayout::Preinitialized
+                                                            } else {
+                                                                ImageLayout::Undefined
+                                                            },
+                                                            initial_layout_requirement);
+                                self.inner.pipeline_barrier(&b);
+                            }
+                            img.layout_initialized();
+                        }
                     }
 
                     if initial_layout_requirement != start_layout {
