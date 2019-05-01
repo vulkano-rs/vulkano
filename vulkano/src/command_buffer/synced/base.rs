@@ -624,7 +624,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 // is different from the first layout usage.
                 let mut actually_exclusive = exclusive;
                 let mut actual_start_layout = start_layout;
-                
+
 
                 if !self.is_secondary && resource_ty == KeyTy::Image &&
                     start_layout != ImageLayout::Undefined &&

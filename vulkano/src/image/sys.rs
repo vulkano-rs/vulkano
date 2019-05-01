@@ -582,7 +582,7 @@ impl UnsafeImage {
             mipmaps: mipmaps,
             format_features: output.optimalTilingFeatures,
             needs_destruction: false, // TODO: pass as parameter
-            preinitialized_layout: false, // TODO: Maybe this should be passed in? 
+            preinitialized_layout: false, // TODO: Maybe this should be passed in?
         }
     }
 
@@ -781,7 +781,7 @@ impl UnsafeImage {
     pub fn usage_input_attachment(&self) -> bool {
         (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
     }
-    
+
     #[inline]
     pub fn preinitialized_layout(&self) -> bool {
         self.preinitialized_layout
