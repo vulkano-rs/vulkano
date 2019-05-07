@@ -1,5 +1,5 @@
 # Unreleased (breaking)
-
+- Update shaderc to 0.5.  New shaderc has improved pre-built options for libshaderc that significantly reduce package build time and are appropriate for use in CI
 - `QueueFamily::explicitly_supports_tranfers` only returns true if `vk::QUEUE_TRANSFER_BIT` is set instead of also always returning true.  Removed `supports_transfers`.
 - Update to winit 0.19
 - Add support for `#include "..."` and `#include <...>` directives within source
