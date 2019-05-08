@@ -553,7 +553,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                     command.send(&mut self.inner);
                                 }
                                 commands_lock.first_unflushed = end;
-                                }
+                            }
                         }
                     }
 
@@ -634,8 +634,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
                     let initial_layout_requirement = img.initial_layout_requirement();
 
-                    // Indicate to the image that a memory barrier has been inserted that
-                    // transitions it out of an undefined state.
+                    // Checks if the image is initialized and transitions it
+                    // if it isn't
                     unsafe {
                         if !img.is_layout_initialized() {
                             let init_layout = if img.preinitialized_layout() {
@@ -665,6 +665,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                             initial_layout_requirement);
                                 self.inner.pipeline_barrier(&b);
                             }
+                            // Indicate to the image that a memory barrier has been inserted that
+                            // transitions it out of an undefined state.
                             img.layout_initialized();
                         }
                     }
