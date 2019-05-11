@@ -636,44 +636,10 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                     // Checks if the image is initialized and transitions it
                     // if it isn't
-                    unsafe {
-                        if !img.is_layout_initialized() {
-                            let init_layout = if img.preinitialized_layout() {
-                                ImageLayout::Preinitialized
-                            } else {
-                                ImageLayout::Undefined
-                            };
-                            if initial_layout_requirement != init_layout {
-                                let mut b = UnsafeCommandBufferBuilderPipelineBarrier::new();
-                                b.add_image_memory_barrier(img,
-                                                            0 .. img.mipmap_levels(),
-                                                            0 .. img.dimensions().array_layers(),
-                                                            PipelineStages {
-                                                                bottom_of_pipe: true,
-                                                                ..PipelineStages::none()
-                                                            },
-                                                            AccessFlagBits::none(),
-                                                            stages,
-                                                            access,
-                                                            true,
-                                                            None,
-                                                            if img.preinitialized_layout() {
-                                                                ImageLayout::Preinitialized
-                                                            } else {
-                                                                ImageLayout::Undefined
-                                                            },
-                                                            initial_layout_requirement);
-                                self.inner.pipeline_barrier(&b);
-                            }
-                            // Indicate to the image that a memory barrier has been inserted that
-                            // transitions it out of an undefined state.
-                            img.layout_initialized();
-                        }
-                    }
+                    let is_layout_initialized = unsafe { img.is_layout_initialized() };
 
-                    if initial_layout_requirement != start_layout {
-                        actually_exclusive = true;
-                        actual_start_layout = initial_layout_requirement;
+                    if initial_layout_requirement != start_layout || !is_layout_initialized {
+                        actually_exclusive = is_layout_initialized;
 
                         // Note that we transition from `bottom_of_pipe`, which means that we
                         // wait for all the previous commands to be entirely finished. This is
@@ -686,6 +652,17 @@ impl<P> SyncCommandBufferBuilder<P> {
                         //   suboptimal in some cases, in the general situation it will be ok.
                         //
                         unsafe {
+                            let init_layout = if img.preinitialized_layout() {
+                                ImageLayout::Preinitialized
+                            } else {
+                                ImageLayout::Undefined
+                            };
+                            let from_layout = if initial_layout_requirement != init_layout {
+                                init_layout
+                            } else {
+                                initial_layout_requirement
+                            };
+                            actual_start_layout = from_layout;
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(img,
                                                        0 .. img.mipmap_levels(),
@@ -699,8 +676,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                        access,
                                                        true,
                                                        None,
-                                                       initial_layout_requirement,
+                                                       from_layout,
                                                        start_layout);
+                            img.layout_initialized();
                         }
                     }
                 }
