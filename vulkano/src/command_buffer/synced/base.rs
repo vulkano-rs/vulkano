@@ -639,7 +639,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let is_layout_initialized = unsafe { img.is_layout_initialized() };
 
                     if initial_layout_requirement != start_layout || !is_layout_initialized {
-                        actually_exclusive = is_layout_initialized;
+                        actually_exclusive = is_layout_initialized || initial_layout_requirement != start_layout;
 
                         // Note that we transition from `bottom_of_pipe`, which means that we
                         // wait for all the previous commands to be entirely finished. This is
@@ -662,7 +662,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                             } else {
                                 initial_layout_requirement
                             };
-                            actual_start_layout = from_layout;
+                            if  initial_layout_requirement != start_layout {
+                                actual_start_layout = initial_layout_requirement;
+                            }
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(img,
                                                        0 .. img.mipmap_levels(),
