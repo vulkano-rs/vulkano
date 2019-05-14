@@ -107,7 +107,7 @@ pub unsafe trait ImageAccess {
     /// of the method.
     unsafe fn layout_initialized(&self) {}
 
-    unsafe fn is_layout_initialized(&self) -> bool {false}
+    fn is_layout_initialized(&self) -> bool {false}
 
     unsafe fn preinitialized_layout(&self) -> bool {
         self.inner().image.preinitialized_layout()
@@ -305,7 +305,7 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    unsafe fn is_layout_initialized(&self) -> bool {
+    fn is_layout_initialized(&self) -> bool {
         (**self).is_layout_initialized()
     }
 }

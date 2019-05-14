@@ -504,7 +504,7 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    unsafe fn is_layout_initialized(&self) -> bool {
+    fn is_layout_initialized(&self) -> bool {
        self.initialized.load(Ordering::SeqCst)
     }
 }

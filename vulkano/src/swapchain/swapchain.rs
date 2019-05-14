@@ -570,7 +570,7 @@ impl <W> Swapchain<W> {
     pub(crate) fn is_image_layout_initialized(&self, image_offset: usize) -> bool {
         let image_entry = self.images.get(image_offset);
         if let Some(ref image_entry) = image_entry {
-            image_entry.undefined_layout.load(Ordering::SeqCst)
+            !image_entry.undefined_layout.load(Ordering::SeqCst)
         } else { false }
     }
 }

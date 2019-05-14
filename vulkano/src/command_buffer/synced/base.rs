@@ -636,7 +636,7 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                     // Checks if the image is initialized and transitions it
                     // if it isn't
-                    let is_layout_initialized = unsafe { img.is_layout_initialized() };
+                    let is_layout_initialized = img.is_layout_initialized();
 
                     if initial_layout_requirement != start_layout || !is_layout_initialized {
                         actually_exclusive = is_layout_initialized || initial_layout_requirement != start_layout;
@@ -652,15 +652,14 @@ impl<P> SyncCommandBufferBuilder<P> {
                         //   suboptimal in some cases, in the general situation it will be ok.
                         //
                         unsafe {
-                            let init_layout = if img.preinitialized_layout() {
-                                ImageLayout::Preinitialized
-                            } else {
-                                ImageLayout::Undefined
-                            };
-                            let from_layout = if initial_layout_requirement != init_layout {
-                                init_layout
-                            } else {
+                            let from_layout = if is_layout_initialized {
                                 initial_layout_requirement
+                            } else {
+                                if img.preinitialized_layout() {
+                                    ImageLayout::Preinitialized
+                                } else {
+                                    ImageLayout::Undefined
+                                }
                             };
                             if  initial_layout_requirement != start_layout {
                                 actual_start_layout = initial_layout_requirement;

@@ -89,7 +89,7 @@ impl<W> SwapchainImage<W> {
     }
 
     #[inline]
-    unsafe fn is_layout_initialized(&self) -> bool {
+    fn is_layout_initialized(&self) -> bool {
        self.swapchain.is_image_layout_initialized(self.image_offset)
     }
 }
@@ -137,7 +137,7 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    unsafe fn is_layout_initialized(&self) -> bool{
+    fn is_layout_initialized(&self) -> bool{
         self.is_layout_initialized()
     }
 
