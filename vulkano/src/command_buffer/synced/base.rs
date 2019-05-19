@@ -639,7 +639,6 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let is_layout_initialized = img.is_layout_initialized();
 
                     if initial_layout_requirement != start_layout || !is_layout_initialized {
-                        actually_exclusive = is_layout_initialized || initial_layout_requirement != start_layout;
 
                         // Note that we transition from `bottom_of_pipe`, which means that we
                         // wait for all the previous commands to be entirely finished. This is
@@ -653,6 +652,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                         //
                         unsafe {
                             let from_layout = if is_layout_initialized {
+                                actually_exclusive = true;
                                 initial_layout_requirement
                             } else {
                                 if img.preinitialized_layout() {
