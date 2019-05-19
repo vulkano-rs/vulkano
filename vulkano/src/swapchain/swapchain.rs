@@ -555,6 +555,24 @@ impl <W> Swapchain<W> {
     pub fn clipped(&self) -> bool {
         self.clipped
     }
+
+    // This method is necessary to allow `SwapchainImage`s to signal when they have been
+    // transitioned out of their initial `undefined` image layout.
+    //
+    // See the `ImageAccess::layout_initialized` method documentation for more details.
+    pub(crate) fn image_layout_initialized(&self, image_offset: usize) {
+        let image_entry = self.images.get(image_offset);
+        if let Some(ref image_entry) = image_entry {
+            image_entry.undefined_layout.store(false, Ordering::SeqCst);
+        }
+    }
+
+    pub(crate) fn is_image_layout_initialized(&self, image_offset: usize) -> bool {
+        let image_entry = self.images.get(image_offset);
+        if let Some(ref image_entry) = image_entry {
+            !image_entry.undefined_layout.load(Ordering::SeqCst)
+        } else { false }
+    }
 }
 
 unsafe impl<W> VulkanObject for Swapchain<W> {

@@ -497,6 +497,16 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
         let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_val >= 1);
     }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+       self.initialized.store(true, Ordering::SeqCst);
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+       self.initialized.load(Ordering::SeqCst)
+    }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>
