@@ -92,6 +92,27 @@ pub unsafe trait ImageAccess {
         self.inner().image.supports_blit_destination()
     }
 
+    /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
+    /// This method allows the image memory barrier creation process to signal when an image
+    /// has been transitioned out of its initial `Undefined` or `Preinitialized` state. This
+    /// allows vulkano to avoid creating unnecessary image memory barriers between future
+    /// uses of the image.
+    ///
+    /// ## Unsafe
+    ///
+    /// If a user calls this method outside of the intended context and signals that the layout
+    /// is no longer `Undefined` or `Preinitialized` when it is still in an `Undefined` or
+    /// `Preinitialized` state, this may result in the vulkan implementation attempting to use
+    /// an image in an invalid layout. The same problem must be considered by the implementer
+    /// of the method.
+    unsafe fn layout_initialized(&self) {}
+
+    fn is_layout_initialized(&self) -> bool {false}
+
+    unsafe fn preinitialized_layout(&self) -> bool {
+        self.inner().image.preinitialized_layout()
+    }
+
     /// Returns the layout that the image has when it is first used in a primary command buffer.
     ///
     /// The first time you use an image in an `AutoCommandBufferBuilder`, vulkano will suppose that
@@ -276,6 +297,16 @@ unsafe impl<T> ImageAccess for T
     #[inline]
     unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
         (**self).unlock(transitioned_layout)
+    }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+        (**self).layout_initialized();
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+        (**self).is_layout_initialized()
     }
 }
 

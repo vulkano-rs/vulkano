@@ -510,7 +510,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // collision. But since the pipeline barrier is going to be submitted before
                     // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                     // been flushed yet.
-                    if collision_cmd_id >= first_unflushed_cmd_id {
+                    if collision_cmd_id >= first_unflushed_cmd_id || entry.current_layout != start_layout {
                         unsafe {
                             // Flush the pending barrier.
                             self.inner.pipeline_barrier(&self.pending_barrier);
@@ -625,6 +625,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 let mut actually_exclusive = exclusive;
                 let mut actual_start_layout = start_layout;
 
+
                 if !self.is_secondary && resource_ty == KeyTy::Image &&
                     start_layout != ImageLayout::Undefined &&
                     start_layout != ImageLayout::Preinitialized
@@ -633,9 +634,11 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
                     let initial_layout_requirement = img.initial_layout_requirement();
 
-                    if initial_layout_requirement != start_layout {
-                        actually_exclusive = true;
-                        actual_start_layout = initial_layout_requirement;
+                    // Checks if the image is initialized and transitions it
+                    // if it isn't
+                    let is_layout_initialized = img.is_layout_initialized();
+
+                    if initial_layout_requirement != start_layout || !is_layout_initialized {
 
                         // Note that we transition from `bottom_of_pipe`, which means that we
                         // wait for all the previous commands to be entirely finished. This is
@@ -648,6 +651,19 @@ impl<P> SyncCommandBufferBuilder<P> {
                         //   suboptimal in some cases, in the general situation it will be ok.
                         //
                         unsafe {
+                            let from_layout = if is_layout_initialized {
+                                actually_exclusive = true;
+                                initial_layout_requirement
+                            } else {
+                                if img.preinitialized_layout() {
+                                    ImageLayout::Preinitialized
+                                } else {
+                                    ImageLayout::Undefined
+                                }
+                            };
+                            if  initial_layout_requirement != start_layout {
+                                actual_start_layout = initial_layout_requirement;
+                            }
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(img,
                                                        0 .. img.mipmap_levels(),
@@ -661,8 +677,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                        access,
                                                        true,
                                                        None,
-                                                       initial_layout_requirement,
+                                                       from_layout,
                                                        start_layout);
+                            img.layout_initialized();
                         }
                     }
                 }
