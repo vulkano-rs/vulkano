@@ -300,6 +300,13 @@ impl Device {
                                                   *const _
                                           });
 
+        let mut active_queue_families: SmallVec<[u32; 8]> = SmallVec::new();
+        for (queue_family, _) in output_queues.iter() {
+            if let None = active_queue_families.iter().find(|&&qf| qf == *queue_family) {
+                active_queue_families.push(*queue_family);
+            }
+        }
+
         let device =
             Arc::new(Device {
                          instance: phys.instance().clone(),
@@ -315,7 +322,7 @@ impl Device {
                              ..requested_features.clone()
                          },
                          extensions: (&extensions).into(),
-                         active_queue_families: output_queues.iter().map(|&(q, _)| q).collect(),
+                         active_queue_families,
                          allocation_count: Mutex::new(0),
                          fence_pool: Mutex::new(Vec::new()),
                          semaphore_pool: Mutex::new(Vec::new()),
