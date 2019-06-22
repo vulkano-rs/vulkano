@@ -188,6 +188,36 @@ pub struct CpuBufferPoolSubbuffer<T, A>
     chunk: CpuBufferPoolChunk<T, A>,
 }
 
+impl<T, A> CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    /// Write new data to the buffer, overwriting the old one.
+    /// New data must be the same size as old one.
+    pub fn write(&self, data: T) -> Result<(),DeviceMemoryAllocError> {
+        //TODO: Lock handling
+        let offset = self.chunk.buffer.memory.offset();
+        let range = offset .. offset + self.chunk.buffer.inner.size();
+        if self.chunk.buffer.inner.size() < mem::size_of::<T>() {
+            return Err(DeviceMemoryAllocError::MemoryMapFailed);
+        }
+        unsafe {
+            let mut mapped = self.chunk.buffer.memory.mapped_memory().unwrap().read_write(range);
+            ptr::write::<T>(&mut *mapped, data);
+            return Ok(());
+        }
+    }
+    /// Returns the data in the buffer
+    pub fn read(&self) -> Result<(T),DeviceMemoryAllocError>  {
+        //TODO: Lock handling
+        let offset = self.chunk.buffer.memory.offset();
+        let range = offset .. offset + self.chunk.buffer.inner.size();
+        unsafe {
+            let mapped = self.chunk.buffer.memory.mapped_memory().unwrap().read_write(range);
+            return Ok(ptr::read::<T>(& *mapped));
+        }
+    }
+}
+
 impl<T> CpuBufferPool<T> {
     /// Builds a `CpuBufferPool`.
     #[inline]
