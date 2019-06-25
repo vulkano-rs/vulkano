@@ -52,7 +52,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct Vertex {
     pub position: [f32; 2],
     pub color: [f32; 3],
