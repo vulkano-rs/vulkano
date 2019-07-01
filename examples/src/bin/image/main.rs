@@ -76,7 +76,7 @@ fn main() {
     };
 
 
-    #[derive(Debug, Clone)]
+    #[derive(Default, Debug, Clone)]
     struct Vertex { position: [f32; 2] }
     vulkano::impl_vertex!(Vertex, position);
 

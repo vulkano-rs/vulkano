@@ -88,7 +88,7 @@ impl TriangleDrawSystem {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2]
 }

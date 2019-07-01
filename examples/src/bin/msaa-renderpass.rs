@@ -178,7 +178,7 @@ void main() {
     let vs = vs::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
 
-    #[derive(Copy, Clone)]
+    #[derive(Default, Copy, Clone)]
     struct Vertex {
         position: [f32; 2],
     }

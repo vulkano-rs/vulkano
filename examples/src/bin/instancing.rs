@@ -44,14 +44,14 @@ use std::sync::Arc;
 // graphics pipeline, we need to define two vertex types:
 //
 // 1. `Vertex` is the vertex type that we will use to describe the triangle's geometry.
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],
 }
 impl_vertex!(Vertex, position);
 
 // 2. `InstanceData` is the vertex type that describes the unique data per instance.
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct InstanceData {
     position_offset: [f32; 2],
     scale: f32,
