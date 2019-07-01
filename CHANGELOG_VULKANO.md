@@ -2,6 +2,12 @@
 
 *No changes as of yet.*
 
+# Version 0.13.0 (2019-07-02)
+
+This is an emergency breaking breaking change. It fixes Undefined Behaviour that was preventing the compilation of Vulkano on the latest rust nightlies.
+
+- Structs that have the `impl_struct` macro applied to them, now also need to `#[derive(Default)]`.
+
 # Version 0.12.0 (2019-05-24)
 
 - Update shaderc to 0.5.  New shaderc has improved pre-built options for libshaderc that significantly reduce package build time and are appropriate for use in CI
