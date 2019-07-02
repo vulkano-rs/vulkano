@@ -111,12 +111,12 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.my_image().image.key() == other.conflict_key() // TODO:
     }
 
@@ -167,7 +167,7 @@ unsafe impl<P,W> ImageContent<P> for SwapchainImage<W> {
 
 unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     #[inline]
-    fn parent(&self) -> &ImageAccess {
+    fn parent(&self) -> &dyn ImageAccess {
         self
     }
 

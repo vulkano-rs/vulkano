@@ -102,7 +102,7 @@ unsafe impl<L, R, P> DescriptorSet for PersistentDescriptorSet<L, R, P>
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.resources.buffer(index)
     }
 
@@ -112,7 +112,7 @@ unsafe impl<L, R, P> DescriptorSet for PersistentDescriptorSet<L, R, P>
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.resources.image(index)
     }
 }
@@ -821,9 +821,9 @@ fn image_match_desc<I>(image_view: &I, desc: &DescriptorImageDesc)
 
 pub unsafe trait PersistentDescriptorSetResources {
     fn num_buffers(&self) -> usize;
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)>;
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)>;
     fn num_images(&self) -> usize;
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)>;
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)>;
 }
 
 unsafe impl PersistentDescriptorSetResources for () {
@@ -833,7 +833,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn buffer(&self, _: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, _: usize) -> Option<(&dyn BufferAccess, u32)> {
         None
     }
 
@@ -843,7 +843,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn image(&self, _: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, _: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         None
     }
 }
@@ -864,7 +864,7 @@ unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         if let Some(buf) = self.0.buffer(index) {
             Some(buf)
         } else if index == self.0.num_buffers() {
@@ -880,7 +880,7 @@ unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.0.image(index)
     }
 }
@@ -903,7 +903,7 @@ unsafe impl<R, V> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         if let Some(buf) = self.0.buffer(index) {
             Some(buf)
         } else if index == self.0.num_buffers() {
@@ -919,7 +919,7 @@ unsafe impl<R, V> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.0.image(index)
     }
 }
@@ -940,7 +940,7 @@ unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.0.buffer(index)
     }
 
@@ -950,7 +950,7 @@ unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         if let Some(img) = self.0.image(index) {
             Some(img)
         } else if index == self.0.num_images() {
@@ -975,7 +975,7 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.0.buffer(index)
     }
 
@@ -985,7 +985,7 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.0.image(index)
     }
 }

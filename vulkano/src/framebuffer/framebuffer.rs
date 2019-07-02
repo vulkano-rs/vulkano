@@ -241,7 +241,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     /// > **Note**: This is a very rare corner case and you shouldn't have to use this function
     /// > in most situations.
     #[inline]
-    pub fn boxed(self) -> FramebufferBuilder<Rp, Box<AttachmentsList>>
+    pub fn boxed(self) -> FramebufferBuilder<Rp, Box<dyn AttachmentsList>>
         where A: 'static
     {
         FramebufferBuilder {
@@ -376,7 +376,7 @@ unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
         self.resources.as_image_view_access(index)
     }
 }
@@ -419,7 +419,7 @@ unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
     where Rp: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.render_pass.convert_clear_values(vals)
     }
 }
@@ -522,7 +522,7 @@ impl error::Error for FramebufferCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FramebufferCreationError::OomError(ref err) => Some(err),
             FramebufferCreationError::IncompatibleAttachment(ref err) => Some(err),

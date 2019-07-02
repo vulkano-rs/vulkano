@@ -54,7 +54,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// the given queue, and if so locks it.
     ///
     /// If you call this function, then you should call `unlock` afterwards.
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
+    fn lock_submit(&self, future: &dyn GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError>;
 
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
     ///
@@ -136,10 +136,10 @@ pub unsafe trait CommandBuffer: DeviceOwned {
            })
     }
 
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
@@ -158,7 +158,7 @@ unsafe impl<T> CommandBuffer for T
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &dyn GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         (**self).lock_submit(future, queue)
     }
 
@@ -169,13 +169,13 @@ unsafe impl<T> CommandBuffer for T
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
@@ -281,7 +281,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         match self.command_buffer
             .check_buffer_access(buffer, exclusive, queue) {
@@ -294,7 +294,7 @@ unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         match self.command_buffer
@@ -379,7 +379,7 @@ impl error::Error for CommandBufferExecError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CommandBufferExecError::AccessError { ref error, .. } => Some(error),
             _ => None,

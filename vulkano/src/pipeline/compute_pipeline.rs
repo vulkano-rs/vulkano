@@ -316,7 +316,7 @@ impl error::Error for ComputePipelineCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
             ComputePipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),

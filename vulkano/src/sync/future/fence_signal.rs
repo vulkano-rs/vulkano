@@ -389,7 +389,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
@@ -400,7 +400,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
@@ -491,13 +491,13 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)

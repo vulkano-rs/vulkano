@@ -379,7 +379,7 @@ impl Device {
     // TODO: ^
     #[inline]
     pub fn active_queue_families<'a>(&'a self)
-                                     -> Box<ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
+                                     -> Box<dyn ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
         let physical_device = self.physical_device();
         Box::new(self.active_queue_families
                      .iter()

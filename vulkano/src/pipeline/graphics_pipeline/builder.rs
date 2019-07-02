@@ -156,7 +156,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
     pub fn build(self, device: Arc<Device>)
-                 -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
+                 -> Result<GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
                            GraphicsPipelineCreationError> {
         self.with_auto_layout(device, &[])
     }
@@ -166,7 +166,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Configures the inferred layout for each descriptor `(set, binding)` in `dynamic_buffers` to accept dynamic
     /// buffers.
     pub fn with_auto_layout(self, device: Arc<Device>, dynamic_buffers: &[(usize, usize)])
-                            -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
+                            -> Result<GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
                                       GraphicsPipelineCreationError>
     {
         let pipeline_layout;

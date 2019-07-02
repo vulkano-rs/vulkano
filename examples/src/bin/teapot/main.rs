@@ -123,7 +123,7 @@ fn main() {
     let (mut pipeline, mut framebuffers) = window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
     let mut recreate_swapchain = false;
 
-    let mut previous_frame = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
     let rotation_start = Instant::now();
 
     loop {
@@ -239,8 +239,8 @@ fn window_size_dependent_setup(
     vs: &vs::Shader,
     fs: &fs::Shader,
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
-) -> (Arc<GraphicsPipelineAbstract + Send + Sync>, Vec<Arc<FramebufferAbstract + Send + Sync>> ) {
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+) -> (Arc<dyn GraphicsPipelineAbstract + Send + Sync>, Vec<Arc<dyn FramebufferAbstract + Send + Sync>> ) {
     let dimensions = images[0].dimensions();
 
     let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap();
@@ -251,7 +251,7 @@ fn window_size_dependent_setup(
                 .add(image.clone()).unwrap()
                 .add(depth_buffer.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>();
 
     // In the triangle example we use a dynamic viewport, as its a simple example.

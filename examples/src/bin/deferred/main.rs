@@ -92,7 +92,7 @@ fn main() {
     let triangle_draw_system = TriangleDrawSystem::new(queue.clone(), frame_system.deferred_subpass());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();

@@ -85,12 +85,12 @@ unsafe impl<T, I> VertexDefinition<I> for SingleBufferDefinition<T>
     }
 }
 
-unsafe impl<V> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for SingleBufferDefinition<V>
+unsafe impl<V> VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> for SingleBufferDefinition<V>
     where V: Vertex
 {
     #[inline]
-    fn decode(&self, mut source: Vec<Arc<BufferAccess + Send + Sync>>)
-              -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+    fn decode(&self, mut source: Vec<Arc<dyn BufferAccess + Send + Sync>>)
+              -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
         // FIXME: safety
         assert_eq!(source.len(), 1);
         let len = source[0].size() / mem::size_of::<V>();
@@ -103,7 +103,7 @@ unsafe impl<'a, B, V> VertexSource<B> for SingleBufferDefinition<V>
           V: Vertex
 {
     #[inline]
-    fn decode(&self, source: B) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+    fn decode(&self, source: B) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
         let len = source.len();
         (vec![Box::new(source) as Box<_>], len, 1)
     }

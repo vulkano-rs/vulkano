@@ -91,7 +91,7 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     compute_allowed: bool,
 
     // If we're inside a render pass, contains the render pass and the subpass index.
-    render_pass: Option<(Box<RenderPassAbstract>, u32)>,
+    render_pass: Option<(Box<dyn RenderPassAbstract>, u32)>,
 
     // True if we are a secondary command buffer.
     secondary_cb: bool,
@@ -1398,7 +1398,7 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &
 // Shortcut function to bind vertex buffers.
 unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
                             state_cacher: &mut StateCacher,
-                            vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
+                            vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>)
                             -> Result<(), SyncCommandBufferBuilderError> {
     let binding_range = {
         let mut compare = state_cacher.bind_vertex_buffers();
@@ -1494,7 +1494,7 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &dyn GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         match self.submit_state {
             SubmitState::OneTime { ref already_submitted } => {
                 let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
@@ -1549,13 +1549,13 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.inner
@@ -1592,7 +1592,7 @@ macro_rules! err_gen {
             }
 
             #[inline]
-            fn cause(&self) -> Option<&error::Error> {
+            fn cause(&self) -> Option<&dyn error::Error> {
                 match *self {
                     $(
                         $name::$err(ref err) => Some(err),
