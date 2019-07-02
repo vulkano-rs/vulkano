@@ -165,7 +165,7 @@ impl error::Error for CheckCopyBufferImageError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CheckCopyBufferImageError::WrongPixelType(ref err) => {
                 Some(err)

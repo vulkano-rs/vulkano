@@ -482,7 +482,7 @@ impl error::Error for DeviceMemoryAllocError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             DeviceMemoryAllocError::OomError(ref err) => Some(err),
             _ => None,

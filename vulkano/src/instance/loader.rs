@@ -169,7 +169,7 @@ macro_rules! statically_linked_vulkan_loader {
 /// `lazy_static!`. The content of the lazy_static is then returned, or an error if we failed to
 /// load Vulkan.
 pub fn auto_loader()
-    -> Result<&'static FunctionPointers<Box<Loader + Send + Sync>>, LoadingError>
+    -> Result<&'static FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError>
 {
     #[cfg(target_os = "ios")]
     #[allow(non_snake_case)]
@@ -179,7 +179,7 @@ pub fn auto_loader()
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
+    fn def_loader_impl() -> Result<Box<dyn Loader + Send + Sync>, LoadingError> {
         #[cfg(windows)]
         fn get_path() -> &'static Path {
             Path::new("vulkan-1.dll")
@@ -203,7 +203,7 @@ pub fn auto_loader()
     }
 
     lazy_static! {
-        static ref DEFAULT_LOADER: Result<FunctionPointers<Box<Loader + Send + Sync>>, LoadingError> = {
+        static ref DEFAULT_LOADER: Result<FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> = {
             def_loader_impl().map(FunctionPointers::new)
         };
     }

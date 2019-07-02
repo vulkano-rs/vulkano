@@ -91,7 +91,7 @@ impl error::Error for CreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CreationError::SurfaceCreationError(ref err) => Some(err),
             CreationError::WindowCreationError(ref err) => Some(err),

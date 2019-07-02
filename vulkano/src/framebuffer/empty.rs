@@ -115,7 +115,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
 
 unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<dyn Iterator<Item = ClearValue>> {
         assert!(values.is_empty()); // TODO: error instead
         Box::new(iter::empty())
     }
@@ -123,7 +123,7 @@ unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRender
 
 unsafe impl RenderPassDescClearValues<()> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_clear_values(&self, _: ()) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, _: ()) -> Box<dyn Iterator<Item = ClearValue>> {
         Box::new(iter::empty())
     }
 }

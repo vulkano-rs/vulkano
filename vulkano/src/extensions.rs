@@ -193,7 +193,7 @@ impl error::Error for SupportedExtensionsError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SupportedExtensionsError::LoadingError(ref err) => Some(err),
             SupportedExtensionsError::OomError(ref err) => Some(err),

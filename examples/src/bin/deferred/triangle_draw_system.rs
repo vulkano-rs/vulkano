@@ -24,7 +24,7 @@ use std::sync::Arc;
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 }
 
 impl TriangleDrawSystem {

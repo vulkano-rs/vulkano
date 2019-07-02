@@ -282,7 +282,7 @@ impl error::Error for QueryPoolCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
             _ => None,

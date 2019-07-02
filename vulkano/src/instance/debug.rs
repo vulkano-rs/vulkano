@@ -61,7 +61,7 @@ use vk;
 pub struct DebugCallback {
     instance: Arc<Instance>,
     debug_report_callback: vk::DebugReportCallbackEXT,
-    user_callback: Box<Box<Fn(&Message)>>,
+    user_callback: Box<Box<dyn Fn(&Message)>>,
 }
 
 impl DebugCallback {
@@ -85,8 +85,8 @@ impl DebugCallback {
                                     description: *const c_char, user_data: *mut c_void)
                                     -> u32 {
             unsafe {
-                let user_callback = user_data as *mut Box<Fn()> as *const _;
-                let user_callback: &Box<Fn(&Message)> = &*user_callback;
+                let user_callback = user_data as *mut Box<dyn Fn()> as *const _;
+                let user_callback: &Box<dyn Fn(&Message)> = &*user_callback;
 
                 let layer_prefix = CStr::from_ptr(layer_prefix)
                     .to_str()

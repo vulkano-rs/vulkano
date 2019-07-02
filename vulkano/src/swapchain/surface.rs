@@ -627,7 +627,7 @@ impl error::Error for SurfaceCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SurfaceCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -681,7 +681,7 @@ impl error::Error for CapabilitiesError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CapabilitiesError::OomError(ref err) => Some(err),
             _ => None,

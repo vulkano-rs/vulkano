@@ -708,7 +708,7 @@ impl error::Error for SwapchainCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SwapchainCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -830,13 +830,13 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
 
     #[inline]
     fn check_buffer_access(
-        &self, _: &BufferAccess, _: bool, _: &Queue)
+        &self, _: &dyn BufferAccess, _: bool, _: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, _: bool, _: &Queue)
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, _: bool, _: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
@@ -930,7 +930,7 @@ impl error::Error for AcquireError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             AcquireError::OomError(ref err) => Some(err),
             _ => None,
@@ -1108,13 +1108,13 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();

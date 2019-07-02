@@ -19,7 +19,7 @@ use vk;
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
 pub unsafe trait VertexDefinition<I>
-    : VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
+    : VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
     type BuffersIter: ExactSizeIterator<Item = (u32, usize, InputRate)>;
     /// Iterator that returns the attribute location, buffer id, and infos.
@@ -114,7 +114,7 @@ pub unsafe trait VertexSource<L> {
     // TODO: return error if problem
     // TODO: better than a Vec
     // TODO: return a struct instead
-    fn decode(&self, L) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize);
+    fn decode(&self, L) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize);
 }
 
 unsafe impl<L, T> VertexSource<L> for T
@@ -122,7 +122,7 @@ unsafe impl<L, T> VertexSource<L> for T
           T::Target: VertexSource<L>
 {
     #[inline]
-    fn decode(&self, list: L) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+    fn decode(&self, list: L) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
         (**self).decode(list)
     }
 }

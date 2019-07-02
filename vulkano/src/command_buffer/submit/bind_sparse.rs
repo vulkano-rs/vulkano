@@ -473,7 +473,7 @@ impl error::Error for SubmitBindSparseError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SubmitBindSparseError::OomError(ref err) => Some(err),
             _ => None,

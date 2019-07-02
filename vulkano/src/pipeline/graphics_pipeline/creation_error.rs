@@ -323,7 +323,7 @@ impl error::Error for GraphicsPipelineCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),

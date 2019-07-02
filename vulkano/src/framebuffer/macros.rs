@@ -119,7 +119,7 @@ macro_rules! ordered_passes_renderpass {
             }
 
             unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
-                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<dyn Iterator<Item = ClearValue>> {
                     // FIXME: safety checks
                     Box::new(values.into_iter())
                 }
