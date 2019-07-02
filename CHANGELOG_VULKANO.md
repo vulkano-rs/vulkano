@@ -6,7 +6,7 @@
 
 This is an emergency breaking breaking change. It fixes Undefined Behaviour that was preventing the compilation of Vulkano on the latest rust nightlies.
 
-- Structs that have the `impl_struct` macro applied to them, now also need to `#[derive(Default)]`.
+- Structs that have the `impl_vertex` macro applied to them, now also need to `#[derive(Default)]`.
 
 # Version 0.12.0 (2019-05-24)
 
