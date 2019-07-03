@@ -193,10 +193,6 @@ impl UnsafeBuffer {
                                          limits.min_uniform_buffer_offset_alignment() as usize);
             }
 
-            if output.memory_type_bits < 15 {
-               output.memory_type_bits = 15;
-            }
-
             output
         };
 
