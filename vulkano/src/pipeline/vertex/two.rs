@@ -93,13 +93,13 @@ unsafe impl<T, U, I> VertexDefinition<I> for TwoBuffersDefinition<T, U>
     }
 }
 
-unsafe impl<T, U> VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> for TwoBuffersDefinition<T, U>
+unsafe impl<T, U> VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> for TwoBuffersDefinition<T, U>
     where T: Vertex,
           U: Vertex
 {
     #[inline]
-    fn decode(&self, source: Vec<Arc<BufferAccess + Send + Sync>>)
-              -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+    fn decode(&self, source: Vec<Arc<dyn BufferAccess + Send + Sync>>)
+              -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
         // FIXME: safety
         assert_eq!(source.len(), 2);
         let vertices = [
@@ -120,7 +120,7 @@ unsafe impl<'a, T, U, Bt, Bu> VertexSource<(Bt, Bu)> for TwoBuffersDefinition<T,
           Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static
 {
     #[inline]
-    fn decode(&self, source: (Bt, Bu)) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+    fn decode(&self, source: (Bt, Bu)) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
         let vertices = [source.0.len(), source.1.len()]
             .iter()
             .cloned()

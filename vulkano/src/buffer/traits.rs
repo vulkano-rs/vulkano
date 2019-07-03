@@ -85,7 +85,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool;
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool;
 
     /// Returns true if an access to `self` potentially overlaps the same memory as an access to
     /// `other`.
@@ -96,7 +96,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, other: &ImageAccess) -> bool;
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool;
 
     /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
     /// overlap in memory must return the same key.
@@ -163,12 +163,12 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         (**self).conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         (**self).conflicts_image(other)
     }
 

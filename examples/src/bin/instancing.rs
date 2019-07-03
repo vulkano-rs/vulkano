@@ -44,14 +44,14 @@ use std::sync::Arc;
 // graphics pipeline, we need to define two vertex types:
 //
 // 1. `Vertex` is the vertex type that we will use to describe the triangle's geometry.
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],
 }
 impl_vertex!(Vertex, position);
 
 // 2. `InstanceData` is the vertex type that describes the unique data per instance.
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct InstanceData {
     position_offset: [f32; 2],
     scale: f32,
@@ -200,7 +200,7 @@ void main() {
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -283,9 +283,9 @@ void main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -300,6 +300,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }

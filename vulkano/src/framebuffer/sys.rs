@@ -446,7 +446,7 @@ unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
     where D: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.desc.convert_clear_values(vals)
     }
 }
@@ -525,7 +525,7 @@ impl error::Error for RenderPassCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             RenderPassCreationError::OomError(ref err) => Some(err),
             _ => None,

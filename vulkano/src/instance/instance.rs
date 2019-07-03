@@ -96,7 +96,7 @@ pub struct Instance {
     vk: vk::InstancePointers,
     extensions: InstanceExtensions,
     layers: SmallVec<[CString; 16]>,
-    function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>,
+    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
 }
 
 // TODO: fix the underlying cause instead
@@ -148,7 +148,7 @@ impl Instance {
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.
-    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<Loader + Send + Sync>>,
+    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
                                    app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
                                    -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a str>,
@@ -167,7 +167,7 @@ impl Instance {
 
     fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
                  layers: SmallVec<[CString; 16]>,
-                 function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>)
+                 function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>)
                  -> Result<Arc<Instance>, InstanceCreationError> {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
@@ -619,7 +619,7 @@ impl error::Error for InstanceCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),

@@ -356,7 +356,7 @@ impl error::Error for FenceWaitError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FenceWaitError::OomError(ref err) => Some(err),
             _ => None,
