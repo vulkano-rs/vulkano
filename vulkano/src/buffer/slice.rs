@@ -227,12 +227,12 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.resource.conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.resource.conflicts_image(other)
     }
 

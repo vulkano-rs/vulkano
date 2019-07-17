@@ -33,14 +33,14 @@ pub struct BufferlessVertices {
 
 unsafe impl VertexSource<BufferlessVertices> for BufferlessDefinition {
     fn decode(&self, n: BufferlessVertices)
-              -> (Vec<Box<BufferAccess + Sync + Send + 'static>>, usize, usize) {
+              -> (Vec<Box<dyn BufferAccess + Sync + Send + 'static>>, usize, usize) {
         (Vec::new(), n.vertices, n.instances)
     }
 }
 
 unsafe impl<T> VertexSource<Vec<T>> for BufferlessDefinition {
     fn decode<'l>(&self, _: Vec<T>)
-                  -> (Vec<Box<BufferAccess + Sync + Send + 'static>>, usize, usize) {
+                  -> (Vec<Box<dyn BufferAccess + Sync + Send + 'static>>, usize, usize) {
         panic!("bufferless drawing should not be supplied with buffers")
     }
 }

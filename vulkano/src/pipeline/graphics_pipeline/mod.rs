@@ -294,7 +294,7 @@ unsafe impl<C, Mv, L, Rp> RenderPassDescClearValues<C> for GraphicsPipeline<Mv, 
     where Rp: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.render_pass.convert_clear_values(vals)
     }
 }
@@ -324,7 +324,7 @@ impl Drop for Inner {
 /// object.
 /// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
 /// wrapped in a `vec!()`.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<BufferAccess + Send + Sync>>> {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
@@ -366,7 +366,7 @@ pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAb
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
     where L: PipelineLayoutAbstract,
           Rp: RenderPassAbstract,
-          Mv: VertexSource<Vec<Arc<BufferAccess + Send + Sync>>>
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
@@ -507,7 +507,7 @@ unsafe impl<Mv, L, Rp, S> VertexSource<S> for GraphicsPipeline<Mv, L, Rp>
     where Mv: VertexSource<S>
 {
     #[inline]
-    fn decode(&self, s: S) -> (Vec<Box<BufferAccess + Send + Sync>>, usize, usize) {
+    fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
         self.vertex_definition.decode(s)
     }
 }

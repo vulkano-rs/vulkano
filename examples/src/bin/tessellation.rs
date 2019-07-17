@@ -167,7 +167,7 @@ fn main() {
     };
 
     let vertex_buffer = {
-        #[derive(Debug, Clone)]
+        #[derive(Default, Debug, Clone)]
         struct Vertex { position: [f32; 2] }
         vulkano::impl_vertex!(Vertex, position);
 
@@ -223,7 +223,7 @@ fn main() {
         .unwrap());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
@@ -303,9 +303,9 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -320,6 +320,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }

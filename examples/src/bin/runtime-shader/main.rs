@@ -52,7 +52,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct Vertex {
     pub position: [f32; 2],
     pub color: [f32; 3],
@@ -384,7 +384,7 @@ fn main() {
 
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -461,9 +461,9 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -478,6 +478,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }

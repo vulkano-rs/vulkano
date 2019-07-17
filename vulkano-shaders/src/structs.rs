@@ -202,8 +202,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i8,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i8}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i8}, Some(std::mem::size_of::<i8>()), mem::align_of::<Foo>());
                     },
                     (8, false) => {
                         #[repr(C)]
@@ -211,8 +210,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u8,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u8}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u8}, Some(std::mem::size_of::<u8>()), mem::align_of::<Foo>());
                     },
                     (16, true) => {
                         #[repr(C)]
@@ -220,8 +218,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i16,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i16}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i16}, Some(std::mem::size_of::<i16>()), mem::align_of::<Foo>());
                     },
                     (16, false) => {
                         #[repr(C)]
@@ -229,8 +226,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u16,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u16}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u16}, Some(std::mem::size_of::<u16>()), mem::align_of::<Foo>());
                     },
                     (32, true) => {
                         #[repr(C)]
@@ -238,8 +234,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i32,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i32}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i32}, Some(std::mem::size_of::<i32>()), mem::align_of::<Foo>());
                     },
                     (32, false) => {
                         #[repr(C)]
@@ -247,8 +242,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u32,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u32}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u32}, Some(std::mem::size_of::<u32>()), mem::align_of::<Foo>());
                     },
                     (64, true) => {
                         #[repr(C)]
@@ -256,8 +250,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i64,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i64}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i64}, Some(std::mem::size_of::<i64>()), mem::align_of::<Foo>());
                     },
                     (64, false) => {
                         #[repr(C)]
@@ -265,8 +258,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u64,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u64}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u64}, Some(std::mem::size_of::<u64>()), mem::align_of::<Foo>());
                     },
                     _ => panic!("No Rust equivalent for an integer of width {}", width),
                 }
@@ -279,8 +271,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: f32,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{f32}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{f32}, Some(std::mem::size_of::<f32>()), mem::align_of::<Foo>());
                     },
                     64 => {
                         #[repr(C)]
@@ -288,8 +279,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: f64,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{f64}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{f64}, Some(std::mem::size_of::<f64>()), mem::align_of::<Foo>());
                     },
                     _ => panic!("No Rust equivalent for a floating-point of width {}", width),
                 }

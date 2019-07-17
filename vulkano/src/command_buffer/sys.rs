@@ -1029,7 +1029,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     #[inline]
     pub unsafe fn copy_query_pool_results(&mut self, queries: UnsafeQueriesRange,
-                                          destination: &BufferAccess, stride: usize) {
+                                          destination: &dyn BufferAccess, stride: usize) {
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage_transfer_destination());
