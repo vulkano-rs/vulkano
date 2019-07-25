@@ -110,7 +110,11 @@ pub unsafe trait MemoryPool: DeviceOwned {
             first_loop
                 .chain(second_loop)
                 .filter(|&(t, _)| (requirements.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|&(t, _)| t.is_host_coherent())
+                .filter(|&(t, _)| match map {
+                    MappingRequirement::Map if !t.is_host_coherent() => false,
+                    MappingRequirement::Map if t.is_host_coherent() => true,
+                    _ => true,
+                })
                 .filter(|&(t, rq)| filter(t) == rq)
                 .next()
                 .expect("Couldn't find a memory type to allocate from")
