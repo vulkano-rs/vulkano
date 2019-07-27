@@ -1,6 +1,6 @@
 # Unreleased
 
-*No changes as of yet.*
+- Removed faulty debug_assert in `SwapchainAcquireFuture::drop`.
 
 # Version 0.13.0 (2019-07-02)
 
