@@ -9,7 +9,7 @@
 
 // Indirect draw example
 //
-// Indirect draw calls allow us to issue a draw without needing to know the number of vertices 
+// Indirect draw calls allow us to issue a draw without needing to know the number of vertices
 // until later when the draw is executed by the GPU.
 //
 // This is used in situations where vertices are being generated on the GPU, such as a GPU
@@ -153,7 +153,7 @@ layout(set = 0, binding = 1) buffer IndirectDrawArgs {
 
 void main() {
     uint idx = gl_GlobalInvocationID.x;
-    
+
     // each thread of compute shader is going to increment the counter, so we need to use atomic
     // operations for safety. The previous value of the counter is returned so that gives us
     // the offset into the vertex buffer this thread can write it's vertices into.
@@ -165,8 +165,8 @@ void main() {
     triangles.pos[offset + 2] = center + vec2(-0.025, -0.01725);
     triangles.pos[offset + 3] = center + vec2(0.0, -0.0375);
     triangles.pos[offset + 4] = center + vec2(0.025, 0.01725);
-    triangles.pos[offset + 5] = center + vec2(-0.025, 0.01725);    
-}         
+    triangles.pos[offset + 5] = center + vec2(-0.025, 0.01725);
+}
 "
         }
     }
@@ -200,7 +200,7 @@ void main() {
 
     let render_pipeline = Arc::new(GraphicsPipeline::start()
         .vertex_input_single_buffer()
-        .vertex_shader(vs.main_entry_point(), ())        
+        .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
         .viewports_dynamic_scissors_irrelevant(1)
         .fragment_shader(fs.main_entry_point(), ())
@@ -247,7 +247,7 @@ void main() {
         // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
         // shader will only update vertex_count, so set the other parameters correctly here.
         let indirect_args = indirect_args_pool.chunk(iter::once(
-            DrawIndirectCommand{    
+            DrawIndirectCommand{
                 vertex_count: 0,
                 instance_count: 1,
                 first_vertex: 0,
@@ -266,13 +266,13 @@ void main() {
         );
 
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-            // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw 
+            // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
             // call arguments
             .dispatch([1,1,1], compute_pipeline.clone(), cs_desciptor_set.clone(), ())
-            .unwrap()            
+            .unwrap()
             .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
             .unwrap()
-            // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will 
+            // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
             // contain the arguments when the draw is executed on the GPU
             .draw_indirect(
                 render_pipeline.clone(),
