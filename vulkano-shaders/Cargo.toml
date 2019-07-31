@@ -21,4 +21,7 @@ quote = "0.6"
 proc-macro2 = "0.4"
 
 [dev-dependencies]
-vulkano = { version = "0.13", path = "../vulkano" }
+vulkano = { version = "0.13", path = "../vulkano"} 
+
+[features]
+shaderc-build-from-source = ["shaderc/build-from-source"]
