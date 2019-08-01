@@ -173,13 +173,16 @@ mod spec_consts;
 mod structs;
 mod spirv_search;
 
+#[cfg(feature = "shaderc")]
 use crate::codegen::ShaderKind;
 
+#[cfg(feature = "shaderc")]
 enum SourceKind {
     Src(String),
     Path(String),
 }
 
+#[cfg(feature = "shaderc")]
 struct MacroInput {
     shader_kind: ShaderKind,
     source_kind: SourceKind,
@@ -187,6 +190,7 @@ struct MacroInput {
     dump: bool,
 }
 
+#[cfg(feature = "shaderc")]
 impl Parse for MacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut dump = None;
@@ -277,6 +281,55 @@ impl Parse for MacroInput {
     }
 }
 
+struct BinaryMacroInput {
+    path: String,
+    dump: bool,
+}
+
+impl Parse for BinaryMacroInput {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut path = None;
+        let mut dump = None;
+
+        while !input.is_empty() {
+            let name: Ident = input.parse()?;
+            input.parse::<Token![:]>()?;
+
+            match name.to_string().as_ref() {
+                "path" => {
+                    if path.is_some() {
+                        panic!("Only one `path` can be defined")
+                    }
+                    let path_lit: LitStr = input.parse()?;
+                    path = Some(path_lit.value());
+                }
+                "dump" => {
+                    if dump.is_some() {
+                        panic!("Only one `dump` can be defined")
+                    }
+                    let dump_lit: LitBool = input.parse()?;
+                    dump = Some(dump_lit.value);
+                }
+                name => panic!(format!("Unknown field name: {}", name))
+            }
+
+            if !input.is_empty() {
+                input.parse::<Token![,]>()?;
+            }
+        }
+
+        let path = match path {
+            Some(path) => path,
+            None => panic!("Please provide a path e.g. `path: \"foo.spv\"`")
+        };
+
+        let dump = dump.unwrap_or(false);
+
+        Ok(BinaryMacroInput { path, dump })
+    }
+}
+
+#[cfg(feature = "shaderc")]
 pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
     let mut buf = String::new();
     File::open(full_path)
@@ -284,6 +337,14 @@ pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
     Ok(buf)
 }
 
+pub(self) fn read_file_to_vec(full_path: &Path) -> IoResult<Vec<u8>> {
+    let mut buf = Vec::new();
+    File::open(full_path)
+        .and_then(|mut file| file.read_to_end(&mut buf))?;
+    Ok(buf)
+}
+
+#[cfg(feature = "shaderc")]
 #[proc_macro]
 pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
@@ -305,4 +366,22 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let content = codegen::compile(path, &source_code, input.shader_kind, &input.include_directories).unwrap();
     codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
+}
+
+#[proc_macro]
+pub fn binary_shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(input as BinaryMacroInput);
+
+    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+    let full_path = Path::new(&root).join(&input.path);
+
+    let binary_code = if full_path.is_file() {
+        read_file_to_vec(&full_path)
+            .expect(&format!("Error reading binary from {:?}", input.path))
+    } else {
+        panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", input.path);
+    };
+
+    let bin: &[u32] = unsafe { ::std::slice::from_raw_parts(binary_code.as_ptr() as *const u32, binary_code.len() / 4) };
+    codegen::reflect("Shader", bin, input.dump).unwrap().into()
 }

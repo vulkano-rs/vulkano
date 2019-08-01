@@ -12,8 +12,10 @@ use std::path::Path;
 
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
+#[cfg(feature = "shaderc")]
 use shaderc::{Compiler, CompileOptions};
 
+#[cfg(feature = "shaderc")]
 pub use shaderc::{CompilationArtifact, ShaderKind, IncludeType, ResolvedInclude};
 pub use crate::parse::ParseError;
 
@@ -25,8 +27,10 @@ use crate::entry_point;
 use crate::structs;
 use crate::descriptor_sets;
 use crate::spec_consts;
+#[cfg(feature = "shaderc")]
 use crate::read_file_to_string;
 
+#[cfg(feature = "shaderc")]
 fn include_callback(requested_source_path_raw: &str, directive_type: IncludeType,
                     contained_within_path_raw: &str, recursion_depth: usize,
                     include_directories: &[String], root_source_has_path: bool) -> Result<ResolvedInclude, String> {
@@ -129,6 +133,7 @@ fn include_callback(requested_source_path_raw: &str, directive_type: IncludeType
     })
 }
 
+#[cfg(feature = "shaderc")]
 pub fn compile(path: Option<String>, code: &str, ty: ShaderKind, include_directories: &[String]) -> Result<CompilationArtifact, String> {
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new()
@@ -375,6 +380,7 @@ fn capability_name(cap: &Capability) -> Option<&'static str> {
 mod tests {
     use super::*;
 
+    #[cfg(feature = "shaderc")]
     #[test]
     fn test_bad_alignment() {
         // vec3/mat3/mat3x* are problematic in arrays since their rust
@@ -397,6 +403,8 @@ mod tests {
         let res = std::panic::catch_unwind(|| structs::write_structs(&doc));
         assert!(res.is_err());
     }
+
+    #[cfg(feature = "shaderc")]
     #[test]
     fn test_trivial_alignment() {
         let comp = compile(None, "
@@ -412,6 +420,8 @@ mod tests {
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         structs::write_structs(&doc);
     }
+
+    #[cfg(feature = "shaderc")]
     #[test]
     fn test_wrap_alignment() {
         // This is a workaround suggested in the case of test_bad_alignment,

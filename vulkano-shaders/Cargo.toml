@@ -14,8 +14,11 @@ categories = ["rendering::graphics-api"]
 [lib]
 proc-macro = true
 
+[features]
+default = ["shaderc"]
+
 [dependencies]
-shaderc = "0.5"
+shaderc = { version = "0.5", optional = true }
 syn = "0.15"
 quote = "0.6"
 proc-macro2 = "0.4"

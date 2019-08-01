@@ -1,6 +1,7 @@
 # Unreleased
 
-*No changes as of yet.*
+- Add the `binary_shader!` proc macro that allows inclusion of arbitrary SPIR-V binary shaders.
+- Make `shaderc` an optional but default feature of `vulkano-shaders`, so that it's possible to not have the dependency if using `binary_shader` exclusively.
 
 # Version 0.13.0 (2019-07-02)
 
