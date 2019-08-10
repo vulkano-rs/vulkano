@@ -447,19 +447,19 @@ impl ImageDimensions {
     ///
     /// assert_eq!(dims.mipmap_dimensions(0), Some(dims));
     /// assert_eq!(dims.mipmap_dimensions(1), Some(ImageDimensions::Dim2d {
-    ///     width: 512,
+    ///     width: 481,
     ///     height: 128,
     ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(6), Some(ImageDimensions::Dim2d {
-    ///     width: 16,
+    ///     width: 15,
     ///     height: 4,
     ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(9), Some(ImageDimensions::Dim2d {
-    ///     width: 2,
+    ///     width: 1,
     ///     height: 1,
     ///     cubemap_compatible: false,
     ///     array_layers: 1,
@@ -489,7 +489,7 @@ impl ImageDimensions {
                      debug_assert_ne!(width, 0);
                      ImageDimensions::Dim1d {
                          array_layers: array_layers,
-                         width: (((width - 1) >> level) + 1).next_power_of_two(),
+                         width: cmp::max(1, width >> level),
                      }
                  },
 
@@ -502,8 +502,8 @@ impl ImageDimensions {
                      debug_assert_ne!(width, 0);
                      debug_assert_ne!(height, 0);
                      ImageDimensions::Dim2d {
-                         width: (((width - 1) >> level) + 1).next_power_of_two(),
-                         height: (((height - 1) >> level) + 1).next_power_of_two(),
+                         width: cmp::max(1, width >> level),
+                         height: cmp::max(1, height >> level),
                          array_layers: array_layers,
                          cubemap_compatible: cubemap_compatible,
                      }
@@ -517,9 +517,9 @@ impl ImageDimensions {
                      debug_assert_ne!(width, 0);
                      debug_assert_ne!(height, 0);
                      ImageDimensions::Dim3d {
-                         width: (((width - 1) >> level) + 1).next_power_of_two(),
-                         height: (((height - 1) >> level) + 1).next_power_of_two(),
-                         depth: (((depth - 1) >> level) + 1).next_power_of_two(),
+                         width: cmp::max(1, width >> level),
+                         height: cmp::max(1, height >> level),
+                         depth: cmp::max(1, depth >> level),
                      }
                  },
              })

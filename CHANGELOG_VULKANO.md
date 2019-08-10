@@ -1,6 +1,7 @@
 # Unreleased
 
 - Removed faulty debug_assert in `SwapchainAcquireFuture::drop`.
+- Fixed `ImageDimensions::mipmap_dimensions` in cases where the original size is not a power of two.
 
 # Version 0.13.0 (2019-07-02)
 
