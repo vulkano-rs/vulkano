@@ -415,7 +415,7 @@ impl ImageDimensions {
     ///     array_layers: 1,
     /// };
     ///
-    /// assert_eq!(dims.max_mipmaps(), 7);
+    /// assert_eq!(dims.max_mipmaps(), 6);
     /// ```
     ///
     /// # Panic
