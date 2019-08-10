@@ -568,56 +568,57 @@ mod tests {
         assert_eq!(dims.mipmap_dimensions(0), Some(dims));
         assert_eq!(dims.mipmap_dimensions(1),
                    Some(ImageDimensions::Dim2d {
-                            width: 256,
-                            height: 128,
+                            width: 141,
+                            height: 87,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(2),
                    Some(ImageDimensions::Dim2d {
-                            width: 128,
-                            height: 64,
+                            width: 70,
+                            height: 43,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(3),
                    Some(ImageDimensions::Dim2d {
-                            width: 64,
-                            height: 32,
+                            width: 35,
+                            height: 21,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
+
         assert_eq!(dims.mipmap_dimensions(4),
                    Some(ImageDimensions::Dim2d {
-                            width: 32,
-                            height: 16,
+                            width: 17,
+                            height: 10,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(5),
                    Some(ImageDimensions::Dim2d {
-                            width: 16,
-                            height: 8,
+                            width: 8,
+                            height: 5,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(6),
-                   Some(ImageDimensions::Dim2d {
-                            width: 8,
-                            height: 4,
-                            cubemap_compatible: false,
-                            array_layers: 1,
-                        }));
-        assert_eq!(dims.mipmap_dimensions(7),
                    Some(ImageDimensions::Dim2d {
                             width: 4,
                             height: 2,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
-        assert_eq!(dims.mipmap_dimensions(8),
+        assert_eq!(dims.mipmap_dimensions(7),
                    Some(ImageDimensions::Dim2d {
                             width: 2,
+                            height: 1,
+                            cubemap_compatible: false,
+                            array_layers: 1,
+                        }));
+        assert_eq!(dims.mipmap_dimensions(8),
+                   Some(ImageDimensions::Dim2d {
+                            width: 1,
                             height: 1,
                             cubemap_compatible: false,
                             array_layers: 1,
