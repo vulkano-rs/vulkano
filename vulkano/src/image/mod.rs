@@ -424,8 +424,8 @@ impl ImageDimensions {
     ///
     pub fn max_mipmaps(&self) -> u32 {
         let max_dim = cmp::max(cmp::max(self.width(), self.height()), self.depth());
-        let num_zeroes = 32 - (max_dim - 1).leading_zeros();
-        num_zeroes + 1
+        let num_zeroes = 32 - max_dim.leading_zeros();
+        num_zeroes
     }
 
     /// Returns the dimensions of the `level`th mipmap level. If `level` is 0, then the dimensions
@@ -546,7 +546,7 @@ mod tests {
             cubemap_compatible: false,
             array_layers: 1,
         };
-        assert_eq!(dims.max_mipmaps(), 3);
+        assert_eq!(dims.max_mipmaps(), 2);
 
         let dims = ImageDimensions::Dim2d {
             width: 512,
@@ -623,13 +623,6 @@ mod tests {
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
-        assert_eq!(dims.mipmap_dimensions(9),
-                   Some(ImageDimensions::Dim2d {
-                            width: 1,
-                            height: 1,
-                            cubemap_compatible: false,
-                            array_layers: 1,
-                        }));
-        assert_eq!(dims.mipmap_dimensions(10), None);
+        assert_eq!(dims.mipmap_dimensions(9), None);
     }
 }
