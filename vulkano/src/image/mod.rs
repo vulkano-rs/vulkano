@@ -418,14 +418,8 @@ impl ImageDimensions {
     /// assert_eq!(dims.max_mipmaps(), 6);
     /// ```
     ///
-    /// # Panic
-    ///
-    /// May panic if the dimensions are 0.
-    ///
     pub fn max_mipmaps(&self) -> u32 {
-        let max_dim = cmp::max(cmp::max(self.width(), self.height()), self.depth());
-        let num_zeroes = 32 - max_dim.leading_zeros();
-        num_zeroes
+        32 - (self.width() | self.height() | self.depth()).leading_zeros()
     }
 
     /// Returns the dimensions of the `level`th mipmap level. If `level` is 0, then the dimensions
