@@ -208,7 +208,7 @@ macro_rules! formats {
             /// non block formats will return (1,1)
             #[inline]
             pub fn block_dimensions(&self) -> (u32, u32) {
-                match *self {                    
+                match *self {
                     $(
                         Format::$name => $bdim,
                     )+
