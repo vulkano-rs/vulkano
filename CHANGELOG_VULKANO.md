@@ -1,6 +1,7 @@
 # Unreleased
 
 - Update shaderc to 0.6. This again allows to use locally installed libraries which reduces the build-time significantly on Arch/Voidlinux (see https://github.com/google/shaderc-rs/issues/58)
+- Removed faulty debug_assert in `SwapchainAcquireFuture::drop`.
 
 # Version 0.13.0 (2019-07-02)
 
