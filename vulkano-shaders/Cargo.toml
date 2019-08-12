@@ -15,10 +15,13 @@ categories = ["rendering::graphics-api"]
 proc-macro = true
 
 [dependencies]
-shaderc = "0.5"
+shaderc = "0.6"
 syn = "0.15"
 quote = "0.6"
 proc-macro2 = "0.4"
 
 [dev-dependencies]
 vulkano = { version = "0.13", path = "../vulkano" }
+
+[features]
+shaderc-build-from-source = ["shaderc/build-from-source"]
