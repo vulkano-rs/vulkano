@@ -2,6 +2,8 @@
 
 - Update shaderc to 0.6. This again allows to use locally installed libraries which reduces the build-time significantly on Arch/Voidlinux (see https://github.com/google/shaderc-rs/issues/58)
 - Removed faulty debug_assert in `SwapchainAcquireFuture::drop`.
+- Compressed texture formats can now be uploaded using `ImmutableImage::from_iter`, `ImmutableImage::from_buffer`, `AutoCommandBuilder::copy_buffer_to_image_dimensions`,
+  and `AutoCommandBuilder::copy_buffer_to_image`.
 
 # Version 0.13.0 (2019-07-02)
 
