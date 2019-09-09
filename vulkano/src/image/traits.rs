@@ -16,6 +16,7 @@ use format::PossibleFloatFormatDesc;
 use format::PossibleSintFormatDesc;
 use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
+use format::PossibleCompressedFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageLayout;
@@ -41,7 +42,7 @@ pub unsafe trait ImageAccess {
     #[inline]
     fn has_color(&self) -> bool {
         let format = self.format();
-        format.is_float() || format.is_uint() || format.is_sint()
+        format.is_float() || format.is_uint() || format.is_sint() || format.is_compressed()
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
