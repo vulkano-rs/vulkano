@@ -49,8 +49,6 @@ use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
 
-
-
 impl<P> SyncCommandBufferBuilder<P> {
     /// Calls `vkBeginRenderPass` on the builder.
     // TODO: it shouldn't be possible to get an error if the framebuffer checked conflicts already

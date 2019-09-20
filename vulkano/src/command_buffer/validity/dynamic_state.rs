@@ -71,7 +71,45 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         }
     }
 
-    // TODO: don't forget to implement the rest (compare_mask, write_mask, ref
+
+    if pipeline.has_dynamic_stencil_compare_mask() {
+        if let Some(compare_mask) = state.compare_mask {
+        
+        } else {
+            return Err(CheckDynamicStateValidityError::CompareMaskMissing);
+        }
+
+    } else {
+        if state.compare_mask.is_some() {
+            return Err(CheckDynamicStateValidityError::CompareMaskNotDynamic);
+        }
+    }
+
+    if pipeline.has_dynamic_stencil_write_mask() {
+        if let Some(write_mask) = state.write_mask {
+        
+        } else {
+            return Err(CheckDynamicStateValidityError::WriteMaskMissing);
+        }
+
+    } else {
+        if state.write_mask.is_some() {
+            return Err(CheckDynamicStateValidityError::WriteMaskNotDynamic);
+        }
+    }
+
+    if pipeline.has_dynamic_stencil_reference() {
+        if let Some(reference) = state.reference {
+        
+        } else {
+            return Err(CheckDynamicStateValidityError::ReferenceMissing);
+        }
+
+    } else {
+        if state.reference.is_some() {
+            return Err(CheckDynamicStateValidityError::ReferenceNotDynamic);
+        }
+    }
 
     Ok(())
 }
@@ -108,6 +146,18 @@ pub enum CheckDynamicStateValidityError {
         /// Number of scissors that were passed.
         obtained: usize,
     },
+    /// Passed dynamic compare mask, while the pipeline doesn't have the compare mask set as dynamic.
+    CompareMaskNotDynamic,
+    /// The pipeline has dynamic compare mask, but no compare mask was passed.
+    CompareMaskMissing,
+    /// Passed dynamic write mask, while the pipeline doesn't have the write mask set as dynamic.
+    WriteMaskNotDynamic,
+    /// The pipeline has dynamic write mask, but no write mask was passed.
+    WriteMaskMissing,
+    /// Passed dynamic reference, while the pipeline doesn't have the reference set as dynamic.
+    ReferenceNotDynamic,
+    /// The pipeline has dynamic reference, but no reference was passed.
+    ReferenceMissing,
 }
 
 impl error::Error for CheckDynamicStateValidityError {
@@ -143,6 +193,24 @@ impl error::Error for CheckDynamicStateValidityError {
             },
             CheckDynamicStateValidityError::ScissorsCountMismatch { .. } => {
                 "the number of dynamic scissors doesn't match the expected number of scissors"
+            },
+            CheckDynamicStateValidityError::CompareMaskNotDynamic => {
+                "passed dynamic compare mask, while the pipeline doesn't have compare mask set as dynamic"
+            },
+            CheckDynamicStateValidityError::CompareMaskMissing => {
+                "the pipeline has dynamic compare mask, but no compare mask was passed"
+            },
+            CheckDynamicStateValidityError::WriteMaskNotDynamic => {
+                "passed dynamic write mask, while the pipeline doesn't have write mask set as dynamic"
+            },
+            CheckDynamicStateValidityError::WriteMaskMissing => {
+                "the pipeline has dynamic write mask, but no write mask was passed"
+            },
+            CheckDynamicStateValidityError::ReferenceNotDynamic => {
+                "passed dynamic Reference, while the pipeline doesn't have reference set as dynamic"
+            },
+            CheckDynamicStateValidityError::ReferenceMissing => {
+                "the pipeline has dynamic reference, but no reference was passed"
             },
         }
     }
