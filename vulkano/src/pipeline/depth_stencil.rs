@@ -172,6 +172,21 @@ pub enum StencilOp {
     DecrementAndWrap = vk::STENCIL_OP_DECREMENT_AND_WRAP,
 }
 
+/// Operation to perform after the depth and stencil tests.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum StencilFaceFlags {
+    StencilFaceFrontBit = vk::STENCIL_FACE_FRONT_BIT,
+    StencilFaceBackBit = vk::STENCIL_FACE_BACK_BIT,
+    StencilFrontAndBack = vk::STENCIL_FRONT_AND_BACK,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct DynamicStencilValue {
+    pub face: StencilFaceFlags,
+    pub value: u32,
+}
+
 /// Allows you to ask the GPU to exclude fragments that are outside of a certain range.
 #[derive(Debug, Clone, PartialEq)]
 pub enum DepthBounds {

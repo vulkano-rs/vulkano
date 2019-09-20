@@ -42,10 +42,14 @@ use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
+use pipeline::depth_stencil::DynamicStencilValue;
+use pipeline::depth_stencil::StencilFaceFlags;
 use sampler::Filter;
 use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
+
+
 
 impl<P> SyncCommandBufferBuilder<P> {
     /// Calls `vkBeginRenderPass` on the builder.
@@ -1682,7 +1686,92 @@ impl<P> SyncCommandBufferBuilder<P> {
         self.append_command(Cmd { line_width });
     }
 
-    // TODO: stencil states
+    /// Calls `vkCmdSetStencilCompareMask` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_compare_mask(&mut self, compare_mask: DynamicStencilValue) {
+
+        struct Cmd {
+            face_mask: StencilFaceFlags,
+            compare_mask: u32,
+        }
+
+        impl<P> Command<P> for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetStencilCompareMask"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.set_stencil_compare_mask(self.face_mask, self.compare_mask);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                Box::new("vkCmdSetStencilCompareMask")
+            }
+        }
+
+        self.append_command(Cmd {
+            face_mask: compare_mask.face,
+            compare_mask: compare_mask.value,
+        });
+    }
+
+    /// Calls `vkCmdSetStencilReference` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_reference(&mut self, reference: DynamicStencilValue) {
+
+        struct Cmd {
+            face_mask: StencilFaceFlags,
+            reference: u32,
+        }
+
+        impl<P> Command<P> for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetStencilReference"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.set_stencil_reference(self.face_mask, self.reference);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                Box::new("vkCmdSetStencilReference")
+            }
+        }
+
+        self.append_command(Cmd {
+            face_mask: reference.face,
+            reference: reference.value,
+        });
+    }
+
+    /// Calls `vkCmdSetStencilWriteMask` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_write_mask(&mut self, write_mask: DynamicStencilValue) {
+
+        struct Cmd {
+            face_mask: StencilFaceFlags,
+            write_mask: u32,
+        }
+
+        impl<P> Command<P> for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdSetStencilWriteMask"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.set_stencil_write_mask(self.face_mask, self.write_mask);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                Box::new("vkCmdSetStencilWriteMask")
+            }
+        }
+
+        self.append_command(Cmd {
+            face_mask: write_mask.face,
+            write_mask: write_mask.value,
+        });
+    }
 
     /// Calls `vkCmdSetScissor` on the builder.
     ///
@@ -1713,9 +1802,9 @@ impl<P> SyncCommandBufferBuilder<P> {
         }
 
         self.append_command(Cmd {
-                                first_scissor,
-                                scissors: Some(scissors),
-                            });
+            first_scissor,
+            scissors: Some(scissors),
+        });
     }
 
     /// Calls `vkCmdSetViewport` on the builder.

@@ -71,7 +71,7 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         }
     }
 
-    // TODO: don't forget to implement the rest
+    // TODO: don't forget to implement the rest (compare_mask, write_mask, ref
 
     Ok(())
 }

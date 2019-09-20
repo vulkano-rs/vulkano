@@ -47,6 +47,7 @@ use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
+use pipeline::depth_stencil::StencilFaceFlags;
 use query::QueryPipelineStatisticFlags;
 use query::UnsafeQueriesRange;
 use query::UnsafeQuery;
@@ -1342,32 +1343,31 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         vk.CmdSetLineWidth(cmd, line_width);
     }
 
-    // TODO: missing enum for face_mask
-    /*/// Calls `vkCmdSetStencilCompareMask` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: , compare_mask: u32) {
-        let vk = self.device().pointers();
-        let cmd = self.internal_object();
-        vk.CmdSetStencilCompareMask(cmd, face_mask, compare_mask);
-    }*/
 
-    // TODO: missing enum for face_mask
-    /*/// Calls `vkCmdSetStencilReference` on the builder.
+    /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, face_mask: , reference: u32) {
+    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: StencilFaceFlags, compare_mask: u32) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdSetStencilReference(cmd, face_mask, reference);
-    }*/
+        vk.CmdSetStencilCompareMask(cmd, face_mask as u32, compare_mask);
+    }
 
-    // TODO: missing enum for face_mask
-    /*/// Calls `vkCmdSetStencilWriteMask` on the builder.
+
+    /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: , write_mask: u32) {
+    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaceFlags, reference: u32) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdSetStencilWriteMask(cmd, face_mask, write_mask);
-    }*/
+        vk.CmdSetStencilReference(cmd, face_mask as u32, reference);
+    }
+
+    /// Calls `vkCmdSetStencilWriteMask` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaceFlags, write_mask: u32) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdSetStencilWriteMask(cmd, face_mask as u32, write_mask);
+    }
 
     /// Calls `vkCmdSetScissor` on the builder.
     ///

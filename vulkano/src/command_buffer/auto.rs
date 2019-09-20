@@ -1393,6 +1393,18 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &
     if let Some(ref scissors) = dynamic.scissors {
         destination.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
     }
+
+    if let Some(compare_mask) = dynamic.compare_mask {
+        destination.set_stencil_compare_mask(compare_mask);
+    }
+
+    if let Some(write_mask) = dynamic.write_mask {
+        destination.set_stencil_write_mask(write_mask);
+    }
+
+    if let Some(reference) = dynamic.reference {
+        destination.set_stencil_reference(reference);
+    }
 }
 
 // Shortcut function to bind vertex buffers.
