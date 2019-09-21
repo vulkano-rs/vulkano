@@ -172,7 +172,7 @@ pub enum StencilOp {
     DecrementAndWrap = vk::STENCIL_OP_DECREMENT_AND_WRAP,
 }
 
-/// Operation to perform after the depth and stencil tests.
+/// Enum to specify which stencil state to use
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum StencilFaceFlags {
@@ -181,6 +181,7 @@ pub enum StencilFaceFlags {
     StencilFrontAndBack = vk::STENCIL_FRONT_AND_BACK,
 }
 
+/// Container for dynamic StencilFaceFlags and value
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DynamicStencilValue {
     pub face: StencilFaceFlags,
