@@ -71,11 +71,8 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         }
     }
 
-
     if pipeline.has_dynamic_stencil_compare_mask() {
-        if let Some(compare_mask) = state.compare_mask {
-        
-        } else {
+        if let None = state.compare_mask {
             return Err(CheckDynamicStateValidityError::CompareMaskMissing);
         }
 
@@ -86,9 +83,7 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
     }
 
     if pipeline.has_dynamic_stencil_write_mask() {
-        if let Some(write_mask) = state.write_mask {
-        
-        } else {
+        if let None = state.write_mask {
             return Err(CheckDynamicStateValidityError::WriteMaskMissing);
         }
 
@@ -99,9 +94,7 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
     }
 
     if pipeline.has_dynamic_stencil_reference() {
-        if let Some(reference) = state.reference {
-        
-        } else {
+        if let None = state.reference {
             return Err(CheckDynamicStateValidityError::ReferenceMissing);
         }
 
