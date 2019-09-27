@@ -63,7 +63,6 @@ fn main() {
     let severity = MessageSeverity {
         error: true,
         warning: true,
-//        performance_warning: true,
         information: true,
         verbose: true,
     };
@@ -75,8 +74,6 @@ fn main() {
             "error"
         } else if msg.severity.warning {
             "warning"
-//        } else if msg.ty.performance_warning {
-//            "performance_warning"
         } else if msg.severity.information {
             "information"
         } else if msg.severity.verbose {
