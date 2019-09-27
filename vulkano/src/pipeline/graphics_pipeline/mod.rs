@@ -302,7 +302,7 @@ unsafe impl<C, Mv, L, Rp> RenderPassDescClearValues<C> for GraphicsPipeline<Mv, 
 unsafe impl<Mv, L, Rp> VulkanObject for GraphicsPipeline<Mv, L, Rp> {
     type Object = vk::Pipeline;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
@@ -481,7 +481,7 @@ pub struct GraphicsPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     type Object = vk::Pipeline;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {

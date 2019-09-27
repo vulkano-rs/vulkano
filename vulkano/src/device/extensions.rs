@@ -113,7 +113,6 @@ device_extensions! {
     khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
     khr_incremental_present => b"VK_KHR_incremental_present",
-    ext_debug_marker => b"VK_EXT_debug_marker",
 }
 
 /// This helper type can only be instantiated inside this module.
