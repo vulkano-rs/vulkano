@@ -8,7 +8,7 @@
     +   `COLOR_SPACE_SCRGB_NONLINEAR_EXT`
     +   `COLOR_SPACE_BT2020_NONLINEAR_EXT`
     +   `DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT`
-    
+
 - Removed the deprecated constants and functions related to `VK_EXT_debug_report` and `VK_EXT_debug_marker` and adding the constants and functions related to `VK_EXT_debug_utils`
 
 # Version 0.4.0 (2018-11-16)
