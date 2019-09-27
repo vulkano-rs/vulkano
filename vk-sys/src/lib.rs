@@ -191,9 +191,6 @@ pub const STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146001;
 pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146002;
 pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
 pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
-pub const STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT: u32 = 1000022000;
-pub const STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_TAG_INFO_EXT: u32 = 1000022001;
-pub const STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT: u32 = 1000022002;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -2925,4 +2922,7 @@ ptrs!(DevicePointers, {
     GetImageMemoryRequirements2KHR => (device: Device, pInfo: *const ImageMemoryRequirementsInfo2KHR, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
     GetBufferMemoryRequirements2KHR => (device: Device, pInfo: *const BufferMemoryRequirementsInfo2KHR, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
     SetDebugUtilsObjectNameEXT => (device: Device, pNameInfo: *const DebugUtilsObjectNameInfoEXT) -> Result,
+    CmdBeginDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
+    CmdEndDebugUtilsLabelEXT => (commandBuffer: CommandBuffer) -> Result,
+    CmdInsertDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
 });

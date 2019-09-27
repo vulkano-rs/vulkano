@@ -492,7 +492,7 @@ impl Device {
     /// `object` must be a Vulkan handle owned by this device, and its type must be accurately described by `ty`.
     pub unsafe fn set_object_name_raw(&self, ty: vk::ObjectType, object: u64, name: &CStr) -> Result<(), OomError> {
         let info = vk::DebugUtilsObjectNameInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_OBJECT_NAME_INFO_EXT,
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             pNext: ptr::null(),
             objectType: ty,
             objectHandle: object,

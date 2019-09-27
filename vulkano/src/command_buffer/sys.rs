@@ -54,6 +54,7 @@ use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
 use vk;
+use std::ffi::CStr;
 
 /// Determines the kind of command buffer that we want to create.
 #[derive(Debug, Clone)]
@@ -1469,6 +1470,54 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                              stages.into_vulkan_bits(),
                              query.pool().internal_object(),
                              query.index());
+    }
+
+    /// Calls `vkCmdBeginDebugUtilsLabelEXT` on the builder.
+    ///
+    /// # Safety
+    /// The command pool that this command buffer was allocated from must support graphics or
+    /// compute operations
+    #[inline]
+    pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let info = vk::DebugUtilsLabelEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+            pNext: ptr::null(),
+            pLabelName: name.as_ptr(),
+            color,
+        };
+        vk.CmdBeginDebugUtilsLabelEXT(cmd, &info);
+    }
+
+    /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
+    ///
+    /// # Safety
+    /// There must be an outstanding `vkCmdBeginDebugUtilsLabelEXT` command prior to the
+    /// `vkQueueEndDebugUtilsLabelEXT` on the queue tha `CommandBuffer` is submitted to.
+    #[inline]
+    pub unsafe fn debug_marker_end(&mut self) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdEndDebugUtilsLabelEXT(cmd);
+    }
+
+    /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
+    ///
+    /// # Safety
+    /// The command pool that this command buffer was allocated from must support graphics or
+    /// compute operations
+    #[inline]
+    pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let info = vk::DebugUtilsLabelEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
+            pNext: ptr::null(),
+            pLabelName: name.as_ptr(),
+            color,
+        };
+        vk.CmdInsertDebugUtilsLabelEXT(cmd, &info);
     }
 }
 
