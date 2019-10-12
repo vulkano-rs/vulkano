@@ -438,7 +438,7 @@ void main() {
 
         // Handling the window events in order to close the program when the user wants to close
         // it.
-        
+
         match ev {
             Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *cf = ControlFlow::Exit,
             Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
