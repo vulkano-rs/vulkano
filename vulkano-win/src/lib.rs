@@ -169,7 +169,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<winit::window::Window>>(
     Surface::from_hwnd(
         instance,
         ptr::null() as *const (), // FIXME
-        win.borrow().get_hwnd(),
+        win.borrow().hwnd(),
         win,
     )
 }
@@ -180,7 +180,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<winit::window::Window>>(
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::platform::macos::WindowExtMacOS;
 
-    let wnd: cocoa_id = mem::transmute(win.borrow().get_nswindow());
+    let wnd: cocoa_id = mem::transmute(win.borrow().nswindow());
 
     let layer = CoreAnimationLayer::new();
 
@@ -194,7 +194,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<winit::window::Window>>(
     view.setLayer(mem::transmute(layer.as_ref())); // Bombs here with out of memory
     view.setWantsLayer(YES);
 
-    Surface::from_macos_moltenvk(instance, win.borrow().get_nsview() as *const (), win)
+    Surface::from_macos_moltenvk(instance, win.borrow().nsview() as *const (), win)
 }
 
 /// An alternative to `Borrow<T>` with the requirement that all calls to
