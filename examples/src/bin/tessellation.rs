@@ -228,9 +228,9 @@ fn main() {
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
     events_loop.run(move |ev, _, cf| {
-    	*cf = ControlFlow::Poll;
-    	let window = surface.window();
-        
+        *cf = ControlFlow::Poll;
+        let window = surface.window();
+
         previous_frame_end.as_mut().unwrap().cleanup_finished();
         if recreate_swapchain {
             let dimensions = {

@@ -127,8 +127,9 @@ fn main() {
     let rotation_start = Instant::now();
 
     events_loop.run(move |ev, _, cf| {
-    	*cf = ControlFlow::Poll;
-    	let window = surface.window();
+        *cf = ControlFlow::Poll;
+        let window = surface.window();
+
         previous_frame.as_mut().unwrap().cleanup_finished();
 
         if recreate_swapchain {

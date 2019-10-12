@@ -214,9 +214,9 @@ void main() {
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
     events_loop.run(move |ev, _, cf| {
-    	*cf = ControlFlow::Poll;
-    	let window = surface.window();
-    	
+        *cf = ControlFlow::Poll;
+        let window = surface.window();
+
         previous_frame_end.as_mut().unwrap().cleanup_finished();
 
         if recreate_swapchain {

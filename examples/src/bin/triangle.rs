@@ -312,8 +312,9 @@ void main() {
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
     events_loop.run(move |ev, _, cf| {
-    	*cf = ControlFlow::Poll;
-    	let window = surface.window();
+        *cf = ControlFlow::Poll;
+        let window = surface.window();
+
         // It is important to call this function from time to time, otherwise resources will keep
         // accumulating and you will eventually reach an out of memory error.
         // Calling this function polls various fences in order to determine what the GPU has
