@@ -17,6 +17,7 @@ use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
@@ -119,13 +120,13 @@ impl UnsafeImage {
         let format_features = {
             let physical_device = device.physical_device().internal_object();
 
-            let mut output = mem::uninitialized();
-            vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, &mut output);
+            let mut output = MaybeUninit::uninit();
+            vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, output.as_mut_ptr());
 
             let features = if linear_tiling {
-                output.linearTilingFeatures
+                output.assume_init().linearTilingFeatures
             } else {
-                output.optimalTilingFeatures
+                output.assume_init().optimalTilingFeatures
             };
 
             if features == 0 {
@@ -435,7 +436,7 @@ impl UnsafeImage {
                 vk::IMAGE_TILING_OPTIMAL
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             let physical_device = device.physical_device().internal_object();
             let r = vk_i.GetPhysicalDeviceImageFormatProperties(physical_device,
                                                                 format as u32,
@@ -443,7 +444,7 @@ impl UnsafeImage {
                                                                 tiling,
                                                                 usage,
                                                                 0, /* TODO */
-                                                                &mut output);
+                                                                output.as_mut_ptr());
 
             match check_errors(r) {
                 Ok(_) => (),
@@ -451,6 +452,8 @@ impl UnsafeImage {
                     return Err(ImageCreationError::FormatNotSupported),
                 Err(err) => return Err(err.into()),
             }
+
+            let output = output.assume_init();
 
             if extent.width > output.maxExtent.width || extent.height > output.maxExtent.height ||
                 extent.depth > output.maxExtent.depth ||
@@ -490,12 +493,12 @@ impl UnsafeImage {
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateImage(device.internal_object(),
                                         &infos,
                                         ptr::null(),
-                                        &mut output))?;
-            output
+                                        output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         let mem_reqs = if device.loaded_extensions().khr_get_memory_requirements2 {
@@ -536,8 +539,9 @@ impl UnsafeImage {
             out
 
         } else {
-            let mut output: vk::MemoryRequirements = mem::uninitialized();
-            vk.GetImageMemoryRequirements(device.internal_object(), image, &mut output);
+            let mut output: MaybeUninit<vk::MemoryRequirements> = MaybeUninit::uninit();
+            vk.GetImageMemoryRequirements(device.internal_object(), image, output.as_mut_ptr());
+            let output = output.assume_init();
             debug_assert!(output.memoryTypeBits != 0);
             MemoryRequirements::from_vulkan_reqs(output)
         };
@@ -567,8 +571,8 @@ impl UnsafeImage {
         let vk_i = device.instance().pointers();
         let physical_device = device.physical_device().internal_object();
 
-        let mut output = mem::uninitialized();
-        vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, &mut output);
+        let mut output = MaybeUninit::uninit();
+        vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, output.as_mut_ptr());
 
         // TODO: check that usage is correct in regard to `output`?
 
@@ -580,7 +584,7 @@ impl UnsafeImage {
             dimensions: dimensions,
             samples: samples,
             mipmaps: mipmaps,
-            format_features: output.optimalTilingFeatures,
+            format_features: output.assume_init().optimalTilingFeatures,
             needs_destruction: false, // TODO: pass as parameter
             preinitialized_layout: false, // TODO: Maybe this should be passed in?
         }
@@ -591,10 +595,12 @@ impl UnsafeImage {
 
         // We check for correctness in debug mode.
         debug_assert!({
-                          let mut mem_reqs = mem::uninitialized();
+                          let mut mem_reqs = MaybeUninit::uninit();
                           vk.GetImageMemoryRequirements(self.device.internal_object(),
                                                         self.image,
-                                                        &mut mem_reqs);
+                                                        mem_reqs.as_mut_ptr());
+
+                          let mem_reqs = mem_reqs.assume_init();
                           mem_reqs.size <= (memory.size() - offset) as u64 &&
                               (offset as u64 % mem_reqs.alignment) == 0 &&
                               mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
@@ -709,12 +715,13 @@ impl UnsafeImage {
             arrayLayer: 0,
         };
 
-        let mut out = mem::uninitialized();
+        let mut out = MaybeUninit::uninit();
         vk.GetImageSubresourceLayout(self.device.internal_object(),
                                      self.image,
                                      &subresource,
-                                     &mut out);
+                                     out.as_mut_ptr());
 
+        let out = out.assume_init();
         LinearLayout {
             offset: out.offset as usize,
             size: out.size as usize,
@@ -1003,12 +1010,12 @@ impl UnsafeImageView {
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateImageView(image.device.internal_object(),
                                             &infos,
                                             ptr::null(),
-                                            &mut output))?;
-            output
+                                            output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(UnsafeImageView {

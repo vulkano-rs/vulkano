@@ -18,6 +18,7 @@ use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
+use std::mem::MaybeUninit;
 
 use Error;
 use OomError;
@@ -243,7 +244,7 @@ impl Instance {
 
         // Creating the Vulkan instance.
         let instance = unsafe {
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             let infos = vk::InstanceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -260,8 +261,8 @@ impl Instance {
             };
 
             let entry_points = function_pointers.entry_points();
-            check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output))?;
-            output
+            check_errors(entry_points.CreateInstance(&infos, ptr::null(), output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         // Loading the function pointers of the newly-created instance.
@@ -311,9 +312,9 @@ impl Instance {
 
         for device in physical_devices.into_iter() {
             let properties: vk::PhysicalDeviceProperties = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceProperties(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceProperties(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             let queue_families = unsafe {
@@ -327,15 +328,15 @@ impl Instance {
             };
 
             let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceMemoryProperties(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             let available_features: vk::PhysicalDeviceFeatures = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceFeatures(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceFeatures(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             output.push(PhysicalDeviceInfos {
