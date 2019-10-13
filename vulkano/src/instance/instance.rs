@@ -363,7 +363,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
                     pNext: ptr::null_mut(),
-                    properties: mem::uninitialized(),
+                    properties: mem::zeroed(),
                 };
 
                 vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
@@ -379,7 +379,7 @@ impl Instance {
                              vk::QueueFamilyProperties2KHR {
                                  sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
                                  pNext: ptr::null_mut(),
-                                 queueFamilyProperties: mem::uninitialized(),
+                                 queueFamilyProperties: mem::zeroed(),
                              }
                          })
                     .collect::<Vec<_>>();
@@ -397,7 +397,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceMemoryProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR,
                     pNext: ptr::null_mut(),
-                    memoryProperties: mem::uninitialized(),
+                    memoryProperties: mem::zeroed(),
                 };
                 vk.GetPhysicalDeviceMemoryProperties2KHR(device, &mut output);
                 output.memoryProperties
@@ -407,7 +407,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceFeatures2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
                     pNext: ptr::null_mut(),
-                    features: mem::uninitialized(),
+                    features: mem::zeroed(),
                 };
                 vk.GetPhysicalDeviceFeatures2KHR(device, &mut output);
                 output.features

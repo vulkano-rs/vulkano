@@ -142,8 +142,8 @@ impl UnsafeBuffer {
                     Some(vk::MemoryDedicatedRequirementsKHR {
                              sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
                              pNext: ptr::null(),
-                             prefersDedicatedAllocation: mem::uninitialized(),
-                             requiresDedicatedAllocation: mem::uninitialized(),
+                             prefersDedicatedAllocation: mem::zeroed(),
+                             requiresDedicatedAllocation: mem::zeroed(),
                          })
                 } else {
                     None
@@ -155,7 +155,7 @@ impl UnsafeBuffer {
                         .as_mut()
                         .map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
                         .unwrap_or(ptr::null_mut()) as *mut _,
-                    memoryRequirements: mem::uninitialized(),
+                    memoryRequirements: mem::zeroed(),
                 };
 
                 vk.GetBufferMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
