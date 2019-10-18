@@ -13,6 +13,7 @@
 
 use smallvec::SmallVec;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::u32;
@@ -1072,14 +1073,14 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 basePipelineIndex: -1, // TODO:
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateGraphicsPipelines(device.internal_object(),
                                                     0,
                                                     1,
                                                     &infos,
                                                     ptr::null(),
-                                                    &mut output))?;
-            output
+                                                    output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         let (render_pass, render_pass_subpass) = self.render_pass.take().unwrap().into();
