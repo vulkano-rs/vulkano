@@ -9,7 +9,7 @@
 
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -399,12 +399,12 @@ impl <W> Swapchain<W> {
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSwapchainKHR(device.internal_object(),
                                                &infos,
                                                ptr::null(),
-                                               &mut output))?;
-            output
+                                               output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         let image_handles = unsafe {
@@ -1174,15 +1174,16 @@ pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Optio
         u64::max_value()
     };
 
-    let mut out = mem::uninitialized();
+    let mut out = MaybeUninit::uninit();
     let r =
         check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
                                             swapchain.swapchain,
                                             timeout_ns,
                                             semaphore.map(|s| s.internal_object()).unwrap_or(0),
                                             fence.map(|f| f.internal_object()).unwrap_or(0),
-                                            &mut out))?;
+                                            out.as_mut_ptr()))?;
 
+    let out = out.assume_init();
     let (id, suboptimal) = match r {
         Success::Success => (out as usize, false),
         Success::Suboptimal => (out as usize, true),
