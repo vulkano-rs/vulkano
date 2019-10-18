@@ -224,7 +224,8 @@ fn main() {
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
+
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
     events_loop.run(move |ev, _, cf| {
@@ -270,8 +271,7 @@ fn main() {
             .unwrap()
             .build().unwrap();
 
-		let prev = previous_frame_end.take();
-        let future = prev.unwrap().join(acquire_future)
+        let future = previous_frame_end.take().unwrap().join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush();

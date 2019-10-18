@@ -40,7 +40,7 @@
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::os::raw::{c_char, c_void};
 use std::panic;
 use std::ptr;
@@ -149,12 +149,12 @@ impl DebugCallback {
         let vk = instance.pointers();
 
         let debug_report_callback = unsafe {
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateDebugReportCallbackEXT(instance.internal_object(),
                                                          &infos,
                                                          ptr::null(),
-                                                         &mut output))?;
-            output
+                                                         output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(DebugCallback {

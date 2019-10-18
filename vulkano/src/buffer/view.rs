@@ -39,7 +39,7 @@
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -123,11 +123,11 @@ impl<F, B> BufferView<F, B>
 
             let format_props = {
                 let vk_i = device.instance().pointers();
-                let mut output = mem::uninitialized();
+                let mut output = MaybeUninit::uninit();
                 vk_i.GetPhysicalDeviceFormatProperties(device.physical_device().internal_object(),
                                                        format as u32,
-                                                       &mut output);
-                output.bufferFeatures
+                                                       output.as_mut_ptr());
+                output.assume_init().bufferFeatures
             };
 
             if buffer.usage_uniform_texel_buffer() {
@@ -153,12 +153,12 @@ impl<F, B> BufferView<F, B>
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateBufferView(device.internal_object(),
                                              &infos,
                                              ptr::null(),
-                                             &mut output))?;
-            (output, format_props)
+                                             output.as_mut_ptr()))?;
+            (output.assume_init(), format_props)
         };
 
         Ok(BufferView {

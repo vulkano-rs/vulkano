@@ -9,6 +9,7 @@
 
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -117,8 +118,8 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<R, B>
         where F: for<'r> FnOnce(&'r T) -> &'r R // TODO: bounds on R
     {
-        let data: &T = mem::zeroed();
-        let result = f(data);
+        let data: MaybeUninit<&T> = MaybeUninit::zeroed();
+        let result = f(data.assume_init());
         let size = mem::size_of_val(result);
         let result = result as *const R as *const () as usize;
 
