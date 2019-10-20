@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -74,12 +74,12 @@ impl<D> Semaphore<D>
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSemaphore(device.internal_object(),
                                             &INFOS,
                                             ptr::null(),
-                                            &mut output))?;
-            output
+                                            output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Semaphore {

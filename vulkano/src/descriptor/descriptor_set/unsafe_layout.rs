@@ -9,7 +9,7 @@
 
 use smallvec::SmallVec;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -85,13 +85,13 @@ impl UnsafeDescriptorSetLayout {
                 pBindings: bindings.as_ptr(),
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             let vk = device.pointers();
             check_errors(vk.CreateDescriptorSetLayout(device.internal_object(),
                                                       &infos,
                                                       ptr::null(),
-                                                      &mut output))?;
-            output
+                                                      output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(UnsafeDescriptorSetLayout {

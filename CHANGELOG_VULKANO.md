@@ -1,7 +1,9 @@
 # Unreleased
 
-- Replacing `VK_EXT_debug_report` by `VK_EXT_debug_utils`.
-    + This also remove the `VK_EXT_debug_marker` extension
+- Replaced `VK_EXT_debug_report` `VK_EXT_debug_marker` with `VK_EXT_debug_utils`.
+- Update MacOS dependencies metal to 0.17 and cocoa to 0.19
+- Added dynamic stencil elements to `DynamicState`
+- Fixed `ImageDimensions::mipmap_dimensions` and `max_mipmaps` in cases where the original size is not a power of two.
 
 # Version 0.14.0 (2019-08-17)
 

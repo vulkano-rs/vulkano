@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -138,14 +139,14 @@ impl<Pl> ComputePipeline<Pl> {
                 basePipelineIndex: 0,
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateComputePipelines(device.internal_object(),
                                                    0,
                                                    1,
                                                    &infos,
                                                    ptr::null(),
-                                                   &mut output))?;
-            output
+                                                   output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(ComputePipeline {

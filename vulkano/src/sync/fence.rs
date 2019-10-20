@@ -10,7 +10,7 @@
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -107,12 +107,12 @@ impl<D> Fence<D>
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateFence(device.internal_object(),
                                         &infos,
                                         ptr::null(),
-                                        &mut output))?;
-            output
+                                        output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Fence {

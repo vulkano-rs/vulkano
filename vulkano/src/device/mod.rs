@@ -96,7 +96,7 @@ use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
 use std::hash::BuildHasherDefault;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
 use std::sync::Arc;
@@ -286,12 +286,12 @@ impl Device {
                 pEnabledFeatures: &features,
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk_i.CreateDevice(phys.internal_object(),
                                            &infos,
                                            ptr::null(),
-                                           &mut output))?;
-            output
+                                           output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         // loading the function pointers of the newly-created device
@@ -585,13 +585,13 @@ impl Iterator for QueuesIter {
 
             self.next_queue += 1;
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             self.device
                 .vk
-                .GetDeviceQueue(self.device.device, family, id, &mut output);
+                .GetDeviceQueue(self.device.device, family, id, output.as_mut_ptr());
 
             Some(Arc::new(Queue {
-                              queue: Mutex::new(output),
+                              queue: Mutex::new(output.assume_init()),
                               device: self.device.clone(),
                               family: family,
                               id: id,
