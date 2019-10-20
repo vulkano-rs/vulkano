@@ -114,6 +114,7 @@ device_extensions! {
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
     khr_incremental_present => b"VK_KHR_incremental_present",
     ext_debug_marker => b"VK_EXT_debug_marker",
+    khr_multiview => b"VK_KHR_multiview",
 }
 
 /// This helper type can only be instantiated inside this module.
