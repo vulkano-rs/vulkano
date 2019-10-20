@@ -1,5 +1,6 @@
 # Unreleased
 
+- Fixed bug in examples causing OutOfHostMemory errors
 - Replaced `VK_EXT_debug_report` `VK_EXT_debug_marker` with `VK_EXT_debug_utils`.
 - Update MacOS dependencies metal to 0.17 and cocoa to 0.19
 - Added dynamic stencil elements to `DynamicState`
