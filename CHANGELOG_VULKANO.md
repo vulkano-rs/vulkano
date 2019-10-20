@@ -1,5 +1,6 @@
 # Unreleased
 
+- Update MacOS dependencies metal to 0.17 and cocoa to 0.19
 - Added dynamic stencil elements to `DynamicState`
 
 # Version 0.14.0 (2019-08-17)
