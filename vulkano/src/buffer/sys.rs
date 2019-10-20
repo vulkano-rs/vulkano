@@ -306,7 +306,7 @@ impl UnsafeBuffer {
 unsafe impl VulkanObject for UnsafeBuffer {
     type Object = vk::Buffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::Buffer {
