@@ -1,5 +1,6 @@
 # Unreleased
 
+- Fixed bug in examples causing OutOfHostMemory errors
 - Update MacOS dependencies metal to 0.17 and cocoa to 0.19
 - Added dynamic stencil elements to `DynamicState`
 - Fixed `ImageDimensions::mipmap_dimensions` and `max_mipmaps` in cases where the original size is not a power of two.
