@@ -219,7 +219,7 @@ impl PipelineCache {
 unsafe impl VulkanObject for PipelineCache {
     type Object = vk::PipelineCache;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_CACHE;
 
     #[inline]
     fn internal_object(&self) -> vk::PipelineCache {
