@@ -475,7 +475,7 @@ impl fmt::Debug for Instance {
 unsafe impl VulkanObject for Instance {
     type Object = vk::Instance;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_INSTANCE;
 
     #[inline]
     fn internal_object(&self) -> vk::Instance {
@@ -949,7 +949,7 @@ impl<'a> PhysicalDevice<'a> {
 unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
     type Object = vk::PhysicalDevice;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PHYSICAL_DEVICE;
 
     #[inline]
     fn internal_object(&self) -> vk::PhysicalDevice {

@@ -497,7 +497,7 @@ pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
     type Object = vk::RenderPass;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_RENDER_PASS;
 
     #[inline]
     fn internal_object(&self) -> vk::RenderPass {

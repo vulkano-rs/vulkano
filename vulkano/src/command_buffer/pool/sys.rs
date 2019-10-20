@@ -225,7 +225,7 @@ unsafe impl DeviceOwned for UnsafeCommandPool {
 unsafe impl VulkanObject for UnsafeCommandPool {
     type Object = vk::CommandPool;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_POOL_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_POOL;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandPool {
@@ -249,7 +249,7 @@ pub struct UnsafeCommandPoolAlloc(vk::CommandBuffer);
 unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
     type Object = vk::CommandBuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
