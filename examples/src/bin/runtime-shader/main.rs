@@ -436,6 +436,7 @@ fn main() {
 
         match future {
             Ok(future) => {
+                future.wait(None).unwrap();
                 previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
