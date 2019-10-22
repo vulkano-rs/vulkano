@@ -1,6 +1,8 @@
 # Unreleased
 
 - Added dynamic stencil elements to `DynamicState`
+- Shader includes now work on Windows.
+- **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
 
 # Version 0.14.0 (2019-08-17)
 
