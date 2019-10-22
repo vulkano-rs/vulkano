@@ -102,7 +102,7 @@ unsafe impl<D> VulkanObject for Semaphore<D>
 {
     type Object = vk::Semaphore;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SEMAPHORE;
 
     #[inline]
     fn internal_object(&self) -> vk::Semaphore {
