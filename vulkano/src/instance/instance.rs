@@ -18,6 +18,7 @@ use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
+use std::mem::MaybeUninit;
 
 use Error;
 use OomError;
@@ -96,7 +97,7 @@ pub struct Instance {
     vk: vk::InstancePointers,
     extensions: InstanceExtensions,
     layers: SmallVec<[CString; 16]>,
-    function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>,
+    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
 }
 
 // TODO: fix the underlying cause instead
@@ -148,7 +149,7 @@ impl Instance {
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.
-    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<Loader + Send + Sync>>,
+    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
                                    app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
                                    -> Result<Arc<Instance>, InstanceCreationError>
         where L: IntoIterator<Item = &'a str>,
@@ -167,7 +168,7 @@ impl Instance {
 
     fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
                  layers: SmallVec<[CString; 16]>,
-                 function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>)
+                 function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>)
                  -> Result<Arc<Instance>, InstanceCreationError> {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
@@ -243,7 +244,7 @@ impl Instance {
 
         // Creating the Vulkan instance.
         let instance = unsafe {
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             let infos = vk::InstanceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -260,8 +261,8 @@ impl Instance {
             };
 
             let entry_points = function_pointers.entry_points();
-            check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output))?;
-            output
+            check_errors(entry_points.CreateInstance(&infos, ptr::null(), output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         // Loading the function pointers of the newly-created instance.
@@ -311,9 +312,9 @@ impl Instance {
 
         for device in physical_devices.into_iter() {
             let properties: vk::PhysicalDeviceProperties = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceProperties(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceProperties(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             let queue_families = unsafe {
@@ -327,15 +328,15 @@ impl Instance {
             };
 
             let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceMemoryProperties(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             let available_features: vk::PhysicalDeviceFeatures = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceFeatures(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceFeatures(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             output.push(PhysicalDeviceInfos {
@@ -362,7 +363,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
                     pNext: ptr::null_mut(),
-                    properties: mem::uninitialized(),
+                    properties: mem::zeroed(),
                 };
 
                 vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
@@ -378,7 +379,7 @@ impl Instance {
                              vk::QueueFamilyProperties2KHR {
                                  sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
                                  pNext: ptr::null_mut(),
-                                 queueFamilyProperties: mem::uninitialized(),
+                                 queueFamilyProperties: mem::zeroed(),
                              }
                          })
                     .collect::<Vec<_>>();
@@ -396,7 +397,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceMemoryProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR,
                     pNext: ptr::null_mut(),
-                    memoryProperties: mem::uninitialized(),
+                    memoryProperties: mem::zeroed(),
                 };
                 vk.GetPhysicalDeviceMemoryProperties2KHR(device, &mut output);
                 output.memoryProperties
@@ -406,7 +407,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceFeatures2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
                     pNext: ptr::null_mut(),
-                    features: mem::uninitialized(),
+                    features: mem::zeroed(),
                 };
                 vk.GetPhysicalDeviceFeatures2KHR(device, &mut output);
                 output.features
@@ -474,7 +475,7 @@ impl fmt::Debug for Instance {
 unsafe impl VulkanObject for Instance {
     type Object = vk::Instance;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_INSTANCE;
 
     #[inline]
     fn internal_object(&self) -> vk::Instance {
@@ -619,7 +620,7 @@ impl error::Error for InstanceCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),
@@ -948,7 +949,7 @@ impl<'a> PhysicalDevice<'a> {
 unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
     type Object = vk::PhysicalDevice;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PHYSICAL_DEVICE;
 
     #[inline]
     fn internal_object(&self) -> vk::PhysicalDevice {
@@ -1073,15 +1074,13 @@ impl<'a> QueueFamily<'a> {
     }
 
     /// Returns true if queues of this family can execute transfer operations.
-    ///
-    /// > **Note**: Queues that support graphics or compute operations also always support transfer
-    /// > operations. As of writing this, this function will always return true. The purpose of
-    /// > this function is to be future-proofed in case queues that don't support transfer
-    /// > operations are ever added to Vulkan.
+    /// > **Note**: While all queues that can perform graphics or compute operations can implicitly perform
+    /// > transfer operations, graphics & compute queues only optionally indicate support for tranfers.
+    /// > Many discrete cards will have one queue family that exclusively sets the VK_QUEUE_TRANSFER_BIT
+    /// > to indicate a special relationship with the DMA module and more efficient transfers.
     #[inline]
-    pub fn supports_transfers(&self) -> bool {
-        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 || self.supports_graphics() ||
-            self.supports_compute()
+    pub fn explicitly_supports_transfers(&self) -> bool {
+        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
     }
 
     /// Returns true if queues of this family can execute sparse resources binding operations.

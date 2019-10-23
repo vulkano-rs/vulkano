@@ -31,7 +31,9 @@ use vulkano::sync;
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
+use winit::event_loop::{EventLoop, ControlFlow};
+use winit::window::{Window, WindowBuilder};
+use winit::event::{Event, WindowEvent};
 
 use std::sync::Arc;
 
@@ -78,7 +80,7 @@ fn main() {
     //
     // This returns a `vulkano::swapchain::Surface` object that contains both a cross-platform winit
     // window and a cross-platform Vulkan surface that represents the surface of the window.
-    let mut events_loop = EventsLoop::new();
+    let events_loop = EventLoop::new();
     let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
     let window = surface.window();
 
@@ -152,13 +154,10 @@ fn main() {
         // These drivers will allow anything but the only sensible value is the window dimensions.
         //
         // Because for both of these cases, the swapchain needs to be the window dimensions, we just use that.
-        let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
+        let initial_dimensions = {
             // convert to physical pixels
-            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+            let dimensions: (u32, u32) = window.inner_size().to_physical(window.hidpi_factor()).into();
             [dimensions.0, dimensions.1]
-        } else {
-            // The window no longer exists so exit the application.
-            return;
         };
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
@@ -170,7 +169,7 @@ fn main() {
 
     // We now create a buffer that will store the shape of our triangle.
     let vertex_buffer = {
-        #[derive(Debug, Clone)]
+        #[derive(Default, Debug, Clone)]
         struct Vertex { position: [f32; 2] }
         vulkano::impl_vertex!(Vertex, position);
 
@@ -282,7 +281,7 @@ void main() {
 
     // Dynamic viewports allow us to recreate just the viewport when the window is resized
     // Otherwise we would have to recreate the whole pipeline.
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
@@ -310,31 +309,32 @@ void main() {
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store the submission of the previous frame here.
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
-    loop {
+    events_loop.run(move |ev, _, cf| {
+        *cf = ControlFlow::Poll;
+        let window = surface.window();
+
         // It is important to call this function from time to time, otherwise resources will keep
         // accumulating and you will eventually reach an out of memory error.
         // Calling this function polls various fences in order to determine what the GPU has
         // already processed, and frees the resources that are no longer needed.
-        previous_frame_end.cleanup_finished();
+        previous_frame_end.as_mut().unwrap().cleanup_finished();
 
         // Whenever the window resizes we need to recreate everything dependent on the window size.
         // In this example that includes the swapchain, the framebuffers and the dynamic state viewport.
         if recreate_swapchain {
             // Get the new dimensions of the window.
-            let dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
+            let dimensions = {
+                let dimensions: (u32, u32) = window.inner_size().to_physical(window.hidpi_factor()).into();
                 [dimensions.0, dimensions.1]
-            } else {
-                return;
             };
 
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
                 // Simply restarting the loop is the easiest way to fix this issue.
-                Err(SwapchainCreationError::UnsupportedDimensions) => continue,
+                Err(SwapchainCreationError::UnsupportedDimensions) => return,
                 Err(err) => panic!("{:?}", err)
             };
 
@@ -357,7 +357,7 @@ void main() {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
-                continue;
+                return;
             },
             Err(err) => panic!("{:?}", err)
         };
@@ -401,7 +401,8 @@ void main() {
             // Finish building the command buffer by calling `build`.
             .build().unwrap();
 
-        let future = previous_frame_end.join(acquire_future)
+		let prev = previous_frame_end.take();
+        let future = prev.unwrap().join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
 
             // The color output is now expected to contain our triangle. But in order to show it on
@@ -415,15 +416,17 @@ void main() {
 
         match future {
             Ok(future) => {
-                previous_frame_end = Box::new(future) as Box<_>;
+                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
+                future.wait(None).unwrap();
+                previous_frame_end = Some(Box::new(future) as Box<_>);
             }
             Err(FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
+                previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
+                previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
             }
         }
 
@@ -437,24 +440,21 @@ void main() {
 
         // Handling the window events in order to close the program when the user wants to close
         // it.
-        let mut done = false;
-        events_loop.poll_events(|ev| {
-            match ev {
-                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
-                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
-                _ => ()
-            }
-        });
-        if done { return; }
-    }
+
+        match ev {
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *cf = ControlFlow::Exit,
+            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
+            _ => {},
+        }
+    });
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -469,6 +469,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }

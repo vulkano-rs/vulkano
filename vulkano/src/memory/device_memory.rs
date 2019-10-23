@@ -9,7 +9,7 @@
 
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ops::DerefMut;
 use std::ops::Range;
@@ -134,13 +134,13 @@ impl DeviceMemory {
                 memoryTypeIndex: memory_type.id(),
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.AllocateMemory(device.internal_object(),
                                            &infos,
                                            ptr::null(),
-                                           &mut output))?;
+                                           output.as_mut_ptr()))?;
             *allocation_count += 1;
-            output
+            output.assume_init()
         };
 
         Ok(DeviceMemory {
@@ -176,14 +176,14 @@ impl DeviceMemory {
         let coherent = memory_type.is_host_coherent();
 
         let ptr = unsafe {
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.MapMemory(device.internal_object(),
                                       mem.memory,
                                       0,
                                       mem.size as vk::DeviceSize,
                                       0, /* reserved flags */
-                                      &mut output))?;
-            output
+                                      output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(MappedDeviceMemory {
@@ -229,7 +229,7 @@ impl fmt::Debug for DeviceMemory {
 unsafe impl VulkanObject for DeviceMemory {
     type Object = vk::DeviceMemory;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DEVICE_MEMORY_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DEVICE_MEMORY;
 
     #[inline]
     fn internal_object(&self) -> vk::DeviceMemory {
@@ -482,7 +482,7 @@ impl error::Error for DeviceMemoryAllocError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             DeviceMemoryAllocError::OomError(ref err) => Some(err),
             _ => None,

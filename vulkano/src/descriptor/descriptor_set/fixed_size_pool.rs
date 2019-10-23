@@ -145,7 +145,7 @@ unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.inner.buffer(index)
     }
 
@@ -155,7 +155,7 @@ unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.inner.image(index)
     }
 }

@@ -119,7 +119,7 @@ macro_rules! ordered_passes_renderpass {
             }
 
             unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
-                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<dyn Iterator<Item = ClearValue>> {
                     // FIXME: safety checks
                     Box::new(values.into_iter())
                 }
@@ -312,18 +312,6 @@ macro_rules! ordered_passes_renderpass {
                 })*
 
                 $(if $atch_name == num {
-                    // If the clear OP is Clear or DontCare, default to the Undefined layout.
-                    if initial_layout == Some(ImageLayout::DepthStencilAttachmentOptimal) ||
-                        initial_layout == Some(ImageLayout::ColorAttachmentOptimal) ||
-                        initial_layout == Some(ImageLayout::TransferDstOptimal)
-                    {
-                        if $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::Clear ||
-                            $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::DontCare
-                        {
-                            initial_layout = Some(ImageLayout::Undefined);
-                        }
-                    }
-
                     $(initial_layout = Some($init_layout);)*
                     $(final_layout = Some($final_layout);)*
                 })*

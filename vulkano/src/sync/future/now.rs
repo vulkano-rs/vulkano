@@ -64,13 +64,13 @@ unsafe impl GpuFuture for NowFuture {
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, _: bool, _: &Queue)
+        &self, buffer: &dyn BufferAccess, _: bool, _: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, _: &ImageAccess, _: ImageLayout, _: bool, _: &Queue)
+    fn check_image_access(&self, _: &dyn ImageAccess, _: ImageLayout, _: bool, _: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }

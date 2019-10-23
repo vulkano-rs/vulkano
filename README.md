@@ -53,9 +53,11 @@ To get started you are encouraged to use the following resources:
 
 ## Setup
 
-Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation. In order to
-build the shaderc-rs crate the following tools must be installed and available on `PATH`:
+Vulkano uses [shaderc-rs](https://github.com/google/shaderc-rs) for shader compilation.  Refer to shaderc-rs documentation to provide a pre-built libshaderc for faster build times.
+
+Unless you provide libshaderc, in order to build libshaderc with the shaderc-sys crate, the following tools must be installed and available on `PATH`:
 - [CMake](https://cmake.org/)
+- [Ninja](https://ninja-build.org/) Is optional except when building with MSVC.  It may speed up build time for libshaderc.
 - [Python](https://www.python.org/) (works with both Python 2.x and 3.x, on windows the executable must be named `python.exe`)
 
 These requirements can be either installed with your favourite package manager or with installers
@@ -66,7 +68,7 @@ from the projects' websites. Below are some example ways to get setup.
 1. `rustup default stable-x86_64-pc-windows-msvc`
 2. Install [Build Tools for Visual Studio 2017](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2017). If you have already been using this toolchain then its probably already installed.
 3.  Install [msys2](http://www.msys2.org/), following ALL of the instructions.
-4.  Then in the msys2 terminal run: `pacman --noconfirm -Syu mingw-w64-x86_64-cmake mingw-w64-x86_64-python2`
+4.  Then in the msys2 terminal run: `pacman --noconfirm -Syu mingw-w64-x86_64-cmake mingw-w64-x86_64-python2 mingw-w64-x86_64-ninja`
 5.  Add the msys2 mingw64 binary path to the PATH environment variable.
 
 ### Windows-gnu Specific Setup
@@ -81,7 +83,7 @@ Steps 1 and 2 are to workaround https://github.com/rust-lang/rust/issues/49078 b
 4.  Run the command: `rustup target install x86_64-pc-windows-gnu`
 5.  Install [Build Tools for Visual Studio 2017](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2017). If you have already been using this toolchain then its probably already installed.
 6.  Install [msys2](http://www.msys2.org/), following ALL of the instructions.
-7.  Then in the msys2 terminal run: `pacman --noconfirm -Syu mingw64/mingw-w64-x86_64-pkg-config mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-python2`
+7.  Then in the msys2 terminal run: `pacman --noconfirm -Syu mingw64/mingw-w64-x86_64-pkg-config mingw-w64-x86_64-gcc mingw-w64-x86_64-cmake mingw-w64-x86_64-make mingw-w64-x86_64-python2 mingw-w64-x86_64-ninja`
 8.  Add the msys2 mingw64 binary path to the PATH environment variable.
 9.  Any cargo command that builds the project needs to include `--target x86_64-pc-windows-gnu` e.g. to run: `cargo run --target x86_64-pc-windows-gnu`
 
@@ -149,7 +151,7 @@ If your change adds, removes or modifies a trait or a function, please add an en
 
 ## Structure
 
-This repository contains six libraries:
+This repository contains four libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` Provides the `shader!` macro for compiling glsl shaders.

@@ -180,7 +180,7 @@ impl error::Error for LayersListError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             LayersListError::LoadingError(ref err) => Some(err),
             LayersListError::OomError(ref err) => Some(err),

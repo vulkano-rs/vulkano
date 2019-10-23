@@ -25,6 +25,7 @@ use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
@@ -99,12 +100,12 @@ impl ShaderModule {
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateShaderModule(device.internal_object(),
                                                &infos,
                                                ptr::null(),
-                                               &mut output))?;
-            output
+                                               output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Arc::new(ShaderModule {
@@ -166,7 +167,7 @@ impl ShaderModule {
 unsafe impl VulkanObject for ShaderModule {
     type Object = vk::ShaderModule;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SHADER_MODULE;
 
     #[inline]
     fn internal_object(&self) -> vk::ShaderModule {
