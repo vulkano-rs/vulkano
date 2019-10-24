@@ -41,7 +41,7 @@ use std::error;
 use std::ffi::CStr;
 use std::fmt;
 use std::mem::MaybeUninit;
-use std::os::raw::{c_char, c_void};
+use std::os::raw::c_void;
 use std::panic;
 use std::ptr;
 use std::sync::Arc;
