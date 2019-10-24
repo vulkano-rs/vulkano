@@ -421,6 +421,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     }
 
     /// Returns the 4x4 matrix that turns world coordinates into 2D coordinates on the framebuffer.
+    #[allow(dead_code)]
     #[inline]
     pub fn world_to_framebuffer_matrix(&self) -> Matrix4<f32> {
         self.frame.world_to_framebuffer
