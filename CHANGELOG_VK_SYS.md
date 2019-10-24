@@ -1,5 +1,8 @@
 # Unreleased *breaking*
 
+- Add const `STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR` and
+  struct `PhysicalDevice16BitStorageFeaturesKHR` for `VK_KHR_16bit_storage`
+  extension.
 - Removed the following deprecated constants
     +   `STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT`
     +   `COLORSPACE_SRGB_NONLINEAR_KHR`

@@ -113,6 +113,8 @@ device_extensions! {
     khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
     khr_incremental_present => b"VK_KHR_incremental_present",
+    khr_16bit_storage => b"VK_KHR_16bit_storage",
+    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
     ext_debug_utils => b"VK_EXT_debug_utils",
     khr_multiview => b"VK_KHR_multiview",
 }
