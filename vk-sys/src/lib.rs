@@ -182,6 +182,7 @@ pub const STRUCTURE_TYPE_SPARSE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059007;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SPARSE_IMAGE_FORMAT_INFO_2_KHR: u32 = 1000059008;
 pub const STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN: u32 = 1000062000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR: u32 = 1000080000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR: u32 = 1000083000;
 pub const STRUCTURE_TYPE_PRESENT_REGIONS_KHR: u32 = 1000084000;
 pub const STRUCTURE_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_CREATE_INFO_KHR: u32 = 1000085000;
 pub const STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR: u32 = 1000127000;
@@ -2665,6 +2666,16 @@ pub struct DebugUtilsLabelEXT {
     pub pNext: *const c_void,
     pub pLabelName: *const c_char,
     pub color: [f32; 4],
+}
+
+#[repr(C)]
+pub struct PhysicalDevice16BitStorageFeaturesKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub storageBuffer16BitAccess: Bool32,
+    pub uniformAndStorageBuffer16BitAccess: Bool32,
+    pub storagePushConstant16: Bool32,
+    pub storageInputOutput16: Bool32,
 }
 
 #[repr(C)]

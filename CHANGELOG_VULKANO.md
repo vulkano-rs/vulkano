@@ -9,6 +9,7 @@
 - Fixed `ImageDimensions::mipmap_dimensions` and `max_mipmaps` in cases where the original size is not a power of two.
 - Shader includes now work on Windows.
 - **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
+- Add support for `VK_KHR_16bit_storage` and `VK_KHR_storage_buffer_storage_class` device extensions.
 - Update Winit to 0.20.0
 
 # Version 0.15.0 (2019-10-18)
