@@ -108,6 +108,9 @@ impl StateCacher {
         cmp!(line_width);
         cmp!(viewports);
         cmp!(scissors);
+        cmp!(compare_mask);
+        cmp!(reference);
+        cmp!(write_mask);
 
         changed
     }

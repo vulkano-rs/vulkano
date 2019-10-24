@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The vulkano developers
+// Copyright (c) 2019 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT
@@ -7,10 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// Welcome to the instancing example!
+// Indirect draw example
 //
-// This is a simple, modified version of the `triangle.rs` example that demonstrates how we can use
-// the "instancing" technique with vulkano to draw many instances of the triangle.
+// Indirect draw calls allow us to issue a draw without needing to know the number of vertices
+// until later when the draw is executed by the GPU.
+//
+// This is used in situations where vertices are being generated on the GPU, such as a GPU
+// particle simulation, and the exact number of output vertices cannot be known until
+// the compute shader has run.
+//
+// In this example the compute shader is trivial and the number of vertices does not change.
+// However is does demonstrate that each compute instance atomically updates the vertex
+// counter before filling the vertex buffer.
+//
+// For an explanation of how the rendering of the triangles takes place see the `triangle.rs`
+// example.
+//
 
 #[macro_use]
 extern crate vulkano;
@@ -18,14 +30,14 @@ extern crate vulkano_shaders;
 extern crate winit;
 extern crate vulkano_win;
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::buffer::{BufferUsage, CpuBufferPool};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, DrawIndirectCommand};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
 use vulkano::image::SwapchainImage;
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::instance::{Instance, PhysicalDevice};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::vertex::OneVertexOneInstanceDefinition;
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
 use vulkano::swapchain;
@@ -39,26 +51,15 @@ use winit::window::{Window, WindowBuilder};
 use winit::event::{Event, WindowEvent};
 
 use std::sync::Arc;
+use std::iter;
 
 // # Vertex Types
-//
-// Seeing as we are going to use the `OneVertexOneInstanceDefinition` vertex definition for our
-// graphics pipeline, we need to define two vertex types:
-//
-// 1. `Vertex` is the vertex type that we will use to describe the triangle's geometry.
+// `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
 #[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2],
 }
 impl_vertex!(Vertex, position);
-
-// 2. `InstanceData` is the vertex type that describes the unique data per instance.
-#[derive(Default, Debug, Clone)]
-struct InstanceData {
-    position_offset: [f32; 2],
-    scale: f32,
-}
-impl_vertex!(InstanceData, position_offset, scale);
 
 fn main() {
     let instance = {
@@ -99,38 +100,6 @@ fn main() {
             PresentMode::Fifo, true, None).unwrap()
     };
 
-    // We now create a buffer that will store the shape of our triangle.
-    // This triangle is identical to the one in the `triangle.rs` example.
-    let triangle_vertex_buffer = {
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
-            Vertex { position: [-0.5, -0.25] },
-            Vertex { position: [0.0, 0.5] },
-            Vertex { position: [0.25, -0.1] }
-        ].iter().cloned()).unwrap()
-    };
-
-    // Now we create another buffer that will store the unique data per instance.
-    // For this example, we'll have the instances form a 10x10 grid that slowly gets larger.
-    let instance_data_buffer = {
-        let rows = 10;
-        let cols = 10;
-        let n_instances = rows * cols;
-        let mut data = Vec::new();
-        for c in 0..cols {
-            for r in 0..rows {
-                let half_cell_w = 0.5 / cols as f32;
-                let half_cell_h = 0.5 / rows as f32;
-                let x = half_cell_w + (c as f32 / cols as f32) * 2.0 - 1.0;
-                let y = half_cell_h + (r as f32 / rows as f32) * 2.0 - 1.0;
-                let position_offset = [x, y];
-                let scale = (2.0 / rows as f32) * (c * rows + r) as f32 / n_instances as f32;
-                data.push(InstanceData { position_offset, scale });
-            }
-        }
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data.iter().cloned())
-            .unwrap()
-    };
-
     mod vs {
         vulkano_shaders::shader!{
             ty: "vertex",
@@ -140,13 +109,8 @@ fn main() {
 // The triangle vertex positions.
 layout(location = 0) in vec2 position;
 
-// The per-instance data.
-layout(location = 1) in vec2 position_offset;
-layout(location = 2) in float scale;
-
 void main() {
-    // Apply the scale and offset for the instance.
-    gl_Position = vec4(position * scale + position_offset, 0.0, 1.0);
+    gl_Position = vec4(position, 0.0, 1.0);
 }"
         }
     }
@@ -166,8 +130,57 @@ void main() {
         }
     }
 
+    // A simple compute shader that generates vertices. It has two buffers bound: the first is where we output the vertices, the second
+    // is the IndirectDrawArgs struct we passed the draw_indirect so we can set the number to vertices to draw
+    mod cs {
+        vulkano_shaders::shader! {
+            ty: "compute",
+            src: "
+#version 450
+
+layout(local_size_x = 16, local_size_y = 1, local_size_z = 1) in;
+
+layout(set = 0, binding = 0) buffer Output {
+    vec2 pos[];
+} triangles;
+
+layout(set = 0, binding = 1) buffer IndirectDrawArgs {
+    uint vertices;
+    uint unused0;
+    uint unused1;
+    uint unused2;
+};
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+
+    // each thread of compute shader is going to increment the counter, so we need to use atomic
+    // operations for safety. The previous value of the counter is returned so that gives us
+    // the offset into the vertex buffer this thread can write it's vertices into.
+    uint offset = atomicAdd(vertices, 6);
+
+    vec2 center = vec2(-0.8, -0.8) + idx * vec2(0.1, 0.1);
+    triangles.pos[offset + 0] = center + vec2(0.0, 0.0375);
+    triangles.pos[offset + 1] = center + vec2(0.025, -0.01725);
+    triangles.pos[offset + 2] = center + vec2(-0.025, -0.01725);
+    triangles.pos[offset + 3] = center + vec2(0.0, -0.0375);
+    triangles.pos[offset + 4] = center + vec2(0.025, 0.01725);
+    triangles.pos[offset + 5] = center + vec2(-0.025, 0.01725);
+}
+"
+        }
+    }
+
     let vs = vs::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
+    let cs = cs::Shader::load(device.clone()).unwrap();
+
+    // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
+    // set the number of vertices to draw
+    let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> = CpuBufferPool::new(device.clone(), BufferUsage::all());
+    let vertex_pool : CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
+
+    let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &()).unwrap());
 
     let render_pass = Arc::new(single_pass_renderpass!(
         device.clone(),
@@ -185,10 +198,8 @@ void main() {
         }
     ).unwrap());
 
-    let pipeline = Arc::new(GraphicsPipeline::start()
-        // Use the `OneVertexOneInstanceDefinition` to describe to vulkano how the two vertex types
-        // are expected to be used.
-        .vertex_input(OneVertexOneInstanceDefinition::<Vertex, InstanceData>::new())
+    let render_pipeline = Arc::new(GraphicsPipeline::start()
+        .vertex_input_single_buffer()
         .vertex_shader(vs.main_entry_point(), ())
         .triangle_list()
         .viewports_dynamic_scissors_irrelevant(1)
@@ -234,16 +245,43 @@ void main() {
 
         let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
 
+        // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
+        // shader will only update vertex_count, so set the other parameters correctly here.
+        let indirect_args = indirect_args_pool.chunk(iter::once(
+            DrawIndirectCommand{
+                vertex_count: 0,
+                instance_count: 1,
+                first_vertex: 0,
+                first_instance: 0,
+            })).unwrap();
+
+        // Allocate a GPU buffer to hold this frames vertices. This needs to be large enough to hold
+        // the worst case number of vertices generated by the compute shader
+        let vertices = vertex_pool.chunk((0..(6 * 16)).map(|_| Vertex{ position: [0.0;2] })).unwrap();
+
+        // Pass the two buffers to the compute shader
+        let cs_desciptor_set = Arc::new(PersistentDescriptorSet::start(compute_pipeline.clone(), 0)
+            .add_buffer(vertices.clone()).unwrap()
+            .add_buffer(indirect_args.clone()).unwrap()
+            .build().unwrap()
+        );
+
         let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+            // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
+            // call arguments
+            .dispatch([1,1,1], compute_pipeline.clone(), cs_desciptor_set.clone(), ())
+            .unwrap()
             .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
             .unwrap()
-            .draw(
-                pipeline.clone(),
+            // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
+            // contain the arguments when the draw is executed on the GPU
+            .draw_indirect(
+                render_pipeline.clone(),
                 &dynamic_state,
-                // We pass both our lists of vertices here.
-                (triangle_vertex_buffer.clone(), instance_data_buffer.clone()),
+                vertices.clone(),
+                indirect_args.clone(),
                 (),
-                (),
+                ()
             )
             .unwrap()
             .end_render_pass()

@@ -9,7 +9,7 @@
 
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -399,12 +399,12 @@ impl <W> Swapchain<W> {
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSwapchainKHR(device.internal_object(),
                                                &infos,
                                                ptr::null(),
-                                               &mut output))?;
-            output
+                                               output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         let image_handles = unsafe {
@@ -578,7 +578,7 @@ impl <W> Swapchain<W> {
 unsafe impl<W> VulkanObject for Swapchain<W> {
     type Object = vk::SwapchainKHR;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SWAPCHAIN_KHR;
 
     #[inline]
     fn internal_object(&self) -> vk::SwapchainKHR {
@@ -872,24 +872,10 @@ unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
 
 impl<W> Drop for SwapchainAcquireFuture<W> {
     fn drop(&mut self) {
-        if !*self.finished.get_mut() {
             if let Some(ref fence) = self.fence {
                 fence.wait(None).unwrap(); // TODO: handle error?
                 self.semaphore = None;
             }
-
-        } else {
-            // We make sure that the fence is signalled. This also silences an error from the
-            // validation layers about using a fence whose state hasn't been checked (even though
-            // we know for sure that it must've been signalled).
-            debug_assert!({
-                              let dur = Some(Duration::new(0, 0));
-                              self.fence
-                                  .as_ref()
-                                  .map(|f| f.wait(dur).is_ok())
-                                  .unwrap_or(true)
-                          });
-        }
 
         // TODO: if this future is destroyed without being presented, then eventually acquiring
         // a new image will block forever ; difficulty: hard
@@ -1188,15 +1174,16 @@ pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Optio
         u64::max_value()
     };
 
-    let mut out = mem::uninitialized();
+    let mut out = MaybeUninit::uninit();
     let r =
         check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
                                             swapchain.swapchain,
                                             timeout_ns,
                                             semaphore.map(|s| s.internal_object()).unwrap_or(0),
                                             fence.map(|f| f.internal_object()).unwrap_or(0),
-                                            &mut out))?;
+                                            out.as_mut_ptr()))?;
 
+    let out = out.assume_init();
     let (id, suboptimal) = match r {
         Success::Success => (out as usize, false),
         Success::Suboptimal => (out as usize, true),

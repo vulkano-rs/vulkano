@@ -1,6 +1,22 @@
 # Unreleased
 
-*No changes as of yet.*
+- Fixed bug in examples causing OutOfHostMemory errors
+- Replaced `VK_EXT_debug_report` `VK_EXT_debug_marker` with `VK_EXT_debug_utils`.
+- Update MacOS dependencies metal to 0.17 and cocoa to 0.19
+- Added dynamic stencil elements to `DynamicState`
+- Fixed `ImageDimensions::mipmap_dimensions` and `max_mipmaps` in cases where the original size is not a power of two.
+- Shader includes now work on Windows.
+- **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
+- Add support for `VK_KHR_16bit_storage` and `VK_KHR_storage_buffer_storage_class` device extensions.
+- Update Winit to 0.20.0
+- Update dependencies: lazy_static, half, syn, quote & proc-macro2
+
+# Version 0.14.0 (2019-08-17)
+
+- Update shaderc to 0.6. This again allows to use locally installed libraries which reduces the build-time significantly on Arch/Voidlinux (see https://github.com/google/shaderc-rs/issues/58)
+- Removed faulty debug_assert in `SwapchainAcquireFuture::drop`.
+- Compressed texture formats can now be uploaded using `ImmutableImage::from_iter`, `ImmutableImage::from_buffer`, `AutoCommandBuilder::copy_buffer_to_image_dimensions`,
+  and `AutoCommandBuilder::copy_buffer_to_image`.
 
 # Version 0.13.0 (2019-07-02)
 

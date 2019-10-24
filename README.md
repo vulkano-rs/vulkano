@@ -151,7 +151,7 @@ If your change adds, removes or modifies a trait or a function, please add an en
 
 ## Structure
 
-This repository contains six libraries:
+This repository contains four libraries:
 
 - `vulkano` is the main one.
 - `vulkano-shaders` Provides the `shader!` macro for compiling glsl shaders.
