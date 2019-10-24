@@ -7,6 +7,7 @@
 - Fixed `ImageDimensions::mipmap_dimensions` and `max_mipmaps` in cases where the original size is not a power of two.
 - Shader includes now work on Windows.
 - **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
+- Update Winit to 0.20.0
 
 # Version 0.14.0 (2019-08-17)
 
