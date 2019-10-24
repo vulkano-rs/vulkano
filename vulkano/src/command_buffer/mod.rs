@@ -100,7 +100,6 @@ pub use self::traits::CommandBufferExecFuture;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use pipeline::depth_stencil::DynamicStencilValue;
-use pipeline::depth_stencil::Stencil;
 
 pub mod pool;
 pub mod submit;
