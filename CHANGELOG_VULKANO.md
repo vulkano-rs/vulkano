@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.16.0 (TBD)
+
 - Fixed bug in examples causing OutOfHostMemory errors
 - Replaced `VK_EXT_debug_report` `VK_EXT_debug_marker` with `VK_EXT_debug_utils`.
 - Update MacOS dependencies metal to 0.17 and cocoa to 0.19
@@ -8,6 +10,10 @@
 - Shader includes now work on Windows.
 - **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
 - Update Winit to 0.20.0
+
+# Version 0.15.0 (2019-10-18)
+
+*Yanked*
 
 # Version 0.14.0 (2019-08-17)
 

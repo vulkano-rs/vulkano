@@ -1,6 +1,6 @@
 [package]
 name = "vulkano"
-version = "0.14.0"
+version = "0.16.0"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Safe wrapper for the Vulkan graphics API"
@@ -18,5 +18,5 @@ fnv = "1.0.6"
 shared_library = "0.1.7"
 smallvec = "0.6.0"
 lazy_static = "1"
-vk-sys = { version = "0.4.0", path = "../vk-sys" }
+vk-sys = { version = "0.5.0", path = "../vk-sys" }
 half = "1"

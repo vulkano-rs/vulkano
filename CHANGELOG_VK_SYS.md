@@ -1,4 +1,6 @@
-# Unreleased *breaking*
+# Unreleased
+
+# Version 0.5.0 (TBD)
 
 - Removed the following deprecated constants
     +   `STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT`
