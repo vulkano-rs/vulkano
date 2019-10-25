@@ -12,7 +12,7 @@ use std::cmp;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -305,12 +305,12 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 layers: dimensions[2],
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateFramebuffer(device.internal_object(),
                                               &infos,
                                               ptr::null(),
-                                              &mut output))?;
-            output
+                                              output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Framebuffer {
@@ -457,7 +457,7 @@ pub struct FramebufferSys<'a>(vk::Framebuffer, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
     type Object = vk::Framebuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_FRAMEBUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::Framebuffer {

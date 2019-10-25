@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-win"
-version = "0.14.0"
+version = "0.15.0"
 edition = "2018"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
@@ -12,10 +12,10 @@ keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
 [dependencies]
-winit = "0.19"
+winit = "0.20.0-alpha4"
 vulkano = { version = "0.14.0", path = "../vulkano" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-metal = "0.13"
-cocoa = "0.18"
-objc = "0.2.2"
+metal = "0.17.0"
+cocoa = "0.19.1"
+objc = "0.2.7"

@@ -9,7 +9,7 @@
 
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -235,7 +235,7 @@ impl <W> Swapchain<W> {
                              num_images,
                              format.format(),
                              ColorSpace::SrgbNonLinear,
-                             dimensions,
+                             Some(dimensions),
                              layers,
                              usage,
                              sharing.into(),
@@ -244,6 +244,25 @@ impl <W> Swapchain<W> {
                              mode,
                              clipped,
                              old_swapchain.map(|s| &**s))
+    }
+
+    /// Recreates the swapchain with current dimensions of corresponding surface.
+    pub fn recreate(&self)
+        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        Swapchain::new_inner(self.device.clone(),
+                             self.surface.clone(),
+                             self.num_images,
+                             self.format,
+                             self.color_space,
+                             None,
+                             self.layers,
+                             self.usage,
+                             self.sharing.clone(),
+                             self.transform,
+                             self.alpha,
+                             self.mode,
+                             self.clipped,
+                             Some(self))
     }
 
     /// Recreates the swapchain with new dimensions.
@@ -255,7 +274,7 @@ impl <W> Swapchain<W> {
                              self.num_images,
                              self.format,
                              self.color_space,
-                             dimensions,
+                             Some(dimensions),
                              self.layers,
                              self.usage,
                              self.sharing.clone(),
@@ -267,7 +286,7 @@ impl <W> Swapchain<W> {
     }
 
     fn new_inner(device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: Format,
-                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
+                 color_space: ColorSpace, dimensions: Option<[u32; 2]>, layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
                  mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain<W>>)
                  -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
@@ -291,18 +310,23 @@ impl <W> Swapchain<W> {
         {
             return Err(SwapchainCreationError::UnsupportedFormat);
         }
-        if dimensions[0] < capabilities.min_image_extent[0] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
-        if dimensions[1] < capabilities.min_image_extent[1] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
-        if dimensions[0] > capabilities.max_image_extent[0] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
-        if dimensions[1] > capabilities.max_image_extent[1] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
+        let dimensions = if let Some(dimensions) = dimensions {
+            if dimensions[0] < capabilities.min_image_extent[0] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            if dimensions[1] < capabilities.min_image_extent[1] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            if dimensions[0] > capabilities.max_image_extent[0] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            if dimensions[1] > capabilities.max_image_extent[1] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            dimensions
+        } else {
+            capabilities.current_extent.unwrap()
+        };
         if layers < 1 || layers > capabilities.max_image_array_layers {
             return Err(SwapchainCreationError::UnsupportedArrayLayers);
         }
@@ -399,12 +423,12 @@ impl <W> Swapchain<W> {
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSwapchainKHR(device.internal_object(),
                                                &infos,
                                                ptr::null(),
-                                               &mut output))?;
-            output
+                                               output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         let image_handles = unsafe {
@@ -578,7 +602,7 @@ impl <W> Swapchain<W> {
 unsafe impl<W> VulkanObject for Swapchain<W> {
     type Object = vk::SwapchainKHR;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SWAPCHAIN_KHR_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SWAPCHAIN_KHR;
 
     #[inline]
     fn internal_object(&self) -> vk::SwapchainKHR {
@@ -1174,15 +1198,16 @@ pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Optio
         u64::max_value()
     };
 
-    let mut out = mem::uninitialized();
+    let mut out = MaybeUninit::uninit();
     let r =
         check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
                                             swapchain.swapchain,
                                             timeout_ns,
                                             semaphore.map(|s| s.internal_object()).unwrap_or(0),
                                             fence.map(|f| f.internal_object()).unwrap_or(0),
-                                            &mut out))?;
+                                            out.as_mut_ptr()))?;
 
+    let out = out.assume_init();
     let (id, suboptimal) = match r {
         Success::Success => (out as usize, false),
         Success::Suboptimal => (out as usize, true),

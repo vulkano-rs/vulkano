@@ -1,5 +1,16 @@
 # Unreleased
 
+- Fixed bug in examples causing OutOfHostMemory errors
+- Replaced `VK_EXT_debug_report` `VK_EXT_debug_marker` with `VK_EXT_debug_utils`.
+- Update MacOS dependencies metal to 0.17 and cocoa to 0.19
+- Added dynamic stencil elements to `DynamicState`
+- Fixed `ImageDimensions::mipmap_dimensions` and `max_mipmaps` in cases where the original size is not a power of two.
+- Shader includes now work on Windows.
+- **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
+- Add support for `VK_KHR_16bit_storage` and `VK_KHR_storage_buffer_storage_class` device extensions.
+- Update Winit to 0.20.0
+- Update dependencies: lazy_static, half, syn, quote & proc-macro2
+- Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
 - Add `inner_mut` method for `FixedSizeDescriptorSet` and `PersistentDescriptorSet` providing mutable access to inner `UnsafeDescriptorSet`.
 - Add `empty()` method for `FixedSizeDescriptorSet` and `next_empty()` method for `PersistentDescriptorSet` that construct descriptor sets without any bound descriptors.
 
