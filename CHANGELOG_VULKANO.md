@@ -12,6 +12,7 @@
 - Add support for `VK_KHR_16bit_storage` and `VK_KHR_storage_buffer_storage_class` device extensions.
 - Update Winit to 0.20.0
 - Update dependencies: lazy_static, half, syn, quote & proc-macro2
+- Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
 
 # Version 0.15.0 (2019-10-18)
 
