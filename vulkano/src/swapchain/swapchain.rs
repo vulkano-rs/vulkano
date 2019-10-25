@@ -235,7 +235,7 @@ impl <W> Swapchain<W> {
                              num_images,
                              format.format(),
                              ColorSpace::SrgbNonLinear,
-                             dimensions,
+                             Some(dimensions),
                              layers,
                              usage,
                              sharing.into(),
@@ -244,6 +244,25 @@ impl <W> Swapchain<W> {
                              mode,
                              clipped,
                              old_swapchain.map(|s| &**s))
+    }
+
+    /// Recreates the swapchain with current dimensions of corresponding surface.
+    pub fn recreate(&self)
+        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        Swapchain::new_inner(self.device.clone(),
+                             self.surface.clone(),
+                             self.num_images,
+                             self.format,
+                             self.color_space,
+                             None,
+                             self.layers,
+                             self.usage,
+                             self.sharing.clone(),
+                             self.transform,
+                             self.alpha,
+                             self.mode,
+                             self.clipped,
+                             Some(self))
     }
 
     /// Recreates the swapchain with new dimensions.
@@ -255,7 +274,7 @@ impl <W> Swapchain<W> {
                              self.num_images,
                              self.format,
                              self.color_space,
-                             dimensions,
+                             Some(dimensions),
                              self.layers,
                              self.usage,
                              self.sharing.clone(),
@@ -267,7 +286,7 @@ impl <W> Swapchain<W> {
     }
 
     fn new_inner(device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: Format,
-                 color_space: ColorSpace, dimensions: [u32; 2], layers: u32, usage: ImageUsage,
+                 color_space: ColorSpace, dimensions: Option<[u32; 2]>, layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
                  mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain<W>>)
                  -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
@@ -291,18 +310,23 @@ impl <W> Swapchain<W> {
         {
             return Err(SwapchainCreationError::UnsupportedFormat);
         }
-        if dimensions[0] < capabilities.min_image_extent[0] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
-        if dimensions[1] < capabilities.min_image_extent[1] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
-        if dimensions[0] > capabilities.max_image_extent[0] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
-        if dimensions[1] > capabilities.max_image_extent[1] {
-            return Err(SwapchainCreationError::UnsupportedDimensions);
-        }
+        let dimensions = if let Some(dimensions) = dimensions {
+            if dimensions[0] < capabilities.min_image_extent[0] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            if dimensions[1] < capabilities.min_image_extent[1] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            if dimensions[0] > capabilities.max_image_extent[0] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            if dimensions[1] > capabilities.max_image_extent[1] {
+                return Err(SwapchainCreationError::UnsupportedDimensions);
+            }
+            dimensions
+        } else {
+            capabilities.current_extent.unwrap()
+        };
         if layers < 1 || layers > capabilities.max_image_array_layers {
             return Err(SwapchainCreationError::UnsupportedArrayLayers);
         }
