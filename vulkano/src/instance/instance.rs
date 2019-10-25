@@ -95,7 +95,7 @@ pub struct Instance {
     //alloc: Option<Box<Alloc + Send + Sync>>,
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
-    extensions: InstanceExtensions,
+    extensions: RawInstanceExtensions,
     layers: SmallVec<[CString; 16]>,
     function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
 }
@@ -283,12 +283,11 @@ impl Instance {
             devices
         };
 
-        // TODO: should be Into
-        let extensions: InstanceExtensions = (&extensions).into();
+        let vk_khr_get_physical_device_properties2 = CString::new(b"VK_KHR_get_physical_device_properties2".to_vec()).unwrap();
 
         // Getting the properties of all physical devices.
         // If possible, we use VK_KHR_get_physical_device_properties2.
-        let physical_devices = if extensions.khr_get_physical_device_properties2 {
+        let physical_devices = if extensions.iter().any(|v| *v == vk_khr_get_physical_device_properties2) {
             Instance::init_physical_devices2(&vk, physical_devices, &extensions)
         } else {
             Instance::init_physical_devices(&vk, physical_devices)
@@ -354,7 +353,7 @@ impl Instance {
     /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
     fn init_physical_devices2(vk: &vk::InstancePointers,
                               physical_devices: Vec<vk::PhysicalDevice>,
-                              extensions: &InstanceExtensions)
+                              extensions: &RawInstanceExtensions)
                               -> Vec<PhysicalDeviceInfos> {
         let mut output = Vec::with_capacity(physical_devices.len());
 
@@ -450,10 +449,15 @@ impl Instance {
     ///
     /// let extensions = InstanceExtensions::supported_by_core().unwrap();
     /// let instance = Instance::new(None, &extensions, None).unwrap();
-    /// assert_eq!(instance.loaded_extensions(), &extensions);
+    /// assert_eq!(instance.loaded_extensions(), extensions);
     /// ```
     #[inline]
-    pub fn loaded_extensions(&self) -> &InstanceExtensions {
+    pub fn loaded_extensions(&self) -> InstanceExtensions {
+        InstanceExtensions::from(&self.extensions)
+    }
+    
+     #[inline]
+    pub fn raw_loaded_extensions(&self) -> &RawInstanceExtensions {
         &self.extensions
     }
 
