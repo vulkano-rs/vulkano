@@ -134,7 +134,7 @@ impl DescriptorDesc {
     ///use vulkano::descriptor::descriptor::DescriptorDesc;
     ///use vulkano::descriptor::descriptor::DescriptorDescTy::*;
     ///use vulkano::descriptor::descriptor::ShaderStages;
-    ///	
+    ///
     ///let desc_part1 = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
     ///  vertex: true,
     ///  tessellation_control: true,
