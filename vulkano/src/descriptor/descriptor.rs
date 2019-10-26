@@ -78,31 +78,31 @@ impl DescriptorDesc {
     ///
     /// Returns true if `self` is the same descriptor as `other`, or if `self` is the same as
     /// `other` but with a larger array elements count and/or more shader stages.
-    // TODO: add example
 	///
+	///# Example
 	///```
-	///  use vulkano::descriptor::descriptor::DescriptorDesc;
-	///  use vulkano::descriptor::descriptor::DescriptorDescTy::*;
-	///  use vulkano::descriptor::descriptor::ShaderStages;
+	///use vulkano::descriptor::descriptor::DescriptorDesc;
+	///use vulkano::descriptor::descriptor::DescriptorDescTy::*;
+	///use vulkano::descriptor::descriptor::ShaderStages;
 	///
-	///	 let desc_super = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
-	///    vertex: true,
-	///    tessellation_control: true,
-	///    tessellation_evaluation: true,
-	///    geometry: true,
-	///    fragment: true,
-	///    compute: true
-	///  }, readonly: false };
-	///	 let desc_sub = DescriptorDesc{ ty: Sampler, array_count: 1, stages: ShaderStages{
-	///    vertex: true,
-	///    tessellation_control: false,
-	///    tessellation_evaluation: false,
-	///    geometry: false,
-	///    fragment: true,
-	///    compute: false
-	///  }, readonly: true };
+	///let desc_super = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
+	///  vertex: true,
+	///  tessellation_control: true,
+	///  tessellation_evaluation: true,
+	///  geometry: true,
+	///  fragment: true,
+	///  compute: true
+	///}, readonly: false };
+	///let desc_sub = DescriptorDesc{ ty: Sampler, array_count: 1, stages: ShaderStages{
+	///  vertex: true,
+	///  tessellation_control: false,
+	///  tessellation_evaluation: false,
+	///  geometry: false,
+	///  fragment: true,
+	///  compute: false
+	///}, readonly: true };
     ///
-	///  assert_eq!(desc_super.is_superset_of(&desc_sub).unwrap(), ());
+	///assert_eq!(desc_super.is_superset_of(&desc_sub).unwrap(), ());
 	///
 	///```
     #[inline]
@@ -128,36 +128,42 @@ impl DescriptorDesc {
     /// Builds a `DescriptorDesc` that is the union of `self` and `other`, if possible.
     ///
     /// The returned value will be a superset of both `self` and `other`.
-    ///	  use vulkano::descriptor::descriptor::DescriptorDesc;
-    ///	  use vulkano::descriptor::descriptor::DescriptorDescTy::*;
-    ///	  use vulkano::descriptor::descriptor::ShaderStages;
-    ///	
-    ///	  let desc_part1 = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
-    ///	    vertex: true,
-    ///	    tessellation_control: true,
-    ///	    tessellation_evaluation: false,
-    ///	    geometry: true,
-    ///	    fragment: false,
-    ///	    compute: true
-    ///	  }, readonly: false };
-    ///	  let desc_part2 = DescriptorDesc{ ty: Sampler, array_count: 1, stages: ShaderStages{
-    ///	    vertex: true,
-    ///	    tessellation_control: false,
-    ///	    tessellation_evaluation: true,
-    ///	    geometry: false,
-    ///	    fragment: true,
-    ///	    compute: true
-    ///	  }, readonly: true };
     ///
-    ///   let desc_union = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
-    ///     vertex: true,
-    ///     tessellation_control: true,
-    ///    	tessellation_evaluation: true,
-    ///     geometry: true,
-    ///     fragment: true,
-    ///     compute: true
-    ///   }, readonly: false };
-    ///	  assert_eq!(desc_part1.union(&desc_part2), Some(desc_union));
+    ///# Example
+    ///```
+    ///use vulkano::descriptor::descriptor::DescriptorDesc;
+    ///use vulkano::descriptor::descriptor::DescriptorDescTy::*;
+    ///use vulkano::descriptor::descriptor::ShaderStages;
+    ///	
+    ///let desc_part1 = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
+    ///  vertex: true,
+    ///  tessellation_control: true,
+    ///  tessellation_evaluation: false,
+    ///  geometry: true,
+    ///  fragment: false,
+    ///  compute: true
+    ///}, readonly: false };
+    ///
+    ///let desc_part2 = DescriptorDesc{ ty: Sampler, array_count: 1, stages: ShaderStages{
+    ///  vertex: true,
+    ///  tessellation_control: false,
+    ///  tessellation_evaluation: true,
+    ///  geometry: false,
+    ///  fragment: true,
+    ///  compute: true
+    ///}, readonly: true };
+    ///
+    ///let desc_union = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
+    ///  vertex: true,
+    ///  tessellation_control: true,
+    ///  tessellation_evaluation: true,
+    ///  geometry: true,
+    ///  fragment: true,
+    ///  compute: true
+    ///}, readonly: false };
+    ///
+    ///assert_eq!(desc_part1.union(&desc_part2), Some(desc_union));
+    ///```
     // TODO: Result instead of Option
     #[inline]
     pub fn union(&self, other: &DescriptorDesc) -> Option<DescriptorDesc> {
