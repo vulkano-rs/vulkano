@@ -22,7 +22,7 @@ jobs:
         - nightly
     - os: osx
       rust:
-        - stable 
+        - stable
     - os: osx
       rust:
         - nightly
