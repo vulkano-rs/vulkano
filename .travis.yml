@@ -14,7 +14,7 @@ cache:
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
-  - travis_wait cargo test --all -j 2
+  - cargo test --all -- --test-threads=2
   - cd examples
   - cargo build -j 2
   - cd .. # this is very important or else the below `cargo publish` will fail
