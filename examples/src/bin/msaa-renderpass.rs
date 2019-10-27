@@ -65,8 +65,7 @@
 //!
 
 use std::sync::Arc;
-use image::ImageBuffer;
-use image::Rgba;
+use png;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
@@ -78,6 +77,9 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sync::GpuFuture;
 use vulkano::format::ClearValue;
+use std::path::Path;
+use std::fs::File;
+use std::io::BufWriter;
 
 fn main() {
     // The usual Vulkan initialization.
@@ -231,6 +233,12 @@ void main() {
     finished.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
 
     let buffer_content = buf.read().unwrap();
-    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(1024, 1024, &buffer_content[..]).unwrap();
-    image.save("triangle.png").unwrap();
+    let path = Path::new("triangle.png");
+	let file = File::create(path).unwrap();
+	let ref mut w = BufWriter::new(file);
+	let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
+	encoder.set_color(png::ColorType::RGBA);
+	encoder.set_depth(png::BitDepth::Eight);
+	let mut writer = encoder.write_header().unwrap();
+	writer.write_image_data(&buffer_content).unwrap();
 }
