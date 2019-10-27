@@ -9,13 +9,11 @@ language: rust
 rust:
   - nightly
   - stable
-python:
-  - "3.8"
 cache:
   cargo
 
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python --version --version 3.8.0 --params "/InstallAllUsers /PrependPath"; fi
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
