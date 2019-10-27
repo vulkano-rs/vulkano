@@ -2,8 +2,8 @@
 # so we dont need to worry about installing them.
 dist: xenial
 os:
-  - linux
-  - osx
+#  - linux
+#  - osx
   - windows
 language: rust
 rust:
@@ -13,7 +13,7 @@ cache:
   cargo
 
 before_install:
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco uninstall python; choco install python --version 3.8.0 --params "/InstallAllUsers /PrependPath"; fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers /PrependPath"; fi
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
