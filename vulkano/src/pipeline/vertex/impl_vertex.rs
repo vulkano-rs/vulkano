@@ -10,7 +10,18 @@
 use pipeline::vertex::VertexMemberTy;
 
 /// Implements the `Vertex` trait on a struct.
-// TODO: add example
+///# Example
+///
+///```
+///#[derive(Default, Copy, Clone)]
+///struct Vertex{
+///  position: [f32; 3],
+///  color: [f32; 4]
+///}
+///
+///vulkano::impl_vertex!(Vertex, position, color);
+///
+///```
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ty $(, $member:ident)*) => (
