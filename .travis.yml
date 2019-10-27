@@ -13,7 +13,7 @@ jobs:
   include:
     - os: windows
       env: PYTHONPATH=C:\Python38
-      env: PATH=$PATH;C:\Python38
+      env: PATH="$PATH;C:\Python38"
 
 rust:
   - nightly
