@@ -222,7 +222,7 @@ impl Instance {
                     .unwrap_or(0),
                 apiVersion: Version {
                     major: 1,
-                    minor: 0,
+                    minor: 1,
                     patch: 0,
                 }.into_vulkan_version(), // TODO:
             })
