@@ -120,7 +120,7 @@ fn main() {
         let mut image_data = Vec::new();
         image_data.resize((info.width * info.height * 4) as usize, 0);
         reader.next_frame(&mut image_data).unwrap();
-        
+
         ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
