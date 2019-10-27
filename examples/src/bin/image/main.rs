@@ -110,7 +110,7 @@ fn main() {
             }
         ).unwrap()
     );
-
+    
     let (texture, tex_future) = {
         let png_bytes = include_bytes!("image_img.png").to_vec();
         let cursor = Cursor::new(png_bytes);
