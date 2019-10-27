@@ -1,20 +1,41 @@
-# The shaderc dependencies are already installed on the base images
-# so we dont need to worry about installing them.
-dist: xenial
-os:
-  - linux
-  - osx
-  #- windows # Waiting on https://travis-ci.community/t/timeout-before-install-step/1502/3
 language: rust
-rust:
-  - nightly
-  - stable
+
+jobs:
+  include:
+    - os: windows
+      env: PYTHONPATH=C:\Python38
+      env: PATH="C:\Python38;$PATH"
+      rust:
+        - stable
+    - os: windows
+      env: PYTHONPATH=C:\Python38
+      env: PATH="C:\Python38;$PATH"
+      rust:
+        - nightly
+    - os: linux
+      dist: bionic
+      rust:
+        - stable
+    - os: linux
+      dist: bionic
+      rust:
+        - nightly
+    - os: osx
+      rust:
+        - stable
+    - os: osx
+      rust:
+        - nightly
+
 cache:
   cargo
 
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
+
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
-  - travis_wait cargo test --all -j 2
+  - cargo test --all -j 2 -- --test-threads=2
   - cd examples
   - cargo build -j 2
   - cd .. # this is very important or else the below `cargo publish` will fail
