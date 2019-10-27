@@ -4,7 +4,7 @@ dist: xenial
 os:
   - linux
   - osx
-  #- windows # Waiting on https://travis-ci.community/t/timeout-before-install-step/1502/3
+  - windows
 language: rust
 rust:
   - nightly
@@ -14,7 +14,7 @@ cache:
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
-  - travis_wait cargo test --all -j 2
+  - cargo test --all -j 2 -- --test-threads=2
   - cd examples
   - cargo build -j 2
   - cd .. # this is very important or else the below `cargo publish` will fail
