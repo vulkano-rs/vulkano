@@ -12,7 +12,7 @@ language: rust
 jobs:
   include:
     - os: windows
-    - env: PYTHONPATH=C:\Python38
+      env: PYTHONPATH=C:\Python38
 
 rust:
   - nightly
