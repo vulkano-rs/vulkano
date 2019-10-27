@@ -12,7 +12,7 @@ use std::path::Path;
 
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
-use shaderc::{Compiler, CompileOptions};
+use shaderc::{Compiler, CompileOptions, TargetEnv};
 
 pub use shaderc::{CompilationArtifact, ShaderKind, IncludeType, ResolvedInclude};
 pub use crate::parse::ParseError;
@@ -114,6 +114,8 @@ pub fn compile(path: Option<String>, base_path: &impl AsRef<Path>, code: &str, t
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new()
         .ok_or("failed to initialize compile option")?;
+    const ENV_VULKAN_VERSION: u32 = ((1 << 22) | (1 << 12));
+    compile_options.set_target_env(TargetEnv::Vulkan, ENV_VULKAN_VERSION);
     let root_source_path = if let &Some(ref path) = &path {
         path
     } else {

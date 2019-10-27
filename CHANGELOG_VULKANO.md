@@ -12,6 +12,7 @@
 - Update dependencies: lazy_static, half, syn, quote & proc-macro2
 - Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
 - Add support for GLSL macro defines to the `shader!` macro.
+- Switch to Vulkan 1.1 and inherently SpirV 1.3 (shaderc default version for vulkan 1.1)
 
 # Version 0.14.0 (2019-08-17)
 
