@@ -135,6 +135,11 @@
 //! to specify one or more standard include directories. Relative paths are relative to the
 //! directory, which contains the source file the `#include "..."` directive is declared in.
 //!
+//! ## `define: [("NAME", "VALUE"), ...]
+//!
+//! Adds the given macro definitions to the pre-processor. This is equivalent to passing `-DNAME=VALUE`
+//! on the command line.
+//!
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
@@ -185,6 +190,7 @@ struct MacroInput {
     shader_kind: ShaderKind,
     source_kind: SourceKind,
     include_directories: Vec<String>,
+    macro_defines: Vec<(String, String)>,
     dump: bool,
 }
 
@@ -194,6 +200,7 @@ impl Parse for MacroInput {
         let mut shader_kind = None;
         let mut source_kind = None;
         let mut include_directories = Vec::new();
+        let mut macro_defines = Vec::new();
 
         while !input.is_empty() {
             let name: Ident = input.parse()?;
@@ -232,6 +239,24 @@ impl Parse for MacroInput {
 
                     let path: LitStr = input.parse()?;
                     source_kind = Some(SourceKind::Path(path.value()));
+                }
+                "define" => {
+                    let array_input;
+                    bracketed!(array_input in input);
+
+                    while !array_input.is_empty() {
+                        let tuple_input;
+                        parenthesized!(tuple_input in array_input);
+
+                        let name: LitStr = tuple_input.parse()?;
+                        tuple_input.parse::<Token![,]>()?;
+                        let value: LitStr = tuple_input.parse()?;
+                        macro_defines.push((name.value(), value.value()));
+
+                        if !array_input.is_empty() {
+                            array_input.parse::<Token![,]>()?;
+                        }
+                    }
                 }
                 "include" => {
                     let in_brackets;
@@ -274,7 +299,7 @@ impl Parse for MacroInput {
 
         let dump = dump.unwrap_or(false);
 
-        Ok(MacroInput { shader_kind, source_kind, include_directories, dump })
+        Ok(MacroInput { shader_kind, source_kind, include_directories, dump, macro_defines })
     }
 }
 
@@ -312,6 +337,6 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         full_include_path
     }).collect::<Vec<_>>();
 
-    let content = codegen::compile(path, &root_path, &source_code, input.shader_kind, &include_paths).unwrap();
+    let content = codegen::compile(path, &root_path, &source_code, input.shader_kind, &include_paths, &input.macro_defines).unwrap();
     codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
 }

@@ -11,6 +11,7 @@
 - Update Winit to 0.20.0
 - Update dependencies: lazy_static, half, syn, quote & proc-macro2
 - Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
+- Add support for GLSL macro defines to the `shader!` macro.
 
 # Version 0.14.0 (2019-08-17)
 
