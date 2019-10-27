@@ -12,6 +12,9 @@ rust:
 cache:
   cargo
 
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; choco install ninja
+
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
   - cargo test --all -j 2 -- --test-threads=2
