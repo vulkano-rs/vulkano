@@ -1,12 +1,3 @@
-# The shaderc dependencies are already installed on the base images
-# so we dont need to worry about installing them.
-dist: xenial
-
-#os:
-#  - linux
-#  - osx
-#  - windows
-
 language: rust
 
 jobs:
@@ -14,19 +5,19 @@ jobs:
     - os: windows
       env: PYTHONPATH=C:\Python38
       env: PATH="C:\Python38;$PATH"
+    - os: linux
+      dist: bionic
+    - os: osx
 
 rust:
   - nightly
-#  - stable
+  - stable
 
 cache:
   cargo
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
-
-env:
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then 
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
