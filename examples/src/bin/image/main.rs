@@ -112,15 +112,15 @@ fn main() {
     );
 
     let (texture, tex_future) = {
-    	let png_bytes = include_bytes!("image_img.png").to_vec();
-    	let cursor = Cursor::new(png_bytes);
-    	let decoder = png::Decoder::new(cursor);
-    	let (info, mut reader) = decoder.read_info().unwrap();
-    	let dimensions = Dimensions::Dim2d { width: info.width, height: info.height };
-    	let mut image_data = Vec::new();
-    	image_data.resize((info.width * info.height * 4) as usize, 0);
-    	reader.next_frame(&mut image_data).unwrap();
-    	
+        let png_bytes = include_bytes!("image_img.png").to_vec();
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let (info, mut reader) = decoder.read_info().unwrap();
+        let dimensions = Dimensions::Dim2d { width: info.width, height: info.height };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
+        
         ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
@@ -195,7 +195,7 @@ fn main() {
             .end_render_pass().unwrap()
             .build().unwrap();
 
-		let prev = previous_frame_end.take();
+        let prev = previous_frame_end.take();
         let future = prev.unwrap().join(future)
             .then_execute(queue.clone(), cb).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
