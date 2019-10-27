@@ -1,17 +1,29 @@
-language: rust
-
 jobs:
   include:
     - os: windows
       env: PYTHONPATH=C:\Python38
       env: PATH="C:\Python38;$PATH"
+      rust:
+        - stable
+    - os: windows
+      env: PYTHONPATH=C:\Python38
+      env: PATH="C:\Python38;$PATH"
+      rust:
+        - nightly
     - os: linux
       dist: bionic
+      rust:
+        - stable
+    - os: linux
+      dist: bionic
+      rust:
+        - nightly
     - os: osx
-
-rust:
-  - nightly
-  - stable
+      rust:
+        - stable 
+    - os: osx
+      rust:
+        - nightly
 
 cache:
   cargo
