@@ -11,6 +11,8 @@
 - Update Winit to 0.20.0
 - Update dependencies: lazy_static, half, syn, quote & proc-macro2
 - Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
+- Added `raw_loaded_extensions()` to `Instance` to allow querying of all extensions, not just known ones.
+- **Breaking Change** `loaded_extensions()` on `Instance` no longer returns a reference.
 - Add support for GLSL macro defines to the `shader!` macro.
 - Switch to Vulkan 1.1 and inherently SpirV 1.3 (shaderc default version for vulkan 1.1)
 
