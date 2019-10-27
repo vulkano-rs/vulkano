@@ -455,7 +455,7 @@ impl Instance {
     pub fn loaded_extensions(&self) -> InstanceExtensions {
         InstanceExtensions::from(&self.extensions)
     }
-    
+
      #[inline]
     pub fn raw_loaded_extensions(&self) -> &RawInstanceExtensions {
         &self.extensions

@@ -13,6 +13,7 @@
 - Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
 - Added `raw_loaded_extensions()` to `Instance` to allow querying of all extensions, not just known ones.
 - **Breaking Change** `loaded_extensions()` on `Instance` no longer returns a reference.
+- Add support for GLSL macro defines to the `shader!` macro.
 
 # Version 0.14.0 (2019-08-17)
 
