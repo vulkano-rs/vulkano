@@ -1,6 +1,6 @@
 [package]
 name = "vulkano-shaders"
-version = "0.14.0"
+version = "0.16.0"
 edition = "2018"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
