@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.16.0 (2019-11-01)
+
 - Fixed bug in examples causing OutOfHostMemory errors
 - Replaced `VK_EXT_debug_report` `VK_EXT_debug_marker` with `VK_EXT_debug_utils`.
 - Update MacOS dependencies metal to 0.17 and cocoa to 0.19
@@ -15,6 +17,10 @@
 - **Breaking Change** `loaded_extensions()` on `Instance` no longer returns a reference.
 - Add support for GLSL macro defines to the `shader!` macro.
 - Switch to Vulkan 1.1 and inherently SpirV 1.3 (shaderc default version for vulkan 1.1)
+
+# Version 0.15.0 (2019-10-18)
+
+*Yanked*
 
 # Version 0.14.0 (2019-08-17)
 
