@@ -33,9 +33,7 @@ use vulkano::sync;
 
 use vulkano_win::VkSurfaceBuild;
 
-use winit::event_loop::{EventLoop, ControlFlow};
-use winit::window::{Window, WindowBuilder};
-use winit::event::{Event, WindowEvent};
+use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
 
 use std::sync::Arc;
 
@@ -138,7 +136,7 @@ fn main() {
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-    let events_loop = EventLoop::new();
+    let mut events_loop = EventsLoop::new();
     let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
     let window = surface.window();
 
@@ -151,9 +149,11 @@ fn main() {
         [(queue_family, 0.5)].iter().cloned()).unwrap();
     let queue = queues.next().unwrap();
 
-    let initial_dimensions = {
-        let dimensions: (u32, u32) = window.inner_size().to_physical(window.hidpi_factor()).into();
+    let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
+        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
         [dimensions.0, dimensions.1]
+    } else {
+        return;
     };
 
     let (mut swapchain, images) = {
@@ -223,26 +223,24 @@ fn main() {
         .unwrap());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
-
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
-    events_loop.run(move |ev, _, cf| {
-        *cf = ControlFlow::Poll;
-        let window = surface.window();
-
-        previous_frame_end.as_mut().unwrap().cleanup_finished();
+    loop {
+        previous_frame_end.cleanup_finished();
         if recreate_swapchain {
-            let dimensions = {
-                let dimensions: (u32, u32) = window.inner_size().to_physical(window.hidpi_factor()).into();
+            let dimensions = if let Some(dimensions) = window.get_inner_size() {
+                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
                 [dimensions.0, dimensions.1]
+            } else {
+                return;
             };
 
             let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
                 Ok(r) => r,
                 Err(SwapchainCreationError::UnsupportedDimensions) => {
-                    return;
+                    continue;
                 },
                 Err(err) => panic!("{:?}", err)
             };
@@ -257,7 +255,7 @@ fn main() {
             Ok(r) => r,
             Err(AcquireError::OutOfDate) => {
                 recreate_swapchain = true;
-                return;
+                continue;
             },
             Err(err) => panic!("{:?}", err)
         };
@@ -271,7 +269,7 @@ fn main() {
             .unwrap()
             .build().unwrap();
 
-        let future = previous_frame_end.take().unwrap().join(acquire_future)
+        let future = previous_frame_end.join(acquire_future)
             .then_execute(queue.clone(), command_buffer).unwrap()
             .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
             .then_signal_fence_and_flush();
@@ -280,24 +278,28 @@ fn main() {
             Ok(future) => {
                 // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
                 future.wait(None).unwrap();
-                previous_frame_end = Some(Box::new(future) as Box<_>);
+                previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(FlushError::OutOfDate) => {
                 recreate_swapchain = true;
-                previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
             }
             Err(e) => {
                 println!("{:?}", e);
-                previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
             }
         }
 
-        match ev {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => *cf = ControlFlow::Exit,
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
-            _ => (),
-        }
-    });
+        let mut done = false;
+        events_loop.poll_events(|ev| {
+            match ev {
+                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
+                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
+                _ => ()
+            }
+        });
+        if done { return }
+    }
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
