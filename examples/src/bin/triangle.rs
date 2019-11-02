@@ -24,7 +24,7 @@ use vulkano::image::SwapchainImage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -164,7 +164,7 @@ fn main() {
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
             initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, true, None).unwrap()
+            PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
 
     };
 
