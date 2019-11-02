@@ -12,7 +12,7 @@ use std::path::Path;
 
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
-use shaderc::{Compiler, CompileOptions};
+use shaderc::{Compiler, CompileOptions, TargetEnv};
 
 pub use shaderc::{CompilationArtifact, ShaderKind, IncludeType, ResolvedInclude};
 pub use crate::parse::ParseError;
@@ -110,10 +110,12 @@ fn include_callback(requested_source_path_raw: &str, directive_type: IncludeType
     })
 }
 
-pub fn compile(path: Option<String>, base_path: &impl AsRef<Path>, code: &str, ty: ShaderKind, include_directories: &[impl AsRef<Path>]) -> Result<CompilationArtifact, String> {
+pub fn compile(path: Option<String>, base_path: &impl AsRef<Path>, code: &str, ty: ShaderKind, include_directories: &[impl AsRef<Path>], macro_defines: &[(impl AsRef<str>, impl AsRef<str>)]) -> Result<CompilationArtifact, String> {
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new()
         .ok_or("failed to initialize compile option")?;
+    const ENV_VULKAN_VERSION: u32 = ((1 << 22) | (1 << 12));
+    compile_options.set_target_env(TargetEnv::Vulkan, ENV_VULKAN_VERSION);
     let root_source_path = if let &Some(ref path) = &path {
         path
     } else {
@@ -127,6 +129,10 @@ pub fn compile(path: Option<String>, base_path: &impl AsRef<Path>, code: &str, t
         include_callback(requested_source_path, directive_type, contained_within_path,
                          recursion_depth, include_directories, path.is_some(), base_path)
     });
+
+    for (macro_name, macro_value) in macro_defines.iter() {
+        compile_options.add_macro_definition(macro_name.as_ref(), Some(macro_value.as_ref()));
+    }
 
     let content = compiler
         .compile_into_spirv(&code, ty, root_source_path, "main", Some(&compile_options))
@@ -437,6 +443,7 @@ mod tests {
         // 12th byte. Since we can't generate code for these types, we should
         // create an error instead of generating incorrect code.
         let includes: [PathBuf;0] = [];
+        let defines: [(String, String);0] = [];
         let comp = compile(None, &Path::new(""), "
         #version 450
         struct MyStruct {
@@ -446,7 +453,7 @@ mod tests {
             MyStruct s;
         };
         void main() {}
-        ", ShaderKind::Vertex, &includes).unwrap();
+        ", ShaderKind::Vertex, &includes, &defines).unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| structs::write_structs(&doc));
         assert!(res.is_err());
@@ -454,6 +461,7 @@ mod tests {
     #[test]
     fn test_trivial_alignment() {
         let includes: [PathBuf;0] = [];
+        let defines: [(String, String);0] = [];
         let comp = compile(None, &Path::new(""), "
         #version 450
         struct MyStruct {
@@ -463,7 +471,7 @@ mod tests {
             MyStruct s;
         };
         void main() {}
-        ", ShaderKind::Vertex, &includes).unwrap();
+        ", ShaderKind::Vertex, &includes, &defines).unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         structs::write_structs(&doc);
     }
@@ -472,6 +480,7 @@ mod tests {
         // This is a workaround suggested in the case of test_bad_alignment,
         // so we should make sure it works.
         let includes: [PathBuf;0] = [];
+        let defines: [(String, String);0] = [];
         let comp = compile(None, &Path::new(""), "
         #version 450
         struct Vec3Wrap {
@@ -484,7 +493,7 @@ mod tests {
             MyStruct s;
         };
         void main() {}
-        ", ShaderKind::Vertex, &includes).unwrap();
+        ", ShaderKind::Vertex, &includes, &defines).unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         structs::write_structs(&doc);
     }
@@ -493,26 +502,29 @@ mod tests {
     fn test_include_resolution() {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let empty_includes: [PathBuf;0] = [];
+        let defines: [(String, String);0] = [];
         let _compile_relative = compile(Some(String::from("tests/include_test.glsl")), &root_path, "
         #version 450
         #include \"include_dir_a/target_a.glsl\"
         #include \"include_dir_b/target_b.glsl\"
         void main() {}
-        ", ShaderKind::Vertex, &empty_includes).expect("Cannot resolve include files");
+        ", ShaderKind::Vertex, &empty_includes, &defines).expect("Cannot resolve include files");
 
         let _compile_include_paths = compile(Some(String::from("tests/include_test.glsl")), &root_path, "
         #version 450
         #include <target_a.glsl>
         #include <target_b.glsl>
         void main() {}
-        ", ShaderKind::Vertex,&[root_path.join("tests/include_dir_a"), root_path.join("tests/include_dir_b")]).expect("Cannot resolve include files");
+        ", ShaderKind::Vertex,&[root_path.join("tests/include_dir_a"), root_path.join("tests/include_dir_b")],
+        &defines).expect("Cannot resolve include files");
 
         let _compile_include_paths_with_relative = compile(Some(String::from("tests/include_test.glsl")), &root_path, "
         #version 450
         #include <target_a.glsl>
         #include <../include_dir_b/target_b.glsl>
         void main() {}
-        ", ShaderKind::Vertex,&[root_path.join("tests/include_dir_a")]).expect("Cannot resolve include files");
+        ", ShaderKind::Vertex,&[root_path.join("tests/include_dir_a")],
+        &defines).expect("Cannot resolve include files");
 
         let absolute_path = root_path.join("tests/include_dir_a/target_a.glsl");
         let absolute_path_str = absolute_path.to_str().expect("Cannot run tests in a folder with non unicode characters");
@@ -520,12 +532,31 @@ mod tests {
         #version 450
         #include \"{}\"
         void main() {{}}
-        ", absolute_path_str), ShaderKind::Vertex, &empty_includes).expect("Cannot resolve include files");
+        ", absolute_path_str), ShaderKind::Vertex, &empty_includes, &defines).expect("Cannot resolve include files");
 
         let _compile_recursive = compile(Some(String::from("tests/include_test.glsl")), &root_path, "
         #version 450
         #include <target_c.glsl>
         void main() {}
-        ", ShaderKind::Vertex,&[root_path.join("tests/include_dir_b"), root_path.join("tests/include_dir_c")]).expect("Cannot resolve include files");
+        ", ShaderKind::Vertex,&[root_path.join("tests/include_dir_b"), root_path.join("tests/include_dir_c")],
+        &defines).expect("Cannot resolve include files");
+    }
+
+    #[test]
+    fn test_macros() {
+        let empty_includes: [PathBuf;0] = [];
+        let defines= vec![("NAME1", ""), ("NAME2", "58")];
+        let no_defines: [(String, String);0] = [];
+        let need_defines = "
+        #version 450
+        #if defined(NAME1) && NAME2 > 29
+        void main() {}
+        #endif
+        ";
+        let compile_no_defines = compile(None, &Path::new(""), need_defines, ShaderKind::Vertex, &empty_includes, &no_defines);
+        assert!(compile_no_defines.is_err());
+
+        let compile_defines = compile(None, &Path::new(""), need_defines, ShaderKind::Vertex, &empty_includes, &defines);
+        compile_defines.expect("Setting shader macros did not work");
     }
 }

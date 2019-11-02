@@ -1,4 +1,6 @@
-# Unreleased *breaking*
+# Unreleased
+
+# Version 0.5.0 (2019-11-01)
 
 - Add const `STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR` and
   struct `PhysicalDevice16BitStorageFeaturesKHR` for `VK_KHR_16bit_storage`
