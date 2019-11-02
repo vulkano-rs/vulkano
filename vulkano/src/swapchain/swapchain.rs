@@ -528,6 +528,11 @@ impl <W> Swapchain<W> {
         Ok((swapchain, swapchain_images))
     }
 
+	/// Returns the saved Surface, from the Swapchain creation
+	pub fn surface(&self) -> &Arc<Surface<W>>{
+		&self.surface
+	}
+
     /// Returns of the images that belong to this swapchain.
     #[inline]
     pub fn raw_image(&self, offset: usize) -> Option<ImageInner> {
