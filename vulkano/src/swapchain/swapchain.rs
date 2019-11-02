@@ -244,12 +244,14 @@ impl <W> Swapchain<W> {
                              None)
     }
 
+
+	/// Same as Swapchain::new but requires an old swapchain for the creation
     #[inline]
     pub fn with_old_swapchain<F, S>(
         device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: F,
         dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
         transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode, clipped: bool,
-        color_space: ColorSpace, old_swapchain: Option<&Arc<Swapchain<W>>>)
+        color_space: ColorSpace, old_swapchain: Arc<Swapchain<W>>)
         -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
         where F: FormatDesc,
               S: Into<SharingMode>
@@ -267,7 +269,7 @@ impl <W> Swapchain<W> {
                              alpha,
                              mode,
                              clipped,
-                             old_swapchain.map(|s| &**s))
+                             Some(&*old_swapchain))
     }
 
     /// Recreates the swapchain with current dimensions of corresponding surface.
