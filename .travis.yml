@@ -35,9 +35,9 @@ before_install:
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
-  - cargo test --all -j 2 -- --test-threads=2
+  - travis_wait 30 cargo test --all -j 2 -- --test-threads=2
   - cd examples
-  - cargo build -j 2
+  - travis_wait 30 cargo build -j 2
   - cd .. # this is very important or else the below `cargo publish` will fail
 
 after_success:
@@ -45,19 +45,19 @@ after_success:
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
-    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
-    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
-    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
-    cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
