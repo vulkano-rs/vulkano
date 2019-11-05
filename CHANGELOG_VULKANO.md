@@ -1,5 +1,9 @@
 # Unreleased
 
+- Added Swapchain::surface() - which returns the saved surface
+- Added Swapchain::with_old_swapchain() - same as previous Swapchain::new(), if an oldswapchain needs to be used
+- Swapchain::new() now doesnt need to have the old_swapchain parameter anymore but requires the ColorSpace
+
 # Version 0.16.0 (2019-11-01)
 
 - Fixed bug in examples causing OutOfHostMemory errors
