@@ -135,7 +135,7 @@
 //! to specify one or more standard include directories. Relative paths are relative to the
 //! directory, which contains the source file the `#include "..."` directive is declared in.
 //!
-//! ## `define: [("NAME", "VALUE"), ...]
+//! ## `define: [("NAME", "VALUE"), ...]`
 //!
 //! Adds the given macro definitions to the pre-processor. This is equivalent to passing `-DNAME=VALUE`
 //! on the command line.
