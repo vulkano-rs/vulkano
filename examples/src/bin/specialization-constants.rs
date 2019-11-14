@@ -25,7 +25,8 @@ fn main() {
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
     let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+        &DeviceExtensions { khr_storage_buffer_storage_class: true, ..DeviceExtensions::none() },
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
     let queue = queues.next().unwrap();
 
     mod cs {

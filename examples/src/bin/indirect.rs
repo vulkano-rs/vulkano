@@ -77,7 +77,7 @@ fn main() {
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
     }).unwrap();
 
-    let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
+    let device_ext = DeviceExtensions { khr_swapchain: true, khr_storage_buffer_storage_class: true, .. DeviceExtensions::none() };
     let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
         [(queue_family, 0.5)].iter().cloned()).unwrap();
 
