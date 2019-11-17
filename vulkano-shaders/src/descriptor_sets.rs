@@ -34,7 +34,7 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
         let set = set_decoration.params[0];
 
         // Find which type is pointed to by this variable.
-        let pointed_ty = pointer_variable_ty(doc, variable_id);
+        let (pointed_ty, storage_class) = pointer_variable_ty(doc, variable_id);
         // Name of the variable.
         let name = spirv_search::name_from_id(doc, variable_id);
 
@@ -43,7 +43,7 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
         let binding = doc.get_decoration_params(variable_id, Decoration::DecorationBinding).unwrap()[0];
 
         // Find information about the kind of binding for this descriptor.
-        let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, false)
+        let (desc_ty, readonly, array_count) = descriptor_infos(doc, pointed_ty, storage_class, false)
             .expect(&format!(
                 "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
                 name,
@@ -151,8 +151,8 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
 }
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed
-/// type.
-fn pointer_variable_ty(doc: &Spirv, variable: u32) -> u32 {
+/// type and the storage class.
+fn pointer_variable_ty(doc: &Spirv, variable: u32) -> (u32, StorageClass) {
     let var_ty = doc.instructions
         .iter()
         .filter_map(|i| match i {
@@ -166,8 +166,8 @@ fn pointer_variable_ty(doc: &Spirv, variable: u32) -> u32 {
     doc.instructions
         .iter()
         .filter_map(|i| match i {
-            &Instruction::TypePointer { result_id, type_id, .. }
-                if result_id == var_ty => Some(type_id),
+            &Instruction::TypePointer { result_id, type_id, ref storage_class, .. }
+                if result_id == var_ty => Some((type_id, storage_class.clone())),
             _ => None,
         })
         .next()
@@ -178,17 +178,15 @@ fn pointer_variable_ty(doc: &Spirv, variable: u32) -> u32 {
 /// read-only, and the number of array elements.
 ///
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
-fn descriptor_infos(doc: &Spirv, pointed_ty: u32, force_combined_image_sampled: bool)
+fn descriptor_infos(doc: &Spirv, pointed_ty: u32, pointer_storage: StorageClass, force_combined_image_sampled: bool)
     -> Option<(TokenStream, bool, u64)>
 {
     doc.instructions.iter().filter_map(|i| {
         match i {
             &Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
-                // Determine whether there's a Block or BufferBlock decoration.
-                let decoration_buffer_block = doc.get_decoration_params(pointed_ty, Decoration::DecorationBufferBlock).is_some();
                 let decoration_block = doc.get_decoration_params(pointed_ty, Decoration::DecorationBlock).is_some();
-                assert!(decoration_buffer_block ^ decoration_block, "Found a buffer uniform with neither the Block nor BufferBlock decorations, or both.");
-                let is_ssbo = decoration_buffer_block && !decoration_block;
+                assert!(decoration_block, "Structs in shader interface are expected to be decorated with Block");
+                let is_ssbo = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
                 // Determine whether there's a NonWritable decoration.
                 //let non_writable = false;       // TODO: tricky because the decoration is on struct members
@@ -275,14 +273,14 @@ fn descriptor_infos(doc: &Spirv, pointed_ty: u32, force_combined_image_sampled: 
             }
 
             &Instruction::TypeSampledImage { result_id, image_type_id } if result_id == pointed_ty
-                => descriptor_infos(doc, image_type_id, true),
+                => descriptor_infos(doc, image_type_id, pointer_storage.clone(), true),
 
             &Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
                 let desc = quote!{ DescriptorDescTy::Sampler };
                 Some((desc, true, 1))
             }
             &Instruction::TypeArray { result_id, type_id, length_id } if result_id == pointed_ty => {
-                let (desc, readonly, arr) = match descriptor_infos(doc, type_id, false) {
+                let (desc, readonly, arr) = match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
                     None => return None,
                     Some(v) => v,
                 };
