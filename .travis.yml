@@ -44,7 +44,7 @@ before_install:
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
   - travis_wait 30 cargo build -j 2 --all
-  - travis_wait 30 cargo test -j 2 -all
+  - travis_wait 30 cargo test -j 2 --all
 
 after_success:
   - |
