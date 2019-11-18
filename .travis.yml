@@ -1,6 +1,7 @@
 language: rust
 
 jobs:
+  fast_finish: true
   include:
     - os: windows
       env: PYTHONPATH=C:\Python38
@@ -28,17 +29,22 @@ jobs:
         - nightly
 
 cache:
-  cargo
+  directories:
+    - $TRAVIS_HOME/.cargo/
+    - $TRAVIS_BUILD_DIR/target/debug/build
+    - $TRAVIS_BUILD_DIR/target/debug/deps
+    - $TRAVIS_BUILD_DIR/target/debug/incremental
+
+before_cache:
+  - rm -rf $TRAVIS_HOME/.cargo/registry/src
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
 
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
-  - travis_wait 30 cargo test --all -j 2 -- --test-threads=2
-  - cd examples
-  - travis_wait 30 cargo build -j 2
-  - cd .. # this is very important or else the below `cargo publish` will fail
+  - travis_wait 30 cargo build -j 2 --all
+  - travis_wait 30 cargo test -j 2 --all
 
 after_success:
   - |
