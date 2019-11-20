@@ -82,6 +82,16 @@ impl<W> SwapchainImage<W> {
     fn my_image(&self) -> ImageInner {
         self.swapchain.raw_image(self.image_offset).unwrap()
     }
+
+    #[inline]
+    fn layout_initialized(&self) {
+        self.swapchain.image_layout_initialized(self.image_offset);
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+       self.swapchain.is_image_layout_initialized(self.image_offset)
+    }
 }
 
 unsafe impl<W> ImageAccess for SwapchainImage<W> {
@@ -101,12 +111,12 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.my_image().image.key() == other.conflict_key() // TODO:
     }
 
@@ -119,6 +129,16 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
         // Swapchain image are only accessible after being acquired.
         Err(AccessError::SwapchainImageAcquireOnly)
+    }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+        self.layout_initialized();
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool{
+        self.is_layout_initialized()
     }
 
     #[inline]
@@ -147,7 +167,7 @@ unsafe impl<P,W> ImageContent<P> for SwapchainImage<W> {
 
 unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     #[inline]
-    fn parent(&self) -> &ImageAccess {
+    fn parent(&self) -> &dyn ImageAccess {
         self
     }
 

@@ -10,7 +10,18 @@
 use pipeline::vertex::VertexMemberTy;
 
 /// Implements the `Vertex` trait on a struct.
-// TODO: add example
+///# Example
+///
+///```
+///#[derive(Default, Copy, Clone)]
+///struct Vertex{
+///  position: [f32; 3],
+///  color: [f32; 4]
+///}
+///
+///vulkano::impl_vertex!(Vertex, position, color);
+///
+///```
 #[macro_export]
 macro_rules! impl_vertex {
     ($out:ty $(, $member:ident)*) => (
@@ -27,20 +38,15 @@ macro_rules! impl_vertex {
 
                 $(
                     if name == stringify!($member) {
-                        let (ty, array_size) = unsafe {
-                            #[inline] fn f<T: VertexMember>(_: &T) -> (VertexMemberTy, usize)
-                                      { T::format() }
-                            let dummy: *const $out = ptr::null();
-                            f(&(&*dummy).$member)
-                        };
+                        let dummy = <$out>::default();
+                        #[inline] fn f<T: VertexMember>(_: &T) -> (VertexMemberTy, usize) { T::format() }
+                        let (ty, array_size) = f(&dummy.$member);
+
+                        let dummy_ptr = (&dummy) as *const _;
+                        let member_ptr = (&dummy.$member) as *const _;
 
                         return Some(VertexMemberInfo {
-                            offset: unsafe {
-                                let dummy: *const $out = ptr::null();
-                                let member = (&(&*dummy).$member) as *const _;
-                                member as usize
-                            },
-
+                            offset: member_ptr as usize - dummy_ptr as usize,
                             ty: ty,
                             array_size: array_size,
                         });

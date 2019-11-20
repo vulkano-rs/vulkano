@@ -1,5 +1,10 @@
-# Unreleased *breaking*
+# Unreleased
 
+# Version 0.5.0 (2019-11-01)
+
+- Add const `STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES_KHR` and
+  struct `PhysicalDevice16BitStorageFeaturesKHR` for `VK_KHR_16bit_storage`
+  extension.
 - Removed the following deprecated constants
     +   `STRUCTURE_TYPE_DEBUG_REPORT_CREATE_INFO_EXT`
     +   `COLORSPACE_SRGB_NONLINEAR_KHR`
@@ -8,6 +13,8 @@
     +   `COLOR_SPACE_SCRGB_NONLINEAR_EXT`
     +   `COLOR_SPACE_BT2020_NONLINEAR_EXT`
     +   `DEBUG_REPORT_OBJECT_TYPE_DEBUG_REPORT_EXT`
+
+- Removed the deprecated constants and functions related to `VK_EXT_debug_report` and `VK_EXT_debug_marker` and adding the constants and functions related to `VK_EXT_debug_utils`
 
 # Version 0.4.0 (2018-11-16)
 

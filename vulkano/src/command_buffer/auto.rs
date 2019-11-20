@@ -91,7 +91,7 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     compute_allowed: bool,
 
     // If we're inside a render pass, contains the render pass and the subpass index.
-    render_pass: Option<(Box<RenderPassAbstract>, u32)>,
+    render_pass: Option<(Box<dyn RenderPassAbstract>, u32)>,
 
     // True if we are a secondary command buffer.
     secondary_cb: bool,
@@ -1415,12 +1415,24 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &
     if let Some(ref scissors) = dynamic.scissors {
         destination.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
     }
+
+    if let Some(compare_mask) = dynamic.compare_mask {
+        destination.set_stencil_compare_mask(compare_mask);
+    }
+
+    if let Some(write_mask) = dynamic.write_mask {
+        destination.set_stencil_write_mask(write_mask);
+    }
+
+    if let Some(reference) = dynamic.reference {
+        destination.set_stencil_reference(reference);
+    }
 }
 
 // Shortcut function to bind vertex buffers.
 unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
                             state_cacher: &mut StateCacher,
-                            vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
+                            vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>)
                             -> Result<(), SyncCommandBufferBuilderError> {
     let binding_range = {
         let mut compare = state_cacher.bind_vertex_buffers();
@@ -1516,7 +1528,7 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &dyn GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         match self.submit_state {
             SubmitState::OneTime { ref already_submitted } => {
                 let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
@@ -1571,13 +1583,13 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.inner
@@ -1614,7 +1626,7 @@ macro_rules! err_gen {
             }
 
             #[inline]
-            fn cause(&self) -> Option<&error::Error> {
+            fn cause(&self) -> Option<&dyn error::Error> {
                 match *self {
                     $(
                         $name::$err(ref err) => Some(err),

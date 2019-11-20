@@ -31,7 +31,7 @@ use std::sync::Arc;
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 }
 
 impl PointLightingSystem {
@@ -162,7 +162,7 @@ impl PointLightingSystem {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2]
 }

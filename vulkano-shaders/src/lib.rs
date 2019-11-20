@@ -129,10 +129,16 @@
 //! ## `include: ["...", "...", ..., "..."]`
 //!
 //! Specifies the standard include directories to be searched through when using the
-//! `#include <...>` directive within a shader source.
+//! `#include <...>` directive within a shader source. Include directories can be absolute
+//! or relative to `Cargo.toml`.
 //! If `path` was specified, relative paths can also be used (`#include "..."`), without the need
 //! to specify one or more standard include directories. Relative paths are relative to the
 //! directory, which contains the source file the `#include "..."` directive is declared in.
+//!
+//! ## `define: [("NAME", "VALUE"), ...]`
+//!
+//! Adds the given macro definitions to the pre-processor. This is equivalent to passing `-DNAME=VALUE`
+//! on the command line.
 //!
 //! ## `dump: true`
 //!
@@ -184,6 +190,7 @@ struct MacroInput {
     shader_kind: ShaderKind,
     source_kind: SourceKind,
     include_directories: Vec<String>,
+    macro_defines: Vec<(String, String)>,
     dump: bool,
 }
 
@@ -193,6 +200,7 @@ impl Parse for MacroInput {
         let mut shader_kind = None;
         let mut source_kind = None;
         let mut include_directories = Vec::new();
+        let mut macro_defines = Vec::new();
 
         while !input.is_empty() {
             let name: Ident = input.parse()?;
@@ -231,6 +239,24 @@ impl Parse for MacroInput {
 
                     let path: LitStr = input.parse()?;
                     source_kind = Some(SourceKind::Path(path.value()));
+                }
+                "define" => {
+                    let array_input;
+                    bracketed!(array_input in input);
+
+                    while !array_input.is_empty() {
+                        let tuple_input;
+                        parenthesized!(tuple_input in array_input);
+
+                        let name: LitStr = tuple_input.parse()?;
+                        tuple_input.parse::<Token![,]>()?;
+                        let value: LitStr = tuple_input.parse()?;
+                        macro_defines.push((name.value(), value.value()));
+
+                        if !array_input.is_empty() {
+                            array_input.parse::<Token![,]>()?;
+                        }
+                    }
                 }
                 "include" => {
                     let in_brackets;
@@ -273,7 +299,7 @@ impl Parse for MacroInput {
 
         let dump = dump.unwrap_or(false);
 
-        Ok(MacroInput { shader_kind, source_kind, include_directories, dump })
+        Ok(MacroInput { shader_kind, source_kind, include_directories, dump, macro_defines })
     }
 }
 
@@ -287,12 +313,13 @@ pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
 #[proc_macro]
 pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
+    let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
+    let root_path = Path::new(&root);
 
     let (path, source_code) = match input.source_kind {
         SourceKind::Src(source) => (None, source),
         SourceKind::Path(path) => (Some(path.clone()), {
-            let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
-            let full_path = Path::new(&root).join(&path);
+            let full_path = root_path.join(&path);
 
             if full_path.is_file() {
                 read_file_to_string(&full_path)
@@ -303,6 +330,13 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         })
     };
 
-    let content = codegen::compile(path, &source_code, input.shader_kind, &input.include_directories).unwrap();
+    let include_paths = input.include_directories.iter().map(|include_directory| {
+        let include_path = Path::new(include_directory);
+        let mut full_include_path = root_path.to_owned();
+        full_include_path.push(include_path);
+        full_include_path
+    }).collect::<Vec<_>>();
+
+    let content = codegen::compile(path, &root_path, &source_code, input.shader_kind, &include_paths, &input.macro_defines).unwrap();
     codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
 }

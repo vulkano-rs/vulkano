@@ -33,7 +33,6 @@ pub enum CheckCopyBufferImageTy {
 ///
 /// - Panics if the buffer and image were not created with `device`.
 ///
-// TODO: handle compressed image formats
 pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
                                         ty: CheckCopyBufferImageTy, image_offset: [u32; 3],
                                         image_size: [u32; 3], image_first_layer: u32,
@@ -98,8 +97,9 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
     image.format().ensure_accepts()?;
 
     {
-        let num_texels = image_size[0] * image_size[1] * image_size[2] * image_num_layers;
-        let required_len = num_texels as usize * image.format().rate() as usize;
+        let (block_width, block_height) = image.format().block_dimensions();
+        let num_blocks = (image_size[0] + block_width - 1) / block_width * (image_size[1] + block_height - 1) / block_height * image_size[2] * image_num_layers;
+        let required_len = num_blocks as usize * image.format().rate() as usize;
         if required_len > buffer.len() {
             return Err(CheckCopyBufferImageError::BufferTooSmall {
                            required_len: required_len,
@@ -165,7 +165,7 @@ impl error::Error for CheckCopyBufferImageError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CheckCopyBufferImageError::WrongPixelType(ref err) => {
                 Some(err)

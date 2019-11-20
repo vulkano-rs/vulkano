@@ -24,7 +24,7 @@ use vulkano::image::SwapchainImage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -164,13 +164,13 @@ fn main() {
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
             initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, true, None).unwrap()
+            PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
 
     };
 
     // We now create a buffer that will store the shape of our triangle.
     let vertex_buffer = {
-        #[derive(Debug, Clone)]
+        #[derive(Default, Debug, Clone)]
         struct Vertex { position: [f32; 2] }
         vulkano::impl_vertex!(Vertex, position);
 
@@ -282,7 +282,7 @@ void main() {
 
     // Dynamic viewports allow us to recreate just the viewport when the window is resized
     // Otherwise we would have to recreate the whole pipeline.
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
 
     // The render pass we created above only describes the layout of our framebuffers. Before we
     // can draw we also need to create the actual framebuffers.
@@ -310,7 +310,7 @@ void main() {
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store the submission of the previous frame here.
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         // It is important to call this function from time to time, otherwise resources will keep
@@ -415,6 +415,8 @@ void main() {
 
         match future {
             Ok(future) => {
+                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
+                future.wait(None).unwrap();
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(FlushError::OutOfDate) => {
@@ -452,9 +454,9 @@ void main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -469,6 +471,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }

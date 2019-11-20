@@ -145,7 +145,7 @@ unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.inner.buffer(index)
     }
 
@@ -155,7 +155,7 @@ unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.inner.image(index)
     }
 }
@@ -225,7 +225,7 @@ unsafe impl DescriptorPool for LocalPool {
             // Try to extract a descriptor from the current pool if any exist.
             // This is the most common case.
             if let Some(ref mut current_pool) = self.current_pool {
-                if let Some(already_existing_set) = current_pool.reserve.try_pop() {
+                if let Ok(already_existing_set) = current_pool.reserve.pop() {
                     return Ok(LocalPoolAlloc {
                                   actual_alloc: Some(already_existing_set),
                                   pool: current_pool.clone(),

@@ -165,7 +165,7 @@
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
 //! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha};
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace};
 //! # fn create_swapchain(
 //! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
@@ -206,7 +206,7 @@
 //!     // Clip the parts of the buffer which aren't visible.
 //!     true,
 //!     // No previous swapchain.
-//!     None
+//!     ColorSpace::SrgbNonLinear
 //! )?;
 //!
 //! # Ok(())

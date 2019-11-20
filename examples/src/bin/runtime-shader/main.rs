@@ -37,7 +37,7 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::shader::{GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule};
 use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
 use vulkano::swapchain;
 use vulkano::sync::GpuFuture;
 use vulkano::sync;
@@ -52,7 +52,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct Vertex {
     pub position: [f32; 2],
     pub color: [f32; 3],
@@ -92,7 +92,7 @@ fn main() {
         let format = caps.supported_formats[0].0;
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format, initial_dimensions,
-            1, usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None).unwrap()
+            1, usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
     let render_pass = Arc::new(vulkano::single_pass_renderpass!(
@@ -382,9 +382,9 @@ fn main() {
     // note that passing wrong types, providing sets at wrong indexes will cause
     // descriptor set builder to return Err!
 
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -434,6 +434,8 @@ fn main() {
 
         match future {
             Ok(future) => {
+                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
+                future.wait(None).unwrap();
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(vulkano::sync::FlushError::OutOfDate) => {
@@ -461,9 +463,9 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -478,6 +480,6 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }
