@@ -62,7 +62,7 @@ use vk::{DebugUtilsMessengerCallbackDataEXT, Bool32};
 pub struct DebugCallback {
     instance: Arc<Instance>,
     debug_report_callback: vk::DebugUtilsMessengerEXT,
-    user_callback: Box<Box<dyn Fn(&Message)>>,
+    user_callback: Box<Box<dyn Fn(&Message) + Send>>,
 }
 
 impl DebugCallback {
