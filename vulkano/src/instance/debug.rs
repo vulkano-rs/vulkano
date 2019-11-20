@@ -340,3 +340,21 @@ impl From<Error> for DebugCallbackCreationError {
         panic!("unexpected error: {:?}", err)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::thread;
+    #[test]
+    fn ensure_sendable() {
+        // It's useful to be able to initialize a DebugCallback on one thread
+        // and keep it alive on another thread.
+        let instance = instance!();
+        let severity = MessageSeverity::none();
+        let ty = MessageType::all();
+        let callback = DebugCallback::new(&instance, severity, ty, |_| {});
+        thread::spawn(move || {
+            let _ = callback;
+        });
+    }
+}
