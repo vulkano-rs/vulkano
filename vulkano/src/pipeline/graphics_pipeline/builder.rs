@@ -1083,6 +1083,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             output.assume_init()
         };
 
+        // Some drivers return `VK_SUCCESS` but provide a null handle if they
+        // fail to create the pipeline (due to invalid shaders, etc)
+        // This check ensures that we don't create an invalid `GraphicsPipeline` instance
+        if (pipeline == vk::NULL_HANDLE) {
+            panic!("vkCreateGraphicsPipelines provided a NULL handle");
+        }
+
         let (render_pass, render_pass_subpass) = self.render_pass.take().unwrap().into();
 
         Ok(GraphicsPipeline {
