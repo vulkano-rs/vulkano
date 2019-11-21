@@ -73,6 +73,7 @@ pub const MAX_MEMORY_TYPES: u32 = 32;
 pub const MAX_MEMORY_HEAPS: u32 = 16;
 pub const MAX_EXTENSION_NAME_SIZE: u32 = 256;
 pub const MAX_DESCRIPTION_SIZE: u32 = 256;
+pub const NULL_HANDLE: u64 = 0;
 
 pub type PipelineCacheHeaderVersion = u32;
 pub const PIPELINE_CACHE_HEADER_VERSION_ONE: u32 = 1;
