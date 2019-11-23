@@ -310,7 +310,7 @@ impl Display {
 unsafe impl VulkanObject for Display {
     type Object = vk::DisplayKHR;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DISPLAY_KHR_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DISPLAY_KHR;
 
     #[inline]
     fn internal_object(&self) -> vk::DisplayKHR {
@@ -344,9 +344,9 @@ impl DisplayMode {
             };
 
             let mut output = mem::uninitialized();
-            try!(check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
+            check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
                                                       display.display, &infos, ptr::null(),
-                                                      &mut output)));
+                                                      &mut output))?;
             output
         };
 
@@ -380,7 +380,7 @@ impl DisplayMode {
 unsafe impl VulkanObject for DisplayMode {
     type Object = vk::DisplayModeKHR;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DISPLAY_MODE_KHR_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DISPLAY_MODE_KHR;
 
     #[inline]
     fn internal_object(&self) -> vk::DisplayModeKHR {

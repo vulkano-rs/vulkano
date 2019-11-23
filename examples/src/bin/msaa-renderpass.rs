@@ -64,14 +64,8 @@
 //! an error), instead it is called *resolving* the image.
 //!
 
-extern crate image;
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-
 use std::sync::Arc;
-use image::ImageBuffer;
-use image::Rgba;
+use png;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
@@ -83,6 +77,9 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sync::GpuFuture;
 use vulkano::format::ClearValue;
+use std::path::Path;
+use std::fs::File;
+use std::io::BufWriter;
 
 fn main() {
     // The usual Vulkan initialization.
@@ -108,7 +105,7 @@ fn main() {
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
-    let render_pass = Arc::new(single_pass_renderpass!(
+    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
             // The first framebuffer attachment is the intermediary image.
@@ -183,11 +180,11 @@ void main() {
     let vs = vs::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
 
-    #[derive(Copy, Clone)]
+    #[derive(Default, Copy, Clone)]
     struct Vertex {
         position: [f32; 2],
     }
-    impl_vertex!(Vertex, position);
+    vulkano::impl_vertex!(Vertex, position);
 
     let vertex1 = Vertex { position: [-0.5, -0.5] };
     let vertex2 = Vertex { position: [ 0.0,  0.5] };
@@ -236,6 +233,12 @@ void main() {
     finished.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
 
     let buffer_content = buf.read().unwrap();
-    let image = ImageBuffer::<Rgba<u8>, _>::from_raw(1024, 1024, &buffer_content[..]).unwrap();
-    image.save("triangle.png").unwrap();
+    let path = Path::new("triangle.png");
+	let file = File::create(path).unwrap();
+	let ref mut w = BufWriter::new(file);
+	let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
+	encoder.set_color(png::ColorType::RGBA);
+	encoder.set_depth(png::BitDepth::Eight);
+	let mut writer = encoder.write_header().unwrap();
+	writer.write_image_data(&buffer_content).unwrap();
 }

@@ -34,12 +34,14 @@ macro_rules! device_extensions {
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
+                    ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
+                    ))?;
                     properties.set_len(num as usize);
                     properties
                 };
@@ -63,12 +65,14 @@ macro_rules! device_extensions {
 
                 let properties: Vec<vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
+                    ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    try!(check_errors(vk.EnumerateDeviceExtensionProperties(
-                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr())));
+                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
+                    ))?;
                     properties.set_len(num as usize);
                     properties
                 };
@@ -109,7 +113,10 @@ device_extensions! {
     khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
     khr_incremental_present => b"VK_KHR_incremental_present",
-    ext_debug_marker => b"VK_EXT_debug_marker",
+    khr_16bit_storage => b"VK_KHR_16bit_storage",
+    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
+    ext_debug_utils => b"VK_EXT_debug_utils",
+    khr_multiview => b"VK_KHR_multiview",
 }
 
 /// This helper type can only be instantiated inside this module.

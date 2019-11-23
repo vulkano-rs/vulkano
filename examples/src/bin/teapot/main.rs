@@ -7,14 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_win;
-extern crate winit;
-extern crate cgmath;
-extern crate time;
-extern crate examples;
-
 use vulkano::buffer::cpu_pool::CpuBufferPool;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
@@ -29,7 +21,7 @@ use vulkano::instance::PhysicalDevice;
 use vulkano::pipeline::vertex::TwoBuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
 use vulkano::swapchain;
 use vulkano::sync::GpuFuture;
 use vulkano::sync;
@@ -88,7 +80,7 @@ fn main() {
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format, dimensions, 1,
-            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, None).unwrap()
+            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
     let vertices = VERTICES.iter().cloned();
@@ -106,7 +98,7 @@ fn main() {
     let fs = fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(
-        single_pass_renderpass!(device.clone(),
+        vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -131,7 +123,7 @@ fn main() {
     let (mut pipeline, mut framebuffers) = window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
     let mut recreate_swapchain = false;
 
-    let mut previous_frame = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
     let rotation_start = Instant::now();
 
     loop {
@@ -218,6 +210,8 @@ fn main() {
 
         match future {
             Ok(future) => {
+                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
+                future.wait(None).unwrap();
                 previous_frame = Box::new(future) as Box<_>;
             }
             Err(sync::FlushError::OutOfDate) => {
@@ -248,8 +242,8 @@ fn window_size_dependent_setup(
     vs: &vs::Shader,
     fs: &fs::Shader,
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
-) -> (Arc<GraphicsPipelineAbstract + Send + Sync>, Vec<Arc<FramebufferAbstract + Send + Sync>> ) {
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+) -> (Arc<dyn GraphicsPipelineAbstract + Send + Sync>, Vec<Arc<dyn FramebufferAbstract + Send + Sync>> ) {
     let dimensions = images[0].dimensions();
 
     let depth_buffer = AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap();
@@ -260,7 +254,7 @@ fn window_size_dependent_setup(
                 .add(image.clone()).unwrap()
                 .add(depth_buffer.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>();
 
     // In the triangle example we use a dynamic viewport, as its a simple example.

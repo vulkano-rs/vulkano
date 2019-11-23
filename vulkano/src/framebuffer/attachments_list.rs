@@ -18,7 +18,7 @@ use std::sync::Arc;
 pub unsafe trait AttachmentsList {
     fn num_attachments(&self) -> usize;
 
-    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess>;
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess>;
 }
 
 unsafe impl<T> AttachmentsList for T
@@ -31,7 +31,7 @@ unsafe impl<T> AttachmentsList for T
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
         (**self).as_image_view_access(index)
     }
 }
@@ -43,19 +43,19 @@ unsafe impl AttachmentsList for () {
     }
 
     #[inline]
-    fn as_image_view_access(&self, _: usize) -> Option<&ImageViewAccess> {
+    fn as_image_view_access(&self, _: usize) -> Option<&dyn ImageViewAccess> {
         None
     }
 }
 
-unsafe impl AttachmentsList for Vec<Arc<ImageViewAccess + Send + Sync>> {
+unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAccess + Send + Sync>> {
     #[inline]
     fn num_attachments(&self) -> usize {
         self.len()
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
         self.get(index).map(|v| &**v as &_)
     }
 }
@@ -70,7 +70,7 @@ unsafe impl<A, B> AttachmentsList for (A, B)
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
         if index == self.0.num_attachments() {
             Some(&self.1)
         } else {

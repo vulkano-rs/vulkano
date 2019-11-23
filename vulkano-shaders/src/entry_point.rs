@@ -10,9 +10,9 @@
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
 
-use enums::{StorageClass, ExecutionModel, ExecutionMode};
-use parse::{Instruction, Spirv};
-use spirv_search;
+use crate::enums::{StorageClass, ExecutionModel, ExecutionMode, Decoration};
+use crate::parse::{Instruction, Spirv};
+use crate::spirv_search;
 
 pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream, TokenStream) {
     let (execution, id, ep_name, interface) = match instruction {
@@ -47,7 +47,7 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
         ignore_first_array_out
     );
 
-    let spec_consts_struct = if ::spec_consts::has_specialization_constants(doc) {
+    let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         quote!{ SpecializationConstants }
     } else {
         quote!{ () }
@@ -221,11 +221,9 @@ fn write_interface_structs(doc: &Spirv, capitalized_ep_name: &str, interface: &[
                         continue;
                     } // FIXME: hack
 
-                    let location = match spirv_search::location_decoration(doc, result_id) {
-                        Some(l) => l,
-                        None => panic!("Attribute `{}` (id {}) is missing a location",
-                                       name,
-                                       result_id),
+                    let location = match doc.get_decoration_params(result_id, Decoration::DecorationLocation) {
+                        Some(l) => l[0],
+                        None => panic!("Attribute `{}` (id {}) is missing a location", name, result_id),
                     };
 
                     let (format, location_len) = spirv_search::format_from_id(doc, result_type_id, ignore_first_array);

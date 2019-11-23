@@ -7,15 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-extern crate vulkano;
-
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::image::ImmutableImage;
 use vulkano::image::Dimensions;
 use vulkano::instance;
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
-use vulkano::instance::debug::{DebugCallback, MessageTypes};
+use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
 
 fn main() {
     // Vulkano Debugging Example Code
@@ -26,9 +24,9 @@ fn main() {
     // https://vulkan.lunarg.com/doc/view/1.0.13.0/windows/layers.html
     //
     // .. but if you just want a template of code that has everything ready to go then follow
-    // this example. First, enable debugging using this extension: VK_EXT_debug_report
+    // this example. First, enable debugging using this extension: VK_EXT_debug_utils
     let extensions = InstanceExtensions {
-        ext_debug_report: true,
+        ext_debug_utils: true,
         ..InstanceExtensions::none()
     };
 
@@ -62,29 +60,39 @@ fn main() {
     // Note: If you let this debug_callback binding fall out of scope then the callback will stop providing events
     // Note: There is a helper method too: DebugCallback::errors_and_warnings(&instance, |msg| {...
 
-    let all = MessageTypes {
+    let severity = MessageSeverity {
         error: true,
         warning: true,
-        performance_warning: true,
         information: true,
-        debug: true,
+        verbose: true,
     };
 
-    let _debug_callback = DebugCallback::new(&instance, all, |msg| {
-        let ty = if msg.ty.error {
+    let ty = MessageType::all();
+
+    let _debug_callback = DebugCallback::new(&instance, severity, ty, |msg| {
+        let severity = if msg.severity.error {
             "error"
-        } else if msg.ty.warning {
+        } else if msg.severity.warning {
             "warning"
-        } else if msg.ty.performance_warning {
-            "performance_warning"
-        } else if msg.ty.information {
+        } else if msg.severity.information {
             "information"
-        } else if msg.ty.debug {
-            "debug"
+        } else if msg.severity.verbose {
+            "verbose"
         } else {
             panic!("no-impl");
         };
-        println!("{} {}: {}", msg.layer_prefix, ty, msg.description);
+
+        let ty = if msg.ty.general {
+            "general"
+        } else if msg.ty.validation {
+            "validation"
+        } else if msg.ty.performance {
+            "performance" }
+        else {
+            panic!("no-impl");
+        };
+
+        println!("{} {} {}: {}", msg.layer_prefix, ty, severity, msg.description);
     }).ok();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -100,7 +108,7 @@ fn main() {
     let pixel_format = Format::R8G8B8A8Uint;
     let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
     const DATA: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
-    ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
+    let _ = ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
                                                queue.clone()).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)

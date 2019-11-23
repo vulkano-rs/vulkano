@@ -12,9 +12,9 @@ use std::mem;
 use syn::Ident;
 use proc_macro2::{Span, TokenStream};
 
-use parse::{Instruction, Spirv};
-use enums::Decoration;
-use spirv_search;
+use crate::parse::{Instruction, Spirv};
+use crate::enums::Decoration;
+use crate::spirv_search;
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
 pub fn write_structs(doc: &Spirv) -> TokenStream {
@@ -57,29 +57,13 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
 
         // Ignore the whole struct is a member is built in, which includes
         // `gl_Position` for example.
-        if is_builtin_member(doc, struct_id, num as u32) {
+        if doc.get_member_decoration_params(struct_id, num as u32, Decoration::DecorationBuiltIn).is_some() {
             return (quote!{}, None); // TODO: is this correct? shouldn't it return a correct struct but with a flag or something?
         }
 
         // Finding offset of the current member, as requested by the SPIR-V code.
-        let spirv_offset = doc.instructions
-            .iter()
-            .filter_map(|i| {
-                match *i {
-                    Instruction::MemberDecorate {
-                        target_id,
-                        member,
-                        decoration: Decoration::DecorationOffset,
-                        ref params,
-                    } if target_id == struct_id && member as usize == num => {
-                        return Some(params[0]);
-                    },
-                    _ => (),
-                };
-
-                None
-            })
-            .next();
+        let spirv_offset = doc.get_member_decoration_params(struct_id, num as u32, Decoration::DecorationOffset)
+            .map(|x| x[0]);
 
         // Some structs don't have `Offset` decorations, in the case they are used as local
         // variables only. Ignoring these.
@@ -128,39 +112,22 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
     }
 
     // Try determine the total size of the struct in order to add padding at the end of the struct.
-    let spirv_req_total_size = doc.instructions
-        .iter()
-        .filter_map(|i| match *i {
-                        Instruction::Decorate {
-                            target_id,
-                            decoration: Decoration::DecorationArrayStride,
-                            ref params,
-                        } => {
-                            for inst in doc.instructions.iter() {
-                                match *inst {
-                                    Instruction::TypeArray {
-                                        result_id, type_id, ..
-                                    } if result_id == target_id && type_id == struct_id => {
-                                        return Some(params[0]);
-                                    },
-                                    Instruction::TypeRuntimeArray { result_id, type_id }
-                                        if result_id == target_id && type_id == struct_id => {
-                                        return Some(params[0]);
-                                    },
-                                    _ => (),
-                                }
-                            }
-
-                            None
-                        },
-                        _ => None,
-                    })
-        .fold(None, |a, b| if let Some(a) = a {
-            assert_eq!(a, b);
-            Some(a)
-        } else {
-            Some(b)
-        });
+    let mut spirv_req_total_size = None;
+    for inst in doc.instructions.iter() {
+        match *inst {
+            Instruction::TypeArray { result_id, type_id, .. } if type_id == struct_id => {
+                if let Some(params) = doc.get_decoration_params(result_id, Decoration::DecorationArrayStride) {
+                    spirv_req_total_size = Some(params[0]);
+                }
+            }
+            Instruction::TypeRuntimeArray { result_id, type_id } if type_id == struct_id => {
+                if let Some(params) = doc.get_decoration_params(result_id, Decoration::DecorationArrayStride) {
+                    spirv_req_total_size = Some(params[0]);
+                }
+            }
+            _ => ()
+        }
+    }
 
     // Adding the final padding members.
     if let (Some(cur_size), Some(req_size)) = (current_rust_offset, spirv_req_total_size) {
@@ -168,7 +135,7 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
         if diff >= 1 {
             rust_members.push(Member {
                 name: Ident::new(&format!("_dummy{}", next_padding_num), Span::call_site()),
-                ty: quote!{ [u8; {}] },
+                ty: quote!{ [u8; #diff as usize] },
             });
         }
     }
@@ -218,19 +185,6 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
     (ast, spirv_req_total_size.map(|sz| sz as usize).or(current_rust_offset))
 }
 
-/// Returns true if a `BuiltIn` decorator is applied on a struct member.
-fn is_builtin_member(doc: &Spirv, id: u32, member_id: u32) -> bool {
-    for instruction in &doc.instructions {
-        match *instruction {
-            Instruction::MemberDecorate { target_id, member, decoration: Decoration::DecorationBuiltIn, .. }
-                if target_id == id && member == member_id => { return true }
-            _ => (),
-        }
-    }
-
-    false
-}
-
 /// Returns the type name to put in the Rust struct, and its size and alignment.
 ///
 /// The size can be `None` if it's only known at runtime.
@@ -248,8 +202,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i8,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i8}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i8}, Some(std::mem::size_of::<i8>()), mem::align_of::<Foo>());
                     },
                     (8, false) => {
                         #[repr(C)]
@@ -257,8 +210,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u8,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u8}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u8}, Some(std::mem::size_of::<u8>()), mem::align_of::<Foo>());
                     },
                     (16, true) => {
                         #[repr(C)]
@@ -266,8 +218,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i16,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i16}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i16}, Some(std::mem::size_of::<i16>()), mem::align_of::<Foo>());
                     },
                     (16, false) => {
                         #[repr(C)]
@@ -275,8 +226,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u16,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u16}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u16}, Some(std::mem::size_of::<u16>()), mem::align_of::<Foo>());
                     },
                     (32, true) => {
                         #[repr(C)]
@@ -284,8 +234,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i32,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i32}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i32}, Some(std::mem::size_of::<i32>()), mem::align_of::<Foo>());
                     },
                     (32, false) => {
                         #[repr(C)]
@@ -293,8 +242,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u32,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u32}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u32}, Some(std::mem::size_of::<u32>()), mem::align_of::<Foo>());
                     },
                     (64, true) => {
                         #[repr(C)]
@@ -302,8 +250,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: i64,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{i64}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{i64}, Some(std::mem::size_of::<i64>()), mem::align_of::<Foo>());
                     },
                     (64, false) => {
                         #[repr(C)]
@@ -311,8 +258,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: u64,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{u64}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{u64}, Some(std::mem::size_of::<u64>()), mem::align_of::<Foo>());
                     },
                     _ => panic!("No Rust equivalent for an integer of width {}", width),
                 }
@@ -325,8 +271,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: f32,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{f32}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{f32}, Some(std::mem::size_of::<f32>()), mem::align_of::<Foo>());
                     },
                     64 => {
                         #[repr(C)]
@@ -334,8 +279,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                             data: f64,
                             after: u8,
                         }
-                        let size = unsafe { (&(&*(0 as *const Foo)).after) as *const u8 as usize };
-                        return (quote!{f64}, Some(size), mem::align_of::<Foo>());
+                        return (quote!{f64}, Some(std::mem::size_of::<f64>()), mem::align_of::<Foo>());
                     },
                     _ => panic!("No Rust equivalent for a floating-point of width {}", width),
                 }
@@ -381,15 +325,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                     .next()
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                let stride = doc.instructions.iter().filter_map(|e| match e {
-                    Instruction::Decorate {
-                        target_id,
-                        decoration: Decoration::DecorationArrayStride,
-                        ref params,
-                    } if *target_id == searched => Some(params[0]),
-                    _ => None,
-                })
-                .next().expect("failed to find ArrayStride decoration");
+                let stride = doc.get_decoration_params(searched, Decoration::DecorationArrayStride).unwrap()[0];
                 if stride as usize > t_size {
                     panic!("Not possible to generate a rust array with the correct alignment since the SPIR-V \
                             ArrayStride is larger than the size of the array element in rust. Try wrapping \

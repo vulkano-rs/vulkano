@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -343,12 +343,12 @@ impl<D> RenderPass<D>
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateRenderPass(device.internal_object(),
                                              &infos,
                                              ptr::null(),
-                                             &mut output))?;
-            output
+                                             output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(RenderPass {
@@ -387,9 +387,10 @@ impl<D> RenderPass<D> {
 
         unsafe {
             let vk = self.device.pointers();
-            let mut out = mem::uninitialized();
-            vk.GetRenderAreaGranularity(self.device.internal_object(), self.render_pass, &mut out);
+            let mut out = MaybeUninit::uninit();
+            vk.GetRenderAreaGranularity(self.device.internal_object(), self.render_pass, out.as_mut_ptr());
 
+			let out = out.assume_init();
             debug_assert_ne!(out.width, 0);
             debug_assert_ne!(out.height, 0);
             let gran = [out.width, out.height];
@@ -446,7 +447,7 @@ unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
     where D: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.desc.convert_clear_values(vals)
     }
 }
@@ -496,7 +497,7 @@ pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
     type Object = vk::RenderPass;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_RENDER_PASS;
 
     #[inline]
     fn internal_object(&self) -> vk::RenderPass {
@@ -525,7 +526,7 @@ impl error::Error for RenderPassCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             RenderPassCreationError::OomError(ref err) => Some(err),
             _ => None,

@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use parse::{Instruction, Spirv};
-use enums::Decoration;
+use crate::parse::{Instruction, Spirv};
+use crate::enums::Decoration;
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///
@@ -130,28 +130,13 @@ pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> 
     String::from("__unnamed")
 }
 
-pub fn location_decoration(doc: &Spirv, searched: u32) -> Option<u32> {
-    for instruction in &doc.instructions {
-        if let &Instruction::Decorate { target_id, decoration: Decoration::DecorationLocation, ref params } = instruction {
-            if target_id == searched {
-                return Some(params[0])
-            }
-        }
-    }
-
-    None
-}
-
 /// Returns true if a `BuiltIn` decorator is applied on an id.
 pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
-    for instruction in &doc.instructions {
-        match *instruction {
-            Instruction::Decorate { target_id, decoration: Decoration::DecorationBuiltIn, .. }
-                if target_id == id => { return true }
-            Instruction::MemberDecorate { target_id, decoration: Decoration::DecorationBuiltIn, .. }
-                if target_id == id => { return true }
-            _ => (),
-        }
+    if doc.get_decoration_params(id, Decoration::DecorationBuiltIn).is_some() {
+        return true
+    }
+    if doc.get_member_decoration_builtin_params(id).is_some() {
+        return true
     }
 
     for instruction in &doc.instructions {

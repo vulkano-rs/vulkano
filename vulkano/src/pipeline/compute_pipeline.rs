@@ -11,6 +11,7 @@ use std::error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -138,14 +139,14 @@ impl<Pl> ComputePipeline<Pl> {
                 basePipelineIndex: 0,
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateComputePipelines(device.internal_object(),
                                                    0,
                                                    1,
                                                    &infos,
                                                    ptr::null(),
-                                                   &mut output))?;
-            output
+                                                   output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(ComputePipeline {
@@ -212,7 +213,7 @@ pub struct ComputePipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
     type Object = vk::Pipeline;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
@@ -274,7 +275,7 @@ unsafe impl<Pl> DeviceOwned for ComputePipeline<Pl> {
 unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
     type Object = vk::Pipeline;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
 
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
@@ -316,7 +317,7 @@ impl error::Error for ComputePipelineCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
             ComputePipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),

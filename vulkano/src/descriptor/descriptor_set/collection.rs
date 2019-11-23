@@ -13,7 +13,7 @@ use descriptor::descriptor_set::DescriptorSetDesc;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>>;
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>>;
 
     /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
     ///
@@ -30,7 +30,7 @@ pub unsafe trait DescriptorSetsCollection {
 
 unsafe impl DescriptorSetsCollection for () {
     #[inline]
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
         vec![]
     }
 
@@ -49,7 +49,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     where T: DescriptorSet + Send + Sync + 'static
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
         vec![Box::new(self) as Box<_>]
     }
 
@@ -74,7 +74,7 @@ unsafe impl<T> DescriptorSetsCollection for Vec<T>
     where T: DescriptorSet + Send + Sync + 'static
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
         let mut v = Vec::new();
         for o in self {
             v.push(Box::new(o) as Box<_>);
@@ -99,7 +99,7 @@ macro_rules! impl_collection {
                   $(, $others: DescriptorSet + DescriptorSetDesc + Send + Sync + 'static)*
         {
             #[inline]
-            fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+            fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
                 #![allow(non_snake_case)]
 
                 let ($first, $($others,)*) = self;

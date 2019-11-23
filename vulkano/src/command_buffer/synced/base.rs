@@ -183,7 +183,7 @@ struct Commands<P> {
     latest_render_pass_enter: Option<usize>,
 
     // The actual list.
-    commands: Vec<Box<Command<P> + Send + Sync>>,
+    commands: Vec<Box<dyn Command<P> + Send + Sync>>,
 }
 
 // Trait for single commands within the list of commands.
@@ -196,15 +196,15 @@ pub trait Command<P> {
     unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>);
 
     // Turns this command into a `FinalCommand`.
-    fn into_final_command(self: Box<Self>) -> Box<FinalCommand + Send + Sync>;
+    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync>;
 
     // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, _num: usize) -> &BufferAccess {
+    fn buffer(&self, _num: usize) -> &dyn BufferAccess {
         panic!()
     }
 
     // Gives access to the `num`th image used by the command.
-    fn image(&self, _num: usize) -> &ImageAccess {
+    fn image(&self, _num: usize) -> &dyn ImageAccess {
         panic!()
     }
 
@@ -247,7 +247,7 @@ struct BuilderKey<P> {
 impl<P> BuilderKey<P> {
     // Turns this key used by the builder into a key used by the final command buffer.
     // Called when the command buffer is being built.
-    fn into_cb_key(self, final_commands: Arc<Mutex<Vec<Box<FinalCommand + Send + Sync>>>>)
+    fn into_cb_key(self, final_commands: Arc<Mutex<Vec<Box<dyn FinalCommand + Send + Sync>>>>)
                    -> CbKey<'static> {
         CbKey::Command {
             commands: final_commands,
@@ -258,7 +258,7 @@ impl<P> BuilderKey<P> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, commands_lock: &Commands<P>, buf: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, commands_lock: &Commands<P>, buf: &dyn BufferAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
@@ -273,7 +273,7 @@ impl<P> BuilderKey<P> {
     }
 
     #[inline]
-    fn conflicts_image(&self, commands_lock: &Commands<P>, img: &ImageAccess) -> bool {
+    fn conflicts_image(&self, commands_lock: &Commands<P>, img: &dyn ImageAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
@@ -510,7 +510,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // collision. But since the pipeline barrier is going to be submitted before
                     // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                     // been flushed yet.
-                    if collision_cmd_id >= first_unflushed_cmd_id {
+                    if collision_cmd_id >= first_unflushed_cmd_id || entry.current_layout != start_layout {
                         unsafe {
                             // Flush the pending barrier.
                             self.inner.pipeline_barrier(&self.pending_barrier);
@@ -625,6 +625,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                 let mut actually_exclusive = exclusive;
                 let mut actual_start_layout = start_layout;
 
+
                 if !self.is_secondary && resource_ty == KeyTy::Image &&
                     start_layout != ImageLayout::Undefined &&
                     start_layout != ImageLayout::Preinitialized
@@ -633,9 +634,11 @@ impl<P> SyncCommandBufferBuilder<P> {
                     let img = commands_lock.commands[latest_command_id].image(resource_index);
                     let initial_layout_requirement = img.initial_layout_requirement();
 
-                    if initial_layout_requirement != start_layout {
-                        actually_exclusive = true;
-                        actual_start_layout = initial_layout_requirement;
+                    // Checks if the image is initialized and transitions it
+                    // if it isn't
+                    let is_layout_initialized = img.is_layout_initialized();
+
+                    if initial_layout_requirement != start_layout || !is_layout_initialized {
 
                         // Note that we transition from `bottom_of_pipe`, which means that we
                         // wait for all the previous commands to be entirely finished. This is
@@ -648,6 +651,19 @@ impl<P> SyncCommandBufferBuilder<P> {
                         //   suboptimal in some cases, in the general situation it will be ok.
                         //
                         unsafe {
+                            let from_layout = if is_layout_initialized {
+                                actually_exclusive = true;
+                                initial_layout_requirement
+                            } else {
+                                if img.preinitialized_layout() {
+                                    ImageLayout::Preinitialized
+                                } else {
+                                    ImageLayout::Undefined
+                                }
+                            };
+                            if  initial_layout_requirement != start_layout {
+                                actual_start_layout = initial_layout_requirement;
+                            }
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(img,
                                                        0 .. img.mipmap_levels(),
@@ -661,8 +677,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                        access,
                                                        true,
                                                        None,
-                                                       initial_layout_requirement,
+                                                       from_layout,
                                                        start_layout);
+                            img.layout_initialized();
                         }
                     }
                 }
@@ -786,7 +803,7 @@ pub struct SyncCommandBuffer<P> {
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used. Each element of `resources` has a copy of this `Arc`, but we need to keep one
     // here in case `resources` is empty.
-    commands: Arc<Mutex<Vec<Box<FinalCommand + Send + Sync>>>>,
+    commands: Arc<Mutex<Vec<Box<dyn FinalCommand + Send + Sync>>>>,
 }
 
 // Usage of a resource in a finished command buffer.
@@ -815,12 +832,12 @@ pub trait FinalCommand {
     fn name(&self) -> &'static str;
 
     // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, _num: usize) -> &BufferAccess {
+    fn buffer(&self, _num: usize) -> &dyn BufferAccess {
         panic!()
     }
 
     // Gives access to the `num`th image used by the command.
-    fn image(&self, _num: usize) -> &ImageAccess {
+    fn image(&self, _num: usize) -> &dyn ImageAccess {
         panic!()
     }
 
@@ -855,7 +872,7 @@ enum CbKey<'a> {
     // The resource is held in the list of commands.
     Command {
         // Same `Arc` as in the `SyncCommandBufferBuilder`.
-        commands: Arc<Mutex<Vec<Box<FinalCommand + Send + Sync>>>>,
+        commands: Arc<Mutex<Vec<Box<dyn FinalCommand + Send + Sync>>>>,
         // Index of the command that holds the resource within `commands`.
         command_id: usize,
         // Type of the resource.
@@ -866,11 +883,11 @@ enum CbKey<'a> {
 
     // Temporary key that holds a reference to a buffer. Should never be stored in the list of
     // resources of `SyncCommandBuffer`.
-    BufferRef(&'a BufferAccess),
+    BufferRef(&'a dyn BufferAccess),
 
     // Temporary key that holds a reference to an image. Should never be stored in the list of
     // resources of `SyncCommandBuffer`.
-    ImageRef(&'a ImageAccess),
+    ImageRef(&'a dyn ImageAccess),
 }
 
 // The `CbKey::Command` variants implements `Send` and `Sync`, but the other two variants don't
@@ -885,8 +902,8 @@ unsafe impl<'a> Sync for CbKey<'a> {
 
 impl<'a> CbKey<'a> {
     #[inline]
-    fn conflicts_buffer(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
-                        buf: &BufferAccess)
+    fn conflicts_buffer(&self, commands_lock: Option<&Vec<Box<dyn FinalCommand + Send + Sync>>>,
+                        buf: &dyn BufferAccess)
                         -> bool {
         match *self {
             CbKey::Command {
@@ -921,8 +938,8 @@ impl<'a> CbKey<'a> {
     }
 
     #[inline]
-    fn conflicts_image(&self, commands_lock: Option<&Vec<Box<FinalCommand + Send + Sync>>>,
-                       img: &ImageAccess)
+    fn conflicts_image(&self, commands_lock: Option<&Vec<Box<dyn FinalCommand + Send + Sync>>>,
+                       img: &dyn ImageAccess)
                        -> bool {
         match *self {
             CbKey::Command {
@@ -1034,7 +1051,7 @@ impl<P> SyncCommandBuffer<P> {
     /// Tries to lock the resources used by the command buffer.
     ///
     /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
-    pub fn lock_submit(&self, future: &GpuFuture, queue: &Queue)
+    pub fn lock_submit(&self, future: &dyn GpuFuture, queue: &Queue)
                        -> Result<(), CommandBufferExecError> {
 
         let commands_lock = self.commands.lock().unwrap();
@@ -1217,7 +1234,7 @@ impl<P> SyncCommandBuffer<P> {
     /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
     #[inline]
     pub fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         // TODO: check the queue family
 
@@ -1237,7 +1254,7 @@ impl<P> SyncCommandBuffer<P> {
     /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
     #[inline]
     pub fn check_image_access(
-        &self, image: &ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
+        &self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         // TODO: check the queue family
 

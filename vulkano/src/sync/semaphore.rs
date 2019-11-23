@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -74,12 +74,12 @@ impl<D> Semaphore<D>
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSemaphore(device.internal_object(),
                                             &INFOS,
                                             ptr::null(),
-                                            &mut output))?;
-            output
+                                            output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Semaphore {
@@ -102,7 +102,7 @@ unsafe impl<D> VulkanObject for Semaphore<D>
 {
     type Object = vk::Semaphore;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SEMAPHORE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SEMAPHORE;
 
     #[inline]
     fn internal_object(&self) -> vk::Semaphore {

@@ -26,16 +26,9 @@
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
 // drawn after the lighting, and that the whole process consumes more memory.
 
-extern crate cgmath;
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate winit;
-extern crate vulkano_win;
-
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, PhysicalDevice};
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -51,8 +44,8 @@ use cgmath::Vector3;
 mod frame;
 mod triangle_draw_system;
 
-use frame::*;
-use triangle_draw_system::*;
+use crate::frame::*;
+use crate::triangle_draw_system::*;
 
 fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
@@ -90,7 +83,7 @@ fn main() {
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
             initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, true, None).unwrap()
+            PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
 
@@ -99,7 +92,7 @@ fn main() {
     let triangle_draw_system = TriangleDrawSystem::new(queue.clone(), frame_system.deferred_subpass());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -162,6 +155,8 @@ fn main() {
 
         match future {
             Ok(future) => {
+                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
+                future.wait(None).unwrap();
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(FlushError::OutOfDate) => {

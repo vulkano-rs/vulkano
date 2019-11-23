@@ -7,15 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-
-#[macro_use]
-extern crate vulkano;
-extern crate vulkano_shaders;
-extern crate vulkano_win;
-extern crate winit;
-extern crate cgmath;
-extern crate image;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
@@ -27,7 +18,7 @@ use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sampler::{Sampler, SamplerAddressMode, Filter, MipmapMode};
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -36,7 +27,8 @@ use vulkano_win::VkSurfaceBuild;
 
 use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
 
-use image::ImageFormat;
+use png;
+use std::io::Cursor;
 
 use std::sync::Arc;
 
@@ -81,13 +73,13 @@ fn main() {
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
             initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, true, None).unwrap()
+            PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
 
-    #[derive(Debug, Clone)]
+    #[derive(Default, Debug, Clone)]
     struct Vertex { position: [f32; 2] }
-    impl_vertex!(Vertex, position);
+    vulkano::impl_vertex!(Vertex, position);
 
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
@@ -104,7 +96,7 @@ fn main() {
     let fs = fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(
-        single_pass_renderpass!(device.clone(),
+        vulkano::single_pass_renderpass!(device.clone(),
             attachments: {
                 color: {
                     load: Clear,
@@ -121,13 +113,18 @@ fn main() {
     );
 
     let (texture, tex_future) = {
-        let image = image::load_from_memory_with_format(include_bytes!("image_img.png"),
-            ImageFormat::PNG).unwrap().to_rgba();
-        let image_data = image.into_raw().clone();
+        let png_bytes = include_bytes!("image_img.png").to_vec();
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let (info, mut reader) = decoder.read_info().unwrap();
+        let dimensions = Dimensions::Dim2d { width: info.width, height: info.height };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
 
         ImmutableImage::from_iter(
             image_data.iter().cloned(),
-            Dimensions::Dim2d { width: 93, height: 93 },
+            dimensions,
             Format::R8G8B8A8Srgb,
             queue.clone()
         ).unwrap()
@@ -154,11 +151,11 @@ fn main() {
         .build().unwrap()
     );
 
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None };
+    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(tex_future) as Box<GpuFuture>;
+    let mut previous_frame_end = Box::new(tex_future) as Box<dyn GpuFuture>;
 
     loop {
         previous_frame_end.cleanup_finished();
@@ -206,6 +203,8 @@ fn main() {
 
         match future {
             Ok(future) => {
+                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
+                future.wait(None).unwrap();
                 previous_frame_end = Box::new(future) as Box<_>;
             }
             Err(FlushError::OutOfDate) => {
@@ -233,9 +232,9 @@ fn main() {
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
     dynamic_state: &mut DynamicState
-) -> Vec<Arc<FramebufferAbstract + Send + Sync>> {
+) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
@@ -250,7 +249,7 @@ fn window_size_dependent_setup(
             Framebuffer::start(render_pass.clone())
                 .add(image.clone()).unwrap()
                 .build().unwrap()
-        ) as Arc<FramebufferAbstract + Send + Sync>
+        ) as Arc<dyn FramebufferAbstract + Send + Sync>
     }).collect::<Vec<_>>()
 }
 

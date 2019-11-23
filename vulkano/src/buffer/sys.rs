@@ -28,6 +28,7 @@ use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -60,8 +61,8 @@ impl UnsafeBuffer {
     ///
     /// # Panic
     ///
-    /// Panics if `sparse.sparse` is false and `sparse.sparse_residency` or
-    /// `sparse.sparse_aliased` is true.
+    /// - Panics if `sparse.sparse` is false and `sparse.sparse_residency` or `sparse.sparse_aliased` is true.
+    /// - Panics if `usage` is empty.
     ///
     pub unsafe fn new<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
                              sharing: Sharing<I>, sparse: SparseLevel)
@@ -79,6 +80,10 @@ impl UnsafeBuffer {
         };
 
         let usage_bits = usage.to_vulkan_bits();
+
+        // Checking for empty BufferUsage.
+        assert!(usage_bits != 0,
+                "Can't create buffer with empty BufferUsage");
 
         // Checking sparse features.
         assert!(sparse.sparse || !sparse.sparse_residency,
@@ -112,12 +117,12 @@ impl UnsafeBuffer {
                 pQueueFamilyIndices: sh_indices.as_ptr(),
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateBuffer(device.internal_object(),
                                          &infos,
                                          ptr::null(),
-                                         &mut output))?;
-            output
+                                         output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         let mem_reqs = {
@@ -137,8 +142,8 @@ impl UnsafeBuffer {
                     Some(vk::MemoryDedicatedRequirementsKHR {
                              sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
                              pNext: ptr::null(),
-                             prefersDedicatedAllocation: mem::uninitialized(),
-                             requiresDedicatedAllocation: mem::uninitialized(),
+                             prefersDedicatedAllocation: mem::zeroed(),
+                             requiresDedicatedAllocation: mem::zeroed(),
                          })
                 } else {
                     None
@@ -150,7 +155,7 @@ impl UnsafeBuffer {
                         .as_mut()
                         .map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
                         .unwrap_or(ptr::null_mut()) as *mut _,
-                    memoryRequirements: mem::uninitialized(),
+                    memoryRequirements: mem::zeroed(),
                 };
 
                 vk.GetBufferMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
@@ -165,8 +170,9 @@ impl UnsafeBuffer {
                 out
 
             } else {
-                let mut output: vk::MemoryRequirements = mem::uninitialized();
-                vk.GetBufferMemoryRequirements(device.internal_object(), buffer, &mut output);
+                let mut output: MaybeUninit<vk::MemoryRequirements> = MaybeUninit::uninit();
+                vk.GetBufferMemoryRequirements(device.internal_object(), buffer, output.as_mut_ptr());
+                let output = output.assume_init();
                 debug_assert!(output.size >= size as u64);
                 debug_assert!(output.memoryTypeBits != 0);
                 MemoryRequirements::from_vulkan_reqs(output)
@@ -207,10 +213,12 @@ impl UnsafeBuffer {
 
         // We check for correctness in debug mode.
         debug_assert!({
-                          let mut mem_reqs = mem::uninitialized();
+                          let mut mem_reqs = MaybeUninit::uninit();
                           vk.GetBufferMemoryRequirements(self.device.internal_object(),
                                                          self.buffer,
-                                                         &mut mem_reqs);
+                                                         mem_reqs.as_mut_ptr());
+
+                          let mem_reqs = mem_reqs.assume_init();
                           mem_reqs.size <= (memory.size() - offset) as u64 &&
                               (offset as u64 % mem_reqs.alignment) == 0 &&
                               mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
@@ -298,7 +306,7 @@ impl UnsafeBuffer {
 unsafe impl VulkanObject for UnsafeBuffer {
     type Object = vk::Buffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::Buffer {
@@ -394,7 +402,7 @@ impl error::Error for BufferCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             BufferCreationError::AllocError(ref err) => Some(err),
             _ => None,

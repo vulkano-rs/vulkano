@@ -25,9 +25,9 @@ use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAccess;
 use vulkano::sync::GpuFuture;
 
-use frame::ambient_lighting_system::AmbientLightingSystem;
-use frame::directional_lighting_system::DirectionalLightingSystem;
-use frame::point_lighting_system::PointLightingSystem;
+use crate::frame::ambient_lighting_system::AmbientLightingSystem;
+use crate::frame::directional_lighting_system::DirectionalLightingSystem;
+use crate::frame::point_lighting_system::PointLightingSystem;
 
 /// System that contains the necessary facilities for rendering a single frame.
 pub struct FrameSystem {
@@ -37,7 +37,7 @@ pub struct FrameSystem {
     // Render pass used for the drawing. See the `new` method for the actual render pass content.
     // We need to keep it in `FrameSystem` because we may want to recreate the intermediate buffers
     // in of a change in the dimensions.
-    render_pass: Arc<RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
     diffuse_buffer: Arc<AttachmentImage>,
@@ -95,7 +95,7 @@ impl FrameSystem {
         // but can't deal with these restrictions, then you should create multiple render passes
         // instead.
         let render_pass = Arc::new(
-            ordered_passes_renderpass!(gfx_queue.device().clone(),
+            vulkano::ordered_passes_renderpass!(gfx_queue.device().clone(),
             attachments: {
                 // The image that will contain the final rendering (in this example the swapchain
                 // image, but it could be another image).
@@ -198,7 +198,7 @@ impl FrameSystem {
     /// This method is necessary in order to initialize the pipelines that will draw the objects
     /// of the scene.
     #[inline]
-    pub fn deferred_subpass(&self) -> Subpass<Arc<RenderPassAbstract + Send + Sync>> {
+    pub fn deferred_subpass(&self) -> Subpass<Arc<dyn RenderPassAbstract + Send + Sync>> {
         Subpass::from(self.render_pass.clone(), 0).unwrap()
     }
 
@@ -303,9 +303,9 @@ pub struct Frame<'a> {
     num_pass: u8,
 
     // Future to wait upon before the main rendering.
-    before_main_cb_future: Option<Box<GpuFuture>>,
+    before_main_cb_future: Option<Box<dyn GpuFuture>>,
     // Framebuffer that was used when starting the render pass.
-    framebuffer: Arc<FramebufferAbstract + Send + Sync>,
+    framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
     // The command buffer builder that will be built during the lifetime of this object.
     command_buffer: Option<AutoCommandBufferBuilder>,
     // Matrix that was passed to `frame()`.
@@ -385,7 +385,7 @@ pub enum Pass<'f, 's: 'f> {
 
     /// The frame has been fully prepared, and here is the future that will perform the drawing
     /// on the image.
-    Finished(Box<GpuFuture>),
+    Finished(Box<dyn GpuFuture>),
 }
 
 /// Allows the user to draw objects on the scene.
@@ -421,6 +421,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     }
 
     /// Returns the 4x4 matrix that turns world coordinates into 2D coordinates on the framebuffer.
+    #[allow(dead_code)]
     #[inline]
     pub fn world_to_framebuffer_matrix(&self) -> Matrix4<f32> {
         self.frame.world_to_framebuffer

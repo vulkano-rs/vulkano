@@ -13,10 +13,6 @@
 // been more or more used for general-purpose operations as well. This is called "General-Purpose
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
-// Note that since we don't create any window, fewer imports are needed.
-extern crate vulkano;
-extern crate vulkano_shaders;
-
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
@@ -44,7 +40,8 @@ fn main() {
 
     // Now initializing the device.
     let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+        &DeviceExtensions{khr_storage_buffer_storage_class:true, ..DeviceExtensions::none()},
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
     // example we use only one queue, so we just retrieve the first and only element of the

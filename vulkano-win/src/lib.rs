@@ -1,15 +1,5 @@
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 
-extern crate vulkano;
-extern crate winit;
-
-#[cfg(target_os = "macos")]
-extern crate objc;
-#[cfg(target_os = "macos")]
-extern crate cocoa;
-#[cfg(target_os = "macos")]
-extern crate metal;
-
 use std::borrow::Borrow;
 use std::error;
 use std::fmt;
@@ -101,7 +91,7 @@ impl error::Error for CreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CreationError::SurfaceCreationError(ref err) => Some(err),
             CreationError::WindowCreationError(ref err) => Some(err),
