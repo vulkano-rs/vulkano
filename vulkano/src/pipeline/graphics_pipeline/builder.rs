@@ -1086,7 +1086,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         // Some drivers return `VK_SUCCESS` but provide a null handle if they
         // fail to create the pipeline (due to invalid shaders, etc)
         // This check ensures that we don't create an invalid `GraphicsPipeline` instance
-        if (pipeline == vk::NULL_HANDLE) {
+        if pipeline == vk::NULL_HANDLE {
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
