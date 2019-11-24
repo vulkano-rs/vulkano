@@ -14,6 +14,7 @@
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
@@ -64,20 +65,21 @@ void main() {
        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
    });
 
-   let data_buffer = {
-       let data_iter = (0 .. 65536u32).map(|n| n);
-       CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
-   };
-   let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
-       .add_buffer(data_buffer.clone()).unwrap()
-       .build().unwrap()
-   );
-   let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-       .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
-       .build().unwrap();
-   let future = sync::now(device.clone())
-       .then_execute(queue.clone(), command_buffer).unwrap()
-       .then_signal_fence_and_flush().unwrap();
+    let data_buffer = {
+        let data_iter = (0 .. 65536u32).map(|n| n);
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
+    };
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
+        .add_buffer(data_buffer.clone()).unwrap()
+        .build().unwrap()
+    );
+    let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
+        .build().unwrap();
+    let future = sync::now(device.clone())
+        .then_execute(queue.clone(), command_buffer).unwrap()
+        .then_signal_fence_and_flush().unwrap();
 
    future.wait(None).unwrap();
 

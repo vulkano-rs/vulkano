@@ -16,6 +16,7 @@
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
@@ -106,7 +107,8 @@ void main() {
     //
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
-    let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
         .add_buffer(data_buffer.clone()).unwrap()
         .build().unwrap()
     );

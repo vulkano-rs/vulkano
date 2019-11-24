@@ -23,7 +23,6 @@ use descriptor::descriptor_set::UnsafeDescriptorPool;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::descriptor_set::persistent::*;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use image::ImageViewAccess;
@@ -36,33 +35,29 @@ use sampler::Sampler;
 ///
 /// # Example
 ///
-/// At initialization, create a `FixedSizeDescriptorSetsPool`. The first parameter of the `new`
-/// function can be a graphics pipeline, a compute pipeline, or anything that represents a pipeline
-/// layout.
+/// At initialization, create a `FixedSizeDescriptorSetsPool`.
 ///
 /// ```rust
 /// use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
+/// use vulkano::descriptor::pipeline_layout::PipelineLayoutAbstract;
 /// # use vulkano::pipeline::GraphicsPipelineAbstract;
 /// # use std::sync::Arc;
 /// # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
 /// // use vulkano::pipeline::GraphicsPipelineAbstract;
 /// // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
 ///
-/// let pool = FixedSizeDescriptorSetsPool::new(graphics_pipeline.clone(), 0);
+/// let layout = graphics_pipeline.descriptor_set_layout(0).unwrap();
+/// let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 /// ```
 ///
-/// You would then typically store the pool in a struct for later. Its type is
-/// `FixedSizeDescriptorSetsPool<T>` where `T` is the type of what was passed to `new()`. In the
-/// example above, it would be `FixedSizeDescriptorSetsPool<Arc<GraphicsPipelineAbstract>>`.
-///
-/// Then whenever you need a descriptor set, call `pool.next()` to start the process of building
-/// it.
+/// You would then typically store the pool in a struct for later. Then whenever you need a
+/// descriptor set, call `pool.next()` to start the process of building it.
 ///
 /// ```rust
 /// # use std::sync::Arc;
 /// # use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
 /// # use vulkano::pipeline::GraphicsPipelineAbstract;
-/// # let mut pool: FixedSizeDescriptorSetsPool<Arc<GraphicsPipelineAbstract>> = return;
+/// # let mut pool: FixedSizeDescriptorSetsPool = return;
 /// let descriptor_set = pool.next()
 ///     //.add_buffer(...)
 ///     //.add_sampled_image(...)
@@ -73,34 +68,22 @@ use sampler::Sampler;
 /// the pool if you can't provide this.
 ///
 #[derive(Clone)]
-pub struct FixedSizeDescriptorSetsPool<L> {
-    pipeline_layout: L,
-    set_id: usize,
-    set_layout: Arc<UnsafeDescriptorSetLayout>,
+pub struct FixedSizeDescriptorSetsPool {
+    layout: Arc<UnsafeDescriptorSetLayout>,
     // We hold a local implementation of the `DescriptorPool` trait for our own purpose. Since we
     // don't want to expose this trait impl in our API, we use a separate struct.
     pool: LocalPool,
 }
 
-impl<L> FixedSizeDescriptorSetsPool<L> {
+impl FixedSizeDescriptorSetsPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    pub fn new(layout: L, set_id: usize) -> FixedSizeDescriptorSetsPool<L>
-        where L: PipelineLayoutAbstract
+    pub fn new(layout: Arc<UnsafeDescriptorSetLayout>) -> FixedSizeDescriptorSetsPool
     {
-        assert!(layout.num_sets() > set_id);
-
         let device = layout.device().clone();
 
-        let set_layout = layout
-            .descriptor_set_layout(set_id)
-            .expect("Unable to get the descriptor set layout")
-            .clone();
-
         FixedSizeDescriptorSetsPool {
-            pipeline_layout: layout,
-            set_id,
-            set_layout,
+            layout,
             pool: LocalPool {
                 device: device,
                 next_capacity: 3,
@@ -113,10 +96,9 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
     ///
     /// The set will corresponds to the set layout that was passed to `new`.
     #[inline]
-    pub fn next(&mut self) -> FixedSizeDescriptorSetBuilder<L, ()>
-        where L: PipelineLayoutAbstract + Clone
+    pub fn next(&mut self) -> FixedSizeDescriptorSetBuilder<()>
     {
-        let inner = PersistentDescriptorSet::start(self.pipeline_layout.clone(), self.set_id);
+        let inner = PersistentDescriptorSet::start(self.layout.clone());
 
         FixedSizeDescriptorSetBuilder {
             pool: self,
@@ -126,13 +108,12 @@ impl<L> FixedSizeDescriptorSetsPool<L> {
 }
 
 /// A descriptor set created from a `FixedSizeDescriptorSetsPool`.
-pub struct FixedSizeDescriptorSet<L, R> {
-    inner: PersistentDescriptorSet<L, R, LocalPoolAlloc>,
+pub struct FixedSizeDescriptorSet<R> {
+    inner: PersistentDescriptorSet<R, LocalPoolAlloc>,
 }
 
-unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
-    where L: PipelineLayoutAbstract,
-          R: PersistentDescriptorSetResources
+unsafe impl<R> DescriptorSet for FixedSizeDescriptorSet<R>
+    where R: PersistentDescriptorSetResources
 {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
@@ -160,8 +141,7 @@ unsafe impl<L, R> DescriptorSet for FixedSizeDescriptorSet<L, R>
     }
 }
 
-unsafe impl<L, R> DescriptorSetDesc for FixedSizeDescriptorSet<L, R>
-    where L: PipelineLayoutAbstract
+unsafe impl<R> DescriptorSetDesc for FixedSizeDescriptorSet<R>
 {
     #[inline]
     fn num_bindings(&self) -> usize {
@@ -174,8 +154,7 @@ unsafe impl<L, R> DescriptorSetDesc for FixedSizeDescriptorSet<L, R>
     }
 }
 
-unsafe impl<L, R> DeviceOwned for FixedSizeDescriptorSet<L, R>
-    where L: DeviceOwned
+unsafe impl<R> DeviceOwned for FixedSizeDescriptorSet<R>
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -300,21 +279,19 @@ impl Drop for LocalPoolAlloc {
 
 /// Prototype of a `FixedSizeDescriptorSet`.
 ///
-/// The template parameter `L` is the pipeline layout to use, and the template parameter `R` is
-/// an unspecified type that represents the list of resources.
+/// The template parameter `R` is an unspecified type that represents the list of resources.
 ///
 /// See the docs of `FixedSizeDescriptorSetsPool` for an example.
-pub struct FixedSizeDescriptorSetBuilder<'a, L: 'a, R> {
-    pool: &'a mut FixedSizeDescriptorSetsPool<L>,
-    inner: PersistentDescriptorSetBuilder<L, R>,
+pub struct FixedSizeDescriptorSetBuilder<'a, R> {
+    pool: &'a mut FixedSizeDescriptorSetsPool,
+    inner: PersistentDescriptorSetBuilder<R>,
 }
 
-impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
-    where L: PipelineLayoutAbstract
+impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R>
 {
     /// Builds a `FixedSizeDescriptorSet` from the builder.
     #[inline]
-    pub fn build(self) -> Result<FixedSizeDescriptorSet<L, R>, PersistentDescriptorSetBuildError> {
+    pub fn build(self) -> Result<FixedSizeDescriptorSet<R>, PersistentDescriptorSetBuildError> {
         let inner = self.inner.build_with_pool(&mut self.pool.pool)?;
         Ok(FixedSizeDescriptorSet { inner: inner })
     }
@@ -329,7 +306,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     #[inline]
     pub fn enter_array(
         self)
-        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, R>, PersistentDescriptorSetError> {
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, R>, PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilderArray {
                pool: self.pool,
                inner: self.inner.enter_array()?,
@@ -340,7 +317,7 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     #[inline]
     pub fn add_empty(
         self)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, R>, PersistentDescriptorSetError> {
+        -> Result<FixedSizeDescriptorSetBuilder<'a, R>, PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilder {
                pool: self.pool,
                inner: self.inner.add_empty()?,
@@ -353,12 +330,11 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_buffer<T>(self, buffer: T)
                          -> Result<FixedSizeDescriptorSetBuilder<'a,
-                                                                 L,
                                                                  (R,
                                                                   PersistentDescriptorSetBuf<T>)>,
                                    PersistentDescriptorSetError>
@@ -376,10 +352,10 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer view doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer view doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_buffer_view<T>(self, view: T)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilder<'a, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
         where T: BufferViewRef
     {
         Ok(FixedSizeDescriptorSetBuilder {
@@ -394,12 +370,11 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image view doesn't have the same device as the pipeline layout.
+    /// Panics if the image view doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_image<T>(self, image_view: T)
                         -> Result<FixedSizeDescriptorSetBuilder<'a,
-                                                                L,
                                                                 (R, PersistentDescriptorSetImg<T>)>,
                                   PersistentDescriptorSetError>
         where T: ImageViewAccess
@@ -416,11 +391,11 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image view or the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the image view or the sampler doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_sampled_image<T>(self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilder<'a, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilder {
@@ -435,12 +410,11 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the sampler doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_sampler(self, sampler: Arc<Sampler>)
                        -> Result<FixedSizeDescriptorSetBuilder<'a,
-                                                               L,
                                                                (R, PersistentDescriptorSetSampler)>,
                                  PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilder {
@@ -451,18 +425,17 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilder<'a, L, R>
 }
 
 /// Same as `FixedSizeDescriptorSetBuilder`, but we're in an array.
-pub struct FixedSizeDescriptorSetBuilderArray<'a, L: 'a, R> {
-    pool: &'a mut FixedSizeDescriptorSetsPool<L>,
-    inner: PersistentDescriptorSetBuilderArray<L, R>,
+pub struct FixedSizeDescriptorSetBuilderArray<'a, R> {
+    pool: &'a mut FixedSizeDescriptorSetsPool,
+    inner: PersistentDescriptorSetBuilderArray<R>,
 }
 
-impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
-    where L: PipelineLayoutAbstract
+impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R>
 {
     /// Leaves the array. Call this once you added all the elements of the array.
     pub fn leave_array(
         self)
-        -> Result<FixedSizeDescriptorSetBuilder<'a, L, R>, PersistentDescriptorSetError> {
+        -> Result<FixedSizeDescriptorSetBuilder<'a, R>, PersistentDescriptorSetError> {
         Ok(FixedSizeDescriptorSetBuilder {
                pool: self.pool,
                inner: self.inner.leave_array()?,
@@ -475,10 +448,10 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_buffer<T>(self, buffer: T)
-        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, (R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
         where T: BufferAccess
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
@@ -493,10 +466,10 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer view doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer view doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_buffer_view<T>(self, view: T)
-        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
         where T: BufferViewRef
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
@@ -511,10 +484,10 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image view doesn't have the same device as the pipeline layout.
+    /// Panics if the image view doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_image<T>(self, image_view: T)
-        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
@@ -529,10 +502,10 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image or the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the image or the sampler doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_sampled_image<T>(self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
@@ -547,10 +520,10 @@ impl<'a, L, R> FixedSizeDescriptorSetBuilderArray<'a, L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the sampler doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_sampler(self, sampler: Arc<Sampler>)
-        -> Result<FixedSizeDescriptorSetBuilderArray<'a, L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
                pool: self.pool,

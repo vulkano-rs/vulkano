@@ -32,6 +32,7 @@ extern crate vulkano_win;
 
 use vulkano::buffer::{BufferUsage, CpuBufferPool};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, DrawIndirectCommand};
+use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
 use vulkano::image::SwapchainImage;
@@ -259,7 +260,8 @@ void main() {
         let vertices = vertex_pool.chunk((0..(6 * 16)).map(|_| Vertex{ position: [0.0;2] })).unwrap();
 
         // Pass the two buffers to the compute shader
-        let cs_desciptor_set = Arc::new(PersistentDescriptorSet::start(compute_pipeline.clone(), 0)
+        let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
+        let cs_desciptor_set = Arc::new(PersistentDescriptorSet::start(layout.clone())
             .add_buffer(vertices.clone()).unwrap()
             .add_buffer(indirect_args.clone()).unwrap()
             .build().unwrap()
