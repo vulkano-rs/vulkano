@@ -1259,6 +1259,28 @@ impl<P> AutoCommandBufferBuilder<P> {
         Ok(self)
     }
 
+    /// Adds a command that executes all the commands in a vector.
+    ///
+    /// **This function is unsafe for now because safety checks and synchronization are not
+    /// implemented.**
+    // TODO: implement correctly
+    pub unsafe fn execute_commands_from_vec<C>(mut self, command_buffers: Vec<C>)
+                                      -> Result<Self, ExecuteCommandsError>
+        where C: CommandBuffer + Send + Sync + 'static
+    {
+        {
+            let mut builder = self.inner.execute_commands();
+            for cmd_buffer in command_buffers {
+                builder.add(cmd_buffer);
+            }
+            builder.submit()?;
+        }
+
+        self.state_cacher.invalidate();
+
+        Ok(self)
+    }
+
     /// Adds a command that writes the content of a buffer.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
