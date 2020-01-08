@@ -161,6 +161,25 @@ instance_extensions! {
     khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
 }
 
+impl RawInstanceExtensions{
+
+    /*
+    Takes a Vector of CStrings and converts it into a RawInstanceExtensions object that represents all of the instance extensions in the Vector.
+    Notice, this function is unsafe because passing in non valid Vulkan Extension names will result in undefined behaviour.
+
+    This function should be use for easier integration with windowing api's such as glfw that provide required extensions based on platform through a function.
+    */
+    pub unsafe fn from_cstrings(strs:Vec<CString>) -> RawInstanceExtensions{
+        RawInstanceExtensions{0:RawInstanceExtensions::vec_to_set(strs)}
+    }
+
+    fn vec_to_set(vec: Vec<CString>) -> HashSet<CString> {
+        let mut victim = vec.clone();
+        let x: HashSet<CString> = victim.drain(..).collect();
+        return x;
+    }
+}
+
 /// This helper type can only be instantiated inside this module.
 /// See `*Extensions::_unbuildable`.
 #[doc(hidden)]
