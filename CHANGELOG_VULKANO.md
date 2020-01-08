@@ -1,5 +1,6 @@
 # Unreleased
 
+- Added RawInstanceExtensions::from_cstrings(Vec<CString>) - which allows for easier integration with windowing api's like glfw
 - Added Swapchain::surface() - which returns the saved surface
 - Added Swapchain::with_old_swapchain() - same as previous Swapchain::new(), if an oldswapchain needs to be used
 - Swapchain::new() now doesnt need to have the old_swapchain parameter anymore but requires the ColorSpace
