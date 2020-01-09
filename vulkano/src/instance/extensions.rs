@@ -160,7 +160,7 @@ instance_extensions! {
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
     khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
 }
-
+/*
 impl RawInstanceExtensions{
 
     /*
@@ -178,7 +178,7 @@ impl RawInstanceExtensions{
         let x: HashSet<CString> = victim.drain(..).collect();
         return x;
     }
-}
+}*/
 
 /// This helper type can only be instantiated inside this module.
 /// See `*Extensions::_unbuildable`.
