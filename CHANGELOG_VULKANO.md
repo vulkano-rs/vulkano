@@ -7,6 +7,7 @@
 - Add function `execute_commands_from_vec` to handle submission of multiple secondary command buffers.
 - Allow `DebugCallback` to be sent between threads
 - Decouple descriptor sets from pipeline
+- Pipeline barriers are now correctly inserted when a resource is used more than two times.
 
 # Version 0.16.0 (2019-11-01)
 

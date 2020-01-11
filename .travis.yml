@@ -3,16 +3,16 @@ language: rust
 jobs:
   fast_finish: true
   include:
-    - os: windows
-      env: PYTHONPATH=C:\Python38
-      env: PATH="C:\Python38;$PATH"
-      rust:
-        - stable
-    - os: windows
-      env: PYTHONPATH=C:\Python38
-      env: PATH="C:\Python38;$PATH"
-      rust:
-        - nightly
+#    - os: windows
+#      env: PYTHONPATH=C:\Python38
+#      env: PATH="C:\Python38;$PATH"
+#      rust:
+#        - stable
+#    - os: windows
+#      env: PYTHONPATH=C:\Python38
+#      env: PATH="C:\Python38;$PATH"
+#      rust:
+#        - nightly
     - os: linux
       dist: bionic
       rust:
