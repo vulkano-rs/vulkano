@@ -39,6 +39,7 @@ use sync::AccessError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
+use std::cell::RefCell;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///
@@ -237,7 +238,7 @@ struct BuilderKey<P> {
     // Same `Arc` as in the `SyncCommandBufferBuilder`.
     commands: Arc<Mutex<Commands<P>>>,
     // Index of the command that holds the resource within `commands`.
-    command_id: usize,
+    command_ids: RefCell<Vec<usize>>,
     // Type of the resource.
     resource_ty: KeyTy,
     // Index of the resource within the command.
@@ -251,7 +252,7 @@ impl<P> BuilderKey<P> {
                    -> CbKey<'static> {
         CbKey::Command {
             commands: final_commands,
-            command_id: self.command_id,
+            command_id: self.command_ids.borrow()[0],
             resource_ty: self.resource_ty,
             resource_index: self.resource_index,
         }
@@ -262,12 +263,16 @@ impl<P> BuilderKey<P> {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
-                let c = &commands_lock.commands[self.command_id];
-                c.buffer(self.resource_index).conflicts_buffer(buf)
+                self.command_ids.borrow().iter().any(|command_id| {
+                    let c = &commands_lock.commands[*command_id];
+                    c.buffer(self.resource_index).conflicts_buffer(buf)
+                })
             },
             KeyTy::Image => {
-                let c = &commands_lock.commands[self.command_id];
-                c.image(self.resource_index).conflicts_buffer(buf)
+                self.command_ids.borrow().iter().any(|command_id| {
+                    let c = &commands_lock.commands[*command_id];
+                    c.image(self.resource_index).conflicts_buffer(buf)
+                })
             },
         }
     }
@@ -277,12 +282,16 @@ impl<P> BuilderKey<P> {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => {
-                let c = &commands_lock.commands[self.command_id];
-                c.buffer(self.resource_index).conflicts_image(img)
+                self.command_ids.borrow().iter().any(|command_id| {
+                    let c = &commands_lock.commands[*command_id];
+                    c.buffer(self.resource_index).conflicts_image(img)
+                })
             },
             KeyTy::Image => {
-                let c = &commands_lock.commands[self.command_id];
-                c.image(self.resource_index).conflicts_image(img)
+                self.command_ids.borrow().iter().any(|command_id| {
+                    let c = &commands_lock.commands[*command_id];
+                    c.image(self.resource_index).conflicts_image(img)
+                })
             },
         }
     }
@@ -296,12 +305,16 @@ impl<P> PartialEq for BuilderKey<P> {
 
         match other.resource_ty {
             KeyTy::Buffer => {
-                let c = &commands_lock.commands[other.command_id];
-                self.conflicts_buffer(&commands_lock, c.buffer(other.resource_index))
+                other.command_ids.borrow().iter().any(|command_id| {
+                    let c = &commands_lock.commands[*command_id];
+                    self.conflicts_buffer(&commands_lock, c.buffer(other.resource_index))
+                })
             },
             KeyTy::Image => {
-                let c = &commands_lock.commands[other.command_id];
-                self.conflicts_image(&commands_lock, c.image(other.resource_index))
+                other.command_ids.borrow().iter().any(|command_id| {
+                    let c = &commands_lock.commands[*command_id];
+                    self.conflicts_image(&commands_lock, c.image(other.resource_index))
+                })
             },
         }
     }
@@ -317,11 +330,11 @@ impl<P> Hash for BuilderKey<P> {
 
         match self.resource_ty {
             KeyTy::Buffer => {
-                let c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_ids.borrow()[0]];
                 c.buffer(self.resource_index).conflict_key().hash(state)
             },
             KeyTy::Image => {
-                let c = &commands_lock.commands[self.command_id];
+                let c = &commands_lock.commands[self.command_ids.borrow()[0]];
                 c.image(self.resource_index).conflict_key().hash(state)
             },
         }
@@ -482,7 +495,7 @@ impl<P> SyncCommandBufferBuilder<P> {
 
         let key = BuilderKey {
             commands: self.commands.clone(),
-            command_id: latest_command_id,
+            command_ids: RefCell::new(vec![latest_command_id]),
             resource_ty,
             resource_index,
         };
@@ -495,22 +508,21 @@ impl<P> SyncCommandBufferBuilder<P> {
             Entry::Occupied(entry) => {
                 // `collision_cmd_id` contains the ID of the command that we are potentially
                 // colliding with.
-                let collision_cmd_id = entry.key().command_id;
-                debug_assert!(collision_cmd_id <= latest_command_id);
+                let collision_cmd_ids = entry.key().command_ids.borrow().clone();
+                debug_assert!(collision_cmd_ids.iter().all(|id| *id <= latest_command_id));
 
                 let entry_key_resource_index = entry.key().resource_index;
                 let entry_key_resource_ty = entry.key().resource_ty;
-                let entry = entry.into_mut();
 
                 // Find out if we have a collision with the pending commands.
-                if exclusive || entry.exclusive || entry.current_layout != start_layout {
+                if exclusive || entry.get().exclusive || entry.get().current_layout != start_layout {
                     // Collision found between `latest_command_id` and `collision_cmd_id`.
 
                     // We now want to modify the current pipeline barrier in order to handle the
                     // collision. But since the pipeline barrier is going to be submitted before
                     // the flushed commands, it would be a mistake if `collision_cmd_id` hasn't
                     // been flushed yet.
-                    if collision_cmd_id >= first_unflushed_cmd_id || entry.current_layout != start_layout {
+                    if collision_cmd_ids.iter().any(|command_id| *command_id >= first_unflushed_cmd_id) || entry.get().current_layout != start_layout {
                         unsafe {
                             // Flush the pending barrier.
                             self.inner.pipeline_barrier(&self.pending_barrier);
@@ -527,8 +539,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                                 } else {
                                     latest_command_id
                                 };
-                                if collision_cmd_id >= end {
-                                    let cmd1 = &commands_lock.commands[collision_cmd_id];
+
+                                if let Some(collision_cmd_id) = collision_cmd_ids.iter().find(|command_id| **command_id >= end) {
+                                    let cmd1 = &commands_lock.commands[*collision_cmd_id];
                                     let cmd2 = &commands_lock.commands[latest_command_id];
                                     return Err(SyncCommandBufferBuilderError::Conflict {
                                                    command1_name: cmd1.name(),
@@ -537,7 +550,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                                        KeyTy::Image =>
                                                            cmd1.image_name(entry_key_resource_index),
                                                    },
-                                                   command1_offset: collision_cmd_id,
+                                                   command1_offset: *collision_cmd_id,
 
                                                    command2_name: cmd2.name(),
                                                    command2_param: match resource_ty {
@@ -556,6 +569,9 @@ impl<P> SyncCommandBufferBuilder<P> {
                             }
                         }
                     }
+
+                    entry.key().command_ids.borrow_mut().push(latest_command_id);
+                    let entry = entry.into_mut();
 
                     // Modify the pipeline barrier to handle the collision.
                     unsafe {
@@ -613,6 +629,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                     // There is no collision. Simply merge the stages and accesses.
                     // TODO: what about simplifying the newly-constructed stages/accesses?
                     //       this would simplify the job of the driver, but is it worth it?
+                    let entry = entry.into_mut();
                     entry.stages = entry.stages | stages;
                     entry.access = entry.access | access;
                 }
@@ -728,7 +745,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                         continue;
                     }
 
-                    let img = commands_lock.commands[key.command_id].image(key.resource_index);
+                    let img = commands_lock.commands[key.command_ids.borrow()[0]].image(key.resource_index);
                     let requested_layout = img.final_layout_requirement();
                     if requested_layout == state.current_layout {
                         continue;
