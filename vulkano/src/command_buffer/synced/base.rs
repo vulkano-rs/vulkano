@@ -252,7 +252,7 @@ impl<P> BuilderKey<P> {
                    -> CbKey<'static> {
         CbKey::Command {
             commands: final_commands,
-            command_id: self.command_ids.borrow()[0],
+            command_ids: self.command_ids.borrow().clone(),
             resource_ty: self.resource_ty,
             resource_index: self.resource_index,
         }
@@ -891,7 +891,7 @@ enum CbKey<'a> {
         // Same `Arc` as in the `SyncCommandBufferBuilder`.
         commands: Arc<Mutex<Vec<Box<dyn FinalCommand + Send + Sync>>>>,
         // Index of the command that holds the resource within `commands`.
-        command_id: usize,
+        command_ids: Vec<usize>,
         // Type of the resource.
         resource_ty: KeyTy,
         // Index of the resource within the command.
@@ -925,7 +925,7 @@ impl<'a> CbKey<'a> {
         match *self {
             CbKey::Command {
                 ref commands,
-                command_id,
+                ref command_ids,
                 resource_ty,
                 resource_index,
             } => {
@@ -939,12 +939,16 @@ impl<'a> CbKey<'a> {
                 // TODO: put the conflicts_* methods directly on the FinalCommand trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let c = &commands_lock[command_id];
-                        c.buffer(resource_index).conflicts_buffer(buf)
+						command_ids.iter().any(|command_id| {
+							let c = &commands_lock[*command_id];
+							c.buffer(resource_index).conflicts_buffer(buf)
+						})
                     },
                     KeyTy::Image => {
-                        let c = &commands_lock[command_id];
-                        c.image(resource_index).conflicts_buffer(buf)
+						command_ids.iter().any(|command_id| {
+							let c = &commands_lock[*command_id];
+							c.image(resource_index).conflicts_buffer(buf)
+						})
                     },
                 }
             },
@@ -961,7 +965,7 @@ impl<'a> CbKey<'a> {
         match *self {
             CbKey::Command {
                 ref commands,
-                command_id,
+                ref command_ids,
                 resource_ty,
                 resource_index,
             } => {
@@ -975,12 +979,16 @@ impl<'a> CbKey<'a> {
                 // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let c = &commands_lock[command_id];
-                        c.buffer(resource_index).conflicts_image(img)
+						command_ids.iter().any(|command_id| {
+							let c = &commands_lock[*command_id];
+							c.buffer(resource_index).conflicts_image(img)
+						})
                     },
                     KeyTy::Image => {
-                        let c = &commands_lock[command_id];
-                        c.image(resource_index).conflicts_image(img)
+						command_ids.iter().any(|command_id| {
+							let c = &commands_lock[*command_id];
+							c.image(resource_index).conflicts_image(img)
+						})
                     },
                 }
             },
@@ -1003,7 +1011,7 @@ impl<'a> PartialEq for CbKey<'a> {
             },
             CbKey::Command {
                 ref commands,
-                command_id,
+                ref command_ids,
                 resource_ty,
                 resource_index,
             } => {
@@ -1011,12 +1019,16 @@ impl<'a> PartialEq for CbKey<'a> {
 
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let c = &commands_lock[command_id];
-                        other.conflicts_buffer(Some(&commands_lock), c.buffer(resource_index))
+						command_ids.iter().any(|command_id| {
+							let c = &commands_lock[*command_id];
+							other.conflicts_buffer(Some(&commands_lock), c.buffer(resource_index))
+						})
                     },
                     KeyTy::Image => {
-                        let c = &commands_lock[command_id];
-                        other.conflicts_image(Some(&commands_lock), c.image(resource_index))
+						command_ids.iter().any(|command_id| {
+							let c = &commands_lock[*command_id];
+							other.conflicts_image(Some(&commands_lock), c.image(resource_index))
+						})
                     },
                 }
             },
@@ -1033,7 +1045,7 @@ impl<'a> Hash for CbKey<'a> {
         match *self {
             CbKey::Command {
                 ref commands,
-                command_id,
+                ref command_ids,
                 resource_ty,
                 resource_index,
             } => {
@@ -1041,11 +1053,11 @@ impl<'a> Hash for CbKey<'a> {
 
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let c = &commands_lock[command_id];
+                        let c = &commands_lock[command_ids[0]];
                         c.buffer(resource_index).conflict_key().hash(state)
                     },
                     KeyTy::Image => {
-                        let c = &commands_lock[command_id];
+                        let c = &commands_lock[command_ids[0]];
                         c.image(resource_index).conflict_key().hash(state)
                     },
                 }
@@ -1081,21 +1093,21 @@ impl<P> SyncCommandBuffer<P> {
         // Try locking resources. Updates `locked_resources` and `ret_value`, and break if an error
         // happens.
         for (key, entry) in self.resources.iter() {
-            let (command_id, resource_ty, resource_index) = match *key {
+            let (command_ids, resource_ty, resource_index) = match *key {
                 CbKey::Command {
-                    command_id,
+                    ref command_ids,
                     resource_ty,
                     resource_index,
                     ..
                 } => {
-                    (command_id, resource_ty, resource_index)
+                    (command_ids, resource_ty, resource_index)
                 },
                 _ => unreachable!(),
             };
 
             match resource_ty {
                 KeyTy::Buffer => {
-                    let cmd = &commands_lock[command_id];
+                    let cmd = &commands_lock[command_ids[0]];
                     let buf = cmd.buffer(resource_index);
 
                     // Because try_gpu_lock needs to be called first,
@@ -1119,7 +1131,7 @@ impl<P> SyncCommandBuffer<P> {
                                                 error: err,
                                                 command_name: cmd.name().into(),
                                                 command_param: cmd.buffer_name(resource_index),
-                                                command_offset: command_id,
+                                                command_offset: command_ids[0],
                                             });
                             break;
                         },
@@ -1129,7 +1141,7 @@ impl<P> SyncCommandBuffer<P> {
                 },
 
                 KeyTy::Image => {
-                    let cmd = &commands_lock[command_id];
+                    let cmd = &commands_lock[command_ids[0]];
                     let img = cmd.image(resource_index);
 
                     let prev_err = match future.check_image_access(img, entry.initial_layout,
@@ -1151,7 +1163,7 @@ impl<P> SyncCommandBuffer<P> {
                                                 error: err,
                                                 command_name: cmd.name().into(),
                                                 command_param: cmd.image_name(resource_index),
-                                                command_offset: command_id,
+                                                command_offset: command_ids[0],
                                             });
                             break;
                         },
@@ -1165,21 +1177,21 @@ impl<P> SyncCommandBuffer<P> {
         // If we are going to return an error, we have to unlock all the resources we locked above.
         if let Err(_) = ret_value {
             for key in self.resources.keys().take(locked_resources) {
-                let (command_id, resource_ty, resource_index) = match *key {
+                let (command_ids, resource_ty, resource_index) = match *key {
                     CbKey::Command {
-                        command_id,
+                        ref command_ids,
                         resource_ty,
                         resource_index,
                         ..
                     } => {
-                        (command_id, resource_ty, resource_index)
+                        (command_ids, resource_ty, resource_index)
                     },
                     _ => unreachable!(),
                 };
 
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let cmd = &commands_lock[command_id];
+                        let cmd = &commands_lock[command_ids[0]];
                         let buf = cmd.buffer(resource_index);
                         unsafe {
                             buf.unlock();
@@ -1187,7 +1199,7 @@ impl<P> SyncCommandBuffer<P> {
                     },
 
                     KeyTy::Image => {
-                        let cmd = &commands_lock[command_id];
+                        let cmd = &commands_lock[command_ids[0]];
                         let img = cmd.image(resource_index);
                         unsafe {
                             img.unlock(None);
@@ -1214,26 +1226,26 @@ impl<P> SyncCommandBuffer<P> {
         let commands_lock = self.commands.lock().unwrap();
 
         for (key, val) in self.resources.iter() {
-            let (command_id, resource_ty, resource_index) = match *key {
+            let (command_ids, resource_ty, resource_index) = match *key {
                 CbKey::Command {
-                    command_id,
+                    ref command_ids,
                     resource_ty,
                     resource_index,
                     ..
                 } => {
-                    (command_id, resource_ty, resource_index)
+                    (command_ids, resource_ty, resource_index)
                 },
                 _ => unreachable!(),
             };
 
             match resource_ty {
                 KeyTy::Buffer => {
-                    let cmd = &commands_lock[command_id];
+                    let cmd = &commands_lock[command_ids[0]];
                     let buf = cmd.buffer(resource_index);
                     buf.unlock();
                 },
                 KeyTy::Image => {
-                    let cmd = &commands_lock[command_id];
+                    let cmd = &commands_lock[command_ids[0]];
                     let img = cmd.image(resource_index);
                     let trans = if val.final_layout != val.initial_layout {
                         Some(val.final_layout)
