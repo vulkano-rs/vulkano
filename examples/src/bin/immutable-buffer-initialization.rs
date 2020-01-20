@@ -1,4 +1,4 @@
-// Copyright (c) 2017 The vulkano developers
+// Copyright (c) 2019 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT
