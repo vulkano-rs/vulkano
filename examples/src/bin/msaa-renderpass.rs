@@ -72,7 +72,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, Subpass};
 use vulkano::image::{AttachmentImage, Dimensions, StorageImage};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
+use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::sync::GpuFuture;
@@ -83,7 +83,8 @@ use std::io::BufWriter;
 
 fn main() {
     // The usual Vulkan initialization.
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let required_extensions = vulkano_win::required_extensions();
+    let instance = Instance::new(None, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical.queue_families().find(|&q| q.supports_graphics()).unwrap();
     let (device, mut queues) = Device::new(physical, physical.supported_features(),
@@ -153,27 +154,28 @@ fn main() {
         vulkano_shaders::shader!{
             ty: "vertex",
             src: "
-#version 450
+                #version 450
 
-layout(location = 0) in vec2 position;
+                layout(location = 0) in vec2 position;
 
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}"
-        }
-    }
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }"
+                        }
+                    }
 
-    mod fs {
-        vulkano_shaders::shader!{
-            ty: "fragment",
-            src: "
-#version 450
+                    mod fs {
+                        vulkano_shaders::shader!{
+                            ty: "fragment",
+                            src: "
+                #version 450
 
-layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}"
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            "
         }
     }
 
@@ -234,11 +236,11 @@ void main() {
 
     let buffer_content = buf.read().unwrap();
     let path = Path::new("triangle.png");
-	let file = File::create(path).unwrap();
-	let ref mut w = BufWriter::new(file);
-	let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
-	encoder.set_color(png::ColorType::RGBA);
-	encoder.set_depth(png::BitDepth::Eight);
-	let mut writer = encoder.write_header().unwrap();
-	writer.write_image_data(&buffer_content).unwrap();
+    let file = File::create(path).unwrap();
+    let ref mut w = BufWriter::new(file);
+    let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
+    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(&buffer_content).unwrap();
 }

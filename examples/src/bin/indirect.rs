@@ -46,8 +46,9 @@ use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
 
 use vulkano_win::VkSurfaceBuild;
-
-use winit::{EventsLoop, Window, WindowBuilder, Event, WindowEvent};
+use winit::window::{WindowBuilder, Window};
+use winit::event_loop::{EventLoop, ControlFlow};
+use winit::event::{Event, WindowEvent};
 
 use std::sync::Arc;
 use std::iter;
@@ -61,18 +62,13 @@ struct Vertex {
 impl_vertex!(Vertex, position);
 
 fn main() {
-    let instance = {
-        let extensions = vulkano_win::required_extensions();
-        Instance::new(None, &extensions, None).unwrap()
-    };
-
+    let required_extensions = vulkano_win::required_extensions();
+    let instance = Instance::new(None, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
 
-
-    let mut events_loop = EventsLoop::new();
-    let surface = WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-    let window = surface.window();
+    let event_loop = EventLoop::new();
+    let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
 
     let queue_family = physical.queue_families().find(|&q| {
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
@@ -89,15 +85,10 @@ fn main() {
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
-        let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
-            let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-            [dimensions.0, dimensions.1]
-        } else {
-            return;
-        };
+        let dimensions: [u32; 2] = surface.window().inner_size().into();
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-            initial_dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
+            dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
             PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
@@ -105,14 +96,15 @@ fn main() {
         vulkano_shaders::shader!{
             ty: "vertex",
             src: "
-#version 450
+                #version 450
 
-// The triangle vertex positions.
-layout(location = 0) in vec2 position;
+                // The triangle vertex positions.
+                layout(location = 0) in vec2 position;
 
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}"
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }
+            "
         }
     }
 
@@ -120,14 +112,14 @@ void main() {
         vulkano_shaders::shader!{
             ty: "fragment",
             src: "
-#version 450
+                #version 450
 
-layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}
-"
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            "
         }
     }
 
@@ -137,38 +129,38 @@ void main() {
         vulkano_shaders::shader! {
             ty: "compute",
             src: "
-#version 450
+                #version 450
 
-layout(local_size_x = 16, local_size_y = 1, local_size_z = 1) in;
+                layout(local_size_x = 16, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Output {
-    vec2 pos[];
-} triangles;
+                layout(set = 0, binding = 0) buffer Output {
+                    vec2 pos[];
+                } triangles;
 
-layout(set = 0, binding = 1) buffer IndirectDrawArgs {
-    uint vertices;
-    uint unused0;
-    uint unused1;
-    uint unused2;
-};
+                layout(set = 0, binding = 1) buffer IndirectDrawArgs {
+                    uint vertices;
+                    uint unused0;
+                    uint unused1;
+                    uint unused2;
+                };
 
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
+                void main() {
+                    uint idx = gl_GlobalInvocationID.x;
 
-    // each thread of compute shader is going to increment the counter, so we need to use atomic
-    // operations for safety. The previous value of the counter is returned so that gives us
-    // the offset into the vertex buffer this thread can write it's vertices into.
-    uint offset = atomicAdd(vertices, 6);
+                    // each thread of compute shader is going to increment the counter, so we need to use atomic
+                    // operations for safety. The previous value of the counter is returned so that gives us
+                    // the offset into the vertex buffer this thread can write it's vertices into.
+                    uint offset = atomicAdd(vertices, 6);
 
-    vec2 center = vec2(-0.8, -0.8) + idx * vec2(0.1, 0.1);
-    triangles.pos[offset + 0] = center + vec2(0.0, 0.0375);
-    triangles.pos[offset + 1] = center + vec2(0.025, -0.01725);
-    triangles.pos[offset + 2] = center + vec2(-0.025, -0.01725);
-    triangles.pos[offset + 3] = center + vec2(0.0, -0.0375);
-    triangles.pos[offset + 4] = center + vec2(0.025, 0.01725);
-    triangles.pos[offset + 5] = center + vec2(-0.025, 0.01725);
-}
-"
+                    vec2 center = vec2(-0.8, -0.8) + idx * vec2(0.1, 0.1);
+                    triangles.pos[offset + 0] = center + vec2(0.0, 0.0375);
+                    triangles.pos[offset + 1] = center + vec2(0.025, -0.01725);
+                    triangles.pos[offset + 2] = center + vec2(-0.025, -0.01725);
+                    triangles.pos[offset + 3] = center + vec2(0.0, -0.0375);
+                    triangles.pos[offset + 4] = center + vec2(0.025, 0.01725);
+                    triangles.pos[offset + 5] = center + vec2(-0.025, 0.01725);
+                }
+            "
         }
     }
 
@@ -212,114 +204,110 @@ void main() {
     let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
+    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
-    loop {
-        previous_frame_end.cleanup_finished();
-
-        if recreate_swapchain {
-            let dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-                [dimensions.0, dimensions.1]
-            } else {
-                return;
-            };
-            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
-                Ok(r) => r,
-                Err(SwapchainCreationError::UnsupportedDimensions) => continue,
-                Err(err) => panic!("{:?}", err)
-            };
-            swapchain = new_swapchain;
-            framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
-            recreate_swapchain = false;
-        }
-
-        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
-            Ok(r) => r,
-            Err(AcquireError::OutOfDate) => {
-                recreate_swapchain = true;
-                continue;
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+                *control_flow = ControlFlow::Exit;
             },
-            Err(err) => panic!("{:?}", err)
-        };
-
-        let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
-
-        // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
-        // shader will only update vertex_count, so set the other parameters correctly here.
-        let indirect_args = indirect_args_pool.chunk(iter::once(
-            DrawIndirectCommand{
-                vertex_count: 0,
-                instance_count: 1,
-                first_vertex: 0,
-                first_instance: 0,
-            })).unwrap();
-
-        // Allocate a GPU buffer to hold this frames vertices. This needs to be large enough to hold
-        // the worst case number of vertices generated by the compute shader
-        let vertices = vertex_pool.chunk((0..(6 * 16)).map(|_| Vertex{ position: [0.0;2] })).unwrap();
-
-        // Pass the two buffers to the compute shader
-        let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
-        let cs_desciptor_set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-            .add_buffer(vertices.clone()).unwrap()
-            .add_buffer(indirect_args.clone()).unwrap()
-            .build().unwrap()
-        );
-
-        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-            // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
-            // call arguments
-            .dispatch([1,1,1], compute_pipeline.clone(), cs_desciptor_set.clone(), ())
-            .unwrap()
-            .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
-            .unwrap()
-            // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
-            // contain the arguments when the draw is executed on the GPU
-            .draw_indirect(
-                render_pipeline.clone(),
-                &dynamic_state,
-                vertices.clone(),
-                indirect_args.clone(),
-                (),
-                ()
-            )
-            .unwrap()
-            .end_render_pass()
-            .unwrap()
-            .build().unwrap();
-
-        let future = previous_frame_end.join(acquire_future)
-            .then_execute(queue.clone(), command_buffer).unwrap()
-            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence_and_flush();
-
-        match future {
-            Ok(future) => {
-                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
-                future.wait(None).unwrap();
-                previous_frame_end = Box::new(future) as Box<_>;
-            }
-            Err(FlushError::OutOfDate) => {
+            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
-            }
-            Err(e) => {
-                println!("{:?}", e);
-                previous_frame_end = Box::new(sync::now(device.clone())) as Box<_>;
-            }
-        }
+            },
+            Event::RedrawEventsCleared => {
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-        let mut done = false;
-        events_loop.poll_events(|ev| {
-            match ev {
-                Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => done = true,
-                Event::WindowEvent { event: WindowEvent::Resized(_), .. } => recreate_swapchain = true,
-                _ => ()
-            }
-        });
-        if done { return; }
-    }
+                if recreate_swapchain {
+                    let dimensions: [u32; 2] = surface.window().inner_size().into();
+                    let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
+                        Ok(r) => r,
+                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
+                    };
+
+                    swapchain = new_swapchain;
+                    framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
+                    recreate_swapchain = false;
+                }
+
+                let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+                    Ok(r) => r,
+                    Err(AcquireError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        return;
+                    },
+                    Err(e) => panic!("Failed to acquire next image: {:?}", e)
+                };
+
+                let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
+
+                // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
+                // shader will only update vertex_count, so set the other parameters correctly here.
+                let indirect_args = indirect_args_pool.chunk(iter::once(
+                    DrawIndirectCommand{
+                        vertex_count: 0,
+                        instance_count: 1,
+                        first_vertex: 0,
+                        first_instance: 0,
+                    })).unwrap();
+
+                // Allocate a GPU buffer to hold this frames vertices. This needs to be large enough to hold
+                // the worst case number of vertices generated by the compute shader
+                let vertices = vertex_pool.chunk((0..(6 * 16)).map(|_| Vertex{ position: [0.0;2] })).unwrap();
+
+                // Pass the two buffers to the compute shader
+                let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
+                let cs_desciptor_set = Arc::new(PersistentDescriptorSet::start(layout.clone())
+                    .add_buffer(vertices.clone()).unwrap()
+                    .add_buffer(indirect_args.clone()).unwrap()
+                    .build().unwrap()
+                );
+
+                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
+                    // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
+                    // call arguments
+                    .dispatch([1,1,1], compute_pipeline.clone(), cs_desciptor_set.clone(), ())
+                    .unwrap()
+                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                    .unwrap()
+                    // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
+                    // contain the arguments when the draw is executed on the GPU
+                    .draw_indirect(
+                        render_pipeline.clone(),
+                        &dynamic_state,
+                        vertices.clone(),
+                        indirect_args.clone(),
+                        (),
+                        ()
+                    )
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap()
+                    .build().unwrap();
+
+                let future = previous_frame_end.take().unwrap()
+                    .join(acquire_future)
+                    .then_execute(queue.clone(), command_buffer).unwrap()
+                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                    .then_signal_fence_and_flush();
+
+                match future {
+                    Ok(future) => {
+                        previous_frame_end = Some(Box::new(future) as Box<_>);
+                    },
+                    Err(FlushError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    }
+                    Err(e) => {
+                        println!("Failed to flush future: {:?}", e);
+                        previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    }
+                }
+            },
+            _ => ()
+        }
+    });
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
