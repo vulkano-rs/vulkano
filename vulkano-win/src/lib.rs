@@ -126,7 +126,7 @@ impl From<WindowCreationError> for CreationError {
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::os::android::WindowExt;
+    use winit::platform::android::WindowExt;
     Surface::from_anativewindow(instance, win.borrow().get_native_window(), win)
 }
 
@@ -134,7 +134,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::os::unix::WindowExt;
+    use winit::platform::unix::WindowExt;
     match (
         win.borrow().get_wayland_display(),
         win.borrow().get_wayland_surface(),
@@ -180,7 +180,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::os::macos::WindowExt;
+    use winit::platform::macplatform::WindowExt;
 
     let wnd: cocoa_id = mem::transmute(win.borrow().get_nswindow());
 
