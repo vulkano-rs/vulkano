@@ -127,7 +127,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::platform::android::WindowExtAndroid;
-	
+
     Surface::from_anativewindow(instance, win.borrow().native_window(), win)
 }
 
@@ -136,7 +136,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::platform::unix::WindowExtUnix;
-	
+
     match (
         win.borrow().get_wayland_display(),
         win.borrow().get_wayland_surface(),
@@ -169,7 +169,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::platform::windows::WindowExtWindows;
-	
+
     Surface::from_hwnd(
         instance,
         ptr::null() as *const (), // FIXME
