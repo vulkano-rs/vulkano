@@ -138,8 +138,8 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     use winit::platform::unix::WindowExtUnix;
 
     match (
-        win.borrow().get_wayland_display(),
-        win.borrow().get_wayland_surface(),
+        win.borrow().wayland_display(),
+        win.borrow().wayland_surface(),
     ) {
         (Some(display), Some(surface)) => Surface::from_wayland(instance, display, surface, win),
         _ => {
