@@ -126,15 +126,17 @@ impl From<WindowCreationError> for CreationError {
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::android::WindowExt;
-    Surface::from_anativewindow(instance, win.borrow().get_native_window(), win)
+    use winit::platform::android::WindowExtAndroid;
+	
+    Surface::from_anativewindow(instance, win.borrow().native_window(), win)
 }
 
 #[cfg(all(unix, not(target_os = "android"), not(target_os = "macos")))]
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::unix::WindowExt;
+    use winit::platform::unix::WindowExtUnix;
+	
     match (
         win.borrow().get_wayland_display(),
         win.borrow().get_wayland_surface(),
@@ -146,15 +148,15 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
             if instance.loaded_extensions().khr_xlib_surface {
                 Surface::from_xlib(
                     instance,
-                    win.borrow().get_xlib_display().unwrap(),
-                    win.borrow().get_xlib_window().unwrap() as _,
+                    win.borrow().xlib_display().unwrap(),
+                    win.borrow().xlib_window().unwrap() as _,
                     win,
                 )
             } else {
                 Surface::from_xcb(
                     instance,
-                    win.borrow().get_xcb_connection().unwrap(),
-                    win.borrow().get_xlib_window().unwrap() as _,
+                    win.borrow().xcb_connection().unwrap(),
+                    win.borrow().xlib_window().unwrap() as _,
                     win,
                 )
             }
@@ -180,10 +182,9 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::macos::WindowExt;
+    use winit::platform::macos::WindowExtMacOS ;
 
-    let wnd: cocoa_id = mem::transmute(win.borrow().get_nswindow());
-
+    let wnd: cocoa_id = mem::transmute(win.borrow().nswindow());
     let layer = CoreAnimationLayer::new();
 
     layer.set_edge_antialiasing_mask(0);
@@ -196,7 +197,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     view.setLayer(mem::transmute(layer.as_ref())); // Bombs here with out of memory
     view.setWantsLayer(YES);
 
-    Surface::from_macos_moltenvk(instance, win.borrow().get_nsview() as *const (), win)
+    Surface::from_macos_moltenvk(instance, win.borrow().nsview() as *const (), win)
 }
 
 /// An alternative to `Borrow<T>` with the requirement that all calls to
