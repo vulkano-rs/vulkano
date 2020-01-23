@@ -180,7 +180,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
     instance: Arc<Instance>, win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    use winit::platform::macplatform::WindowExt;
+    use winit::platform::macos::WindowExt;
 
     let wnd: cocoa_id = mem::transmute(win.borrow().get_nswindow());
 
