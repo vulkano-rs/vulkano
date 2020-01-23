@@ -34,25 +34,26 @@ fn main() {
         vulkano_shaders::shader!{
             ty: "compute",
             src: "
-#version 450
+                #version 450
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-layout(constant_id = 0) const int multiple = 64;
-layout(constant_id = 1) const float addend = 64;
-layout(constant_id = 2) const bool enable = true;
-const vec2 foo = vec2(0, 0); // TODO: How do I hit Instruction::SpecConstantComposite
+                layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+                layout(constant_id = 0) const int multiple = 64;
+                layout(constant_id = 1) const float addend = 64;
+                layout(constant_id = 2) const bool enable = true;
+                const vec2 foo = vec2(0, 0); // TODO: How do I hit Instruction::SpecConstantComposite
 
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
+                layout(set = 0, binding = 0) buffer Data {
+                    uint data[];
+                } data;
 
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    if (enable) {
-        data.data[idx] *= multiple;
-        data.data[idx] += uint(addend);
-    }
-}"
+                void main() {
+                    uint idx = gl_GlobalInvocationID.x;
+                    if (enable) {
+                        data.data[idx] *= multiple;
+                        data.data[idx] += uint(addend);
+                    }
+                }
+            "
         }
     }
 

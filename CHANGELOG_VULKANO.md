@@ -8,6 +8,8 @@
 - Allow `DebugCallback` to be sent between threads
 - Decouple descriptor sets from pipeline
 - Pipeline barriers are now correctly inserted when a resource is used more than two times.
+- Update Winit to 0.20.0
+- Update MacOS dependency cocoa to 0.20
 
 # Version 0.16.0 (2019-11-01)
 
@@ -19,7 +21,6 @@
 - Shader includes now work on Windows.
 - **Breaking Change** Shader include directories passed to the `shader!` macro are now relative to the crates `Cargo.toml`
 - Add support for `VK_KHR_16bit_storage` and `VK_KHR_storage_buffer_storage_class` device extensions.
-- Update Winit to 0.20.0
 - Update dependencies: lazy_static, half, syn, quote & proc-macro2
 - Swapchain can now be recreated with dimensions of corresponding surface using `recreate()`.
 - Added `raw_loaded_extensions()` to `Instance` to allow querying of all extensions, not just known ones.

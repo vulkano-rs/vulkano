@@ -24,41 +24,46 @@ use vulkano::sync;
 use std::sync::Arc;
 
 fn main() {
-   let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
-   let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-   let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
-   let (device, mut queues) = Device::new(physical, physical.supported_features(),
-       &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
-   let queue = queues.next().unwrap();
+    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
+    let device_extensions = DeviceExtensions{
+        khr_storage_buffer_storage_class:true,
+        .. DeviceExtensions::none()
+    };
+    let (device, mut queues) = Device::new(physical, physical.supported_features(),
+        &device_extensions, [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let queue = queues.next().unwrap();
 
-   println!("Device initialized");
+    println!("Device initialized");
 
-   let pipeline = Arc::new({
-       mod cs {
-           vulkano_shaders::shader!{
-               ty: "compute",
-               // We declare what directories to search for when using the `#include <...>`
-               // syntax. Specified directories have descending priorities based on their order.
-               include: [ "src/bin/shader-include/standard-shaders" ],
-               src: "
-#version 450
-// Substitutes this line with the contents of the file `common.glsl` found in one of the standard
-// `include` directories specified above.
-// Note, that relative inclusion (`#include \"...\"`), although it falls back to standard
-// inclusion, should not be used for **embedded** shader source, as it may be misleading and/or
-// confusing.
-#include <common.glsl>
+    let pipeline = Arc::new({
+        mod cs {
+            vulkano_shaders::shader!{
+                ty: "compute",
+                // We declare what directories to search for when using the `#include <...>`
+                // syntax. Specified directories have descending priorities based on their order.
+                include: [ "src/bin/shader-include/standard-shaders" ],
+                src: "
+                    #version 450
+                    // Substitutes this line with the contents of the file `common.glsl` found in one of the standard
+                    // `include` directories specified above.
+                    // Note, that relative inclusion (`#include \"...\"`), although it falls back to standard
+                    // inclusion, should not be used for **embedded** shader source, as it may be misleading and/or
+                    // confusing.
+                    #include <common.glsl>
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+                    layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Data {
-   uint data[];
-} data;
+                    layout(set = 0, binding = 0) buffer Data {
+                       uint data[];
+                    } data;
 
-void main() {
-   uint idx = gl_GlobalInvocationID.x;
-   data.data[idx] = multiply_by_12(data.data[idx]);
-}"
+                    void main() {
+                       uint idx = gl_GlobalInvocationID.x;
+                       data.data[idx] = multiply_by_12(data.data[idx]);
+                    }
+                "
            }
        }
        let shader = cs::Shader::load(device.clone()).unwrap();
