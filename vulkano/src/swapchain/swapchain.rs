@@ -415,7 +415,7 @@ impl <W> Swapchain<W> {
 
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing {
-                SharingMode::Exclusive(_) => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
+                SharingMode::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
                 SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT,
                                                      ids.len() as u32,
                                                      ids.as_ptr()),

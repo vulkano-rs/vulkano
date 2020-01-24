@@ -109,6 +109,7 @@ use std::sync::Arc;
 pub use self::event::Event;
 pub use self::fence::Fence;
 pub use self::fence::FenceWaitError;
+pub use self::future::now;
 pub use self::future::AccessCheckError;
 pub use self::future::AccessError;
 pub use self::future::FenceSignalFuture;
@@ -117,7 +118,6 @@ pub use self::future::GpuFuture;
 pub use self::future::JoinFuture;
 pub use self::future::NowFuture;
 pub use self::future::SemaphoreSignalFuture;
-pub use self::future::now;
 pub use self::pipeline::AccessFlagBits;
 pub use self::pipeline::PipelineStages;
 pub use self::semaphore::Semaphore;
@@ -137,7 +137,7 @@ mod semaphore;
 // TODO: remove
 pub enum SharingMode {
     /// The resource is used is only one queue family.
-    Exclusive(u32),
+    Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
     Concurrent(Vec<u32>), // TODO: Vec is too expensive here
 }
@@ -145,7 +145,7 @@ pub enum SharingMode {
 impl<'a> From<&'a Arc<Queue>> for SharingMode {
     #[inline]
     fn from(queue: &'a Arc<Queue>) -> SharingMode {
-        SharingMode::Exclusive(queue.family().id())
+        SharingMode::Exclusive
     }
 }
 
@@ -159,7 +159,8 @@ impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
 /// Declares in which queue(s) a resource can be used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sharing<I>
-    where I: Iterator<Item = u32>
+where
+    I: Iterator<Item = u32>,
 {
     /// The resource is used is only one queue family.
     Exclusive,
