@@ -14,8 +14,8 @@ use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
 use winit::window::Window;
 use winit::window::WindowBuilder;
-use winit::event_loop::EventLoop;
 use winit::error::OsError as WindowCreationError;
+use winit::event_loop::EventLoopWindowTarget;
 
 #[cfg(target_os = "macos")]
 use cocoa::appkit::{NSView, NSWindow};
@@ -61,13 +61,13 @@ where
 
 pub trait VkSurfaceBuild<E> {
     fn build_vk_surface(
-        self, event_loop: &EventLoop<E>, instance: Arc<Instance>,
+        self, event_loop: &EventLoopWindowTarget<E>, instance: Arc<Instance>,
     ) -> Result<Arc<Surface<Window>>, CreationError>;
 }
 
 impl<E> VkSurfaceBuild<E> for WindowBuilder {
     fn build_vk_surface(
-        self, event_loop: &EventLoop<E>, instance: Arc<Instance>,
+        self, event_loop: &EventLoopWindowTarget<E>, instance: Arc<Instance>,
     ) -> Result<Arc<Surface<Window>>, CreationError> {
         let window = self.build(event_loop)?;
         Ok(create_vk_surface(window, instance)?)
