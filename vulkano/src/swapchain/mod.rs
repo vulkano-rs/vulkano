@@ -177,7 +177,7 @@
 //!     .. ImageUsage::none()
 //! };
 //!
-//! let sharing_mode = SharingMode::Exclusive(present_queue.family().id());
+//! let sharing_mode = SharingMode::Exclusive;
 //!
 //! // Create the swapchain and its buffers.
 //! let (swapchain, buffers) = Swapchain::new(

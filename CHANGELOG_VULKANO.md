@@ -1,5 +1,6 @@
 # Unreleased
 
+- Sync::SharingMode::Exclusive(queue_family: u32) is now Sync::SharingMode::Exclusive.
 - Added Swapchain::surface() - which returns the saved surface
 - Added Swapchain::with_old_swapchain() - same as previous Swapchain::new(), if an oldswapchain needs to be used
 - Swapchain::new() now doesnt need to have the old_swapchain parameter anymore but requires the ColorSpace
