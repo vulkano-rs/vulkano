@@ -471,7 +471,7 @@ mod tests {
         let (buffer, _) = ImmutableBuffer::from_data(12u32, BufferUsage::all(), queue.clone())
             .unwrap();
 
-        let destination = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0)
+        let destination = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0)
             .unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
@@ -500,6 +500,7 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_iter(device.clone(),
                                                          BufferUsage::all(),
+                                                         false,
                                                          (0 .. 512).map(|_| 0u32))
             .unwrap();
 
@@ -551,7 +552,7 @@ mod tests {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         assert_should_panic!({
                                  // TODO: check Result error instead of panicking
@@ -577,7 +578,7 @@ mod tests {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
@@ -602,7 +603,7 @@ mod tests {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()

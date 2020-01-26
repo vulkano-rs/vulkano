@@ -96,7 +96,7 @@ mod tests {
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(), 0u32)
+            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(), false, 0u32)
                 .unwrap();
 
         match check_update_buffer(&device, &buffer, &0) {
@@ -110,6 +110,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
                                                     BufferUsage::transfer_destination(),
+                                                    false,
                                                     0 .. 65536)
             .unwrap();
         let data = (0 .. 65536).collect::<Vec<u32>>();
@@ -125,6 +126,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
                                                     BufferUsage::transfer_destination(),
+                                                    false,
                                                     (0 .. 100000).map(|_| 0))
             .unwrap();
         let data = (0 .. 65536).map(|_| 0).collect::<Vec<u8>>();
@@ -140,6 +142,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
                                                     BufferUsage::transfer_destination(),
+                                                    false,
                                                     0 .. 100)
             .unwrap();
         let data = (0 .. 30).collect::<Vec<u8>>();
@@ -154,7 +157,7 @@ mod tests {
     fn wrong_device() {
         let (dev1, queue) = gfx_dev_and_queue!();
         let (dev2, _) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), 0u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), false, 0u32).unwrap();
 
         assert_should_panic!({
                                  let _ = check_update_buffer(&dev2, &buffer, &0);

@@ -597,6 +597,6 @@ mod tests {
 
         const EMPTY: [i32; 0] = [];
 
-        let _ = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), EMPTY.iter());
+        let _ = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, EMPTY.iter());
     }
 }

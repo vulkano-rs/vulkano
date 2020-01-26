@@ -96,6 +96,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
                                                     BufferUsage::index_buffer(),
+                                                    false,
                                                     0 .. 500u32)
             .unwrap();
 
@@ -112,6 +113,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
                                                     BufferUsage::vertex_buffer(),
+                                                    false,
                                                     0 .. 500u32)
             .unwrap();
 
@@ -126,7 +128,7 @@ mod tests {
         let (dev1, queue) = gfx_dev_and_queue!();
         let (dev2, _) = gfx_dev_and_queue!();
 
-        let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(), 0 .. 500u32).unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(), false, 0 .. 500u32).unwrap();
 
         assert_should_panic!({
                                  let _ = check_index_buffer(&dev2, &buffer);
