@@ -97,6 +97,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     {
         let source = CpuAccessibleBuffer::from_data(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
+                                                    false,
                                                     data)?;
         ImmutableBuffer::from_buffer(source, usage, queue)
     }
@@ -180,6 +181,7 @@ impl<T> ImmutableBuffer<[T]> {
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
+                                                    false,
                                                     data)?;
         ImmutableBuffer::from_buffer(source, usage, queue)
     }

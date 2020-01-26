@@ -59,6 +59,12 @@ use sync::AccessError;
 use sync::Sharing;
 
 /// Buffer whose content is accessible by the CPU.
+///
+/// Setting the `host_cached` field on the various initializers to `true` will make it so
+/// the `CpuAccessibleBuffer` perfers to allocate from host_cached memory. Host cached
+/// memory caches GPU data on the CPU side. This can be more performant in cases where
+/// the cpu needs to read data coming off the GPU.
+
 #[derive(Debug)]
 pub struct CpuAccessibleBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
@@ -94,13 +100,13 @@ enum CurrentGpuAccess {
 
 impl<T> CpuAccessibleBuffer<T> {
     /// Builds a new buffer with some data in it. Only allowed for sized data.
-    pub fn from_data(device: Arc<Device>, usage: BufferUsage, data: T)
+    pub fn from_data(device: Arc<Device>, usage: BufferUsage, host_cached: bool, data: T)
                      -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where T: Content + 'static
     {
         unsafe {
             let uninitialized =
-                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())?;
+                CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, host_cached, iter::empty())?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -117,23 +123,23 @@ impl<T> CpuAccessibleBuffer<T> {
 
     /// Builds a new uninitialized buffer. Only allowed for sized data.
     #[inline]
-    pub unsafe fn uninitialized(device: Arc<Device>, usage: BufferUsage)
+    pub unsafe fn uninitialized(device: Arc<Device>, usage: BufferUsage, host_cached: bool)
                                 -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError> {
-        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, iter::empty())
+        CpuAccessibleBuffer::raw(device, mem::size_of::<T>(), usage, host_cached, iter::empty())
     }
 }
 
 impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer that contains an array `T`. The initial data comes from an iterator
     /// that produces that list of Ts.
-    pub fn from_iter<I>(device: Arc<Device>, usage: BufferUsage, data: I)
+    pub fn from_iter<I>(device: Arc<Device>, usage: BufferUsage, host_cached: bool, data: I)
                         -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError>
         where I: ExactSizeIterator<Item = T>,
               T: Content + 'static
     {
         unsafe {
             let uninitialized =
-                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage)?;
+                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, host_cached)?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -154,9 +160,9 @@ impl<T> CpuAccessibleBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     #[inline]
     pub unsafe fn uninitialized_array(
-        device: Arc<Device>, len: usize, usage: BufferUsage)
+        device: Arc<Device>, len: usize, usage: BufferUsage, host_cached: bool)
         -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError> {
-        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, iter::empty())
+        CpuAccessibleBuffer::raw(device, len * mem::size_of::<T>(), usage, host_cached, iter::empty())
     }
 }
 
@@ -168,7 +174,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     /// You must ensure that the size that you pass is correct for `T`.
     ///
     pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
-                             queue_families: I)
+                             host_cached: bool, queue_families: I)
                              -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = QueueFamily<'a>>
     {
@@ -197,7 +203,19 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                                     AllocLayout::Linear,
                                     MappingRequirement::Map,
                                     DedicatedAlloc::Buffer(&buffer),
-                                    |_| AllocFromRequirementsFilter::Allowed)?;
+                                    |m| if m.is_host_cached() {
+                                        if host_cached {
+                                            AllocFromRequirementsFilter::Preferred
+                                        } else {
+                                            AllocFromRequirementsFilter::Allowed
+                                        }
+                                    } else {
+                                        if host_cached {
+                                            AllocFromRequirementsFilter::Allowed
+                                        } else {
+                                            AllocFromRequirementsFilter::Preferred
+                                        }
+                                    })?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         debug_assert!(mem.mapped_memory().is_some());
         buffer.bind_memory(mem.memory(), mem.offset())?;

@@ -11,6 +11,7 @@
 - Pipeline barriers are now correctly inserted when a resource is used more than two times.
 - Update Winit to 0.20.0
 - Update MacOS dependency cocoa to 0.20
+- Add `host_cached` field to all `CpuAccessibleBuffer` initializers to allow the user to perfer host cached memory.
 
 # Version 0.16.0 (2019-11-01)
 
