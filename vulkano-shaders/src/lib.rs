@@ -328,7 +328,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
             }
         })
-    }
+    };
 
     let include_paths = input.include_directories.iter().map(|include_directory| {
         let include_path = Path::new(include_directory);
