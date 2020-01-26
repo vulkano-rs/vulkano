@@ -337,6 +337,10 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         full_include_path
     }).collect::<Vec<_>>();
 
-    let content = codegen::compile(path, &root_path, &source_code, input.shader_kind, &include_paths, &input.macro_defines).unwrap();
+    let content = match codegen::compile(path, &root_path, &source_code, input.shader_kind, &include_paths, &input.macro_defines) {
+        Ok(ok) => ok,
+        Err(e) => panic!(e.replace("(s): ", "(s):\n"))
+    };
+
     codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
 }
