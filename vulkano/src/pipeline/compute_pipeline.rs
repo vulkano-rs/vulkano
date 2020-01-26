@@ -969,7 +969,7 @@ mod tests {
                                                      &SpecConsts { VALUE: 0x12345678 })
                                     .unwrap());
 
-        let data_buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0)
+        let data_buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0)
             .unwrap();
         let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
         let set = PersistentDescriptorSet::start(layout.clone())

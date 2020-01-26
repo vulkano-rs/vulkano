@@ -42,7 +42,7 @@ impl PointLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertex_buffer = {
-            CpuAccessibleBuffer::from_iter(gfx_queue.device().clone(), BufferUsage::all(), [
+            CpuAccessibleBuffer::from_iter(gfx_queue.device().clone(), BufferUsage::all(), false, [
                 Vertex { position: [-1.0, -1.0] },
                 Vertex { position: [-1.0, 3.0] },
                 Vertex { position: [3.0, -1.0] }

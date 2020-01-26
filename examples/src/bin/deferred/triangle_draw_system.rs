@@ -33,7 +33,7 @@ impl TriangleDrawSystem {
         where R: RenderPassAbstract + Send + Sync + 'static
     {
         let vertex_buffer = {
-            CpuAccessibleBuffer::from_iter(gfx_queue.device().clone(), BufferUsage::all(), [
+            CpuAccessibleBuffer::from_iter(gfx_queue.device().clone(), BufferUsage::all(), false, [
                 Vertex { position: [-0.5, -0.25] },
                 Vertex { position: [0.0, 0.5] },
                 Vertex { position: [0.25, -0.1] }

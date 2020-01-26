@@ -97,7 +97,7 @@ fn main() {
         // Iterator that produces the data.
         let data_iter = (0 .. 65536u32).map(|n| n);
         // Builds the buffer and fills it with this iterator.
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter).unwrap()
     };
 
     // In order to let the shader access the buffer, we need to build a *descriptor set* that

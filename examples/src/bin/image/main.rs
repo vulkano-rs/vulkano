@@ -75,6 +75,7 @@ fn main() {
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
         BufferUsage::all(),
+        false,
         [
             Vertex { position: [-0.5, -0.5 ] },
             Vertex { position: [-0.5,  0.5 ] },

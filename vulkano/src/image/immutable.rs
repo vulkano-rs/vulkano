@@ -201,6 +201,7 @@ impl<F> ImmutableImage<F> {
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
+                                                    false,
                                                     iter)?;
         ImmutableImage::from_buffer(source, dimensions, format, queue)
     }
