@@ -743,6 +743,13 @@ impl Queue {
     }
 }
 
+impl PartialEq for Queue {
+    fn eq(&self, other: &Self) -> bool {
+        self.is_same(other)
+    }
+}
+
+impl Eq for Queue { }
 
 unsafe impl DeviceOwned for Queue {
     fn device(&self) -> &Arc<Device> {

@@ -1100,6 +1100,14 @@ impl<'a> QueueFamily<'a> {
     }
 }
 
+impl<'a> PartialEq for QueueFamily<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.physical_device.internal_object() == other.physical_device.internal_object()
+    }
+}
+
+impl<'a> Eq for QueueFamily<'a> { }
+
 /// Iterator for all the queue families available on a physical device.
 #[derive(Debug, Clone)]
 pub struct QueueFamiliesIter<'a> {
