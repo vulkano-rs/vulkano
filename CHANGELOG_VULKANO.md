@@ -12,6 +12,8 @@
 - Update Winit to 0.20.0
 - Update MacOS dependency cocoa to 0.20
 - Add `host_cached` field to all `CpuAccessibleBuffer` initializers to allow the user to perfer host cached memory.
+- Propogate new lines correctly in shader compile errors.
+- `Queue` and `QueueFamily` now implement `PartialEq` and `Eq`
 
 # Version 0.16.0 (2019-11-01)
 
