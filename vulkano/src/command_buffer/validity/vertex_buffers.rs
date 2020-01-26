@@ -46,7 +46,7 @@ pub fn check_vertex_buffers<P, V>(pipeline: &P, vertex_buffers: V)
 /// Information returned if `check_vertex_buffer` succeeds.
 pub struct CheckVertexBuffer {
     /// The list of vertex buffers.
-    pub vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>,
+    pub vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>,
     /// Number of vertices available in the intersection of the buffers.
     pub vertex_count: u32,
     /// Number of instances available in the intersection of the buffers.

@@ -99,6 +99,7 @@ pub use self::traits::CommandBufferExecFuture;
 
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
+use pipeline::depth_stencil::DynamicStencilValue;
 
 pub mod pool;
 pub mod submit;
@@ -144,7 +145,10 @@ pub struct DynamicState {
     pub line_width: Option<f32>,
     pub viewports: Option<Vec<Viewport>>,
     pub scissors: Option<Vec<Scissor>>,
-    // TODO: missing fields
+    pub compare_mask: Option<DynamicStencilValue>,
+    pub write_mask: Option<DynamicStencilValue>,
+    pub reference: Option<DynamicStencilValue>,
+
 }
 
 impl DynamicState {
@@ -154,6 +158,9 @@ impl DynamicState {
             line_width: None,
             viewports: None,
             scissors: None,
+            compare_mask: None,
+            write_mask: None,
+            reference: None
         }
     }
 }

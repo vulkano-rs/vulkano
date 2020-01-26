@@ -438,12 +438,12 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.conflict_key() == other.conflict_key()
     }
 
@@ -497,6 +497,16 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
         let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_val >= 1);
     }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+       self.initialized.store(true, Ordering::SeqCst);
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+       self.initialized.load(Ordering::SeqCst)
+    }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>
@@ -521,7 +531,7 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
-    fn parent(&self) -> &ImageAccess {
+    fn parent(&self) -> &dyn ImageAccess {
         self
     }
 

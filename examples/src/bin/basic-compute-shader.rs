@@ -16,6 +16,7 @@
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
@@ -39,7 +40,8 @@ fn main() {
 
     // Now initializing the device.
     let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+        &DeviceExtensions{khr_storage_buffer_storage_class:true, ..DeviceExtensions::none()},
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
     // example we use only one queue, so we just retrieve the first and only element of the
@@ -71,18 +73,19 @@ fn main() {
             vulkano_shaders::shader!{
                 ty: "compute",
                 src: "
-#version 450
+                    #version 450
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+                    layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
+                    layout(set = 0, binding = 0) buffer Data {
+                        uint data[];
+                    } data;
 
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    data.data[idx] *= 12;
-}"
+                    void main() {
+                        uint idx = gl_GlobalInvocationID.x;
+                        data.data[idx] *= 12;
+                    }
+                "
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
@@ -105,7 +108,8 @@ void main() {
     //
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
-    let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
         .add_buffer(data_buffer.clone()).unwrap()
         .build().unwrap()
     );

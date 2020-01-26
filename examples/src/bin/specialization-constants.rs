@@ -12,6 +12,7 @@
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
@@ -25,32 +26,34 @@ fn main() {
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
     let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+        &DeviceExtensions { khr_storage_buffer_storage_class: true, ..DeviceExtensions::none() },
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
     let queue = queues.next().unwrap();
 
     mod cs {
         vulkano_shaders::shader!{
             ty: "compute",
             src: "
-#version 450
+                #version 450
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
-layout(constant_id = 0) const int multiple = 64;
-layout(constant_id = 1) const float addend = 64;
-layout(constant_id = 2) const bool enable = true;
-const vec2 foo = vec2(0, 0); // TODO: How do I hit Instruction::SpecConstantComposite
+                layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+                layout(constant_id = 0) const int multiple = 64;
+                layout(constant_id = 1) const float addend = 64;
+                layout(constant_id = 2) const bool enable = true;
+                const vec2 foo = vec2(0, 0); // TODO: How do I hit Instruction::SpecConstantComposite
 
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
+                layout(set = 0, binding = 0) buffer Data {
+                    uint data[];
+                } data;
 
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    if (enable) {
-        data.data[idx] *= multiple;
-        data.data[idx] += uint(addend);
-    }
-}"
+                void main() {
+                    uint idx = gl_GlobalInvocationID.x;
+                    if (enable) {
+                        data.data[idx] *= multiple;
+                        data.data[idx] += uint(addend);
+                    }
+                }
+            "
         }
     }
 
@@ -68,7 +71,8 @@ void main() {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
     };
 
-    let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
         .add_buffer(data_buffer.clone()).unwrap()
         .build().unwrap()
     );

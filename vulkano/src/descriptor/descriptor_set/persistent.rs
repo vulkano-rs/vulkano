@@ -29,7 +29,6 @@ use descriptor::descriptor_set::DescriptorWrite;
 use descriptor::descriptor_set::StdDescriptorPoolAlloc;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use format::Format;
@@ -54,31 +53,25 @@ use sampler::Sampler;
 ///
 /// # Example
 // TODO:
-pub struct PersistentDescriptorSet<L, R, P = StdDescriptorPoolAlloc> {
+pub struct PersistentDescriptorSet<R, P = StdDescriptorPoolAlloc> {
     inner: P,
     resources: R,
-    pipeline_layout: L,
-    set_id: usize,
     layout: Arc<UnsafeDescriptorSetLayout>,
 }
 
-impl<L> PersistentDescriptorSet<L, ()> {
+impl PersistentDescriptorSet<()> {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
     ///
     /// # Panic
     ///
     /// - Panics if the set id is out of range.
     ///
-    pub fn start(layout: L, set_id: usize) -> PersistentDescriptorSetBuilder<L, ()>
-        where L: PipelineLayoutAbstract
+    pub fn start(layout: Arc<UnsafeDescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()>
     {
-        assert!(layout.num_sets() > set_id);
-
-        let cap = layout.num_bindings_in_set(set_id).unwrap_or(0);
+        let cap = layout.num_bindings();
 
         PersistentDescriptorSetBuilder {
             layout: layout,
-            set_id: set_id,
             binding_id: 0,
             writes: Vec::with_capacity(cap),
             resources: (),
@@ -86,9 +79,8 @@ impl<L> PersistentDescriptorSet<L, ()> {
     }
 }
 
-unsafe impl<L, R, P> DescriptorSet for PersistentDescriptorSet<L, R, P>
-    where L: PipelineLayoutAbstract,
-          P: DescriptorPoolAlloc,
+unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P>
+    where P: DescriptorPoolAlloc,
           R: PersistentDescriptorSetResources
 {
     #[inline]
@@ -102,7 +94,7 @@ unsafe impl<L, R, P> DescriptorSet for PersistentDescriptorSet<L, R, P>
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.resources.buffer(index)
     }
 
@@ -112,29 +104,25 @@ unsafe impl<L, R, P> DescriptorSet for PersistentDescriptorSet<L, R, P>
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.resources.image(index)
     }
 }
 
-unsafe impl<L, R, P> DescriptorSetDesc for PersistentDescriptorSet<L, R, P>
-    where L: PipelineLayoutAbstract
+unsafe impl<R, P> DescriptorSetDesc for PersistentDescriptorSet<R, P>
 {
     #[inline]
     fn num_bindings(&self) -> usize {
-        self.pipeline_layout
-            .num_bindings_in_set(self.set_id)
-            .unwrap()
+        self.layout.num_bindings()
     }
 
     #[inline]
     fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        self.pipeline_layout.descriptor(self.set_id, binding)
+        self.layout.descriptor(binding)
     }
 }
 
-unsafe impl<L, R, P> DeviceOwned for PersistentDescriptorSet<L, R, P>
-    where L: DeviceOwned
+unsafe impl<R, P> DeviceOwned for PersistentDescriptorSet<R, P>
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -144,15 +132,12 @@ unsafe impl<L, R, P> DeviceOwned for PersistentDescriptorSet<L, R, P>
 
 /// Prototype of a `PersistentDescriptorSet`.
 ///
-/// The template parameter `L` is the pipeline layout to use, and the template parameter `R` is
-/// an unspecified type that represents the list of resources.
+/// The template parameter `R` is an unspecified type that represents the list of resources.
 ///
 /// See the docs of `PersistentDescriptorSet` for an example.
-pub struct PersistentDescriptorSetBuilder<L, R> {
-    // The pipeline layout.
-    layout: L,
-    // Id of the set within the pipeline layout.
-    set_id: usize,
+pub struct PersistentDescriptorSetBuilder<R> {
+    // The descriptor set layout.
+    layout: Arc<UnsafeDescriptorSetLayout>,
     // Binding currently being filled.
     binding_id: usize,
     // The writes to perform on a descriptor set in order to put the resources in it.
@@ -164,13 +149,12 @@ pub struct PersistentDescriptorSetBuilder<L, R> {
 // TODO: lots of checks are still missing, see the docs of
 //       VkDescriptorImageInfo and VkWriteDescriptorSet
 
-impl<L, R> PersistentDescriptorSetBuilder<L, R>
-    where L: PipelineLayoutAbstract
+impl<R> PersistentDescriptorSetBuilder<R>
 {
     /// Builds a `PersistentDescriptorSet` from the builder.
     #[inline]
     pub fn build(self)
-                 -> Result<PersistentDescriptorSet<L, R, StdDescriptorPoolAlloc>,
+                 -> Result<PersistentDescriptorSet<R, StdDescriptorPoolAlloc>,
                            PersistentDescriptorSetBuildError> {
         let mut pool = Device::standard_descriptor_pool(self.layout.device());
         self.build_with_pool(&mut pool)
@@ -180,17 +164,17 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the pool doesn't have the same device as the pipeline layout.
+    /// Panics if the pool doesn't have the same device as the descriptor set layout.
     ///
     pub fn build_with_pool<P>(
         self, pool: &mut P)
-        -> Result<PersistentDescriptorSet<L, R, P::Alloc>, PersistentDescriptorSetBuildError>
+        -> Result<PersistentDescriptorSet<R, P::Alloc>, PersistentDescriptorSetBuildError>
         where P: ?Sized + DescriptorPool
     {
         assert_eq!(self.layout.device().internal_object(),
                    pool.device().internal_object());
 
-        let expected_desc = self.layout.num_bindings_in_set(self.set_id).unwrap();
+        let expected_desc = self.layout.num_bindings();
 
         if expected_desc > self.binding_id {
             return Err(PersistentDescriptorSetBuildError::MissingDescriptors {
@@ -201,13 +185,8 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
 
         debug_assert_eq!(expected_desc, self.binding_id);
 
-        let set_layout = self.layout
-            .descriptor_set_layout(self.set_id)
-            .expect("Unable to get the descriptor set layout")
-            .clone();
-
         let set = unsafe {
-            let mut set = pool.alloc(&set_layout)?;
+            let mut set = pool.alloc(&self.layout)?;
             set.inner_mut()
                 .write(pool.device(), self.writes.into_iter());
             set
@@ -216,9 +195,7 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
         Ok(PersistentDescriptorSet {
                inner: set,
                resources: self.resources,
-               pipeline_layout: self.layout,
-               set_id: self.set_id,
-               layout: set_layout,
+               layout: self.layout,
            })
     }
 
@@ -232,8 +209,8 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     #[inline]
     pub fn enter_array(
         self)
-        -> Result<PersistentDescriptorSetBuilderArray<L, R>, PersistentDescriptorSetError> {
-        let desc = match self.layout.descriptor(self.set_id, self.binding_id) {
+        -> Result<PersistentDescriptorSetBuilderArray<R>, PersistentDescriptorSetError> {
+        let desc = match self.layout.descriptor(self.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
@@ -249,8 +226,8 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     #[inline]
     pub fn add_empty(
         mut self)
-        -> Result<PersistentDescriptorSetBuilder<L, R>, PersistentDescriptorSetError> {
-        match self.layout.descriptor(self.set_id, self.binding_id) {
+        -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
+        match self.layout.descriptor(self.binding_id) {
             None => (),
             Some(desc) => return Err(PersistentDescriptorSetError::WrongDescriptorTy {
                                          expected: desc.ty.ty().unwrap(),
@@ -267,12 +244,11 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_buffer<T>(self, buffer: T)
-                         -> Result<PersistentDescriptorSetBuilder<L,
-                                                                  (R,
+                         -> Result<PersistentDescriptorSetBuilder<(R,
                                                                    PersistentDescriptorSetBuf<T>)>,
                                    PersistentDescriptorSetError>
         where T: BufferAccess
@@ -286,10 +262,10 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer view doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer view doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_buffer_view<T>(self, view: T)
-        -> Result<PersistentDescriptorSetBuilder<L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
         where T: BufferViewRef
     {
         self.enter_array()?.add_buffer_view(view)?.leave_array()
@@ -301,12 +277,11 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image view doesn't have the same device as the pipeline layout.
+    /// Panics if the image view doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_image<T>(self, image_view: T)
-                        -> Result<PersistentDescriptorSetBuilder<L,
-                                                                 (R,
+                        -> Result<PersistentDescriptorSetBuilder<(R,
                                                                   PersistentDescriptorSetImg<T>)>,
                                   PersistentDescriptorSetError>
         where T: ImageViewAccess
@@ -320,11 +295,12 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image view or the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the image view or the sampler doesn't have the same device as the descriptor set
+    /// layout.
     ///
     #[inline]
     pub fn add_sampled_image<T>(self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilder<L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilder<((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         self.enter_array()?
@@ -338,12 +314,11 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the sampler doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
     pub fn add_sampler(self, sampler: Arc<Sampler>)
-                       -> Result<PersistentDescriptorSetBuilder<L,
-                                                                (R,
+                       -> Result<PersistentDescriptorSetBuilder<(R,
                                                                  PersistentDescriptorSetSampler)>,
                                  PersistentDescriptorSetError> {
         self.enter_array()?.add_sampler(sampler)?.leave_array()
@@ -351,22 +326,21 @@ impl<L, R> PersistentDescriptorSetBuilder<L, R>
 }
 
 /// Same as `PersistentDescriptorSetBuilder`, but we're in an array.
-pub struct PersistentDescriptorSetBuilderArray<L, R> {
+pub struct PersistentDescriptorSetBuilderArray<R> {
     // The original builder.
-    builder: PersistentDescriptorSetBuilder<L, R>,
+    builder: PersistentDescriptorSetBuilder<R>,
     // Current array elements.
     array_element: usize,
     // Description of the descriptor.
     desc: DescriptorDesc,
 }
 
-impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
-    where L: PipelineLayoutAbstract
+impl<R> PersistentDescriptorSetBuilderArray<R>
 {
     /// Leaves the array. Call this once you added all the elements of the array.
     pub fn leave_array(
         mut self)
-        -> Result<PersistentDescriptorSetBuilder<L, R>, PersistentDescriptorSetError> {
+        -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
         if self.desc.array_count > self.array_element as u32 {
             return Err(PersistentDescriptorSetError::MissingArrayElements {
                            expected: self.desc.array_count,
@@ -386,10 +360,10 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_buffer<T>(mut self, buffer: T)
-        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
         where T: BufferAccess
     {
         assert_eq!(self.builder.layout.device().internal_object(),
@@ -450,7 +424,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
         Ok(PersistentDescriptorSetBuilderArray {
                builder: PersistentDescriptorSetBuilder {
                    layout: self.builder.layout,
-                   set_id: self.builder.set_id,
                    binding_id: self.builder.binding_id,
                    writes: self.builder.writes,
                    resources: (self.builder.resources,
@@ -470,10 +443,10 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the buffer view doesn't have the same device as the pipeline layout.
+    /// Panics if the buffer view doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_buffer_view<T>(mut self, view: T)
-        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
         where T: BufferViewRef
     {
         assert_eq!(self.builder.layout.device().internal_object(),
@@ -517,7 +490,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
         Ok(PersistentDescriptorSetBuilderArray {
                builder: PersistentDescriptorSetBuilder {
                    layout: self.builder.layout,
-                   set_id: self.builder.set_id,
                    binding_id: self.builder.binding_id,
                    writes: self.builder.writes,
                    resources: (self.builder.resources,
@@ -537,10 +509,10 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image view doesn't have the same device as the pipeline layout.
+    /// Panics if the image view doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_image<T>(mut self, image_view: T)
-        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         assert_eq!(self.builder.layout.device().internal_object(),
@@ -552,7 +524,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
 
         let desc = match self.builder
             .layout
-            .descriptor(self.builder.set_id, self.builder.binding_id) {
+            .descriptor(self.builder.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
@@ -623,7 +595,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
         Ok(PersistentDescriptorSetBuilderArray {
                builder: PersistentDescriptorSetBuilder {
                    layout: self.builder.layout,
-                   set_id: self.builder.set_id,
                    binding_id: self.builder.binding_id,
                    writes: self.builder.writes,
                    resources: (self.builder.resources,
@@ -643,10 +614,10 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the image or the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the image or the sampler doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_sampled_image<T>(mut self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilderArray<L, ((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilderArray<((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
         where T: ImageViewAccess
     {
         assert_eq!(self.builder.layout.device().internal_object(),
@@ -660,7 +631,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
 
         let desc = match self.builder
             .layout
-            .descriptor(self.builder.set_id, self.builder.binding_id) {
+            .descriptor(self.builder.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
@@ -687,7 +658,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
         Ok(PersistentDescriptorSetBuilderArray {
                builder: PersistentDescriptorSetBuilder {
                    layout: self.builder.layout,
-                   set_id: self.builder.set_id,
                    binding_id: self.builder.binding_id,
                    writes: self.builder.writes,
                    resources: ((self.builder.resources,
@@ -708,10 +678,10 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
     ///
     /// # Panic
     ///
-    /// Panics if the sampler doesn't have the same device as the pipeline layout.
+    /// Panics if the sampler doesn't have the same device as the descriptor set layout.
     ///
     pub fn add_sampler(mut self, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilderArray<L, (R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
     {
         assert_eq!(self.builder.layout.device().internal_object(),
                    sampler.device().internal_object());
@@ -722,7 +692,7 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
 
         let desc = match self.builder
             .layout
-            .descriptor(self.builder.set_id, self.builder.binding_id) {
+            .descriptor(self.builder.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
@@ -743,7 +713,6 @@ impl<L, R> PersistentDescriptorSetBuilderArray<L, R>
         Ok(PersistentDescriptorSetBuilderArray {
                builder: PersistentDescriptorSetBuilder {
                    layout: self.builder.layout,
-                   set_id: self.builder.set_id,
                    binding_id: self.builder.binding_id,
                    writes: self.builder.writes,
                    resources: (self.builder.resources,
@@ -821,9 +790,9 @@ fn image_match_desc<I>(image_view: &I, desc: &DescriptorImageDesc)
 
 pub unsafe trait PersistentDescriptorSetResources {
     fn num_buffers(&self) -> usize;
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)>;
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)>;
     fn num_images(&self) -> usize;
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)>;
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)>;
 }
 
 unsafe impl PersistentDescriptorSetResources for () {
@@ -833,7 +802,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn buffer(&self, _: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, _: usize) -> Option<(&dyn BufferAccess, u32)> {
         None
     }
 
@@ -843,7 +812,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn image(&self, _: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, _: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         None
     }
 }
@@ -864,7 +833,7 @@ unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         if let Some(buf) = self.0.buffer(index) {
             Some(buf)
         } else if index == self.0.num_buffers() {
@@ -880,7 +849,7 @@ unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.0.image(index)
     }
 }
@@ -903,7 +872,7 @@ unsafe impl<R, V> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         if let Some(buf) = self.0.buffer(index) {
             Some(buf)
         } else if index == self.0.num_buffers() {
@@ -919,7 +888,7 @@ unsafe impl<R, V> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.0.image(index)
     }
 }
@@ -940,7 +909,7 @@ unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.0.buffer(index)
     }
 
@@ -950,7 +919,7 @@ unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         if let Some(img) = self.0.image(index) {
             Some(img)
         } else if index == self.0.num_images() {
@@ -975,7 +944,7 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         self.0.buffer(index)
     }
 
@@ -985,7 +954,7 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         self.0.image(index)
     }
 }

@@ -13,6 +13,7 @@
 
 use smallvec::SmallVec;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::u32;
@@ -156,7 +157,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
     pub fn build(self, device: Arc<Device>)
-                 -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
+                 -> Result<GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
                            GraphicsPipelineCreationError> {
         self.with_auto_layout(device, &[])
     }
@@ -166,7 +167,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Configures the inferred layout for each descriptor `(set, binding)` in `dynamic_buffers` to accept dynamic
     /// buffers.
     pub fn with_auto_layout(self, device: Arc<Device>, dynamic_buffers: &[(usize, usize)])
-                            -> Result<GraphicsPipeline<Vdef, Box<PipelineLayoutAbstract + Send + Sync>, Rp>,
+                            -> Result<GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
                                       GraphicsPipelineCreationError>
     {
         let pipeline_layout;
@@ -1072,15 +1073,22 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 basePipelineIndex: -1, // TODO:
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateGraphicsPipelines(device.internal_object(),
                                                     0,
                                                     1,
                                                     &infos,
                                                     ptr::null(),
-                                                    &mut output))?;
-            output
+                                                    output.as_mut_ptr()))?;
+            output.assume_init()
         };
+
+        // Some drivers return `VK_SUCCESS` but provide a null handle if they
+        // fail to create the pipeline (due to invalid shaders, etc)
+        // This check ensures that we don't create an invalid `GraphicsPipeline` instance
+        if pipeline == vk::NULL_HANDLE {
+            panic!("vkCreateGraphicsPipelines provided a NULL handle");
+        }
 
         let (render_pass, render_pass_subpass) = self.render_pass.take().unwrap().into();
 

@@ -30,7 +30,7 @@ use std::sync::Arc;
 pub struct AmbientLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
 }
 
 impl AmbientLightingSystem {
@@ -105,7 +105,8 @@ impl AmbientLightingSystem {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
 
-        let descriptor_set = PersistentDescriptorSet::start(self.pipeline.clone(), 0)
+        let layout = self.pipeline.descriptor_set_layout(0).unwrap();
+        let descriptor_set = PersistentDescriptorSet::start(layout.clone())
             .add_image(color_input)
             .unwrap()
             .build()
@@ -136,7 +137,7 @@ impl AmbientLightingSystem {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 struct Vertex {
     position: [f32; 2]
 }

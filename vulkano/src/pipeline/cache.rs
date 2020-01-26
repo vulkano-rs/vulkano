@@ -23,7 +23,7 @@
 //! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
 //!
 
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -119,12 +119,12 @@ impl PipelineCache {
                     .unwrap_or(ptr::null()),
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreatePipelineCache(device.internal_object(),
                                                 &infos,
                                                 ptr::null(),
-                                                &mut output))?;
-            output
+                                                output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Arc::new(PipelineCache {
@@ -219,7 +219,7 @@ impl PipelineCache {
 unsafe impl VulkanObject for PipelineCache {
     type Object = vk::PipelineCache;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PIPELINE_CACHE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_CACHE;
 
     #[inline]
     fn internal_object(&self) -> vk::PipelineCache {

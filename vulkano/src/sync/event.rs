@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -78,13 +78,13 @@ impl Event {
                 flags: 0, // reserved
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             let vk = device.pointers();
             check_errors(vk.CreateEvent(device.internal_object(),
                                         &INFOS,
                                         ptr::null(),
-                                        &mut output))?;
-            output
+                                        output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Event {
@@ -164,7 +164,7 @@ unsafe impl DeviceOwned for Event {
 unsafe impl VulkanObject for Event {
     type Object = vk::Event;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_EVENT_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_EVENT;
 
     #[inline]
     fn internal_object(&self) -> vk::Event {
