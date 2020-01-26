@@ -12,6 +12,7 @@
 - Update Winit to 0.20.0
 - Update MacOS dependency cocoa to 0.20
 - Propogate new lines correctly in shader compile errors.
+- `Queue` and `QueueFamily` now implement `PartialEq` and `Eq`
 
 # Version 0.16.0 (2019-11-01)
 
