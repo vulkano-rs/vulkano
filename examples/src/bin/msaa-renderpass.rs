@@ -191,7 +191,7 @@ fn main() {
     let vertex1 = Vertex { position: [-0.5, -0.5] };
     let vertex2 = Vertex { position: [ 0.0,  0.5] };
     let vertex3 = Vertex { position: [ 0.5, -0.25] };
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false,
         vec![vertex1, vertex2, vertex3].into_iter()).unwrap();
 
     let pipeline = Arc::new(GraphicsPipeline::start()
@@ -212,7 +212,7 @@ fn main() {
         .. DynamicState::none()
     };
 
-    let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
+    let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false,
         (0 .. 1024 * 1024 * 4).map(|_| 0u8)).unwrap();
 
     let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()

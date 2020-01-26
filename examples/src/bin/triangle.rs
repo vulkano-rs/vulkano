@@ -165,7 +165,7 @@ fn main() {
         struct Vertex { position: [f32; 2] }
         vulkano::impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), [
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
             Vertex { position: [-0.5, -0.25] },
             Vertex { position: [0.0, 0.5] },
             Vertex { position: [0.25, -0.1] }

@@ -75,13 +75,13 @@ fn main() {
     };
 
     let vertices = VERTICES.iter().cloned();
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), vertices).unwrap();
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, vertices).unwrap();
 
     let normals = NORMALS.iter().cloned();
-    let normals_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), normals).unwrap();
+    let normals_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, normals).unwrap();
 
     let indices = INDICES.iter().cloned();
-    let index_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), indices).unwrap();
+    let index_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, indices).unwrap();
 
     let uniform_buffer = CpuBufferPool::<vs::ty::Data>::new(device.clone(), BufferUsage::all());
 

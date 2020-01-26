@@ -72,7 +72,7 @@ fn main() {
 
     let data_buffer = {
         let data_iter = (0 .. 65536u32).map(|n| n);
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter).unwrap()
     };
     let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
     let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
