@@ -6,6 +6,8 @@
 - **Breaking** Decouple descriptor sets from pipeline
 - **Breaking** Update Winit to 0.20.0
 - **Breaking** Add `host_cached` field to all `CpuAccessibleBuffer` initializers to allow the user to perfer host cached memory.
+- **Breaking** Added `fullscreen_exclusive` field to `Swapchain` initializers to allow exclusive swapchain.
+    + *Requires `VK_EXT_full_screen_exclusive` extension to be present and the window to be in exclusive fullscreen.*
 - Add function `execute_commands_from_vec` to handle submission of multiple secondary command buffers.
 - Allow `DebugCallback` to be sent between threads
 - Pipeline barriers are now correctly inserted when a resource is used more than two times.
