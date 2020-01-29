@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
@@ -363,6 +365,22 @@ pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAb
     fn has_dynamic_stencil_reference(&self) -> bool;
 }
 
+impl PartialEq for dyn GraphicsPipelineAbstract {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        GraphicsPipelineAbstract::inner(self) == GraphicsPipelineAbstract::inner(other)
+    }
+}
+
+impl Eq for dyn GraphicsPipelineAbstract {}
+
+impl Hash for dyn GraphicsPipelineAbstract {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        GraphicsPipelineAbstract::inner(self).hash(state);
+    }
+}
+
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
     where L: PipelineLayoutAbstract,
           Rp: RenderPassAbstract,
@@ -474,6 +492,34 @@ unsafe impl<T> GraphicsPipelineAbstract for T
     }
 }
 
+impl<Mv, L, Rp> PartialEq for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract,
+          Rp: RenderPassAbstract,
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        GraphicsPipelineAbstract::inner(self) == GraphicsPipelineAbstract::inner(other)
+    }
+}
+
+impl<Mv, L, Rp> Eq for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract,
+          Rp: RenderPassAbstract,
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{}
+
+impl<Mv, L, Rp> Hash for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract,
+          Rp: RenderPassAbstract,
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        GraphicsPipelineAbstract::inner(self).hash(state);
+    }
+}
+
 /// Opaque object that represents the inside of the graphics pipeline.
 #[derive(Debug, Copy, Clone)]
 pub struct GraphicsPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
@@ -486,6 +532,22 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     #[inline]
     fn internal_object(&self) -> vk::Pipeline {
         self.0
+    }
+}
+
+impl<'a> PartialEq for GraphicsPipelineSys<'a> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<'a> Eq for GraphicsPipelineSys<'a> {}
+
+impl<'a> Hash for GraphicsPipelineSys<'a> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
