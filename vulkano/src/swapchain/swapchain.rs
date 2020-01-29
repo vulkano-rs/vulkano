@@ -66,6 +66,10 @@ use vk;
 ///
 /// If you try to draw on an image without acquiring it first, the execution will block. (TODO
 /// behavior may change).
+///
+/// The second field in the tuple in the Ok result is a bool represent if the aquisition was
+/// suboptimal. In this case the acquired image is still usable, but the swapchain should be
+/// recreated as the Surface's properties no longer match the swapchain.
 pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Duration>)
                           -> Result<(usize, bool, SwapchainAcquireFuture<W>), AcquireError> {
     let semaphore = Semaphore::from_pool(swapchain.device.clone())?;
