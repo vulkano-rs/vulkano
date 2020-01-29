@@ -398,7 +398,7 @@ impl <W> Swapchain<W> {
         }
 
         let surface_full_screen_exclusive_info = if fullscreen_exclusive {
-             if !surface.instance().loaded_extensions().ext_full_screen_exclusive {
+             if !device.loaded_extensions().ext_full_screen_exclusive {
                 return Err(SwapchainCreationError::MissingExtensionExtFullScreenExclusive);
             } else {
                 Some(vk::SurfaceFullScreenExclusiveInfoEXT {

@@ -117,6 +117,7 @@ device_extensions! {
     khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
     ext_debug_utils => b"VK_EXT_debug_utils",
     khr_multiview => b"VK_KHR_multiview",
+    ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
 }
 
 /// This helper type can only be instantiated inside this module.
