@@ -86,10 +86,11 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
         // TODO: review this function
-
         let first = self.first.build_submission()?;
         let second = self.second.build_submission()?;
 
+        // In some cases below we have to submit previous command buffers already, this s done by flushing previous.
+        // Since the implementation should remember being flushed it's safe to call build_submission multiple times
         Ok(match (first, second) {
                (SubmitAnyBuilder::Empty, b) => b,
                (a, SubmitAnyBuilder::Empty) => a,
@@ -98,27 +99,27 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
                    SubmitAnyBuilder::SemaphoresWait(a)
                },
                (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(b)) => {
-                   b.submit(&self.second.queue().clone().unwrap())?;
+                   self.second.flush()?;
                    SubmitAnyBuilder::SemaphoresWait(a)
                },
                (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   a.submit(&self.first.queue().clone().unwrap())?;
+                   self.first.flush()?;
                    SubmitAnyBuilder::SemaphoresWait(b)
                },
                (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::QueuePresent(b)) => {
-                   b.submit(&self.second.queue().clone().unwrap())?;
+                   self.second.flush()?;
                    SubmitAnyBuilder::SemaphoresWait(a)
                },
                (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   a.submit(&self.first.queue().clone().unwrap())?;
+                   self.first.flush()?;
                    SubmitAnyBuilder::SemaphoresWait(b)
                },
                (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(b)) => {
-                   b.submit(&self.second.queue().clone().unwrap())?;
+                   self.second.flush()?;
                    SubmitAnyBuilder::SemaphoresWait(a)
                },
                (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   a.submit(&self.first.queue().clone().unwrap())?;
+                   self.first.flush()?;
                    SubmitAnyBuilder::SemaphoresWait(b)
                },
                (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::CommandBuffer(b)) => {
@@ -127,8 +128,8 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
                    SubmitAnyBuilder::CommandBuffer(new)
                },
                (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::QueuePresent(b)) => {
-                   a.submit(&self.first.queue().clone().unwrap())?;
-                   b.submit(&self.second.queue().clone().unwrap())?;
+                   self.first.flush()?;
+                   self.second.flush()?;
                    SubmitAnyBuilder::Empty
                },
                (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::QueuePresent(b)) => {
