@@ -400,19 +400,33 @@ impl <W> Swapchain<W> {
             return Err(SwapchainCreationError::MissingExtensionKHRSwapchain);
         }
 
-        let surface_full_screen_exclusive_info = if fullscreen_exclusive {
-             if !device.loaded_extensions().ext_full_screen_exclusive {
-                return Err(SwapchainCreationError::MissingExtensionExtFullScreenExclusive);
+        let mut surface_full_screen_exclusive_info = None;
+        let mut full_screen_exclusive_acquire = false;
+        let mut full_screen_exclusive_release = false;
+
+        if device.loaded_extensions().ext_full_screen_exclusive
+            && surface.instance().loaded_extensions().khr_get_physical_device_properties2
+        {
+            if fullscreen_exclusive {
+                if old_swapchain.as_ref().map(|v| v.fullscreen_exclusive).unwrap_or(false) {
+                    // TODO: Acquire exclusive
+                    full_screen_exclusive_acquire = true;
+                }
             } else {
-                Some(vk::SurfaceFullScreenExclusiveInfoEXT {
-                    sType: vk::STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
-                    pNext: ptr::null(),
-                    fullScreenExclusive: vk::FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT
-                })
+                if old_swapchain.as_ref().map(|v| v.fullscreen_exclusive).unwrap_or(true) {
+                    full_screen_exclusive_release = true;
+                    // TODO: Release exclusive
+                }
             }
-        } else {
-            None
-        };
+
+            surface_full_screen_exclusive_info = Some(vk::SurfaceFullScreenExclusiveInfoEXT {
+                sType: vk::STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
+                pNext: ptr::null(),
+                fullScreenExclusive: vk::FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT
+            });
+        } else if fullscreen_exclusive {
+            return Err(SwapchainCreationError::MissingExtensionExtFullScreenExclusive);
+        }
 
         let p_next = match surface_full_screen_exclusive_info.as_ref() {
             Some(some) => unsafe { mem::transmute(some as *const _) },
@@ -485,6 +499,16 @@ impl <W> Swapchain<W> {
                                                output.as_mut_ptr()))?;
             output.assume_init()
         };
+
+        unsafe {
+            if full_screen_exclusive_acquire {
+                 check_errors(vk.AcquireFullScreenExclusiveModeEXT(device.internal_object(), swapchain))?;
+            }
+
+            if full_screen_exclusive_release {
+                check_errors(vk.ReleaseFullScreenExclusiveModeEXT(device.internal_object(), swapchain))?;
+            }
+        }
 
         let image_handles = unsafe {
             let mut num = 0;

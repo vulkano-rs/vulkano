@@ -39,6 +39,7 @@ pub fn required_extensions() -> InstanceExtensions {
         khr_win32_surface: true,
         mvk_ios_surface: true,
         mvk_macos_surface: true,
+        khr_get_physical_device_properties2: true,
         ..InstanceExtensions::none()
     };
 

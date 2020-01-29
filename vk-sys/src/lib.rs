@@ -2952,4 +2952,6 @@ ptrs!(DevicePointers, {
     CmdBeginDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
     CmdEndDebugUtilsLabelEXT => (commandBuffer: CommandBuffer) -> Result,
     CmdInsertDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
+    AcquireFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
+    ReleaseFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
 });
