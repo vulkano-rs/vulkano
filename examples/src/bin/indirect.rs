@@ -230,7 +230,7 @@ fn main() {
                     recreate_swapchain = false;
                 }
 
-                let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+                let (image_num, suboptimal, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
                         recreate_swapchain = true;
@@ -238,6 +238,10 @@ fn main() {
                     },
                     Err(e) => panic!("Failed to acquire next image: {:?}", e)
                 };
+
+                if suboptimal {
+                    recreate_swapchain = true;
+                }
 
                 let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
 

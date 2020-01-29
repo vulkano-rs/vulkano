@@ -16,6 +16,9 @@
 - Added Swapchain::surface() - which returns the saved surface
 - Propogate new lines correctly in shader compile errors.
 - `Queue` and `QueueFamily` now implement `PartialEq` and `Eq`
+- `Swapchain::acquire_next_image()`` now returns ``(image_id, suboptimal, aquire_future)``
+    + *suboptimal indicates that the swapchain is usable, but should be recreated*
+- Fixed Join Future implementation to not submit joined command buffers twice.
 
 # Version 0.16.0 (2019-11-01)
 

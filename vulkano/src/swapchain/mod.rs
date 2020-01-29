@@ -239,7 +239,7 @@
 //! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
 //!     # let mut command_buffer: ::vulkano::command_buffer::AutoCommandBuffer<()> = return;
-//!     let (image_num, acquire_future)
+//!     let (image_num, suboptimal, acquire_future)
 //!         = swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 //!
 //!     // The command_buffer contains the draw commands that modify the framebuffer
@@ -282,7 +282,7 @@
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+//!     let (index, suboptimal, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
 //!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)

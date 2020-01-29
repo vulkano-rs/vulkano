@@ -346,7 +346,7 @@ fn main() {
                 //
                 // This function can block if no image is available. The parameter is an optional timeout
                 // after which the function call will return an error.
-                let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+                let (image_num, suboptimal, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
                         recreate_swapchain = true;
@@ -354,6 +354,13 @@ fn main() {
                     },
                     Err(e) => panic!("Failed to acquire next image: {:?}", e)
                 };
+
+                // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
+                // will still work, but it may not display correctly. With some drivers this can be when
+                // the window resizes, but it may not cause the swapchain to become out of date.
+                if suboptimal {
+                    recreate_swapchain = true;
+                }
 
                 // Specify the color to clear the framebuffer with i.e. blue
                 let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
