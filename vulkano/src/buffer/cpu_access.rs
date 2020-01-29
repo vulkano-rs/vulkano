@@ -19,6 +19,8 @@
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
@@ -457,6 +459,29 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A> {
         self.inner.device()
     }
 }
+
+impl<T: ?Sized, A> PartialEq for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl<T: ?Sized, A> Eq for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync
+{}
+
+impl<T: ?Sized, A> Hash for CpuAccessibleBuffer<T, A>
+    where T: 'static + Send + Sync
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+    }
+}
+
 
 /// Object that can be used to read or write the content of a `CpuAccessibleBuffer`.
 ///

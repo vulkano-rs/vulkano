@@ -96,6 +96,8 @@ use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
 use std::hash::BuildHasherDefault;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
@@ -538,6 +540,23 @@ impl Drop for Device {
         }
     }
 }
+
+impl PartialEq for Device {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.device == other.device
+    }
+}
+
+impl Eq for Device {}
+
+impl Hash for Device {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.device.hash(state);
+    }
+}
+
 
 /// Implemented on objects that belong to a Vulkan device.
 ///

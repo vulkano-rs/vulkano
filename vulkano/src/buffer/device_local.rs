@@ -14,6 +14,8 @@
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
@@ -283,4 +285,26 @@ unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
     where T: 'static + Send + Sync
 {
     type Content = T;
+}
+
+impl<T: ?Sized, A> PartialEq for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl<T: ?Sized, A> Eq for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
+{}
+
+impl<T: ?Sized, A> Hash for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+    }
 }

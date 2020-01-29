@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
@@ -282,6 +284,28 @@ impl<T, B> From<BufferSlice<T, B>> for BufferSlice<[T], B> {
             offset: r.offset,
             size: r.size,
         }
+    }
+}
+
+impl<T: ?Sized, B> PartialEq for BufferSlice<T, B>
+    where B: BufferAccess
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl<T: ?Sized, B> Eq for BufferSlice<T, B>
+    where B: BufferAccess
+{}
+
+impl<T: ?Sized, B> Hash for BufferSlice<T, B>
+    where B: BufferAccess
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
     }
 }
 

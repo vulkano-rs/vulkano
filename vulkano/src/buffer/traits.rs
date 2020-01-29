@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::ops::Range;
+use std::hash::Hash;
+use std::hash::Hasher;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
@@ -139,7 +141,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
 }
 
 /// Inner information about a buffer.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferInner<'a> {
     /// The underlying buffer object.
     pub buffer: &'a UnsafeBuffer,
@@ -212,4 +214,20 @@ unsafe impl<T> TypedBufferAccess for T
           T::Target: TypedBufferAccess
 {
     type Content = <T::Target as TypedBufferAccess>::Content;
+}
+
+impl PartialEq for dyn BufferAccess {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl Eq for dyn BufferAccess {}
+
+impl Hash for dyn BufferAccess {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+    }
 }
