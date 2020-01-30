@@ -406,16 +406,15 @@ impl <W> Swapchain<W> {
 
         if device.loaded_extensions().ext_full_screen_exclusive
             && surface.instance().loaded_extensions().khr_get_physical_device_properties2
+            && surface.instance().loaded_extensions().khr_get_surface_capabilities2
         {
             if fullscreen_exclusive {
                 if old_swapchain.as_ref().map(|v| v.fullscreen_exclusive).unwrap_or(false) {
-                    // TODO: Acquire exclusive
                     full_screen_exclusive_acquire = true;
                 }
             } else {
                 if old_swapchain.as_ref().map(|v| v.fullscreen_exclusive).unwrap_or(true) {
                     full_screen_exclusive_release = true;
-                    // TODO: Release exclusive
                 }
             }
 
