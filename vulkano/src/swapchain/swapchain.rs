@@ -295,7 +295,7 @@ impl <W> Swapchain<W> {
     }
 
     /// Recreates the swapchain with new dimensions.
-    pub fn recreate_with_dimension(
+    pub fn recreate_with_dimensions(
         &self, dimensions: [u32; 2])
         -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
         Swapchain::new_inner(self.device.clone(),
