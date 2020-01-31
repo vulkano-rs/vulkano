@@ -292,7 +292,7 @@ impl<T: ?Sized, A> PartialEq for DeviceLocalBuffer<T, A>
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -306,5 +306,6 @@ impl<T: ?Sized, A> Hash for DeviceLocalBuffer<T, A>
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }

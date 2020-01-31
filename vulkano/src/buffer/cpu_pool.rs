@@ -728,7 +728,7 @@ impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -742,6 +742,7 @@ impl<T, A> Hash for CpuBufferPoolChunk<T, A>
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 
@@ -817,7 +818,7 @@ impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -831,6 +832,7 @@ impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 

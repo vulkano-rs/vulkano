@@ -219,7 +219,7 @@ unsafe impl<T> TypedBufferAccess for T
 impl PartialEq for dyn BufferAccess {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -229,5 +229,6 @@ impl Hash for dyn BufferAccess {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }

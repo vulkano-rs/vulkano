@@ -327,7 +327,7 @@ impl Drop for Inner {
 /// object.
 /// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
 /// wrapped in a `vec!()`.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> + DeviceOwned {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
@@ -502,6 +502,24 @@ impl<Mv, L, Rp> Hash for GraphicsPipeline<Mv, L, Rp>
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
+    }
+}
+
+impl PartialEq for dyn GraphicsPipelineAbstract {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        GraphicsPipelineAbstract::inner(self).0 == GraphicsPipelineAbstract::inner(other).0 &&
+        DeviceOwned::device(self) == DeviceOwned::device(other)
+    }
+}
+
+impl Eq for dyn GraphicsPipelineAbstract {}
+
+impl Hash for dyn GraphicsPipelineAbstract {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        GraphicsPipelineAbstract::inner(self).0.hash(state);
+        DeviceOwned::device(self).hash(state);
     }
 }
 

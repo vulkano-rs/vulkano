@@ -382,7 +382,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A> {
 impl<T: ?Sized, A> PartialEq for ImmutableBuffer<T, A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -392,6 +392,7 @@ impl<T: ?Sized, A> Hash for ImmutableBuffer<T, A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 
@@ -476,7 +477,7 @@ impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
 impl<T: ?Sized, A> PartialEq for ImmutableBufferInitialization<T, A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -486,6 +487,7 @@ impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 

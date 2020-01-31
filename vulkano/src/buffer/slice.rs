@@ -292,7 +292,7 @@ impl<T: ?Sized, B> PartialEq for BufferSlice<T, B>
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
+        self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
@@ -306,6 +306,7 @@ impl<T: ?Sized, B> Hash for BufferSlice<T, B>
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 
