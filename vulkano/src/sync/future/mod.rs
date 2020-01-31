@@ -424,6 +424,10 @@ pub enum FlushError {
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
 
+    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullscreenExclusiveLost,
+
     /// The flush operation needed to block, but the timeout has elapsed.
     Timeout,
 }
@@ -437,6 +441,7 @@ impl error::Error for FlushError {
             FlushError::DeviceLost => "the connection to the device has been lost",
             FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
             FlushError::OutOfDate => "the swapchain needs to be recreated",
+            FlushError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
             FlushError::Timeout => "the flush operation needed to block, but the timeout has \
                                     elapsed",
         }
@@ -474,6 +479,7 @@ impl From<SubmitPresentError> for FlushError {
             SubmitPresentError::DeviceLost => FlushError::DeviceLost,
             SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
             SubmitPresentError::OutOfDate => FlushError::OutOfDate,
+            SubmitPresentError::FullscreenExclusiveLost => FlushError::FullscreenExclusiveLost,
         }
     }
 }

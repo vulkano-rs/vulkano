@@ -220,6 +220,7 @@ pub(crate) enum Error {
     IncompatibleDisplay = vk::ERROR_INCOMPATIBLE_DISPLAY_KHR,
     ValidationFailed = vk::ERROR_VALIDATION_FAILED_EXT,
     OutOfPoolMemory = vk::ERROR_OUT_OF_POOL_MEMORY_KHR,
+    FullscreenExclusiveLost = vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
 }
 
 /// Checks whether the result returned correctly.
@@ -249,6 +250,7 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
         vk::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
+        vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => Err(Error::FullscreenExclusiveLost),
         vk::ERROR_INVALID_SHADER_NV => panic!("Vulkan function returned \
                                                VK_ERROR_INVALID_SHADER_NV"),
         c => unreachable!("Unexpected error code returned by Vulkan: {}", c),
