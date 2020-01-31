@@ -17,7 +17,12 @@
 - `Swapchain::acquire_next_image()`` now returns ``(image_id, suboptimal, aquire_future)``
     + *suboptimal indicates that the swapchain is usable, but should be recreated*
 - Fixed Join Future implementation to not submit joined command buffers twice.
-- Added `PartialEq`, `Eq` and `Hash` implementations for `Device`, `dyn BufferAccess`, `dyn ImageAccess`, `dyn ImageViewAccess`, `GraphicsPipeline` and various buffer and image types.
+- The traits `GraphicsPipelineAbstract` and `DescriptorSet` now require `DeviceOwned`.
+- Added `PartialEq`, `Eq` and `Hash` implementations to all types involved in a draw call, including:
+  - `Device`, `GraphicsPipeline` and `dyn GraphicsPipelineAbstract`
+  - `UnsafeBuffer` and all types implementing `BufferAccess`
+  - `UnsafeImage`, `UnsafeImageView` and all types implementing `ImageAccess` or `ImageViewAccess`
+  - All types implementing `DescriptorSet`
 
 # Version 0.16.0 (2019-11-01)
 
