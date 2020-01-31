@@ -1,5 +1,6 @@
 # Version 0.17.0 (TBA)
 
+- **Breaking** Swapchain::recreate_with_dimension() is now Swapchain::recreate_with_dimensions()
 - **Breaking** Sync::SharingMode::Exclusive(queue_family: u32) is now Sync::SharingMode::Exclusive.
 - **Breaking** Added Swapchain::with_old_swapchain() - same as previous Swapchain::new(), if an oldswapchain needs to be used
 - **Breaking** Swapchain::new() now doesnt need to have the old_swapchain parameter anymore but requires the ColorSpace

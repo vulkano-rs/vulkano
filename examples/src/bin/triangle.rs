@@ -324,7 +324,7 @@ fn main() {
                 if recreate_swapchain {
                     // Get the new dimensions of the window.
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
-                    let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
+                    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
                         Ok(r) => r,
                         // This error tends to happen when the user is manually resizing the window.
                         // Simply restarting the loop is the easiest way to fix this issue.

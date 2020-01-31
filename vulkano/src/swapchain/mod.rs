@@ -276,7 +276,7 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate_with_dimension([1024, 768]).unwrap();
+//!         swapchain = swapchain.0.recreate_with_dimensions([1024, 768]).unwrap();
 //!         recreate_swapchain = false;
 //!     }
 //!
