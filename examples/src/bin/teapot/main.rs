@@ -21,7 +21,7 @@ use vulkano::instance::PhysicalDevice;
 use vulkano::pipeline::vertex::TwoBuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace, FullscreenExclusive};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -71,7 +71,8 @@ fn main() {
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format, dimensions, 1,
-            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
+            usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo,
+            FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
     let vertices = VERTICES.iter().cloned();

@@ -165,12 +165,13 @@
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
 //! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace};
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullscreenExclusive};
 //! # fn create_swapchain(
 //! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
-//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
-//! # ) -> Result<(), Box<std::error::Error>> {
+//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
+//! #     present_mode: PresentMode, fullscreen_exclusive: FullscreenExclusive
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // The created swapchain will be used as a color attachment for rendering.
 //! let usage = ImageUsage {
 //!     color_attachment: true,

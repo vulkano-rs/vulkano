@@ -1,6 +1,7 @@
 # Version 0.5.1 (TBA)
 
 - Added support for `VK_EXT_full_screen_exclusive`
+    + const `ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`
     + const `STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT`
     + const `FullScreenExclusiveEXT`
     + const `FULL_SCREEN_EXCLUSIVE_DEFAUlT_EXT`
@@ -9,6 +10,8 @@
     + const `FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT`
     + const `FULL_SCREEN_EXCLUSIVE_MAX_ENUM_EXT`
     + struct `SurfaceFullScreenExclusiveInfoEXT`
+    + function `AcquireFullScreenExclusiveModeEXT`
+    + function `ReleaseFullScreenExclusiveModeEXT`
 
 # Version 0.5.0 (2019-11-01)
 
