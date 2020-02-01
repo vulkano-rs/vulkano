@@ -13,6 +13,8 @@ use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::mem;
 use std::ops::Deref;
 use std::ptr;
@@ -493,6 +495,22 @@ impl Drop for Instance {
         unsafe {
             self.vk.DestroyInstance(self.instance, ptr::null());
         }
+    }
+}
+
+impl PartialEq for Instance {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.instance == other.instance
+    }
+}
+
+impl Eq for Instance {}
+
+impl Hash for Instance {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.instance.hash(state);
     }
 }
 

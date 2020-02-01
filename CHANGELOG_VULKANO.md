@@ -19,7 +19,7 @@
 - Fixed Join Future implementation to not submit joined command buffers twice.
 - The traits `GraphicsPipelineAbstract` and `DescriptorSet` now require `DeviceOwned`.
 - Added `PartialEq`, `Eq` and `Hash` implementations to all types involved in a draw call, including:
-  - `Device`, `GraphicsPipeline` and `dyn GraphicsPipelineAbstract`
+  - `Instance`, `Device`, `GraphicsPipeline` and `dyn GraphicsPipelineAbstract`
   - `UnsafeBuffer` and all types implementing `BufferAccess`
   - `UnsafeImage`, `UnsafeImageView` and all types implementing `ImageAccess` or `ImageViewAccess`
   - All types implementing `DescriptorSet`

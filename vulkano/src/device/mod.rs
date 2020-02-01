@@ -544,7 +544,7 @@ impl Drop for Device {
 impl PartialEq for Device {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.device == other.device
+        self.device == other.device && self.instance == other.instance
     }
 }
 
@@ -554,6 +554,7 @@ impl Hash for Device {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.device.hash(state);
+        self.instance.hash(state);
     }
 }
 
