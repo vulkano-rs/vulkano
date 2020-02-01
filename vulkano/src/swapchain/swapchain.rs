@@ -22,6 +22,7 @@ use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitPresentBuilder;
 use command_buffer::submit::SubmitSemaphoresWaitBuilder;
+use command_buffer::submit::SubmitPresentError;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -116,7 +117,13 @@ pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Durat
             return Err(AcquireError::OutOfDate);
         }
 
-        unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) }?
+        let acquire_result = unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
+
+        if let &Err(AcquireError::FullscreenExclusiveLost) = &acquire_result {
+            swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+        }
+
+        acquire_result?
     };
 
     Ok((id, suboptimal,
@@ -222,6 +229,7 @@ pub struct Swapchain<W> {
     alpha: CompositeAlpha,
     mode: PresentMode,
     fullscreen_exclusive: FullscreenExclusive,
+    fullscreen_exclusive_held: AtomicBool,
     clipped: bool,
 }
 
@@ -557,6 +565,17 @@ impl <W> Swapchain<W> {
             })
             .collect::<Vec<_>>();
 
+        let fullscreen_exclusive_held = old_swapchain
+            .as_ref()
+            .map(|old_swapchain| {
+                if old_swapchain.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+                    false
+                } else {
+                    old_swapchain.fullscreen_exclusive_held.load(Ordering::SeqCst)
+                }
+            })
+            .unwrap_or(false);
+
         let swapchain = Arc::new(Swapchain {
                                      device: device.clone(),
                                      surface: surface.clone(),
@@ -574,6 +593,7 @@ impl <W> Swapchain<W> {
                                      alpha: alpha,
                                      mode: mode,
                                      fullscreen_exclusive,
+                                     fullscreen_exclusive_held: AtomicBool::new(fullscreen_exclusive_held),
                                      clipped: clipped,
                                  });
 
@@ -679,9 +699,19 @@ impl <W> Swapchain<W> {
         self.fullscreen_exclusive
     }
 
+    /// `FullscreenExclusive::AppControlled` must be the active fullscreen exclusivity mode.
     /// Acquire fullscreen exclusivity until either the `release_fullscreen_exclusive` is
     /// called, or if any of the the other `Swapchain` functions return `FullscreenExclusiveLost`.
+    /// Requires: `FullscreenExclusive::AppControlled`
     pub fn acquire_fullscreen_exclusive(&self) -> Result<(), FullscreenExclusiveError> {
+        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+            return Err(FullscreenExclusiveError::NotAppControlled);
+        }
+
+        if self.fullscreen_exclusive_held.swap(true, Ordering::SeqCst) {
+            return Err(FullscreenExclusiveError::DoubleAcquire);
+        }
+
         unsafe {
             check_errors(self.device.pointers().AcquireFullScreenExclusiveModeEXT(
                 self.device.internal_object(),
@@ -692,8 +722,17 @@ impl <W> Swapchain<W> {
         Ok(())
     }
 
+    /// `FullscreenExclusive::AppControlled` must be the active fullscreen exclusivity mode.
     /// Release fullscreen exclusivity.
     pub fn release_fullscreen_exclusive(&self) -> Result<(), FullscreenExclusiveError> {
+        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+            return Err(FullscreenExclusiveError::NotAppControlled);
+        }
+
+        if !self.fullscreen_exclusive_held.swap(false, Ordering::SeqCst) {
+            return Err(FullscreenExclusiveError::DoubleRelease);
+        }
+
         unsafe {
             check_errors(self.device.pointers().ReleaseFullScreenExclusiveModeEXT(
                 self.device.internal_object(),
@@ -702,6 +741,18 @@ impl <W> Swapchain<W> {
         }
 
         Ok(())
+    }
+
+    /// `FullscreenExclusive::AppControlled` is not the active fullscreen exclusivity mode,
+    /// then this function will always return false. If true is returned the swapchain
+    /// is in `FullscreenExclusive::AppControlled` fullscreen exclusivity mode and exclusivity
+    /// is currently acquired.
+    pub fn is_fullscreen_exclusive(&self) -> bool {
+        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+            false
+        } else {
+            self.fullscreen_exclusive_held.load(Ordering::SeqCst)
+        }
     }
 
     // This method is necessary to allow `SwapchainImage`s to signal when they have been
@@ -1047,6 +1098,15 @@ pub enum FullscreenExclusiveError {
 
     /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
+
+    /// Fullscreen exclusivity is already acquired.
+    DoubleAcquire,
+
+    /// Fullscreen exclusivity is not current acquired.
+    DoubleRelease,
+
+    /// Swapchain is not in fullscreen exclusive app controlled mode
+    NotAppControlled,
 }
 
 impl fmt::Display for FullscreenExclusiveError {
@@ -1091,6 +1151,9 @@ impl error::Error for FullscreenExclusiveError {
             FullscreenExclusiveError::OomError(_) => "not enough memory",
             FullscreenExclusiveError::SurfaceLost => "the surface of this swapchain is no longer valid",
             FullscreenExclusiveError::InitializationFailed => "operation could not be completed for driver specific reasons",
+            FullscreenExclusiveError::DoubleAcquire => "fullscreen exclusivity is already acquired",
+            FullscreenExclusiveError::DoubleRelease => "fullscreen exclusivity is not acquired",
+            FullscreenExclusiveError::NotAppControlled => "swapchain is not in fullscreen exclusive app controlled mode"
         }
     }
 
@@ -1284,10 +1347,22 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
         unsafe {
             // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
 
-            match self.build_submission()? {
+            let build_submission_result = self.build_submission();
+
+            if let &Err(FlushError::FullscreenExclusiveLost) = &build_submission_result {
+                self.swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+            }
+
+            match build_submission_result? {
                 SubmitAnyBuilder::Empty => {},
                 SubmitAnyBuilder::QueuePresent(present) => {
-                    present.submit(&self.queue)?;
+                    let present_result = present.submit(&self.queue);
+
+                    if let &Err(SubmitPresentError::FullscreenExclusiveLost) = &present_result {
+                        self.swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+                    }
+
+                    present_result?;
                 },
                 _ => unreachable!(),
             }
