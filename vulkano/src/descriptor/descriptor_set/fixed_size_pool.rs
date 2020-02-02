@@ -8,9 +8,12 @@
 // according to those terms.
 
 use crossbeam::queue::SegQueue;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 use OomError;
+use VulkanObject;
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
 use descriptor::descriptor::DescriptorDesc;
@@ -141,8 +144,7 @@ unsafe impl<R> DescriptorSet for FixedSizeDescriptorSet<R>
     }
 }
 
-unsafe impl<R> DescriptorSetDesc for FixedSizeDescriptorSet<R>
-{
+unsafe impl<R> DescriptorSetDesc for FixedSizeDescriptorSet<R> {
     #[inline]
     fn num_bindings(&self) -> usize {
         self.inner.num_bindings()
@@ -154,11 +156,34 @@ unsafe impl<R> DescriptorSetDesc for FixedSizeDescriptorSet<R>
     }
 }
 
-unsafe impl<R> DeviceOwned for FixedSizeDescriptorSet<R>
-{
+unsafe impl<R> DeviceOwned for FixedSizeDescriptorSet<R> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
+    }
+}
+
+impl<R> PartialEq for FixedSizeDescriptorSet<R>
+    where R: PersistentDescriptorSetResources
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner().internal_object() == other.inner().internal_object() &&
+        self.device() == other.device()
+    }
+}
+
+impl<R> Eq for FixedSizeDescriptorSet<R>
+    where R: PersistentDescriptorSetResources
+{}
+
+impl<R> Hash for FixedSizeDescriptorSet<R>
+    where R: PersistentDescriptorSetResources
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().internal_object().hash(state);
+        self.device().hash(state);
     }
 }
 

@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::iter::Empty;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -572,6 +574,28 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
+    }
+}
+
+impl<F, A> PartialEq for AttachmentImage<F, A>
+    where F: 'static + Send + Sync
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<F, A> Eq for AttachmentImage<F, A>
+    where F: 'static + Send + Sync
+{}
+
+impl<F, A> Hash for AttachmentImage<F, A>
+    where F: 'static + Send + Sync
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
     }
 }
 

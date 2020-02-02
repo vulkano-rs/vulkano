@@ -1,5 +1,6 @@
 # Version 0.17.0 (TBA)
 
+- **Breaking** Swapchain::recreate_with_dimension() is now Swapchain::recreate_with_dimensions()
 - **Breaking** Sync::SharingMode::Exclusive(queue_family: u32) is now Sync::SharingMode::Exclusive.
 - **Breaking** Added Swapchain::with_old_swapchain() - same as previous Swapchain::new(), if an oldswapchain needs to be used
 - **Breaking** Swapchain::new() now doesnt need to have the old_swapchain parameter anymore but requires the ColorSpace
@@ -19,6 +20,12 @@
 - `Swapchain::acquire_next_image()`` now returns ``(image_id, suboptimal, aquire_future)``
     + *suboptimal indicates that the swapchain is usable, but should be recreated*
 - Fixed Join Future implementation to not submit joined command buffers twice.
+- The traits `GraphicsPipelineAbstract` and `DescriptorSet` now require `DeviceOwned`.
+- Added `PartialEq`, `Eq` and `Hash` implementations to all types involved in a draw call, including:
+  - `Instance`, `Device`, `GraphicsPipeline` and `dyn GraphicsPipelineAbstract`
+  - `UnsafeBuffer` and all types implementing `BufferAccess`
+  - `UnsafeImage`, `UnsafeImageView` and all types implementing `ImageAccess` or `ImageViewAccess`
+  - All types implementing `DescriptorSet`
 
 # Version 0.16.0 (2019-11-01)
 

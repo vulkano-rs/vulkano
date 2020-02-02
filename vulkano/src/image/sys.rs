@@ -16,6 +16,8 @@
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Range;
@@ -827,6 +829,23 @@ impl Drop for UnsafeImage {
     }
 }
 
+impl PartialEq for UnsafeImage {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.image == other.image && self.device == other.device
+    }
+}
+
+impl Eq for UnsafeImage {}
+
+impl Hash for UnsafeImage {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.image.hash(state);
+        self.device.hash(state);
+    }
+}
+
 /// Error that can happen when creating an instance.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageCreationError {
@@ -1120,6 +1139,23 @@ impl Drop for UnsafeImageView {
             let vk = self.device.pointers();
             vk.DestroyImageView(self.device.internal_object(), self.view, ptr::null());
         }
+    }
+}
+
+impl PartialEq for UnsafeImageView {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.view == other.view && self.device == other.device
+    }
+}
+
+impl Eq for UnsafeImageView {}
+
+impl Hash for UnsafeImageView {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.view.hash(state);
+        self.device.hash(state);
     }
 }
 

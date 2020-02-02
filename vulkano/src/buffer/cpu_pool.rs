@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::cmp;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
@@ -721,6 +723,29 @@ unsafe impl<T, A> DeviceOwned for CpuBufferPoolChunk<T, A>
     }
 }
 
+impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T, A> Eq for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{}
+
+impl<T, A> Hash for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
+}
+
 impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool
 {
@@ -785,6 +810,29 @@ unsafe impl<T, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.chunk.buffer.inner.device()
+    }
+}
+
+impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{}
+
+impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 

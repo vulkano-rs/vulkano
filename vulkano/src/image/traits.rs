@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
+
 use buffer::BufferAccess;
 use format::ClearValue;
 use format::Format;
@@ -232,7 +235,7 @@ pub unsafe trait ImageAccess {
 }
 
 /// Inner information about an image.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageInner<'a> {
     /// The underlying image object.
     pub image: &'a UnsafeImage,
@@ -311,6 +314,22 @@ unsafe impl<T> ImageAccess for T
     }
 }
 
+impl PartialEq for dyn ImageAccess {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl Eq for dyn ImageAccess {}
+
+impl Hash for dyn ImageAccess {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+    }
+}
+
 /// Wraps around an object that implements `ImageAccess` and modifies the initial layout
 /// requirement to be either `Undefined` or `Preinitialized`.
 #[derive(Debug, Copy, Clone)]
@@ -370,6 +389,28 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     #[inline]
     unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
         self.image.unlock(new_layout)
+    }
+}
+
+impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl<I> Eq for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{}
+
+impl<I> Hash for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
     }
 }
 
@@ -478,6 +519,22 @@ unsafe impl<T> ImageViewAccess for T
     #[inline]
     fn can_be_sampled(&self, sampler: &Sampler) -> bool {
         (**self).can_be_sampled(sampler)
+    }
+}
+
+impl PartialEq for dyn ImageViewAccess {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl Eq for dyn ImageViewAccess {}
+
+impl Hash for dyn ImageViewAccess {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
     }
 }
 

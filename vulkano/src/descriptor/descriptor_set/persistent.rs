@@ -9,6 +9,8 @@
 
 use std::error;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 use OomError;
@@ -127,6 +129,33 @@ unsafe impl<R, P> DeviceOwned for PersistentDescriptorSet<R, P>
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.layout.device()
+    }
+}
+
+impl<R, P> PartialEq for PersistentDescriptorSet<R, P>
+    where P: DescriptorPoolAlloc,
+          R: PersistentDescriptorSetResources
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner().internal_object() == other.inner().internal_object() &&
+        self.device() == other.device()
+    }
+}
+
+impl<R, P> Eq for PersistentDescriptorSet<R, P>
+    where P: DescriptorPoolAlloc,
+          R: PersistentDescriptorSetResources
+{}
+
+impl<R, P> Hash for PersistentDescriptorSet<R, P>
+    where P: DescriptorPoolAlloc,
+          R: PersistentDescriptorSetResources
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().internal_object().hash(state);
+        self.device().hash(state);
     }
 }
 

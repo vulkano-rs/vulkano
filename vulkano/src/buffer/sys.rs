@@ -27,6 +27,8 @@
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -335,6 +337,23 @@ impl Drop for UnsafeBuffer {
             let vk = self.device.pointers();
             vk.DestroyBuffer(self.device.internal_object(), self.buffer, ptr::null());
         }
+    }
+}
+
+impl PartialEq for UnsafeBuffer {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.buffer == other.buffer && self.device == other.device
+    }
+}
+
+impl Eq for UnsafeBuffer {}
+
+impl Hash for UnsafeBuffer {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.buffer.hash(state);
+        self.device.hash(state);
     }
 }
 

@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
@@ -74,6 +76,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     num_viewports: u32,
 }
 
+#[derive(PartialEq, Eq, Hash)]
 struct Inner {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
@@ -324,7 +327,7 @@ impl Drop for Inner {
 /// object.
 /// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
 /// wrapped in a `vec!()`.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> {
+pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> + DeviceOwned {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
@@ -471,6 +474,52 @@ unsafe impl<T> GraphicsPipelineAbstract for T
     #[inline]
     fn has_dynamic_stencil_reference(&self) -> bool {
         (**self).has_dynamic_stencil_reference()
+    }
+}
+
+impl<Mv, L, Rp> PartialEq for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract,
+          Rp: RenderPassAbstract,
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<Mv, L, Rp> Eq for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract,
+          Rp: RenderPassAbstract,
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{}
+
+impl<Mv, L, Rp> Hash for GraphicsPipeline<Mv, L, Rp>
+    where L: PipelineLayoutAbstract,
+          Rp: RenderPassAbstract,
+          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+impl PartialEq for dyn GraphicsPipelineAbstract {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        GraphicsPipelineAbstract::inner(self).0 == GraphicsPipelineAbstract::inner(other).0 &&
+        DeviceOwned::device(self) == DeviceOwned::device(other)
+    }
+}
+
+impl Eq for dyn GraphicsPipelineAbstract {}
+
+impl Hash for dyn GraphicsPipelineAbstract {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        GraphicsPipelineAbstract::inner(self).0.hash(state);
+        DeviceOwned::device(self).hash(state);
     }
 }
 

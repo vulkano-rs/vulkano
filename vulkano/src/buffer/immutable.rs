@@ -19,6 +19,8 @@
 //!
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
@@ -377,6 +379,23 @@ unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A> {
     }
 }
 
+impl<T: ?Sized, A> PartialEq for ImmutableBuffer<T, A> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, A> Eq for ImmutableBuffer<T, A> {}
+
+impl<T: ?Sized, A> Hash for ImmutableBuffer<T, A> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
+}
+
 /// Access to the immutable buffer that can be used for the initial upload.
 //#[derive(Debug)]      // TODO:
 pub struct ImmutableBufferInitialization<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
@@ -452,6 +471,23 @@ impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
             buffer: self.buffer.clone(),
             used: self.used.clone(),
         }
+    }
+}
+
+impl<T: ?Sized, A> PartialEq for ImmutableBufferInitialization<T, A> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, A> Eq for ImmutableBufferInitialization<T, A> {}
+
+impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 

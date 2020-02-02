@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 use buffer::BufferAccess;
@@ -212,5 +214,21 @@ unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
+    }
+}
+
+impl<W> PartialEq for SwapchainImage<W> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<W> Eq for SwapchainImage<W> {}
+
+impl<W> Hash for SwapchainImage<W> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
     }
 }
