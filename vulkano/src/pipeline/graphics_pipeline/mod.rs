@@ -505,7 +505,7 @@ impl<Mv, L, Rp> Hash for GraphicsPipeline<Mv, L, Rp>
     }
 }
 
-impl PartialEq for dyn GraphicsPipelineAbstract {
+impl PartialEq for dyn GraphicsPipelineAbstract + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         GraphicsPipelineAbstract::inner(self).0 == GraphicsPipelineAbstract::inner(other).0 &&
@@ -513,9 +513,9 @@ impl PartialEq for dyn GraphicsPipelineAbstract {
     }
 }
 
-impl Eq for dyn GraphicsPipelineAbstract {}
+impl Eq for dyn GraphicsPipelineAbstract + Send + Sync {}
 
-impl Hash for dyn GraphicsPipelineAbstract {
+impl Hash for dyn GraphicsPipelineAbstract + Send + Sync {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         GraphicsPipelineAbstract::inner(self).0.hash(state);

@@ -216,16 +216,16 @@ unsafe impl<T> TypedBufferAccess for T
     type Content = <T::Target as TypedBufferAccess>::Content;
 }
 
-impl PartialEq for dyn BufferAccess {
+impl PartialEq for dyn BufferAccess + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl Eq for dyn BufferAccess {}
+impl Eq for dyn BufferAccess + Send + Sync {}
 
-impl Hash for dyn BufferAccess {
+impl Hash for dyn BufferAccess + Send + Sync {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
