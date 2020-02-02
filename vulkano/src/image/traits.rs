@@ -314,16 +314,16 @@ unsafe impl<T> ImageAccess for T
     }
 }
 
-impl PartialEq for dyn ImageAccess {
+impl PartialEq for dyn ImageAccess + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl Eq for dyn ImageAccess {}
+impl Eq for dyn ImageAccess + Send + Sync {}
 
-impl Hash for dyn ImageAccess {
+impl Hash for dyn ImageAccess + Send + Sync {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
@@ -522,16 +522,16 @@ unsafe impl<T> ImageViewAccess for T
     }
 }
 
-impl PartialEq for dyn ImageViewAccess {
+impl PartialEq for dyn ImageViewAccess + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl Eq for dyn ImageViewAccess {}
+impl Eq for dyn ImageViewAccess + Send + Sync {}
 
-impl Hash for dyn ImageViewAccess {
+impl Hash for dyn ImageViewAccess + Send + Sync {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

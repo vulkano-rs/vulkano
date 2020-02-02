@@ -135,7 +135,7 @@ unsafe impl<T> DescriptorSet for T
     }
 }
 
-impl PartialEq for dyn DescriptorSet {
+impl PartialEq for dyn DescriptorSet + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner().internal_object() == other.inner().internal_object() &&
@@ -143,9 +143,9 @@ impl PartialEq for dyn DescriptorSet {
     }
 }
 
-impl Eq for dyn DescriptorSet {}
+impl Eq for dyn DescriptorSet + Send + Sync {}
 
-impl Hash for dyn DescriptorSet {
+impl Hash for dyn DescriptorSet + Send + Sync {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
