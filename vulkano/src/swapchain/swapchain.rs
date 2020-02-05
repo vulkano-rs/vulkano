@@ -10,6 +10,7 @@
 use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;
+use std::mem;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -21,6 +22,7 @@ use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitPresentBuilder;
 use command_buffer::submit::SubmitSemaphoresWaitBuilder;
+use command_buffer::submit::SubmitPresentError;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -58,6 +60,37 @@ use VulkanObject;
 use check_errors;
 use vk;
 
+/// The way fullscreen exclusivity is handled.
+#[derive(Copy,Clone,Debug,PartialEq,Eq)]
+pub enum FullscreenExclusive {
+    /// Indicates that the driver should determine the appropriate full-screen method
+    /// by whatever means it deems appropriate.
+    Default,
+    /// Indicates that the driver may use full-screen exclusive mechanisms when available.
+    /// Such mechanisms may result in better performance and/or the availability of
+    /// different presentation capabilities, but may require a more disruptive transition
+    // during swapchain initialization, first presentation and/or destruction.
+    Allowed,
+    /// Indicates that the driver should avoid using full-screen mechanisms which rely
+    /// on disruptive transitions.
+    Disallowed,
+    /// Indicates the application will manage full-screen exclusive mode by using
+    /// `Swapchain::acquire_fullscreen_exclusive()` and
+    /// `Swapchain::release_fullscreen_exclusive()` functions.
+    AppControlled,
+}
+
+impl FullscreenExclusive {
+    fn vk_sys_enum(&self) -> u32 {
+        match self {
+            &Self::Default => vk::FULL_SCREEN_EXCLUSIVE_DEFAUlT_EXT,
+            &Self::Allowed => vk::FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT,
+            &Self::Disallowed => vk::FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT,
+            &Self::AppControlled => vk::FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
+        }
+    }
+}
+
 /// Tries to take ownership of an image in order to draw on it.
 ///
 /// The function returns the index of the image in the array of images that was returned
@@ -84,7 +117,13 @@ pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Durat
             return Err(AcquireError::OutOfDate);
         }
 
-        unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) }?
+        let acquire_result = unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
+
+        if let &Err(AcquireError::FullscreenExclusiveLost) = &acquire_result {
+            swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+        }
+
+        acquire_result?
     };
 
     Ok((id, suboptimal,
@@ -189,6 +228,8 @@ pub struct Swapchain<W> {
     transform: SurfaceTransform,
     alpha: CompositeAlpha,
     mode: PresentMode,
+    fullscreen_exclusive: FullscreenExclusive,
+    fullscreen_exclusive_held: AtomicBool,
     clipped: bool,
 }
 
@@ -225,8 +266,8 @@ impl <W> Swapchain<W> {
     pub fn new<F, S>(
         device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: F,
         dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
-        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode, clipped: bool,
-        color_space: ColorSpace)
+        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
+        fullscreen_exclusive: FullscreenExclusive, clipped: bool, color_space: ColorSpace)
         -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
         where F: FormatDesc,
               S: Into<SharingMode>
@@ -243,6 +284,7 @@ impl <W> Swapchain<W> {
                              transform,
                              alpha,
                              mode,
+                             fullscreen_exclusive,
                              clipped,
                              None)
     }
@@ -253,8 +295,9 @@ impl <W> Swapchain<W> {
     pub fn with_old_swapchain<F, S>(
         device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: F,
         dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
-        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode, clipped: bool,
-        color_space: ColorSpace, old_swapchain: Arc<Swapchain<W>>)
+        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
+        fullscreen_exclusive: FullscreenExclusive, clipped: bool, color_space: ColorSpace,
+        old_swapchain: Arc<Swapchain<W>>)
         -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
         where F: FormatDesc,
               S: Into<SharingMode>
@@ -271,6 +314,7 @@ impl <W> Swapchain<W> {
                              transform,
                              alpha,
                              mode,
+                             fullscreen_exclusive,
                              clipped,
                              Some(&*old_swapchain))
     }
@@ -290,6 +334,7 @@ impl <W> Swapchain<W> {
                              self.transform,
                              self.alpha,
                              self.mode,
+                             self.fullscreen_exclusive,
                              self.clipped,
                              Some(self))
     }
@@ -310,6 +355,7 @@ impl <W> Swapchain<W> {
                              self.transform,
                              self.alpha,
                              self.mode,
+                             self.fullscreen_exclusive,
                              self.clipped,
                              Some(self))
     }
@@ -317,7 +363,7 @@ impl <W> Swapchain<W> {
     fn new_inner(device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: Format,
                  color_space: ColorSpace, dimensions: Option<[u32; 2]>, layers: u32, usage: ImageUsage,
                  sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
-                 mode: PresentMode, clipped: bool, old_swapchain: Option<&Swapchain<W>>)
+                 mode: PresentMode, fullscreen_exclusive: FullscreenExclusive, clipped: bool, old_swapchain: Option<&Swapchain<W>>)
                  -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
         assert_eq!(device.instance().internal_object(),
                    surface.instance().internal_object());
@@ -390,8 +436,26 @@ impl <W> Swapchain<W> {
         }
 
         if !device.loaded_extensions().khr_swapchain {
-            return Err(SwapchainCreationError::MissingExtension);
+            return Err(SwapchainCreationError::MissingExtensionKHRSwapchain);
         }
+
+        let mut surface_full_screen_exclusive_info = None;
+
+        if device.loaded_extensions().ext_full_screen_exclusive
+            && surface.instance().loaded_extensions().khr_get_physical_device_properties2
+            && surface.instance().loaded_extensions().khr_get_surface_capabilities2
+        {
+            surface_full_screen_exclusive_info = Some(vk::SurfaceFullScreenExclusiveInfoEXT {
+                sType: vk::STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
+                pNext: ptr::null(),
+                fullScreenExclusive: fullscreen_exclusive.vk_sys_enum(),
+            });
+        }
+
+        let p_next = match surface_full_screen_exclusive_info.as_ref() {
+            Some(some) => unsafe { mem::transmute(some as *const _) },
+            None => ptr::null(),
+        };
 
         // Required by the specs.
         assert_ne!(usage, ImageUsage::none());
@@ -426,7 +490,7 @@ impl <W> Swapchain<W> {
 
             let infos = vk::SwapchainCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-                pNext: ptr::null(),
+                pNext: p_next,
                 flags: 0, // reserved
                 surface: surface.internal_object(),
                 minImageCount: num_images,
@@ -501,6 +565,17 @@ impl <W> Swapchain<W> {
             })
             .collect::<Vec<_>>();
 
+        let fullscreen_exclusive_held = old_swapchain
+            .as_ref()
+            .map(|old_swapchain| {
+                if old_swapchain.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+                    false
+                } else {
+                    old_swapchain.fullscreen_exclusive_held.load(Ordering::SeqCst)
+                }
+            })
+            .unwrap_or(false);
+
         let swapchain = Arc::new(Swapchain {
                                      device: device.clone(),
                                      surface: surface.clone(),
@@ -517,6 +592,8 @@ impl <W> Swapchain<W> {
                                      transform: transform,
                                      alpha: alpha,
                                      mode: mode,
+                                     fullscreen_exclusive,
+                                     fullscreen_exclusive_held: AtomicBool::new(fullscreen_exclusive_held),
                                      clipped: clipped,
                                  });
 
@@ -614,6 +691,70 @@ impl <W> Swapchain<W> {
         self.clipped
     }
 
+    /// Returns the value of 'fullscreen_exclusive` that was passed when creating the swapchain.
+    ///
+    /// See the documentation of `FullscreenExclusive`
+    #[inline]
+    pub fn fullscreen_exclusive(&self) -> FullscreenExclusive {
+        self.fullscreen_exclusive
+    }
+
+    /// `FullscreenExclusive::AppControlled` must be the active fullscreen exclusivity mode.
+    /// Acquire fullscreen exclusivity until either the `release_fullscreen_exclusive` is
+    /// called, or if any of the the other `Swapchain` functions return `FullscreenExclusiveLost`.
+    /// Requires: `FullscreenExclusive::AppControlled`
+    pub fn acquire_fullscreen_exclusive(&self) -> Result<(), FullscreenExclusiveError> {
+        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+            return Err(FullscreenExclusiveError::NotAppControlled);
+        }
+
+        if self.fullscreen_exclusive_held.swap(true, Ordering::SeqCst) {
+            return Err(FullscreenExclusiveError::DoubleAcquire);
+        }
+
+        unsafe {
+            check_errors(self.device.pointers().AcquireFullScreenExclusiveModeEXT(
+                self.device.internal_object(),
+                self.swapchain
+            ))?;
+        }
+
+        Ok(())
+    }
+
+    /// `FullscreenExclusive::AppControlled` must be the active fullscreen exclusivity mode.
+    /// Release fullscreen exclusivity.
+    pub fn release_fullscreen_exclusive(&self) -> Result<(), FullscreenExclusiveError> {
+        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+            return Err(FullscreenExclusiveError::NotAppControlled);
+        }
+
+        if !self.fullscreen_exclusive_held.swap(false, Ordering::SeqCst) {
+            return Err(FullscreenExclusiveError::DoubleRelease);
+        }
+
+        unsafe {
+            check_errors(self.device.pointers().ReleaseFullScreenExclusiveModeEXT(
+                self.device.internal_object(),
+                self.swapchain
+            ))?;
+        }
+
+        Ok(())
+    }
+
+    /// `FullscreenExclusive::AppControlled` is not the active fullscreen exclusivity mode,
+    /// then this function will always return false. If true is returned the swapchain
+    /// is in `FullscreenExclusive::AppControlled` fullscreen exclusivity mode and exclusivity
+    /// is currently acquired.
+    pub fn is_fullscreen_exclusive(&self) -> bool {
+        if self.fullscreen_exclusive != FullscreenExclusive::AppControlled {
+            false
+        } else {
+            self.fullscreen_exclusive_held.load(Ordering::SeqCst)
+        }
+    }
+
     // This method is necessary to allow `SwapchainImage`s to signal when they have been
     // transitioned out of their initial `undefined` image layout.
     //
@@ -682,7 +823,9 @@ pub enum SwapchainCreationError {
     /// The window is already in use by another API.
     NativeWindowInUse,
     /// The `VK_KHR_swapchain` extension was not enabled.
-    MissingExtension,
+    MissingExtensionKHRSwapchain,
+    /// The `VK_EXT_full_screen_exclusive` extension was not enabled.
+    MissingExtensionExtFullScreenExclusive,
     /// Surface mismatch between old and new swapchain.
     OldSwapchainSurfaceMismatch,
     /// The old swapchain has already been used to recreate another one.
@@ -726,8 +869,11 @@ impl error::Error for SwapchainCreationError {
             SwapchainCreationError::NativeWindowInUse => {
                 "the window is already in use by another API"
             },
-            SwapchainCreationError::MissingExtension => {
+            SwapchainCreationError::MissingExtensionKHRSwapchain => {
                 "the `VK_KHR_swapchain` extension was not enabled"
+            },
+            SwapchainCreationError::MissingExtensionExtFullScreenExclusive => {
+                "the `VK_EXT_full_screen_exclusive` extension was not enabled"
             },
             SwapchainCreationError::OldSwapchainSurfaceMismatch => {
                 "surface mismatch between old and new swapchain"
@@ -940,6 +1086,86 @@ impl<W> Drop for SwapchainAcquireFuture<W> {
     }
 }
 
+/// Error that can happen when calling `Swapchain::acquire_fullscreen_exclusive` or `Swapchain::release_fullscreen_exclusive`
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum FullscreenExclusiveError {
+    /// Not enough memory.
+    OomError(OomError),
+
+    /// Operation could not be completed for driver specific reasons.
+    InitializationFailed,
+
+    /// The surface is no longer accessible and must be recreated.
+    SurfaceLost,
+
+    /// Fullscreen exclusivity is already acquired.
+    DoubleAcquire,
+
+    /// Fullscreen exclusivity is not current acquired.
+    DoubleRelease,
+
+    /// Swapchain is not in fullscreen exclusive app controlled mode
+    NotAppControlled,
+}
+
+impl fmt::Display for FullscreenExclusiveError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", error::Error::description(self))
+    }
+}
+
+impl From<Error> for FullscreenExclusiveError {
+    #[inline]
+    fn from(err: Error) -> FullscreenExclusiveError {
+        match err {
+            err @ Error::OutOfHostMemory => {
+                FullscreenExclusiveError::OomError(OomError::from(err))
+            },
+            err @ Error::OutOfDeviceMemory => {
+                FullscreenExclusiveError::OomError(OomError::from(err))
+            },
+            Error::SurfaceLost => {
+                FullscreenExclusiveError::SurfaceLost
+            },
+            Error::InitializationFailed => {
+                FullscreenExclusiveError::InitializationFailed
+            },
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<OomError> for FullscreenExclusiveError {
+    #[inline]
+    fn from(err: OomError) -> FullscreenExclusiveError {
+        FullscreenExclusiveError::OomError(err)
+    }
+}
+
+impl error::Error for FullscreenExclusiveError {
+    #[inline]
+    fn description(&self) -> &str {
+        match *self {
+            FullscreenExclusiveError::OomError(_) => "not enough memory",
+            FullscreenExclusiveError::SurfaceLost => "the surface of this swapchain is no longer valid",
+            FullscreenExclusiveError::InitializationFailed => "operation could not be completed for driver specific reasons",
+            FullscreenExclusiveError::DoubleAcquire => "fullscreen exclusivity is already acquired",
+            FullscreenExclusiveError::DoubleRelease => "fullscreen exclusivity is not acquired",
+            FullscreenExclusiveError::NotAppControlled => "swapchain is not in fullscreen exclusive app controlled mode"
+        }
+    }
+
+    #[inline]
+    fn cause(&self) -> Option<&dyn error::Error> {
+        match *self {
+            FullscreenExclusiveError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
 /// Error that can happen when calling `acquire_next_image`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
@@ -956,6 +1182,10 @@ pub enum AcquireError {
     /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
 
+    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullscreenExclusiveLost,
+
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
@@ -970,6 +1200,7 @@ impl error::Error for AcquireError {
             AcquireError::Timeout => "no image is available for acquiring yet",
             AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
             AcquireError::OutOfDate => "the swapchain needs to be recreated",
+            AcquireError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
         }
     }
 
@@ -1005,6 +1236,7 @@ impl From<Error> for AcquireError {
             Error::DeviceLost => AcquireError::DeviceLost,
             Error::SurfaceLost => AcquireError::SurfaceLost,
             Error::OutOfDate => AcquireError::OutOfDate,
+            Error::FullscreenExclusiveLost => AcquireError::FullscreenExclusiveLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1115,10 +1347,22 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
         unsafe {
             // If `flushed` already contains `true`, then `build_submission` will return `Empty`.
 
-            match self.build_submission()? {
+            let build_submission_result = self.build_submission();
+
+            if let &Err(FlushError::FullscreenExclusiveLost) = &build_submission_result {
+                self.swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+            }
+
+            match build_submission_result? {
                 SubmitAnyBuilder::Empty => {},
                 SubmitAnyBuilder::QueuePresent(present) => {
-                    present.submit(&self.queue)?;
+                    let present_result = present.submit(&self.queue);
+
+                    if let &Err(SubmitPresentError::FullscreenExclusiveLost) = &present_result {
+                        self.swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+                    }
+
+                    present_result?;
                 },
                 _ => unreachable!(),
             }

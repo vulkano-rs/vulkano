@@ -210,6 +210,10 @@ pub enum SubmitPresentError {
     /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
 
+    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullscreenExclusiveLost,
+
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
@@ -223,6 +227,7 @@ impl error::Error for SubmitPresentError {
             SubmitPresentError::DeviceLost => "the connection to the device has been lost",
             SubmitPresentError::SurfaceLost => "the surface of this swapchain is no longer valid",
             SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
+            SubmitPresentError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
         }
     }
 
@@ -251,6 +256,7 @@ impl From<Error> for SubmitPresentError {
             Error::DeviceLost => SubmitPresentError::DeviceLost,
             Error::SurfaceLost => SubmitPresentError::SurfaceLost,
             Error::OutOfDate => SubmitPresentError::OutOfDate,
+            Error::FullscreenExclusiveLost => SubmitPresentError::FullscreenExclusiveLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

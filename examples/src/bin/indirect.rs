@@ -40,7 +40,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace, FullscreenExclusive};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -89,7 +89,7 @@ fn main() {
 
         Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
             dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
+            PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
     };
 
     mod vs {

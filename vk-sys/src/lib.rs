@@ -104,6 +104,7 @@ pub const ERROR_INCOMPATIBLE_DISPLAY_KHR: u32 = -1000003001i32 as u32;
 pub const ERROR_VALIDATION_FAILED_EXT: u32 = -1000011001i32 as u32;
 pub const ERROR_INVALID_SHADER_NV: u32 = -1000012000i32 as u32;
 pub const ERROR_OUT_OF_POOL_MEMORY_KHR: u32 = -1000069000i32 as u32;
+pub const ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT: u32 = -1000255000i32 as u32;
 
 pub type StructureType = u32;
 pub const STRUCTURE_TYPE_APPLICATION_INFO: u32 = 0;
@@ -193,6 +194,7 @@ pub const STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146001;
 pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146002;
 pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
 pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
+pub const STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT: u32 = 1000255000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -1047,6 +1049,13 @@ pub type PFN_vkInternalFreeNotification = extern "system" fn(*mut c_void, usize,
 pub type PFN_vkDebugUtilsMessengerCallbackEXT = extern "system" fn(DebugUtilsMessageSeverityFlagBitsEXT, DebugUtilsMessageTypeFlagsEXT, *const DebugUtilsMessengerCallbackDataEXT, *mut c_void) -> Bool32;
 
 pub type PFN_vkVoidFunction = extern "system" fn() -> ();
+
+pub type FullScreenExclusiveEXT = u32;
+pub const FULL_SCREEN_EXCLUSIVE_DEFAUlT_EXT: u32 = 0;
+pub const FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT: u32 = 1;
+pub const FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT: u32 = 2;
+pub const FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT: u32 = 3;
+pub const FULL_SCREEN_EXCLUSIVE_MAX_ENUM_EXT: u32 = 0x7FFFFFFF;
 
 #[repr(C)]
 pub struct ApplicationInfo {
@@ -2688,6 +2697,13 @@ pub struct DebugUtilsObjectNameInfoEXT {
     pub pObjectName: *const c_char,
 }
 
+#[repr(C)]
+pub struct SurfaceFullScreenExclusiveInfoEXT {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub fullScreenExclusive: FullScreenExclusiveEXT,
+}
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
@@ -2937,4 +2953,6 @@ ptrs!(DevicePointers, {
     CmdBeginDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
     CmdEndDebugUtilsLabelEXT => (commandBuffer: CommandBuffer) -> Result,
     CmdInsertDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
+    AcquireFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
+    ReleaseFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
 });

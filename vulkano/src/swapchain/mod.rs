@@ -165,12 +165,13 @@
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
 //! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace};
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullscreenExclusive};
 //! # fn create_swapchain(
 //! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
-//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
-//! # ) -> Result<(), Box<std::error::Error>> {
+//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
+//! #     present_mode: PresentMode, fullscreen_exclusive: FullscreenExclusive
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // The created swapchain will be used as a color attachment for rendering.
 //! let usage = ImageUsage {
 //!     color_attachment: true,
@@ -203,6 +204,8 @@
 //!     composite_alpha,
 //!     // How to present images.
 //!     present_mode,
+//!     // How to handle fullscreen exclusivity
+//!     fullscreen_exclusive,
 //!     // Clip the parts of the buffer which aren't visible.
 //!     true,
 //!     // No previous swapchain.
@@ -262,7 +265,6 @@
 //! rendering, you will need to *recreate* the swapchain by creating a new swapchain and passing
 //! as last parameter the old swapchain.
 //!
-//! TODO: suboptimal stuff
 //!
 //! ```
 //! use vulkano::swapchain;
@@ -294,6 +296,10 @@
 //!         // .then_execute(...)
 //!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
 //!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
+//!
+//!     if suboptimal {
+//!         recreate_swapchain = true;
+//!     }
 //! }
 //! ```
 //!
@@ -326,6 +332,8 @@ pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;
 pub use self::swapchain::present;
 pub use self::swapchain::present_incremental;
+pub use self::swapchain::FullscreenExclusive;
+pub use self::swapchain::FullscreenExclusiveError;
 
 mod capabilities;
 pub mod display;

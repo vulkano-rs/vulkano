@@ -129,8 +129,12 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
-        // Swapchain image are only accessible after being acquired.
-        Err(AccessError::SwapchainImageAcquireOnly)
+        if self.swapchain.is_fullscreen_exclusive() {
+            Ok(())
+        } else {
+            // Swapchain image are only accessible after being acquired.
+            Err(AccessError::SwapchainImageAcquireOnly)
+        }
     }
 
     #[inline]
