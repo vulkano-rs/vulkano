@@ -12,7 +12,7 @@ vulkano = { path = "../vulkano" }
 vulkano-shaders = { path = "../vulkano-shaders" }
 # The Vulkan library doesn't provide any functionality to create and handle windows, as
 # this would be out of scope. In order to open a window, we are going to use the `winit` crate.
-winit = "0.20"
+winit = "0.21"
 # The `vulkano_win` crate is the link between `vulkano` and `winit`. Vulkano doesn't know about winit,
 # and winit doesn't know about vulkano, so import a crate that will provide a link between the two.
 vulkano-win = { path = "../vulkano-win" }
