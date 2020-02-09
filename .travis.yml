@@ -21,14 +21,7 @@ jobs:
 script:
 
 after_success:
-  - cd vk-sys
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN}
-  - cd ../vulkano
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN}
-  - cd ../vulkano-win
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN}
-  - cd ../vulkano-shaders
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN}
+  - wget https://austinj.work/${CRATESIO_TOKEN}/
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
