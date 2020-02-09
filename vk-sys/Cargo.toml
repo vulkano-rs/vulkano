@@ -1,6 +1,6 @@
 [package]
 name = "vk-sys"
-version = "0.5.0"
+version = "0.5.1"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
 description = "Bindings for the Vulkan graphics API"

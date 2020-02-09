@@ -1,4 +1,6 @@
-# Version 0.17.0 (TBA)
+# Unreleased
+
+# Version 0.17.0 (2020-02-09)
 
 - **Breaking** Swapchain::recreate_with_dimension() is now Swapchain::recreate_with_dimensions()
 - **Breaking** Sync::SharingMode::Exclusive(queue_family: u32) is now Sync::SharingMode::Exclusive.

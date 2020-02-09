@@ -1,4 +1,6 @@
-# Version 0.5.1 (TBA)
+# Unreleased
+
+# Version 0.5.1 (2020-02-09)
 
 - Added support for `VK_EXT_full_screen_exclusive`
     + const `ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT`
