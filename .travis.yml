@@ -17,11 +17,36 @@ jobs:
       dist: bionic
       rust:
         - stable
+    - os: linux
+      dist: bionic
+      rust:
+        - nightly
+    - os: osx
+      rust:
+        - stable
+    - os: osx
+      rust:
+        - nightly
+
+cache:
+  directories:
+    - $TRAVIS_HOME/.cargo/
+    - $TRAVIS_BUILD_DIR/target/debug/build
+    - $TRAVIS_BUILD_DIR/target/debug/deps
+    - $TRAVIS_BUILD_DIR/target/debug/incremental
+
+before_cache:
+  - rm -rf $TRAVIS_HOME/.cargo/registry/src
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
 
 script:
+  - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
+  - travis_wait 30 cargo build -j 2 --all
+  - travis_wait 30 cargo test -j 2 --all
 
 after_success:
-  - wget https://austinj.work/${CRATESIO_TOKEN}/
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
