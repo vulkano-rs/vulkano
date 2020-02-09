@@ -42,10 +42,10 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
 
 script:
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vk-sys
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vulkan
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vulkano-win
-  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vulkano-shaders
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
   - travis_wait 30 cargo build -j 2 --all
   - travis_wait 30 cargo test -j 2 --all
@@ -60,7 +60,7 @@ after_success:
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
     [ $TRAVIS_OS_NAME = linux ] &&
-    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
   - |
     [ $TRAVIS_BRANCH = master ] &&
     [ $TRAVIS_PULL_REQUEST = false ] &&
