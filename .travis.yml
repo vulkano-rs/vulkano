@@ -42,6 +42,10 @@ before_install:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
 
 script:
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vk-sys
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vulkan
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vulkano-win
+  - cargo owner --add AustinJ235 --token ${CRATESIO_TOKEN} vulkano-shaders
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
   - travis_wait 30 cargo build -j 2 --all
   - travis_wait 30 cargo test -j 2 --all
