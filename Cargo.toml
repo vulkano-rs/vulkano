@@ -3,6 +3,7 @@ members = [
     "examples",
     "vk-sys",
     "vulkano",
+    "vulkano-derive",
     "vulkano-shaders",
     "vulkano-win"
 ]
