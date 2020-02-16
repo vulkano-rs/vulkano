@@ -17,6 +17,7 @@ pub fn vertex_macro_derive(input: TokenStream) -> TokenStream {
     };
 
     let member = fields.iter().map(|field| &field.ident);
+    let ty = fields.iter().map(|field| &field.ty);
     let name = &ast.ident;
 
     let output = quote! {
@@ -36,12 +37,7 @@ pub fn vertex_macro_derive(input: TokenStream) -> TokenStream {
                 #(
                     if name == stringify!(#member) {
                         let dummy = <#name>::default();
-                        #[inline] fn f<T: VertexMember>(_: &T)
-                        -> (VertexMemberTy, usize) {
-                            T::format()
-                        }
-
-                        let (ty, array_size) = f(&dummy.#member);
+                        let (ty, array_size) = <#ty>::format();
                         let dummy_ptr = (&dummy) as *const _;
                         let member_ptr = (&dummy.#member) as *const _;
 
