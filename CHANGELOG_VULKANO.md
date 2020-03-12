@@ -1,5 +1,11 @@
 # Unreleased
 
+# Version 0.18.0 (2020-03-11)
+
+- **Breaking** Update dependency `winit` 0.21 -> 0.22
+- Update dependency `half` 1.4 -> 1.5
+- Update dependency `smallvec` 0.6 -> 1.2
+
 # Version 0.17.0 (2020-02-09)
 
 - **Breaking** Swapchain::recreate_with_dimension() is now Swapchain::recreate_with_dimensions()
