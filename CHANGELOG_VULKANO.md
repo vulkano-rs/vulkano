@@ -1,5 +1,9 @@
 # Unreleased
 
+- Fixed Vulkano Shaders bug when compute shader local group layout values bound to specialization constants.
+  Now it is possible to define the layout in form of `layout(local_size_x_id = 12, local_size_y_id = 13, local_size_z = 1) in;`
+  and then set the values as `SpecializationConstants {constant_12: 8, constant_13: 4, ...}`.
+
 # Version 0.18.0 (2020-03-11)
 
 - **Breaking** Update dependency `winit` 0.21 -> 0.22
