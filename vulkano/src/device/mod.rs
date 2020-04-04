@@ -127,6 +127,13 @@ pub use self::extensions::RawDeviceExtensions;
 pub use ::features::Features;
 mod extensions;
 
+use format::Format;
+use image::ImageType;
+use image::ImageTiling;
+use image::ImageUsage;
+use image::ImageFormatProperties;
+use image::ImageCreateFlags;
+
 /// Represents a Vulkan context.
 pub struct Device {
     instance: Arc<Instance>,
@@ -503,6 +510,31 @@ impl Device {
         check_errors(self.vk.SetDebugUtilsObjectNameEXT(self.device, &info))?;
         Ok(())
     }
+
+    /// Checks the given combination of image attributes/configuration for compatibility with the physical device. 
+    /// 
+    /// Returns a struct with additional capabilities available for this image configuration.
+    pub fn image_format_properties(&self, format: Format, ty: ImageType, tiling: ImageTiling, usage: ImageUsage, create_flags: ImageCreateFlags) -> Result<ImageFormatProperties, String> {
+        let vk_i = self.instance().pointers();
+        let mut output = MaybeUninit::uninit();
+        let physical_device = self.physical_device().internal_object();
+        unsafe {
+            let r = vk_i.GetPhysicalDeviceImageFormatProperties(physical_device,
+                                                                format as u32,
+                                                                ty.into(),
+                                                                tiling.into(),
+                                                                usage.to_usage_bits(),
+                                                                create_flags.into(),
+                                                                output.as_mut_ptr());
+
+            match check_errors(r) {
+                Ok(_) => Ok(output.assume_init().into()),
+                Err(e) =>
+                    return Err(String::from(format!("Image properties not supported. {:#?}", e))),
+            }
+        }
+    }
+
 }
 
 impl fmt::Debug for Device {

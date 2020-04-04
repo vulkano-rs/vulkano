@@ -33,6 +33,9 @@ use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
+use image::ImageType;
+use image::ImageTiling;
+use image::ImageCreateFlags;
 use image::swapchain::SwapchainImage;
 use image::sys::UnsafeImage;
 use swapchain::CapabilitiesError;
@@ -418,6 +421,20 @@ impl <W> Swapchain<W> {
         }
         if !capabilities.present_modes.supports(mode) {
             return Err(SwapchainCreationError::UnsupportedPresentMode);
+        }
+
+        // check that the physical device supports the swapchain image configuration
+        match device.image_format_properties(
+            format, 
+            ImageType::Dim2d, 
+            ImageTiling::Optimal, 
+            usage, 
+            ImageCreateFlags::none()) {
+            Ok(_) => (),
+            Err(e) => {
+                eprintln!("{}", e);
+                return Err(SwapchainCreationError::UnsupportedImageConfiguration);
+            }
         }
 
         // If we recreate a swapchain, make sure that the surface is the same.
@@ -848,6 +865,8 @@ pub enum SwapchainCreationError {
     UnsupportedCompositeAlpha,
     /// The requested present mode is not supported by the surface.
     UnsupportedPresentMode,
+    /// The image configuration is not supported by the physical device.
+    UnsupportedImageConfiguration,
 }
 
 impl error::Error for SwapchainCreationError {
@@ -908,6 +927,9 @@ impl error::Error for SwapchainCreationError {
             SwapchainCreationError::UnsupportedPresentMode => {
                 "the requested present mode is not supported by the surface"
             },
+            SwapchainCreationError::UnsupportedImageConfiguration => {
+                "the requested image configuration is not supported by the physical device"
+            }
         }
     }
 

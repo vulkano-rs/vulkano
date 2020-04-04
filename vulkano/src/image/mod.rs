@@ -47,6 +47,7 @@
 //!
 
 use std::cmp;
+use std::convert::TryFrom;
 
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
@@ -92,6 +93,78 @@ impl From<u32> for MipmapsCount {
     #[inline]
     fn from(num: u32) -> MipmapsCount {
         MipmapsCount::Specific(num)
+    }
+}
+
+/// Helper type for creating extents
+pub enum Extent {
+    E1D([u32; 1]),
+    E2D([u32; 2]),
+    E3D([u32; 3]),
+}
+
+impl From<vk::Extent2D> for Extent {
+    fn from(extent: vk::Extent2D) -> Self {
+        Extent::E2D([extent.width, extent.height])
+    }
+}
+
+impl From<vk::Extent3D> for Extent {
+    fn from(extent: vk::Extent3D) -> Self {
+        Extent::E3D([extent.width, extent.height, extent.depth])
+    }
+}
+impl TryFrom<Extent> for vk::Extent2D {
+    type Error = ();
+
+    fn try_from(extent: Extent) -> Result<Self, Self::Error> {
+        match extent {
+            Extent::E2D(a) => {
+                Ok(vk::Extent2D {
+                    width: a[0],
+                    height: a[1],
+                })
+            }
+            _ => Err(())
+        }
+    }
+}
+
+impl TryFrom<Extent> for vk::Extent3D {
+    type Error = ();
+
+    fn try_from(extent: Extent) -> Result<Self, Self::Error> {
+        match extent {
+            Extent::E3D(a) => {
+                Ok(vk::Extent3D {
+                    width: a[0],
+                    height: a[1],
+                    depth: a[2],
+                })
+            }
+            _ => Err(())
+        }
+    }
+}
+
+/// Helper type returned from Device's `fn image_format_properties()`
+pub struct ImageFormatProperties {
+    pub max_extent: Extent,
+    pub max_mip_levels: MipmapsCount,
+    pub max_array_layers: u32,
+    pub sample_counts: u32,
+    pub max_resource_size: usize,
+}
+
+impl From<vk::ImageFormatProperties> for ImageFormatProperties {
+    fn from(props: vk::ImageFormatProperties) -> Self {
+        Self {
+            max_extent: props.maxExtent.into(),
+            max_mip_levels: props.maxMipLevels.into(),
+            max_array_layers: props.maxArrayLayers,
+            sample_counts: props.sampleCounts,
+            max_resource_size: props.maxResourceSize as usize,
+        }
     }
 }
 
@@ -320,6 +393,89 @@ impl Dimensions {
     #[inline]
     pub fn num_texels(&self) -> u32 {
         self.width() * self.height() * self.depth() * self.array_layers_with_cube()
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub struct ImageCreateFlags {
+    pub sparse_binding: bool,
+    pub sparse_residency: bool,
+    pub sparse_aliased: bool,
+    pub mutable_format: bool,
+    pub cube_compatible: bool,
+    pub array_2d_compatible: bool,
+}
+
+impl ImageCreateFlags {
+    pub fn all() -> Self {
+        Self {
+            sparse_binding: true,
+            sparse_residency: true,
+            sparse_aliased: true,
+            mutable_format: true,
+            cube_compatible: true,
+            array_2d_compatible: true,
+        }
+    }
+
+    pub fn none() -> Self {
+        Self::default()
+    }
+}
+
+impl From<ImageCreateFlags> for vk::ImageCreateFlags {
+    fn from(flags: ImageCreateFlags) -> Self {
+        let mut vk_flags = Self::default();
+        if flags.sparse_binding {
+           vk_flags |= vk::IMAGE_CREATE_SPARSE_BINDING_BIT 
+        };
+        if flags.sparse_residency {
+            vk_flags |= vk::IMAGE_CREATE_SPARSE_RESIDENCY_BIT
+        };
+        if flags.sparse_aliased {
+            vk_flags |= vk::IMAGE_CREATE_SPARSE_ALIASED_BIT
+        };
+        if flags.mutable_format {
+            vk_flags |= vk::IMAGE_CREATE_MUTABLE_FORMAT_BIT
+        };
+        if flags.cube_compatible {
+            vk_flags |= vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+        };
+        if flags.array_2d_compatible {
+            vk_flags |= vk::IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT_KHR
+        };
+        vk_flags
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ImageType {
+    Dim1d,
+    Dim2d,
+    Dim3d,
+}
+impl From<ImageType> for vk::ImageType {
+    fn from(image_type: ImageType) -> Self {
+        match image_type {
+            ImageType::Dim1d => vk::IMAGE_TYPE_1D,
+            ImageType::Dim2d => vk::IMAGE_TYPE_2D,
+            ImageType::Dim3d => vk::IMAGE_TYPE_3D,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ImageTiling {
+    Optimal,
+    Linear,
+}
+
+impl From<ImageTiling> for vk::ImageTiling {
+    fn from(image_tiling: ImageTiling) -> Self {
+        match image_tiling {
+            ImageTiling::Optimal => vk::IMAGE_TILING_OPTIMAL,
+            ImageTiling::Linear => vk::IMAGE_TILING_LINEAR,
+        }
     }
 }
 
