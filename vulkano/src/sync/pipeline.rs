@@ -82,6 +82,8 @@ pipeline_stages!{
     host => vk::PIPELINE_STAGE_HOST_BIT,
     all_graphics => vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,
     all_commands => vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+    ray_tracing_shader => vk::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+    acceleration_structure_build => vk::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
 }
 
 macro_rules! access_flags {
@@ -165,6 +167,8 @@ access_flags!{
     host_write => vk::ACCESS_HOST_WRITE_BIT,
     memory_read => vk::ACCESS_MEMORY_READ_BIT,
     memory_write => vk::ACCESS_MEMORY_WRITE_BIT,
+    acceleration_structure_read => vk::ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR,
+    acceleration_structure_write => vk::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR,
 }
 
 impl AccessFlagBits {
@@ -191,7 +195,7 @@ impl AccessFlagBits {
             !stages.vertex_shader && !stages.tessellation_control_shader &&
             !stages.tessellation_evaluation_shader && !stages.geometry_shader &&
             !stages.fragment_shader &&
-            !stages.compute_shader && !stages.all_graphics
+            !stages.compute_shader && !stages.all_graphics && !stages.ray_tracing_shader
         {
             return false;
         }
@@ -218,6 +222,15 @@ impl AccessFlagBits {
         }
 
         if (self.host_read || self.host_write) && !stages.host {
+            return false;
+        }
+
+        if self.acceleration_structure_read && !stages.ray_tracing_shader &&
+           !stages.acceleration_structure_build {
+            return false;
+        }
+
+        if self.acceleration_structure_write && !stages.acceleration_structure_build {
             return false;
         }
 
