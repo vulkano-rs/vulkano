@@ -7,15 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::DynamicState;
 use descriptor::DescriptorSet;
-use pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineType};
 use pipeline::input_assembly::IndexType;
+use pipeline::{
+    ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineType, RayTracingPipelineAbstract,
+};
 use smallvec::SmallVec;
 use std::ops::Range;
 use vk;
+use VulkanObject;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
 /// that were already bound.
@@ -85,8 +87,10 @@ impl StateCacher {
         self.dynamic_state = DynamicState::none();
         self.compute_pipeline = 0;
         self.graphics_pipeline = 0;
+        self.ray_tracing_pipeline = 0;
         self.compute_descriptor_sets = SmallVec::new();
         self.graphics_descriptor_sets = SmallVec::new();
+        self.ray_tracing_descriptor_sets = SmallVec::new();
         self.vertex_buffers = SmallVec::new();
         self.index_buffer = None;
     }
@@ -186,6 +190,25 @@ impl StateCacher {
             StateCacherOutcome::AlreadyOk
         } else {
             self.compute_pipeline = inner;
+            StateCacherOutcome::NeedChange
+        }
+    }
+
+    /// Checks whether we need to bind a ray tracing. Returns `StateCacherOutcome::AlreadyOk`
+    /// if the pipeline was already bound earlier, and `StateCacherOutcome::NeedChange` if you need
+    /// to actually bind the pipeline.
+    ///
+    /// This function also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after this function returns.
+    pub fn bind_ray_tracing_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
+    where
+        P: RayTracingPipelineAbstract,
+    {
+        let inner = RayTracingPipelineAbstract::inner(pipeline).internal_object();
+        if inner == self.ray_tracing_pipeline {
+            StateCacherOutcome::AlreadyOk
+        } else {
+            self.ray_tracing_pipeline = inner;
             StateCacherOutcome::NeedChange
         }
     }

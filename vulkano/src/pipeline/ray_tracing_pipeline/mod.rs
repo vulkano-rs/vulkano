@@ -167,6 +167,7 @@ impl<L> RayTracingPipeline<L> {
 pub unsafe trait RayTracingPipelineAbstract: PipelineLayoutAbstract {
     /// Returns an opaque object that represents the inside of the ray tracing pipeline.
     fn inner(&self) -> RayTracingPipelineSys;
+    fn use_nv_extension(&self) -> bool;
 }
 
 unsafe impl<L> RayTracingPipelineAbstract for RayTracingPipeline<L>
@@ -176,6 +177,11 @@ where
     #[inline]
     fn inner(&self) -> RayTracingPipelineSys {
         RayTracingPipelineSys(self.inner.pipeline, PhantomData)
+    }
+
+    #[inline]
+    fn use_nv_extension(&self) -> bool {
+        self.nv_extension
     }
 }
 
@@ -187,6 +193,11 @@ where
     #[inline]
     fn inner(&self) -> RayTracingPipelineSys {
         (**self).inner()
+    }
+
+    #[inline]
+    fn use_nv_extension(&self) -> bool {
+        (**self).use_nv_extension()
     }
 }
 

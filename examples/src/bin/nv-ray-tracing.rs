@@ -203,7 +203,6 @@ void main() {
         .wait(None)
         .unwrap();
 
-
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
@@ -263,10 +262,29 @@ void main() {
                 recreate_swapchain = true;
             }
 
+            let command_buffer =
+                AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+                    .unwrap()
+                    .trace_rays(
+                        pipeline.clone(),
+                        raygen_shader_binding_table.clone(),
+                        miss_shader_binding_table.clone(),
+                        hit_shader_binding_table.clone(),
+                        callable_shader_binding_table.clone(),
+                        [swapchain.dimensions()[0], swapchain.dimensions()[1], 1],
+                        sets[image_num].clone(),
+                        (),
+                    )
+                    .unwrap()
+                    .build()
+                    .unwrap();
+
             let future = previous_frame_end
                 .take()
                 .unwrap()
                 .join(acquire_future)
+                .then_execute(queue.clone(), command_buffer)
+                .unwrap()
                 .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
                 .then_signal_fence_and_flush();
 

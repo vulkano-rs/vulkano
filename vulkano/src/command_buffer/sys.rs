@@ -41,7 +41,7 @@ use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
-use pipeline::{ComputePipelineAbstract, PipelineType};
+use pipeline::{ComputePipelineAbstract, RayTracingPipelineAbstract, PipelineType};
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
@@ -529,6 +529,17 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let cmd = self.internal_object();
         let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
         vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, inner);
+    }
+
+    /// Calls `vkCmdBindPipeline` on the builder with a ray tracing pipeline.
+    #[inline]
+    pub unsafe fn bind_pipeline_ray_tracing<Rp>(&mut self, pipeline: &Rp)
+        where Rp: ?Sized + RayTracingPipelineAbstract
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let inner = RayTracingPipelineAbstract::inner(pipeline).internal_object();
+        vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_RAY_TRACING_KHR, inner);
     }
 
     /// Calls `vkCmdBindVertexBuffers` on the builder.
@@ -1518,6 +1529,236 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             color,
         };
         vk.CmdInsertDebugUtilsLabelEXT(cmd, &info);
+    }
+
+    /// Calls `vkCmdTraceRaysNV` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_nv<R, M, H, C>(
+        &mut self,
+        raygen_shader_binding_table: &R,
+        miss_shader_binding_table: &M,
+        hit_shader_binding_table: &H,
+        callable_shader_binding_table: &C,
+        dimensions: [u32; 3],
+    ) where
+        R: ?Sized + BufferAccess,
+        M: ?Sized + BufferAccess,
+        H: ?Sized + BufferAccess,
+        C: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_raygen = raygen_shader_binding_table.inner();
+        debug_assert!(inner_raygen.offset < inner_raygen.buffer.size());
+        debug_assert!(
+            inner_raygen.offset + raygen_shader_binding_table.size() <= inner_raygen.buffer.size()
+        );
+        debug_assert!(inner_raygen.buffer.usage_ray_tracing());
+
+        let inner_miss = miss_shader_binding_table.inner();
+        debug_assert!(inner_miss.offset < inner_miss.buffer.size());
+        debug_assert!(
+            inner_miss.offset + miss_shader_binding_table.size() <= inner_miss.buffer.size()
+        );
+        debug_assert!(inner_miss.buffer.usage_ray_tracing());
+
+        let inner_hit = hit_shader_binding_table.inner();
+        debug_assert!(inner_hit.offset < inner_hit.buffer.size());
+        debug_assert!(
+            inner_hit.offset + hit_shader_binding_table.size() <= inner_hit.buffer.size()
+        );
+        debug_assert!(inner_hit.buffer.usage_ray_tracing());
+
+        let inner_callable = callable_shader_binding_table.inner();
+        debug_assert!(inner_callable.offset < inner_callable.buffer.size());
+        debug_assert!(
+            inner_callable.offset + callable_shader_binding_table.size()
+                <= inner_callable.buffer.size()
+        );
+        debug_assert!(inner_callable.buffer.usage_ray_tracing());
+
+        vk.CmdTraceRaysNV(
+            cmd,
+            inner_raygen.buffer.internal_object(),
+            inner_raygen.offset as vk::DeviceSize,
+            inner_miss.buffer.internal_object(),
+            inner_miss.offset as vk::DeviceSize,
+            0, // TODO: Support strided buffers
+            inner_hit.buffer.internal_object(),
+            inner_hit.offset as vk::DeviceSize,
+            0, // TODO: Support strided buffers
+            inner_callable.buffer.internal_object(),
+            inner_callable.offset as vk::DeviceSize,
+            0, // TODO: Support strided buffers
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
+        );
+    }
+
+    /// Calls `vkCmdTraceRaysKHR` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_khr<R, M, H, C>(
+        &mut self,
+        raygen_shader_binding_table: &R,
+        miss_shader_binding_table: &M,
+        hit_shader_binding_table: &H,
+        callable_shader_binding_table: &C,
+        dimensions: [u32; 3],
+    ) where
+        R: ?Sized + BufferAccess,
+        M: ?Sized + BufferAccess,
+        H: ?Sized + BufferAccess,
+        C: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_raygen = raygen_shader_binding_table.inner();
+        debug_assert!(inner_raygen.offset < inner_raygen.buffer.size());
+        debug_assert!(
+            inner_raygen.offset + raygen_shader_binding_table.size() <= inner_raygen.buffer.size()
+        );
+        debug_assert!(inner_raygen.buffer.usage_ray_tracing());
+        let region_raygen = vk::StridedBufferRegionKHR {
+            buffer: inner_raygen.buffer.internal_object(),
+            offset: inner_raygen.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: raygen_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_miss = miss_shader_binding_table.inner();
+        debug_assert!(inner_miss.offset < inner_miss.buffer.size());
+        debug_assert!(
+            inner_miss.offset + miss_shader_binding_table.size() <= inner_miss.buffer.size()
+        );
+        debug_assert!(inner_miss.buffer.usage_ray_tracing());
+        let region_miss = vk::StridedBufferRegionKHR {
+            buffer: inner_miss.buffer.internal_object(),
+            offset: inner_miss.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: miss_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_hit = hit_shader_binding_table.inner();
+        debug_assert!(inner_hit.offset < inner_hit.buffer.size());
+        debug_assert!(
+            inner_hit.offset + hit_shader_binding_table.size() <= inner_hit.buffer.size()
+        );
+        debug_assert!(inner_hit.buffer.usage_ray_tracing());
+        let region_hit = vk::StridedBufferRegionKHR {
+            buffer: inner_hit.buffer.internal_object(),
+            offset: inner_hit.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: hit_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_callable = callable_shader_binding_table.inner();
+        debug_assert!(inner_callable.offset < inner_callable.buffer.size());
+        debug_assert!(
+            inner_callable.offset + callable_shader_binding_table.size()
+                <= inner_callable.buffer.size()
+        );
+        debug_assert!(inner_callable.buffer.usage_ray_tracing());
+        let region_callable = vk::StridedBufferRegionKHR {
+            buffer: inner_callable.buffer.internal_object(),
+            offset: inner_callable.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: callable_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        vk.CmdTraceRaysKHR(
+            cmd,
+            &region_raygen,
+            &region_miss,
+            &region_hit,
+            &region_callable,
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
+        );
+    }
+
+    /// Calls `vkCmdTraceRaysIndirectKHR` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_indirect_khr<R, M, H, C, B>(
+        &mut self, raygen_shader_binding_table: &R, miss_shader_binding_table: &M,
+        hit_shader_binding_table: &H, callable_shader_binding_table: &C, buffer: &B,
+    ) where
+        R: ?Sized + BufferAccess,
+        M: ?Sized + BufferAccess,
+        H: ?Sized + BufferAccess,
+        C: ?Sized + BufferAccess,
+        B: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_raygen = raygen_shader_binding_table.inner();
+        debug_assert!(inner_raygen.offset < inner_raygen.buffer.size());
+        debug_assert!(
+            inner_raygen.offset + raygen_shader_binding_table.size() < inner_raygen.buffer.size()
+        );
+        debug_assert!(inner_raygen.buffer.usage_ray_tracing());
+        let region_raygen = vk::StridedBufferRegionKHR {
+            buffer: inner_raygen.buffer.internal_object(),
+            offset: inner_raygen.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: raygen_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_miss = miss_shader_binding_table.inner();
+        debug_assert!(inner_miss.offset < inner_miss.buffer.size());
+        debug_assert!(
+            inner_miss.offset + miss_shader_binding_table.size() < inner_miss.buffer.size()
+        );
+        debug_assert!(inner_miss.buffer.usage_ray_tracing());
+        let region_miss = vk::StridedBufferRegionKHR {
+            buffer: inner_miss.buffer.internal_object(),
+            offset: inner_miss.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: miss_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_hit = hit_shader_binding_table.inner();
+        debug_assert!(inner_hit.offset < inner_hit.buffer.size());
+        debug_assert!(inner_hit.offset + hit_shader_binding_table.size() < inner_hit.buffer.size());
+        debug_assert!(inner_hit.buffer.usage_ray_tracing());
+        let region_hit = vk::StridedBufferRegionKHR {
+            buffer: inner_hit.buffer.internal_object(),
+            offset: inner_hit.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: hit_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_callable = callable_shader_binding_table.inner();
+        debug_assert!(inner_callable.offset < inner_callable.buffer.size());
+        debug_assert!(
+            inner_callable.offset + callable_shader_binding_table.size()
+                < inner_callable.buffer.size()
+        );
+        debug_assert!(inner_callable.buffer.usage_ray_tracing());
+        let region_callable = vk::StridedBufferRegionKHR {
+            buffer: inner_callable.buffer.internal_object(),
+            offset: inner_callable.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: callable_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner = buffer.inner();
+        debug_assert!(inner.offset < inner.buffer.size());
+        debug_assert!(inner.buffer.usage_indirect_buffer());
+
+        vk.CmdTraceRaysIndirectKHR(
+            cmd,
+            &region_raygen,
+            &region_miss,
+            &region_hit,
+            &region_callable,
+            inner.buffer.internal_object(),
+            inner.offset as vk::DeviceSize,
+        );
     }
 }
 

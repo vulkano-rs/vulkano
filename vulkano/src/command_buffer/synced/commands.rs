@@ -37,13 +37,14 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
-use pipeline::{ComputePipelineAbstract, PipelineType};
-use pipeline::GraphicsPipelineAbstract;
+use pipeline::depth_stencil::DynamicStencilValue;
+use pipeline::depth_stencil::StencilFaceFlags;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
-use pipeline::depth_stencil::DynamicStencilValue;
-use pipeline::depth_stencil::StencilFaceFlags;
+use pipeline::{
+    ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineType, RayTracingPipelineAbstract,
+};
 use sampler::Filter;
 use sync::AccessFlagBits;
 use sync::Event;
@@ -269,6 +270,45 @@ impl<P> SyncCommandBufferBuilder<P> {
                 struct Fin<Cp>(Cp);
                 impl<Cp> FinalCommand for Fin<Cp>
                     where Cp: Send + Sync + 'static
+                {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindPipeline"
+                    }
+                }
+                Box::new(Fin(self.pipeline))
+            }
+        }
+
+        self.append_command(Cmd { pipeline });
+    }
+
+    /// Calls `vkCmdBindPipeline` on the builder with a ray tracing pipeline.
+    #[inline]
+    pub unsafe fn bind_pipeline_ray_tracing<Rp>(&mut self, pipeline: Rp)
+    where
+        Rp: RayTracingPipelineAbstract + Send + Sync + 'static,
+    {
+        struct Cmd<Rp> {
+            pipeline: Rp,
+        }
+
+        impl<P, Rp> Command<P> for Cmd<Rp>
+        where
+            Rp: RayTracingPipelineAbstract + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdBindPipeline"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.bind_pipeline_ray_tracing(&self.pipeline);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin<Rp>(Rp);
+                impl<Rp> FinalCommand for Fin<Rp>
+                where
+                    Rp: Send + Sync + 'static,
                 {
                     fn name(&self) -> &'static str {
                         "vkCmdBindPipeline"
@@ -1906,6 +1946,194 @@ impl<P> SyncCommandBufferBuilder<P> {
                                ImageLayout::Undefined,
                                ImageLayout::Undefined)
             .unwrap();
+    }
+
+    /// Calls `vkCmdTraceRaysKHR` / `vkCmdTraceRaysNV` on the builder.
+    // TODO: `miss_shader_binding_table`, `hit_shader_binding_table`,
+    //       `callable_shader_binding_table` should be optional
+    #[inline]
+    pub unsafe fn trace_rays<Rb, Mb, Hb, Cb>(
+        &mut self,
+        use_nv_extension: bool,
+        raygen_shader_binding_table: Rb,
+        miss_shader_binding_table: Mb,
+        hit_shader_binding_table: Hb,
+        callable_shader_binding_table: Cb,
+        dimensions: [u32; 3],
+    ) -> Result<(), SyncCommandBufferBuilderError>
+    where
+        Rb: BufferAccess + Send + Sync + 'static,
+        Mb: BufferAccess + Send + Sync + 'static,
+        Hb: BufferAccess + Send + Sync + 'static,
+        Cb: BufferAccess + Send + Sync + 'static,
+    {
+        struct Cmd<Rb, Mb, Hb, Cb> {
+            use_nv_extension: bool,
+            raygen_shader_binding_table: Rb,
+            miss_shader_binding_table: Mb,
+            hit_shader_binding_table: Hb,
+            callable_shader_binding_table: Cb,
+            dimensions: [u32; 3],
+        }
+
+        impl<P, Rb, Mb, Hb, Cb> Command<P> for Cmd<Rb, Mb, Hb, Cb>
+        where
+            Rb: BufferAccess + Send + Sync + 'static,
+            Mb: BufferAccess + Send + Sync + 'static,
+            Hb: BufferAccess + Send + Sync + 'static,
+            Cb: BufferAccess + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str
+            {
+                if self.use_nv_extension {
+                    "vkCmdTraceRaysNV"
+                } else {
+                    "vkCmdTraceRaysKHR"
+                }
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                if self.use_nv_extension {
+                    out.trace_rays_nv(
+                        &self.raygen_shader_binding_table,
+                        &self.miss_shader_binding_table,
+                        &self.hit_shader_binding_table,
+                        &self.callable_shader_binding_table,
+                        self.dimensions,
+                    );
+                } else {
+                    out.trace_rays_khr(
+                        &self.raygen_shader_binding_table,
+                        &self.miss_shader_binding_table,
+                        &self.hit_shader_binding_table,
+                        &self.callable_shader_binding_table,
+                        self.dimensions,
+                    );
+                }
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                if self.use_nv_extension {
+                    Box::new("vkCmdTraceRaysNV")
+                } else {
+                    Box::new("vkCmdTraceRaysKHR")
+                }
+            }
+        }
+
+        self.append_command(Cmd {
+            use_nv_extension,
+            raygen_shader_binding_table,
+            miss_shader_binding_table,
+            hit_shader_binding_table,
+            callable_shader_binding_table,
+            dimensions,
+        });
+        Ok(())
+    }
+
+    /// Calls `vkCmdTraceRaysIndirectKHR` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_indirect_khr<Rb, Mb, Hb, Cb, B>(
+        &mut self,
+        raygen_shader_binding_table: Rb,
+        miss_shader_binding_table: Mb,
+        hit_shader_binding_table: Hb,
+        callable_shader_binding_table: Cb,
+        buffer: B,
+    ) -> Result<(), SyncCommandBufferBuilderError>
+    where
+        Rb: BufferAccess + Send + Sync + 'static,
+        Mb: BufferAccess + Send + Sync + 'static,
+        Hb: BufferAccess + Send + Sync + 'static,
+        Cb: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + Send + Sync + 'static,
+    {
+        struct Cmd<Rb, Mb, Hb, Cb, B> {
+            raygen_shader_binding_table: Rb,
+            miss_shader_binding_table: Mb,
+            hit_shader_binding_table: Hb,
+            callable_shader_binding_table: Cb,
+            buffer: B,
+        }
+
+        impl<P, Rb, Mb, Hb, Cb, B> Command<P> for Cmd<Rb, Mb, Hb, Cb, B>
+        where
+            Rb: BufferAccess + Send + Sync + 'static,
+            Mb: BufferAccess + Send + Sync + 'static,
+            Hb: BufferAccess + Send + Sync + 'static,
+            Cb: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdTraceRaysIndirectKHR"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                out.trace_rays_indirect_khr(
+                    &self.raygen_shader_binding_table,
+                    &self.miss_shader_binding_table,
+                    &self.hit_shader_binding_table,
+                    &self.callable_shader_binding_table,
+                    &self.buffer,
+                );
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin<B>(B);
+                impl<B> FinalCommand for Fin<B>
+                where
+                    B: BufferAccess + Send + Sync + 'static,
+                {
+                    fn name(&self) -> &'static str {
+                        "vkCmdTraceRaysIndirectKHR"
+                    }
+                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                        assert_eq!(num, 0);
+                        &self.0
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "indirect buffer".into()
+                    }
+                }
+                Box::new(Fin(self.buffer))
+            }
+
+            fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                assert_eq!(num, 0);
+                &self.buffer
+            }
+
+            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                assert_eq!(num, 0);
+                "indirect buffer".into()
+            }
+        }
+
+        self.append_command(Cmd {
+            raygen_shader_binding_table,
+            miss_shader_binding_table,
+            hit_shader_binding_table,
+            callable_shader_binding_table,
+            buffer,
+        });
+        self.prev_cmd_resource(
+            KeyTy::Buffer,
+            0,
+            false,
+            PipelineStages {
+                draw_indirect: true,
+                ..PipelineStages::none()
+            }, // TODO: is draw_indirect correct?
+            AccessFlagBits {
+                indirect_command_read: true,
+                ..AccessFlagBits::none()
+            },
+            ImageLayout::Undefined,
+            ImageLayout::Undefined,
+        )?;
+        Ok(())
     }
 }
 
