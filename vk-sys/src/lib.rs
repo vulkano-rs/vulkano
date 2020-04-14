@@ -25,6 +25,7 @@ pub type Flags = u32;
 pub type Bool32 = u32;
 pub type DeviceSize = u64;
 pub type SampleMask = u32;
+pub type DeviceAddress = u64;
 
 pub type Instance = usize;
 pub type PhysicalDevice = usize;
@@ -58,6 +59,9 @@ pub type DisplayKHR = u64;
 pub type DisplayModeKHR = u64;
 pub type DescriptorUpdateTemplateKHR = u64;
 
+pub type AccelerationStructureKHR = u64;
+pub type AccelerationStructureNV = AccelerationStructureKHR;
+
 pub const LOD_CLAMP_NONE: f32 = 1000.0;
 pub const REMAINING_MIP_LEVELS: u32 = 0xffffffff;
 pub const REMAINING_ARRAY_LAYERS: u32 = 0xffffffff;
@@ -74,6 +78,7 @@ pub const MAX_MEMORY_HEAPS: u32 = 16;
 pub const MAX_EXTENSION_NAME_SIZE: u32 = 256;
 pub const MAX_DESCRIPTION_SIZE: u32 = 256;
 pub const NULL_HANDLE: u64 = 0;
+pub const SHADER_UNUSED: u32 = 0xffffffff;
 
 pub type PipelineCacheHeaderVersion = u32;
 pub const PIPELINE_CACHE_HEADER_VERSION_ONE: u32 = 1;
@@ -173,7 +178,7 @@ pub const STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_TAG_INFO_EXT:u32 = 1000128001;
 pub const STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT:u32 = 1000128002;
 pub const STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT:u32 = 1000128003;
 pub const STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT:u32 = 1000128004;
-pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = 1000059000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2: u32 = 1000059000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR: u32 = 1000059001;
 pub const STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059002;
 pub const STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059003;
@@ -194,7 +199,42 @@ pub const STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146001;
 pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146002;
 pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
 pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
+pub const STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR: u32 = 1000165006;
+pub const STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR: u32 = 1000165007;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR: u32 = 1000150000;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR: u32 = 1000150001;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR: u32 = 1000150002;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR: u32 = 1000150003;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR: u32 = 1000150004;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR: u32 = 1000150005;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR: u32 = 1000150006;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_KHR: u32 = 1000150008;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_VERSION_KHR: u32 = 1000150009;
+pub const STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_INFO_KHR: u32 = 1000150010;
+pub const STRUCTURE_TYPE_COPY_ACCELERATION_STRUCTURE_TO_MEMORY_INFO_KHR: u32 = 1000150011;
+pub const STRUCTURE_TYPE_COPY_MEMORY_TO_ACCELERATION_STRUCTURE_INFO_KHR: u32 = 1000150012;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_FEATURES_KHR: u32 = 1000150013;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_KHR: u32 = 1000150014;
+pub const STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR: u32 = 1000150015;
+pub const STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR: u32 = 1000150016;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR: u32 = 1000150017;
+pub const STRUCTURE_TYPE_RAY_TRACING_PIPELINE_INTERFACE_CREATE_INFO_KHR: u32 = 1000150018;
+pub const STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV: u32 = 1000165000;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_NV: u32 = 1000165001;
+pub const STRUCTURE_TYPE_GEOMETRY_NV: u32 = 1000165003;
+pub const STRUCTURE_TYPE_GEOMETRY_TRIANGLES_NV: u32 = 1000165004;
+pub const STRUCTURE_TYPE_GEOMETRY_AABB_NV: u32 = 1000165005;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV: u32 = 1000165008;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV: u32 = 1000165009;
+pub const STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV: u32 = 1000165011;
+pub const STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV: u32 = 1000165012;
+pub const STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO: u32 = 1000244001;
 pub const STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT: u32 = 1000255000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES: u32 = 1000257000;
+pub const STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR: u32 = 1000290000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+pub const STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_NV: u32 = STRUCTURE_TYPE_BIND_ACCELERATION_STRUCTURE_MEMORY_INFO_KHR;
+pub const STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_NV: u32 = STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -586,6 +626,9 @@ pub const DESCRIPTOR_TYPE_STORAGE_BUFFER: u32 = 7;
 pub const DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: u32 = 8;
 pub const DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: u32 = 9;
 pub const DESCRIPTOR_TYPE_INPUT_ATTACHMENT: u32 = 10;
+pub const DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK_EXT: u32 = 1000138000;
+pub const DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR: u32 = 1000165000;
+pub const DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_NV: u32 = DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
 
 pub type AttachmentLoadOp = u32;
 pub const ATTACHMENT_LOAD_OP_LOAD: u32 = 0;
@@ -599,6 +642,8 @@ pub const ATTACHMENT_STORE_OP_DONT_CARE: u32 = 1;
 pub type PipelineBindPoint = u32;
 pub const PIPELINE_BIND_POINT_GRAPHICS: u32 = 0;
 pub const PIPELINE_BIND_POINT_COMPUTE: u32 = 1;
+pub const PIPELINE_BIND_POINT_RAY_TRACING_KHR: u32 = 1000165000;
+pub const PIPELINE_BIND_POINT_RAY_TRACING_NV: u32 = PIPELINE_BIND_POINT_RAY_TRACING_KHR;
 
 pub type CommandBufferLevel = u32;
 pub const COMMAND_BUFFER_LEVEL_PRIMARY: u32 = 0;
@@ -607,6 +652,9 @@ pub const COMMAND_BUFFER_LEVEL_SECONDARY: u32 = 1;
 pub type IndexType = u32;
 pub const INDEX_TYPE_UINT16: u32 = 0;
 pub const INDEX_TYPE_UINT32: u32 = 1;
+pub const INDEX_TYPE_NONE_KHR: u32 = 1000165000;
+pub const INDEX_TYPE_UINT8_EXT: u32 = 1000265000;
+pub const INDEX_TYPE_NONE_NV: u32 = INDEX_TYPE_NONE_KHR;
 
 pub type SubpassContents = u32;
 pub const SUBPASS_CONTENTS_INLINE: u32 = 0;
@@ -708,6 +756,17 @@ pub const PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT: u32 = 0x00002000;
 pub const PIPELINE_STAGE_HOST_BIT: u32 = 0x00004000;
 pub const PIPELINE_STAGE_ALL_GRAPHICS_BIT: u32 = 0x00008000;
 pub const PIPELINE_STAGE_ALL_COMMANDS_BIT: u32 = 0x00010000;
+pub const PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT: u32 = 0x01000000;
+pub const PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT: u32 = 0x00040000;
+pub const PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR: u32 = 0x00200000;
+pub const PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR: u32 = 0x02000000;
+pub const PIPELINE_STAGE_SHADING_RATE_IMAGE_BIT_NV: u32 = 0x00400000;
+pub const PIPELINE_STAGE_TASK_SHADER_BIT_NV: u32 = 0x00080000;
+pub const PIPELINE_STAGE_MESH_SHADER_BIT_NV: u32 = 0x00100000;
+pub const PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT: u32 = 0x00800000;
+pub const PIPELINE_STAGE_COMMAND_PREPROCESS_BIT_NV: u32 = 0x00020000;
+pub const PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_NV: u32 = PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+pub const PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_NV: u32 = PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
 pub type PipelineStageFlags = Flags;
 pub type MemoryMapFlags = Flags;
 
@@ -780,6 +839,14 @@ pub const BUFFER_USAGE_STORAGE_BUFFER_BIT: u32 = 0x00000020;
 pub const BUFFER_USAGE_INDEX_BUFFER_BIT: u32 = 0x00000040;
 pub const BUFFER_USAGE_VERTEX_BUFFER_BIT: u32 = 0x00000080;
 pub const BUFFER_USAGE_INDIRECT_BUFFER_BIT: u32 = 0x00000100;
+pub const BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT: u32 = 0x00020000;
+pub const BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT: u32 = 0x00000800;
+pub const BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT: u32 = 0x00001000;
+pub const BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT: u32 = 0x00000200;
+pub const BUFFER_USAGE_RAY_TRACING_BIT_KHR: u32 = 0x00000400;
+pub const BUFFER_USAGE_RAY_TRACING_BIT_NV: u32 = BUFFER_USAGE_RAY_TRACING_BIT_KHR;
+pub const BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_EXT: u32 = BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+pub const BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR: u32 = BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 pub type BufferUsageFlags = Flags;
 pub type BufferViewCreateFlags = Flags;
 pub type ImageViewCreateFlags = Flags;
@@ -804,6 +871,20 @@ pub const SHADER_STAGE_FRAGMENT_BIT: u32 = 0x00000010;
 pub const SHADER_STAGE_COMPUTE_BIT: u32 = 0x00000020;
 pub const SHADER_STAGE_ALL_GRAPHICS: u32 = 0x1F;
 pub const SHADER_STAGE_ALL: u32 = 0x7FFFFFFF;
+pub const SHADER_STAGE_RAYGEN_BIT_KHR: u32 = 0x00000100;
+pub const SHADER_STAGE_ANY_HIT_BIT_KHR: u32 = 0x00000200;
+pub const SHADER_STAGE_CLOSEST_HIT_BIT_KHR: u32 = 0x00000400;
+pub const SHADER_STAGE_MISS_BIT_KHR: u32 = 0x00000800;
+pub const SHADER_STAGE_INTERSECTION_BIT_KHR: u32 = 0x00001000;
+pub const SHADER_STAGE_CALLABLE_BIT_KHR: u32 = 0x00002000;
+pub const SHADER_STAGE_TASK_BIT_NV: u32 = 0x00000040;
+pub const SHADER_STAGE_MESH_BIT_NV: u32 = 0x00000080;
+pub const SHADER_STAGE_RAYGEN_BIT_NV: u32 = SHADER_STAGE_RAYGEN_BIT_KHR;
+pub const SHADER_STAGE_ANY_HIT_BIT_NV: u32 = SHADER_STAGE_ANY_HIT_BIT_KHR;
+pub const SHADER_STAGE_CLOSEST_HIT_BIT_NV: u32 = SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+pub const SHADER_STAGE_MISS_BIT_NV: u32 = SHADER_STAGE_MISS_BIT_KHR;
+pub const SHADER_STAGE_INTERSECTION_BIT_NV: u32 = SHADER_STAGE_INTERSECTION_BIT_KHR;
+pub const SHADER_STAGE_CALLABLE_BIT_NV: u32 = SHADER_STAGE_CALLABLE_BIT_KHR;
 pub type PipelineVertexInputStateCreateFlags = Flags;
 pub type PipelineInputAssemblyStateCreateFlags = Flags;
 pub type PipelineTessellationStateCreateFlags = Flags;
@@ -867,6 +948,19 @@ pub const ACCESS_HOST_READ_BIT: u32 = 0x00002000;
 pub const ACCESS_HOST_WRITE_BIT: u32 = 0x00004000;
 pub const ACCESS_MEMORY_READ_BIT: u32 = 0x00008000;
 pub const ACCESS_MEMORY_WRITE_BIT: u32 = 0x00010000;
+pub const ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT: u32 = 0x02000000;
+pub const ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT: u32 = 0x04000000;
+pub const ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT: u32 = 0x08000000;
+pub const ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT: u32 = 0x00100000;
+pub const ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT: u32 = 0x00080000;
+pub const ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR: u32 = 0x00200000;
+pub const ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR: u32 = 0x00400000;
+pub const ACCESS_SHADING_RATE_IMAGE_READ_BIT_NV: u32 = 0x00800000;
+pub const ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT: u32 = 0x01000000;
+pub const ACCESS_COMMAND_PREPROCESS_READ_BIT_NV: u32 = 0x00020000;
+pub const ACCESS_COMMAND_PREPROCESS_WRITE_BIT_NV: u32 = 0x00040000;
+pub const ACCESS_ACCELERATION_STRUCTURE_READ_BIT_NV: u32 = ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+pub const ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_NV: u32 = ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
 pub type AccessFlags = Flags;
 
 
@@ -1002,10 +1096,11 @@ pub const OBJECT_TYPE_OBJECT_TABLE_NVX: u32 = 1000086000;
 pub const OBJECT_TYPE_INDIRECT_COMMANDS_LAYOUT_NVX: u32 = 1000086001;
 pub const OBJECT_TYPE_DEBUG_UTILS_MESSENGER_EXT: u32 = 1000128000;
 pub const OBJECT_TYPE_VALIDATION_CACHE_EXT: u32 = 1000160000;
-pub const OBJECT_TYPE_ACCELERATION_STRUCTURE_NV: u32 = 1000165000;
+pub const OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR: u32 = 1000165000;
 pub const OBJECT_TYPE_PERFORMANCE_CONFIGURATION_INTEL: u32 = 1000210000;
 pub const OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE_KHR: u32 = OBJECT_TYPE_DESCRIPTOR_UPDATE_TEMPLATE;
 pub const OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION_KHR: u32 = OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION;
+pub const OBJECT_TYPE_ACCELERATION_STRUCTURE_NV: u32 = OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR;
 
 pub type DebugUtilsMessageSeverityFlagBitsEXT = u32;
 pub const DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT: u32 = 0x00000001;
@@ -1056,6 +1151,117 @@ pub const FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT: u32 = 1;
 pub const FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT: u32 = 2;
 pub const FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT: u32 = 3;
 pub const FULL_SCREEN_EXCLUSIVE_MAX_ENUM_EXT: u32 = 0x7FFFFFFF;
+
+pub type RayTracingShaderGroupTypeKHR = u32;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR: u32 = 0;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR: u32 = 1;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR: u32 = 2;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV: u32 = RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_NV: u32 = RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_NV: u32 = RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_BEGIN_RANGE_KHR: u32 = RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_END_RANGE_KHR: u32 = RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+pub const RAY_TRACING_SHADER_GROUP_TYPE_RANGE_SIZE_KHR: u32 = (RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR - RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR + 1);
+pub const RAY_TRACING_SHADER_GROUP_TYPE_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type RayTracingShaderGroupTypeNV = RayTracingShaderGroupTypeKHR;
+
+pub type GeometryTypeKHR = u32;
+pub const GEOMETRY_TYPE_TRIANGLES_KHR: u32 = 0;
+pub const GEOMETRY_TYPE_AABBS_KHR: u32 = 1;
+pub const GEOMETRY_TYPE_INSTANCES_KHR: u32 = 1000150000;
+pub const GEOMETRY_TYPE_TRIANGLES_NV: u32 = GEOMETRY_TYPE_TRIANGLES_KHR;
+pub const GEOMETRY_TYPE_AABBS_NV: u32 = GEOMETRY_TYPE_AABBS_KHR;
+pub const GEOMETRY_TYPE_BEGIN_RANGE_KHR: u32 = GEOMETRY_TYPE_TRIANGLES_KHR;
+pub const GEOMETRY_TYPE_END_RANGE_KHR: u32 = GEOMETRY_TYPE_AABBS_KHR;
+pub const GEOMETRY_TYPE_RANGE_SIZE_KHR: u32 = (GEOMETRY_TYPE_AABBS_KHR - GEOMETRY_TYPE_TRIANGLES_KHR + 1);
+pub const GEOMETRY_TYPE_MAX_ENUM_KHR: u32 = 0x7FFFFFF;
+pub type GeometryTypeNV = GeometryTypeKHR;
+
+pub type AccelerationStructureTypeKHR = u32;
+pub const ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR: u32 = 0;
+pub const ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR: u32 = 1;
+pub const ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_NV: u32 = ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+pub const ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_NV: u32 = ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+pub const ACCELERATION_STRUCTURE_TYPE_BEGIN_RANGE_KHR: u32 = ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
+pub const ACCELERATION_STRUCTURE_TYPE_END_RANGE_KHR: u32 = ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
+pub const ACCELERATION_STRUCTURE_TYPE_RANGE_SIZE_KHR: u32 = (ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR - ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR + 1);
+pub const ACCELERATION_STRUCTURE_TYPE_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type AccelerationStructureTypeNV = AccelerationStructureTypeKHR;
+
+pub type CopyAccelerationStructureModeKHR = u32;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR: u32 = 0;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR: u32 = 1;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_SERIALIZE_KHR: u32 = 2;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_DESERIALIZE_KHR: u32 = 3;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_CLONE_NV: u32 = COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_NV: u32 = COPY_ACCELERATION_STRUCTURE_MODE_COMPACT_KHR;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_BEGIN_RANGE_KHR: u32 = COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_END_RANGE_KHR: u32 = COPY_ACCELERATION_STRUCTURE_MODE_DESERIALIZE_KHR;
+pub const COPY_ACCELERATION_STRUCTURE_MODE_RANGE_SIZE_KHR: u32 = (COPY_ACCELERATION_STRUCTURE_MODE_DESERIALIZE_KHR - COPY_ACCELERATION_STRUCTURE_MODE_CLONE_KHR + 1);
+pub const COPY_ACCELERATION_STRUCTURE_MODE_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type CopyAccelerationStructureModeNV = CopyAccelerationStructureModeKHR;
+
+pub type AccelerationStructureMemoryRequirementsTypeKHR = u32;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR: u32 = 0;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR: u32 = 1;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_KHR: u32 = 2;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_NV: u32 = ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV: u32 = ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_KHR;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_NV: u32 = ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_KHR;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BEGIN_RANGE_KHR: u32 = ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_END_RANGE_KHR: u32 = ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_KHR;
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_RANGE_SIZE_KHR: u32 = (ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_UPDATE_SCRATCH_KHR - ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_OBJECT_KHR + 1);
+pub const ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type AccelerationStructureMemoryRequirementsTypeNV = AccelerationStructureMemoryRequirementsTypeKHR;
+
+pub type GeometryFlagBitsKHR = u32;
+pub const GEOMETRY_OPAQUE_BIT_KHR: u32 = 0x00000001;
+pub const GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR: u32 = 0x00000002;
+pub const GEOMETRY_OPAQUE_BIT_NV: u32 = GEOMETRY_OPAQUE_BIT_KHR;
+pub const GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_NV: u32 = GEOMETRY_NO_DUPLICATE_ANY_HIT_INVOCATION_BIT_KHR;
+pub const GEOMETRY_FLAG_BITS_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type GeometryFlagsKHR = Flags;
+pub type GeometryFlagsNV = GeometryFlagsKHR;
+pub type GeometryFlagBitsNV = GeometryFlagBitsKHR;
+
+pub type GeometryInstanceFlagBitsKHR = u8;
+pub const GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR: u8 = 0x00000001;
+pub const GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR: u8 = 0x00000002;
+pub const GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR: u8 = 0x00000004;
+pub const GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR: u8 = 0x00000008;
+pub const GEOMETRY_INSTANCE_TRIANGLE_CULL_DISABLE_BIT_NV: u8 = GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+pub const GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_NV: u8 = GEOMETRY_INSTANCE_TRIANGLE_FRONT_COUNTERCLOCKWISE_BIT_KHR;
+pub const GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_NV: u8 = GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
+pub const GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_NV: u8 = GEOMETRY_INSTANCE_FORCE_NO_OPAQUE_BIT_KHR;
+pub const GEOMETRY_INSTANCE_FLAG_BITS_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type GeometryInstanceFlagsKHR = u8;
+pub type GeometryInstanceFlagsNV = GeometryInstanceFlagsKHR;
+pub type GeometryInstanceFlagBitsNV = GeometryInstanceFlagBitsKHR;
+
+pub type BuildAccelerationStructureFlagBitsKHR = u32;
+pub const BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR: u32 = 0x00000001;
+pub const BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR: u32 = 0x00000002;
+pub const BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR: u32 = 0x00000004;
+pub const BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR: u32 = 0x00000008;
+pub const BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR: u32 = 0x00000010;
+pub const BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_NV: u32 = BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+pub const BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_NV: u32 = BUILD_ACCELERATION_STRUCTURE_ALLOW_COMPACTION_BIT_KHR;
+pub const BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_NV: u32 = BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
+pub const BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_NV: u32 = BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR;
+pub const BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_NV: u32 = BUILD_ACCELERATION_STRUCTURE_LOW_MEMORY_BIT_KHR;
+pub const BUILD_ACCELERATION_STRUCTURE_FLAG_BITS_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
+pub type BuildAccelerationStructureFlagsKHR = Flags;
+pub type BuildAccelerationStructureFlagsNV = BuildAccelerationStructureFlagsKHR;
+pub type BuildAccelerationStructureFlagBitsNV = BuildAccelerationStructureFlagBitsKHR;
+
+pub type AccelerationStructureBuildTypeKHR = u32;
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_KHR: u32 = 0;
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR: u32 = 1;
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_OR_DEVICE_KHR: u32 = 2;
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_BEGIN_RANGE_KHR: u32 = ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_KHR;
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_END_RANGE_KHR: u32 = ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_OR_DEVICE_KHR;
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_RANGE_SIZE_KHR: u32 = (ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_OR_DEVICE_KHR - ACCELERATION_STRUCTURE_BUILD_TYPE_HOST_KHR + 1);
+pub const ACCELERATION_STRUCTURE_BUILD_TYPE_MAX_ENUM_KHR: u32 = 0x7FFFFFFF;
 
 #[repr(C)]
 pub struct ApplicationInfo {
@@ -2474,11 +2680,12 @@ pub struct MVKSwapchainPerformance {
 }
 
 #[repr(C)]
-pub struct PhysicalDeviceFeatures2KHR {
+pub struct PhysicalDeviceFeatures2 {
     pub sType: StructureType,
     pub pNext: *const c_void,
     pub features: PhysicalDeviceFeatures,
 }
+pub type PhysicalDeviceFeatures2KHR = PhysicalDeviceFeatures2;
 
 #[repr(C)]
 pub struct PhysicalDeviceProperties2KHR {
@@ -2602,25 +2809,28 @@ pub struct MemoryDedicatedAllocateInfoKHR {
 }
 
 #[repr(C)]
-pub struct BufferMemoryRequirementsInfo2KHR {
+pub struct BufferMemoryRequirementsInfo2 {
     pub sType: StructureType,
     pub pNext: *mut c_void,
     pub buffer: Buffer,
 }
+pub type BufferMemoryRequirementsInfo2KHR = BufferMemoryRequirementsInfo2;
 
 #[repr(C)]
-pub struct ImageMemoryRequirementsInfo2KHR {
+pub struct ImageMemoryRequirementsInfo2 {
     pub sType: StructureType,
     pub pNext: *mut c_void,
     pub image: Image,
 }
+pub type ImageMemoryRequirementsInfo2KHR = ImageMemoryRequirementsInfo2;
 
 #[repr(C)]
-pub struct MemoryRequirements2KHR {
+pub struct MemoryRequirements2 {
     pub sType: StructureType,
     pub pNext: *mut c_void,
     pub memoryRequirements: MemoryRequirements,
 }
+pub type MemoryRequirements2KHR = MemoryRequirements2;
 
 #[repr(C)]
 pub struct RectLayerKHR {
@@ -2702,6 +2912,434 @@ pub struct SurfaceFullScreenExclusiveInfoEXT {
     pub sType: StructureType,
     pub pNext: *const c_void,
     pub fullScreenExclusive: FullScreenExclusiveEXT,
+}
+
+#[repr(C)]
+pub union DeviceOrHostAddressKHR {
+    pub deviceAddress: DeviceAddress,
+    pub hostAddress: *mut c_void,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union DeviceOrHostAddressConstKHR {
+    pub deviceAddress: DeviceAddress,
+    pub hostAddress: *const c_void,
+}
+
+#[repr(C)]
+pub struct PipelineLibraryCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub libraryCount: u32,
+    pub pLibraries: *const Pipeline,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureBuildOffsetInfoKHR {
+    pub primitiveCount: u32,
+    pub primitiveOffset: u32,
+    pub firstVertex: u32,
+    pub transformOffset: u32,
+}
+
+#[repr(C)]
+pub struct RayTracingShaderGroupCreateInfoNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub type_: RayTracingShaderGroupTypeKHR,
+    pub generalShader: u32,
+    pub closestHitShader: u32,
+    pub anyHitShader: u32,
+    pub intersectionShader: u32,
+}
+
+#[repr(C)]
+pub struct RayTracingShaderGroupCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub type_: RayTracingShaderGroupTypeKHR,
+    pub generalShader: u32,
+    pub closestHitShader: u32,
+    pub anyHitShader: u32,
+    pub intersectionShader: u32,
+    pub pShaderGroupCaptureReplayHandle: *const c_void,
+}
+
+#[repr(C)]
+pub struct RayTracingPipelineCreateInfoNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: PipelineCreateFlags,
+    pub stageCount: u32,
+    pub pStages: *const PipelineShaderStageCreateInfo,
+    pub groupCount: u32,
+    pub pGroups: *const RayTracingShaderGroupCreateInfoNV,
+    pub maxRecursionDepth: u32,
+    pub layout: PipelineLayout,
+    pub basePipelineHandle: Pipeline,
+    pub basePipelineIndex: i32,
+}
+
+#[repr(C)]
+pub struct RayTracingPipelineInterfaceCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub maxPayloadSize: u32,
+    pub maxAttributeSize: u32,
+    pub maxCallableSize: u32,
+}
+
+#[repr(C)]
+pub struct RayTracingPipelineCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: PipelineCreateFlags,
+    pub stageCount: u32,
+    pub pStages: *const PipelineShaderStageCreateInfo,
+    pub groupCount: u32,
+    pub pGroups: *const RayTracingShaderGroupCreateInfoKHR,
+    pub maxRecursionDepth: u32,
+    pub libraries: PipelineLibraryCreateInfoKHR,
+    pub pLibraryInterface: *const RayTracingPipelineInterfaceCreateInfoKHR,
+    pub layout: PipelineLayout,
+    pub basePipelineHandle: Pipeline,
+    pub basePipelineIndex: i32,
+}
+
+#[repr(C)]
+pub struct GeometryTrianglesNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub vertexData: Buffer,
+    pub vertexOffset: DeviceSize,
+    pub vertexCount: u32,
+    pub vertexStride: DeviceSize,
+    pub vertexFormat: Format,
+    pub indexData: Buffer,
+    pub indexOffset: DeviceSize,
+    pub indexCount: u32,
+    pub indexType: IndexType,
+    pub transformData: Buffer,
+    pub transformOffset: DeviceSize,
+}
+
+#[repr(C)]
+pub struct GeometryAABBNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub aabbData: Buffer,
+    pub numAABBs: u32,
+    pub stride: u32,
+    pub offset: DeviceSize,
+}
+
+#[repr(C)]
+pub struct GeometryDataNV {
+    pub triangles: GeometryTrianglesNV,
+    pub aabbs: GeometryAABBNV,
+}
+
+#[repr(C)]
+pub struct GeometryNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub geometryType: GeometryTypeKHR,
+    pub geometry: GeometryDataNV,
+    pub flags: GeometryFlagsKHR,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureInfoNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub type_: AccelerationStructureTypeNV,
+    pub flags: BuildAccelerationStructureFlagsNV,
+    pub instanceCount: u32,
+    pub geometryCount: u32,
+    pub pGeometries: *const GeometryNV,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureCreateInfoNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub compactedSize: DeviceSize,
+    pub info: AccelerationStructureInfoNV,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureCreateGeometryTypeInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub geometryType: GeometryTypeKHR,
+    pub maxPrimitiveCount: u32,
+    pub indexType: IndexType,
+    pub maxVertexCount: u32,
+    pub vertexFormat: Format,
+    pub allowsTransforms: Bool32,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureCreateInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub compactedSize: DeviceSize,
+    pub type_: AccelerationStructureTypeKHR,
+    pub flags: BuildAccelerationStructureFlagsKHR,
+    pub maxGeometryCount: u32,
+    pub pGeometryInfos: *const AccelerationStructureCreateGeometryTypeInfoKHR,
+    pub deviceAddress: DeviceAddress,
+}
+
+#[repr(C)]
+pub struct BindAccelerationStructureMemoryInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub accelerationStructure: AccelerationStructureKHR,
+    pub memory: DeviceMemory,
+    pub memoryOffset: DeviceSize,
+    pub deviceIndexCount: u32,
+    pub pDeviceIndices: *const u32,
+}
+
+pub type BindAccelerationStructureMemoryInfoNV = BindAccelerationStructureMemoryInfoKHR;
+
+#[repr(C)]
+pub struct WriteDescriptorSetAccelerationStructureKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub accelerationStructureCount: u32,
+    pub pAccelerationStructures: *const AccelerationStructureKHR,
+}
+
+pub type WriteDescriptorSetAccelerationStructureNV = WriteDescriptorSetAccelerationStructureKHR;
+
+#[repr(C)]
+pub struct AccelerationStructureMemoryRequirementsInfoNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub type_: AccelerationStructureMemoryRequirementsTypeNV,
+    pub accelerationStructure: AccelerationStructureNV,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureMemoryRequirementsInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub type_: AccelerationStructureMemoryRequirementsTypeKHR,
+    pub buildType: AccelerationStructureBuildTypeKHR,
+    pub accelerationStructure: AccelerationStructureKHR,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceRayTracingFeaturesKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub rayTracing: Bool32,
+    pub rayTracingShaderGroupHandleCaptureReplay: Bool32,
+    pub rayTracingShaderGroupHandleCaptureReplayMixed: Bool32,
+    pub rayTracingAccelerationStructureCaptureReplay: Bool32,
+    pub rayTracingIndirectTraceRays: Bool32,
+    pub rayTracingIndirectAccelerationStructureBuild: Bool32,
+    pub rayTracingHostAccelerationStructureCommands: Bool32,
+    pub rayQuery: Bool32,
+    pub rayTracingPrimitiveCulling: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceRayTracingPropertiesNV {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub shaderGroupHandleSize: u32,
+    pub maxRecursionDepth: u32,
+    pub maxShaderGroupStride: u32,
+    pub shaderGroupBaseAlignment: u32,
+    pub maxGeometryCount: u64,
+    pub maxInstanceCount: u64,
+    pub maxTriangleCount: u64,
+    pub maxDescriptorSetAccelerationStructures: u32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceRayTracingPropertiesKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub shaderGroupHandleSize: u32,
+    pub maxRecursionDepth: u32,
+    pub maxShaderGroupStride: u32,
+    pub shaderGroupBaseAlignment: u32,
+    pub maxGeometryCount: u64,
+    pub maxInstanceCount: u64,
+    pub maxPrimitiveCount: u64,
+    pub maxDescriptorSetAccelerationStructures: u32,
+    pub shaderGroupHandleCaptureReplaySize: u32,
+}
+
+#[repr(C)]
+pub struct TransformMatrixKHR {
+    pub matrix: [[f32; 4]; 3],
+}
+
+pub type TransformMatrixNV = TransformMatrixKHR;
+
+#[repr(C)]
+pub struct AabbPositionsKHR {
+    pub minX: f32,
+    pub minY: f32,
+    pub minZ: f32,
+    pub maxX: f32,
+    pub maxY: f32,
+    pub maxZ: f32,
+}
+
+pub type AabbPositionsNV = AabbPositionsKHR;
+
+#[repr(C, align(1))]
+pub struct AccelerationStructureInstanceKHR {
+    pub transform: TransformMatrixKHR,
+    pub instanceCustomIndex: [u8; 3], // first 24 bits of a u32
+    pub mask: u8,                     // last 8 bits of a u32
+    pub instanceShaderBindingTableRecordOffset: [u8; 3], // first 24 bits of a u32
+    pub flags: GeometryInstanceFlagsKHR,
+    pub accelerationStructureReference: u64,
+}
+
+pub type AccelerationStructureInstanceNV = AccelerationStructureInstanceKHR;
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct AccelerationStructureGeometryTrianglesDataKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub vertexFormat: Format,
+    pub vertexData: DeviceOrHostAddressConstKHR,
+    pub vertexStride: DeviceSize,
+    pub indexType: IndexType,
+    pub indexData: DeviceOrHostAddressConstKHR,
+    pub transformData: DeviceOrHostAddressConstKHR,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct AccelerationStructureGeometryAabbsDataKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub data: DeviceOrHostAddressConstKHR,
+    pub stride: DeviceSize,
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct AccelerationStructureGeometryInstancesDataKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub arrayOfPointers: Bool32,
+    pub data: DeviceOrHostAddressConstKHR,
+}
+
+#[repr(C)]
+pub union AccelerationStructureGeometryDataKHR {
+    pub triangles: AccelerationStructureGeometryTrianglesDataKHR,
+    pub aabbs: AccelerationStructureGeometryAabbsDataKHR,
+    pub instances: AccelerationStructureGeometryInstancesDataKHR,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureGeometryKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub geometryType: GeometryTypeKHR,
+    pub geometry: AccelerationStructureGeometryDataKHR,
+    pub flags: GeometryFlagsKHR,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureBuildGeometryInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub type_: AccelerationStructureTypeKHR,
+    pub flags: BuildAccelerationStructureFlagsKHR,
+    pub update: Bool32,
+    pub srcAccelerationStructure: AccelerationStructureKHR,
+    pub dstAccelerationStructure: AccelerationStructureKHR,
+    pub geometryArrayOfPointers: Bool32,
+    pub geometryCount: u32,
+    pub ppGeometries: *const *const AccelerationStructureGeometryKHR,
+    pub scratchData: DeviceOrHostAddressKHR,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceBufferDeviceAddressFeatures {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub bufferDeviceAddress: Bool32,
+    pub bufferDeviceAddressCaptureReplay: Bool32,
+    pub bufferDeviceAddressMultiDevice: Bool32,
+}
+
+#[repr(C)]
+pub struct BufferDeviceAddressInfo {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub buffer: Buffer,
+}
+pub type BufferDeviceAddressInfoKHR = BufferDeviceAddressInfo;
+
+#[repr(C)]
+pub struct AccelerationStructureDeviceAddressInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub accelerationStructure: AccelerationStructureKHR,
+}
+
+#[repr(C)]
+pub struct AccelerationStructureVersionKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub versionData: *const u8,
+}
+
+#[repr(C)]
+pub struct StridedBufferRegionKHR {
+    pub buffer: Buffer,
+    pub offset: DeviceSize,
+    pub stride: DeviceSize,
+    pub size: DeviceSize,
+}
+
+#[repr(C)]
+pub struct TraceRaysIndirectCommandKHR {
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
+}
+
+#[repr(C)]
+pub struct CopyAccelerationStructureToMemoryInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub src: AccelerationStructureKHR,
+    pub dst: DeviceOrHostAddressKHR,
+    pub mode: CopyAccelerationStructureModeKHR,
+}
+
+#[repr(C)]
+pub struct CopyMemoryToAccelerationStructureInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub src: DeviceOrHostAddressConstKHR,
+    pub dst: AccelerationStructureKHR,
+    pub mode: CopyAccelerationStructureModeKHR,
+}
+
+#[repr(C)]
+pub struct CopyAccelerationStructureInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub src: AccelerationStructureKHR,
+    pub dst: AccelerationStructureKHR,
+    pub mode: CopyAccelerationStructureModeKHR,
 }
 
 macro_rules! ptrs {
@@ -2805,6 +3443,7 @@ ptrs!(InstancePointers, {
     GetPhysicalDeviceMetalFeaturesMVK => (physicalDevice: PhysicalDevice, pMetalFeatures: *mut MVKPhysicalDeviceMetalFeatures) -> Result,
     GetSwapchainPerformanceMVK => (device: Device, swapchain: SwapchainKHR, pSwapchainPerf: *mut MVKSwapchainPerformance) -> Result,
     CreateViSurfaceNN => (instance: Instance, pCreateInfo: *const ViSurfaceCreateInfoNN, pAllocator: *const AllocationCallbacks, pSurface: *mut SurfaceKHR) -> Result,
+    GetPhysicalDeviceFeatures2 => (physicalDevice: PhysicalDevice, pFeatures: *mut PhysicalDeviceFeatures2) -> (),
     GetPhysicalDeviceFeatures2KHR => (physicalDevice: PhysicalDevice, pFeatures: *mut PhysicalDeviceFeatures2KHR) -> (),
     GetPhysicalDeviceProperties2KHR => (physicalDevice: PhysicalDevice, pProperties: *mut PhysicalDeviceProperties2KHR) -> (),
     GetPhysicalDeviceFormatProperties2KHR => (physicalDevice: PhysicalDevice, pFormatProperties: *mut FormatProperties2KHR) -> (),
@@ -2955,4 +3594,39 @@ ptrs!(DevicePointers, {
     CmdInsertDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
     AcquireFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
     ReleaseFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
+    CreateAccelerationStructureNV => (device: Device, pCreateInfo: *const AccelerationStructureCreateInfoNV, pAllocator: *const AllocationCallbacks, pAccelerationStructure: *mut AccelerationStructureNV) -> Result,
+    DestroyAccelerationStructureKHR => (device: Device, accelerationStructure: AccelerationStructureKHR, pAllocator: *const AllocationCallbacks) -> (),
+    DestroyAccelerationStructureNV => (device: Device, accelerationStructure: AccelerationStructureKHR, pAllocator: *const AllocationCallbacks) -> (),
+    GetAccelerationStructureMemoryRequirementsNV => (device: Device, pInfo: *const AccelerationStructureMemoryRequirementsInfoNV, pMemoryRequirements: *mut MemoryRequirements2KHR) -> (),
+    BindAccelerationStructureMemoryKHR => (device: Device, bindInfoCount: u32, pBindInfos: *const BindAccelerationStructureMemoryInfoKHR) -> Result,
+    BindAccelerationStructureMemoryNV => (device: Device, bindInfoCount: u32, pBindInfos: *const BindAccelerationStructureMemoryInfoKHR) -> Result,
+    CmdBuildAccelerationStructureNV => (commandBuffer: CommandBuffer, pInfo: *const AccelerationStructureInfoNV, instanceData: Buffer, instanceOffset: DeviceSize, update: Bool32, dst: AccelerationStructureKHR, src: AccelerationStructureKHR, scratch: Buffer, scratchOffset: DeviceSize) -> (),
+    CmdCopyAccelerationStructureNV => (commandBuffer: CommandBuffer, dst: AccelerationStructureKHR, src: AccelerationStructureKHR, mode: CopyAccelerationStructureModeKHR) -> (),
+    CmdTraceRaysNV => (commandBuffer: CommandBuffer, raygenShaderBindingTableBuffer: Buffer, raygenShaderBindingOffset: DeviceSize, missShaderBindingTableBuffer: Buffer, missShaderBindingOffset: DeviceSize, missShaderBindingStride: DeviceSize, hitShaderBindingTableBuffer: Buffer, hitShaderBindingOffset: DeviceSize, hitShaderBindingStride: DeviceSize, callableShaderBindingTableBuffer: Buffer, callableShaderBindingOffset: DeviceSize, callableShaderBindingStride: DeviceSize, width: u32, height: u32, depth: u32) -> (),
+    CreateRayTracingPipelinesNV => (device: Device, pipelineCache: PipelineCache, createInfoCount: u32, pCreateInfos: *const RayTracingPipelineCreateInfoNV, pAllocator: *const AllocationCallbacks, pPipelines: *mut Pipeline) -> Result,
+    GetRayTracingShaderGroupHandlesKHR => (device: Device, pipeline: Pipeline, firstGroup: u32, groupCount: u32, dataSize: usize, pData: *mut c_void) -> Result,
+    GetRayTracingShaderGroupHandlesNV => (device: Device, pipeline: Pipeline, firstGroup: u32, groupCount: u32, dataSize: usize, pData: *mut c_void) -> Result,
+    GetAccelerationStructureHandleNV => (device: Device, accelerationStructure: AccelerationStructureKHR, dataSize: usize, pData: *mut c_void) -> Result,
+    CmdWriteAccelerationStructuresPropertiesKHR => (commandBuffer: CommandBuffer, accelerationStructureCount: u32, pAccelerationStructures: *const AccelerationStructureKHR, queryType: QueryType, queryPool: QueryPool, firstQuery: u32) -> (),
+    CmdWriteAccelerationStructuresPropertiesNV => (commandBuffer: CommandBuffer, accelerationStructureCount: u32, pAccelerationStructures: *const AccelerationStructureKHR, queryType: QueryType, queryPool: QueryPool, firstQuery: u32) -> (),
+    CompileDeferredNV => (device: Device, pipeline: Pipeline, shader: u32) -> Result,
+    CreateAccelerationStructureKHR => (device: Device, pCreateInfo: *const AccelerationStructureCreateInfoKHR, pAllocator: *const AllocationCallbacks, pAccelerationStructure: *mut AccelerationStructureKHR) -> Result,
+    GetAccelerationStructureMemoryRequirementsKHR => (device: Device, pInfo: *const AccelerationStructureMemoryRequirementsInfoKHR, pMemoryRequirements: *mut MemoryRequirements2) -> (),
+    CmdBuildAccelerationStructureKHR => (commandBuffer: CommandBuffer, infoCount: u32, pInfos: *const AccelerationStructureBuildGeometryInfoKHR, ppOffsetInfos: *const*const AccelerationStructureBuildOffsetInfoKHR) -> (),
+    CmdBuildAccelerationStructureIndirectKHR => (commandBuffer: CommandBuffer, pInfo: *const AccelerationStructureBuildGeometryInfoKHR, indirectBuffer: Buffer, indirectOffset: DeviceSize, indirectStride: u32) -> (),
+    BuildAccelerationStructureKHR => (device: Device, infoCount: u32, pInfos: *const AccelerationStructureBuildGeometryInfoKHR, ppOffsetInfos: *const*const AccelerationStructureBuildOffsetInfoKHR) -> Result,
+    CopyAccelerationStructureKHR => (device: Device,  pInfo: *const CopyAccelerationStructureInfoKHR) -> Result,
+    CopyAccelerationStructureToMemoryKHR => (device: Device, pInfo: *const CopyAccelerationStructureToMemoryInfoKHR) -> Result,
+    CopyMemoryToAccelerationStructureKHR => (device: Device, pInfo: *const CopyMemoryToAccelerationStructureInfoKHR) -> Result,
+    WriteAccelerationStructuresPropertiesKHR => (device: Device, accelerationStructureCount: u32, pAccelerationStructures: *const AccelerationStructureKHR, queryType: QueryType, dataSize: usize, pData: *mut c_void, stride: usize) -> Result,
+    CmdCopyAccelerationStructureKHR => (commandBuffer: CommandBuffer, pInfo: *const CopyAccelerationStructureInfoKHR) -> (),
+    CmdCopyAccelerationStructureToMemoryKHR => (commandBuffer: CommandBuffer, pInfo: *const CopyAccelerationStructureToMemoryInfoKHR) -> (),
+    CmdCopyMemoryToAccelerationStructureKHR => (commandBuffer: CommandBuffer, pInfo: *const CopyMemoryToAccelerationStructureInfoKHR) -> (),
+    CmdTraceRaysKHR => (commandBuffer: CommandBuffer, pRaygenShaderBindingTable: *const StridedBufferRegionKHR, pMissShaderBindingTable: *const StridedBufferRegionKHR, pHitShaderBindingTable: *const StridedBufferRegionKHR, pCallableShaderBindingTable: *const StridedBufferRegionKHR, width: u32, height: u32, depth: u32) -> (),
+    CreateRayTracingPipelinesKHR => (device: Device, pipelineCache: PipelineCache, createInfoCount: u32, pCreateInfos: *const RayTracingPipelineCreateInfoKHR, pAllocator: *const AllocationCallbacks, pPipelines: *mut Pipeline) -> Result,
+    GetBufferDeviceAddressKHR => (device: Device, pInfo: *const BufferDeviceAddressInfoKHR) -> DeviceAddress,
+    GetAccelerationStructureDeviceAddressKHR => (device: Device, pInfo: *const AccelerationStructureDeviceAddressInfoKHR) -> DeviceAddress,
+    GetRayTracingCaptureReplayShaderGroupHandlesKHR => (device: Device, pipeline: Pipeline, firstGroup: u32, groupCount: u32, dataSize: usize, pData: *mut c_void) -> Result,
+    CmdTraceRaysIndirectKHR => (commandBuffer: CommandBuffer, pRaygenShaderBindingTable: *const StridedBufferRegionKHR, pMissShaderBindingTable: *const StridedBufferRegionKHR, pHitShaderBindingTable: *const StridedBufferRegionKHR, pCallableShaderBindingTable: *const StridedBufferRegionKHR, buffer: Buffer, offset: DeviceSize) -> (),
+    GetDeviceAccelerationStructureCompatibilityKHR => (device: Device,  version: *const AccelerationStructureVersionKHR) -> Result,
 });
