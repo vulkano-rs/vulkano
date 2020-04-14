@@ -53,6 +53,18 @@ enumeration! {
         ExecutionModelFragment = 4,
         ExecutionModelGLCompute = 5,
         ExecutionModelKernel = 6,
+        ExecutionModelRayGenerationKHR = 5313,
+        ExecutionModelRayGenerationNV = 5313,
+        ExecutionModelIntersectionKHR = 5314,
+        ExecutionModelIntersectionNV = 5314,
+        ExecutionModelAnyHitKHR = 5315,
+        ExecutionModelAnyHitNV = 5315,
+        ExecutionModelClosestHitKHR = 5316,
+        ExecutionModelClosestHitNV = 5316,
+        ExecutionModelMissKHR = 5317,
+        ExecutionModelMissNV = 5317,
+        ExecutionModelCallableKHR = 5318,
+        ExecutionModelCallableNV = 5318,
     } ExecutionModel;
 
     typedef enum AddressingModel_ {
@@ -115,6 +127,18 @@ enumeration! {
         StorageClassAtomicCounter = 10,
         StorageClassImage = 11,
         StorageClassStorageBuffer = 12,
+        StorageClassCallableDataKHR = 5328,
+        StorageClassCallableDataNV = 5328,
+        StorageClassIncomingCallableDataKHR = 5329,
+        StorageClassIncomingCallableDataNV = 5329,
+        StorageClassRayPayloadKHR = 5338,
+        StorageClassRayPayloadNV = 5338,
+        StorageClassHitAttributeKHR = 5339,
+        StorageClassHitAttributeNV = 5339,
+        StorageClassIncomingRayPayloadKHR = 5342,
+        StorageClassIncomingRayPayloadNV = 5342,
+        StorageClassShaderRecordBufferKHR = 5343,
+        StorageClassShaderRecordBufferNV = 5343,
     } StorageClass;
 
     typedef enum Dim_ {
@@ -382,6 +406,35 @@ enumeration! {
         BuiltInSubgroupLocalInvocationId = 41,
         BuiltInVertexIndex = 42,
         BuiltInInstanceIndex = 43,
+        BuiltInLaunchIdKHR = 5319,
+        BuiltInLaunchIdNV = 5319,
+        BuiltInLaunchSizeKHR = 5320,
+        BuiltInLaunchSizeNV = 5320,
+        BuiltInWorldRayOriginKHR = 5321,
+        BuiltInWorldRayOriginNV = 5321,
+        BuiltInWorldRayDirectionKHR = 5322,
+        BuiltInWorldRayDirectionNV = 5322,
+        BuiltInObjectRayOriginKHR = 5323,
+        BuiltInObjectRayOriginNV = 5323,
+        BuiltInObjectRayDirectionKHR = 5324,
+        BuiltInObjectRayDirectionNV = 5324,
+        BuiltInRayTminKHR = 5325,
+        BuiltInRayTminNV = 5325,
+        BuiltInRayTmaxKHR = 5326,
+        BuiltInRayTmaxNV = 5326,
+        BuiltInInstanceCustomIndexKHR = 5327,
+        BuiltInInstanceCustomIndexNV = 5327,
+        BuiltInObjectToWorldKHR = 5330,
+        BuiltInObjectToWorldNV = 5330,
+        BuiltInWorldToObjectKHR = 5331,
+        BuiltInWorldToObjectNV = 5331,
+        BuiltInHitTKHR = 5332,
+        BuiltInHitTNV = 5332,
+        BuiltInHitKindKHR = 5333,
+        BuiltInHitKindNV = 5333,
+        BuiltInIncomingRayFlagsKHR = 5351,
+        BuiltInIncomingRayFlagsNV = 5351,
+        BuiltInRayGeometryIndexKHR = 5352,
     } BuiltIn;
 
     typedef enum SelectionControlShift_ {
@@ -551,5 +604,7 @@ enumeration! {
         CapabilityStorageUniform16 = 4434,
         CapabilityStoragePushConstant16 = 4435,
         CapabilityStorageInputOutput16 = 4436,
+        CapabilityRayTracingNV = 5340,
+        CapabilityRayTracingProvisionalKHR = 5353,  // TODO: At time of writing, this is provisional and may be renamed
     } Capability;
 }

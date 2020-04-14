@@ -54,15 +54,16 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
     };
 
     let (ty, f_call) = {
-        if let ExecutionModel::ExecutionModelGLCompute = *execution {
-            (
-                quote!{ ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, Layout> },
-                quote!{ compute_entry_point(
-                    ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    Layout(ShaderStages { compute: true, .. ShaderStages::none() })
-                )}
-            )
-        } else {
+        if let ExecutionModel::ExecutionModelKernel = *execution {
+            panic!("Kernels are not supported");
+        } else if match *execution {
+            ExecutionModel::ExecutionModelVertex => true,
+            ExecutionModel::ExecutionModelTessellationControl => true,
+            ExecutionModel::ExecutionModelTessellationEvaluation => true,
+            ExecutionModel::ExecutionModelGeometry => true,
+            ExecutionModel::ExecutionModelFragment => true,
+            _ => false,
+        } {
             let entry_ty = match *execution {
                 ExecutionModel::ExecutionModelVertex =>
                     quote!{ ::vulkano::pipeline::shader::GraphicsShaderType::Vertex },
@@ -104,9 +105,8 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
                 ExecutionModel::ExecutionModelFragment =>
                     quote!{ ::vulkano::pipeline::shader::GraphicsShaderType::Fragment },
 
-                ExecutionModel::ExecutionModelGLCompute => unreachable!(),
 
-                ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
+                _ => unreachable!(),
             };
 
             let stage = match *execution {
@@ -125,8 +125,7 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
                 ExecutionModel::ExecutionModelFragment =>
                     quote!{ ShaderStages { fragment: true, .. ShaderStages::none() } },
 
-                ExecutionModel::ExecutionModelGLCompute => unreachable!(),
-                ExecutionModel::ExecutionModelKernel => unreachable!(),
+                _ => unreachable!(),
             };
 
             let mut capitalized_ep_name_input = capitalized_ep_name.clone();
@@ -155,6 +154,16 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
             };
 
             (ty, f_call)
+        } else if let ExecutionModel::ExecutionModelGLCompute = *execution {
+            (
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, Layout> },
+                quote! { compute_entry_point(
+                    ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
+                    Layout(ShaderStages { compute: true, .. ShaderStages::none() })
+                )},
+            )
+        } else {
+            panic!("Execution Model is not supported");
         }
     };
 
