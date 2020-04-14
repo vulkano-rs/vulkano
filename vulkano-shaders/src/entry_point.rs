@@ -107,17 +107,16 @@ pub(super) fn write_entry_point(
     };
 
     let (ty, f_call) = {
-        if let ExecutionModel::GLCompute = *execution {
-            (
-                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint },
-                quote! { compute_entry_point(
-                    ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    #descriptor_set_layout_descs,
-                    #push_constant_ranges,
-                    <#spec_consts_struct>::descriptors(),
-                )},
-            )
-        } else {
+        if let ExecutionModel::Kernel = *execution {
+            panic!("Kernels are not supported");
+        } else if match *execution {
+            ExecutionModel::Vertex => true,
+            ExecutionModel::TessellationControl => true,
+            ExecutionModel::TessellationEvaluation => true,
+            ExecutionModel::Geometry => true,
+            ExecutionModel::Fragment => true,
+            _ => false,
+        } {
             let entry_ty = match *execution {
                 ExecutionModel::Vertex => {
                     quote! { ::vulkano::pipeline::shader::GraphicsShaderType::Vertex }
@@ -166,19 +165,7 @@ pub(super) fn write_entry_point(
                     quote! { ::vulkano::pipeline::shader::GraphicsShaderType::Fragment }
                 }
 
-                ExecutionModel::GLCompute => unreachable!(),
-
-                ExecutionModel::Kernel
-                | ExecutionModel::TaskNV
-                | ExecutionModel::MeshNV
-                | ExecutionModel::RayGenerationKHR
-                | ExecutionModel::IntersectionKHR
-                | ExecutionModel::AnyHitKHR
-                | ExecutionModel::ClosestHitKHR
-                | ExecutionModel::MissKHR
-                | ExecutionModel::CallableKHR => {
-                    panic!("Shaders with {:?} are not supported", execution)
-                }
+                _ => unreachable!(),
             };
 
             let ty = quote! { ::vulkano::pipeline::shader::GraphicsEntryPoint };
@@ -195,6 +182,27 @@ pub(super) fn write_entry_point(
             };
 
             (ty, f_call)
+        } else if let ExecutionModel::GLCompute = *execution {
+            (
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint },
+                quote! { compute_entry_point(
+                    ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
+                    #descriptor_set_layout_descs,
+                    #push_constant_ranges,
+                    <#spec_consts_struct>::descriptors(),
+                )},
+            )
+        } else if match *execution {
+            ExecutionModel::RayGenerationKHR => true,
+            ExecutionModel::IntersectionKHR => true,
+            ExecutionModel::AnyHitKHR => true,
+            ExecutionModel::ClosestHitKHR => true,
+            ExecutionModel::MissKHR => true,
+            ExecutionModel::CallableKHR => true,
+        } {
+            panic!("Raytracing Shaders are not supported")
+        } else {
+            panic!("Shaders with {:?} are not supported", execution)
         }
     };
 
