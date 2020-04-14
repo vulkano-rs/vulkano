@@ -424,30 +424,13 @@ fn storage_class_requirement(storage_class: &StorageClass) -> DeviceRequirement 
         StorageClass::StorageClassImage => DeviceRequirement::None,
         StorageClass::StorageClassStorageBuffer =>
             DeviceRequirement::Extensions(&["khr_storage_buffer_storage_class"]),
-        StorageClass::StorageClassCallableDataKHR =>
-            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
-        StorageClass::StorageClassCallableDataNV =>
-            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
-        StorageClass::StorageClassIncomingCallableDataKHR =>
-            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
-        StorageClass::StorageClassIncomingCallableDataNV =>
-            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
-        StorageClass::StorageClassRayPayloadKHR =>
-            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
-        StorageClass::StorageClassRayPayloadNV =>
-            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
-        StorageClass::StorageClassHitAttributeKHR =>
-            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
-        StorageClass::StorageClassHitAttributeNV =>
-            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
-        StorageClass::StorageClassIncomingRayPayloadKHR =>
-            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
-        StorageClass::StorageClassIncomingRayPayloadNV =>
-            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
-        StorageClass::StorageClassShaderRecordBufferKHR =>
-            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
-        StorageClass::StorageClassShaderRecordBufferNV =>
-            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
+        // TODO: requires either "khr_ray_tracing" or "nv_ray_tracing"
+        StorageClass::StorageClassCallableData => DeviceRequirement::None,
+        StorageClass::StorageClassIncomingCallableData => DeviceRequirement::None,
+        StorageClass::StorageClassRayPayload => DeviceRequirement::None,
+        StorageClass::StorageClassHitAttribute => DeviceRequirement::None,
+        StorageClass::StorageClassIncomingRayPayload => DeviceRequirement::None,
+        StorageClass::StorageClassShaderRecordBuffer => DeviceRequirement::None,
     }
 }
 

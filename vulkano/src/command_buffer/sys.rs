@@ -477,6 +477,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let bind_point = match pipeline_type {
             PipelineType::Graphics => vk::PIPELINE_BIND_POINT_GRAPHICS,
             PipelineType::Compute => vk::PIPELINE_BIND_POINT_COMPUTE,
+            PipelineType::RayTracing => vk::PIPELINE_BIND_POINT_RAY_TRACING_KHR,
         };
 
         vk.CmdBindDescriptorSets(cmd,

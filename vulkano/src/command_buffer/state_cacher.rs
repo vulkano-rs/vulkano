@@ -29,10 +29,14 @@ pub struct StateCacher {
     compute_pipeline: vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
+    // The ray tracing pipeline currently bound. 0 if nothing bound.
+    ray_tracing_pipeline: vk::Pipeline,
     // The descriptor sets for the compute pipeline.
     compute_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
     // The descriptor sets for the graphics pipeline.
     graphics_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
+    // The descriptor sets for the graphics pipeline.
+    ray_tracing_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
     // If the user starts comparing descriptor sets, but drops the helper struct in the middle of
     // the processing then we will end up in a weird state. This bool is true when we start
     // comparing sets, and is set to false when we end up comparing. If it was true when we start
@@ -63,8 +67,10 @@ impl StateCacher {
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            ray_tracing_pipeline: 0,
             compute_descriptor_sets: SmallVec::new(),
             graphics_descriptor_sets: SmallVec::new(),
+            ray_tracing_descriptor_sets: SmallVec::new(),
             poisoned_descriptor_sets: false,
             vertex_buffers: SmallVec::new(),
             poisoned_vertex_buffers: false,
@@ -131,6 +137,7 @@ impl StateCacher {
         if self.poisoned_descriptor_sets {
             self.compute_descriptor_sets = SmallVec::new();
             self.graphics_descriptor_sets = SmallVec::new();
+            self.ray_tracing_descriptor_sets = SmallVec::new();
         }
 
         self.poisoned_descriptor_sets = true;
@@ -140,6 +147,7 @@ impl StateCacher {
             state: match pipeline_type {
                 PipelineType::Graphics => &mut self.graphics_descriptor_sets,
                 PipelineType::Compute => &mut self.compute_descriptor_sets,
+                PipelineType::RayTracing => &mut self.ray_tracing_descriptor_sets,
             },
             offset: 0,
             found_diff: None,

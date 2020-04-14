@@ -162,6 +162,101 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
                     Layout(ShaderStages { compute: true, .. ShaderStages::none() })
                 )},
             )
+        } else if match *execution {
+            ExecutionModel::ExecutionModelRayGenerationNV => true,
+            ExecutionModel::ExecutionModelIntersectionNV => true,
+            ExecutionModel::ExecutionModelAnyHitNV => true,
+            ExecutionModel::ExecutionModelClosestHitNV => true,
+            ExecutionModel::ExecutionModelMissNV => true,
+            ExecutionModel::ExecutionModelCallableNV => true,
+            ExecutionModel::ExecutionModelRayGenerationKHR => true,
+            ExecutionModel::ExecutionModelIntersectionKHR => true,
+            ExecutionModel::ExecutionModelAnyHitKHR => true,
+            ExecutionModel::ExecutionModelClosestHitKHR => true,
+            ExecutionModel::ExecutionModelMissKHR => true,
+            ExecutionModel::ExecutionModelCallableKHR => true,
+            _ => false,
+        } {
+            let entry_ty = match *execution {
+                ExecutionModel::ExecutionModelRayGenerationNV
+                | ExecutionModel::ExecutionModelRayGenerationKHR => {
+                    quote! { ::vulkano::pipeline::shader::RayTracingShaderType::Raygen }
+                }
+
+                ExecutionModel::ExecutionModelIntersectionNV
+                | ExecutionModel::ExecutionModelIntersectionKHR => {
+                    quote! { ::vulkano::pipeline::shader::RayTracingShaderType::AnyHit }
+                }
+
+                ExecutionModel::ExecutionModelAnyHitNV
+                | ExecutionModel::ExecutionModelAnyHitKHR => {
+                    quote! { ::vulkano::pipeline::shader::RayTracingShaderType::ClosestHit }
+                }
+
+                ExecutionModel::ExecutionModelClosestHitNV
+                | ExecutionModel::ExecutionModelClosestHitKHR => {
+                    quote! { ::vulkano::pipeline::shader::RayTracingShaderType::Miss }
+                }
+
+                ExecutionModel::ExecutionModelMissNV | ExecutionModel::ExecutionModelMissKHR => {
+                    quote! { ::vulkano::pipeline::shader::RayTracingShaderType::Intersection }
+                }
+
+                ExecutionModel::ExecutionModelCallableNV
+                | ExecutionModel::ExecutionModelCallableKHR => {
+                    quote! { ::vulkano::pipeline::shader::RayTracingShaderType::Callable }
+                }
+
+                _ => unreachable!(),
+            };
+
+            let stage = match *execution {
+                ExecutionModel::ExecutionModelRayGenerationNV
+                | ExecutionModel::ExecutionModelRayGenerationKHR => {
+                    quote! { ShaderStages { raygen: true, .. ShaderStages::none() } }
+                }
+
+                ExecutionModel::ExecutionModelIntersectionNV
+                | ExecutionModel::ExecutionModelIntersectionKHR => {
+                    quote! { ShaderStages { intersection: true, .. ShaderStages::none() } }
+                }
+
+                ExecutionModel::ExecutionModelAnyHitNV
+                | ExecutionModel::ExecutionModelAnyHitKHR => {
+                    quote! { ShaderStages { any_hit: true, .. ShaderStages::none() } }
+                }
+
+                ExecutionModel::ExecutionModelClosestHitNV
+                | ExecutionModel::ExecutionModelClosestHitKHR => {
+                    quote! { ShaderStages { closest_hit: true, .. ShaderStages::none() } }
+                }
+
+                ExecutionModel::ExecutionModelMissNV | ExecutionModel::ExecutionModelMissKHR => {
+                    quote! { ShaderStages { miss: true, .. ShaderStages::none() } }
+                }
+
+                ExecutionModel::ExecutionModelCallableNV
+                | ExecutionModel::ExecutionModelCallableKHR => {
+                    quote! { ShaderStages { callable: true, .. ShaderStages::none() } }
+                }
+
+                _ => unreachable!(),
+            };
+
+            let ty = quote! {
+                ::vulkano::pipeline::shader::RayTracingEntryPoint<
+                    #spec_consts_struct,
+                    Layout>
+            };
+            let f_call = quote! {
+                ray_tracing_entry_point(
+                    ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
+                    Layout(#stage),
+                    #entry_ty
+                )
+            };
+
+            (ty, f_call)
         } else {
             panic!("Execution Model is not supported");
         }
