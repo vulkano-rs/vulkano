@@ -27,6 +27,11 @@ pub struct BufferUsage {
     pub index_buffer: bool,
     pub vertex_buffer: bool,
     pub indirect_buffer: bool,
+    pub shader_device_address: bool,
+    pub transform_feedback_buffer: bool,
+    pub transform_feedback_counter_buffer: bool,
+    pub conditional_rendering: bool,
+    pub ray_tracing: bool,
 }
 
 impl BufferUsage {
@@ -60,6 +65,21 @@ impl BufferUsage {
         if self.indirect_buffer {
             result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
         }
+        if self.shader_device_address {
+            result |= vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        }
+        if self.transform_feedback_buffer {
+            result |= vk::BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT;
+        }
+        if self.transform_feedback_counter_buffer {
+            result |= vk::BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT;
+        }
+        if self.conditional_rendering {
+            result |= vk::BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT;
+        }
+        if self.ray_tracing {
+            result |= vk::BUFFER_USAGE_RAY_TRACING_BIT_KHR;
+        }
         result
     }
 
@@ -76,6 +96,11 @@ impl BufferUsage {
             index_buffer: false,
             vertex_buffer: false,
             indirect_buffer: false,
+            shader_device_address: false,
+            transform_feedback_buffer: false,
+            transform_feedback_counter_buffer: false,
+            conditional_rendering: false,
+            ray_tracing: false,
         }
     }
 
@@ -92,6 +117,11 @@ impl BufferUsage {
             index_buffer: true,
             vertex_buffer: true,
             indirect_buffer: true,
+            shader_device_address: true,
+            transform_feedback_buffer: true,
+            transform_feedback_counter_buffer: true,
+            conditional_rendering: true,
+            ray_tracing: true,
         }
     }
 
@@ -172,6 +202,15 @@ impl BufferUsage {
         }
     }
 
+    /// Builds a `BufferUsage` with `ray_tracing` set to true and the rest to false.
+    #[inline]
+    pub fn ray_tracing() -> BufferUsage {
+        BufferUsage {
+            ray_tracing: true,
+            ..BufferUsage::none()
+        }
+    }
+
     /// Builds a `BufferUsage` with `indirect_buffer` set to true and the rest to false.
     #[inline]
     pub fn indirect_buffer() -> BufferUsage {
@@ -208,6 +247,11 @@ impl BitOr for BufferUsage {
             index_buffer: self.index_buffer || rhs.index_buffer,
             vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
             indirect_buffer: self.indirect_buffer || rhs.indirect_buffer,
+            shader_device_address: self.shader_device_address || rhs.shader_device_address,
+            transform_feedback_buffer: self.transform_feedback_buffer || rhs.transform_feedback_buffer,
+            transform_feedback_counter_buffer: self.transform_feedback_counter_buffer || rhs.transform_feedback_counter_buffer,
+            conditional_rendering: self.conditional_rendering || rhs.conditional_rendering,
+            ray_tracing: self.ray_tracing || rhs.ray_tracing,
         }
     }
 }
