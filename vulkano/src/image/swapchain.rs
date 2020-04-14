@@ -193,7 +193,7 @@ unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
 
     #[inline]
     fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
+        ImageLayout::General
     }
 
     #[inline]
