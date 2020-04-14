@@ -37,7 +37,7 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
-use pipeline::ComputePipelineAbstract;
+use pipeline::{ComputePipelineAbstract, PipelineType};
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
@@ -1924,7 +1924,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
     }
 
     #[inline]
-    pub unsafe fn submit<Pl, I>(self, graphics: bool, pipeline_layout: Pl, first_binding: u32,
+    pub unsafe fn submit<Pl, I>(self, pipeline_type: PipelineType, pipeline_layout: Pl, first_binding: u32,
                                 dynamic_offsets: I)
                                 -> Result<(), SyncCommandBufferBuilderError>
         where Pl: PipelineLayoutAbstract + Send + Sync + 'static,
@@ -1936,7 +1936,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
 
         struct Cmd<Pl, I> {
             inner: SmallVec<[Box<dyn DescriptorSet + Send + Sync>; 12]>,
-            graphics: bool,
+            pipeline_type: PipelineType,
             pipeline_layout: Pl,
             first_binding: u32,
             dynamic_offsets: Option<I>,
@@ -1951,7 +1951,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.bind_descriptor_sets(self.graphics,
+                out.bind_descriptor_sets(self.pipeline_type,
                                          &self.pipeline_layout,
                                          self.first_binding,
                                          self.inner.iter().map(|s| s.inner()),
@@ -2106,7 +2106,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
 
         self.builder.append_command(Cmd {
                                         inner: self.inner,
-                                        graphics,
+                                        pipeline_type,
                                         pipeline_layout,
                                         first_binding,
                                         dynamic_offsets: Some(dynamic_offsets),

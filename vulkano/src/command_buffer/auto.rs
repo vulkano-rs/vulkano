@@ -65,7 +65,7 @@ use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
-use pipeline::ComputePipelineAbstract;
+use pipeline::{ComputePipelineAbstract, PipelineType};
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::VertexSource;
@@ -969,7 +969,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            false,
+                            PipelineType::Compute,
                             pipeline.clone(),
                             sets)?;
 
@@ -1009,7 +1009,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1066,7 +1066,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1125,7 +1125,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1190,7 +1190,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1461,8 +1461,8 @@ unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
 }
 
 unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P>,
-                                    state_cacher: &mut StateCacher, gfx: bool, pipeline: Pl,
-                                    sets: S)
+                                    state_cacher: &mut StateCacher, pipeline_type: PipelineType,
+                                    pipeline: Pl, sets: S)
                                     -> Result<(), SyncCommandBufferBuilderError>
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
           S: DescriptorSetsCollection
@@ -1470,7 +1470,7 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
     let sets = sets.into_vec();
 
     let first_binding = {
-        let mut compare = state_cacher.bind_descriptor_sets(gfx);
+        let mut compare = state_cacher.bind_descriptor_sets(pipeline_type);
         for set in sets.iter() {
             compare.add(set);
         }
@@ -1487,7 +1487,7 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
         sets_binder.add(set);
     }
     sets_binder
-        .submit(gfx, pipeline.clone(), first_binding, iter::empty())?;
+        .submit(pipeline_type, pipeline.clone(), first_binding, iter::empty())?;
     Ok(())
 }
 

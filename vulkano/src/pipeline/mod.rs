@@ -97,3 +97,9 @@ pub mod raster;
 pub mod shader;
 pub mod vertex;
 pub mod viewport;
+
+#[derive(Copy, Clone)]
+pub enum PipelineType {
+    Graphics,
+    Compute,
+}

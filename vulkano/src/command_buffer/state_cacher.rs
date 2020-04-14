@@ -11,8 +11,7 @@ use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::DynamicState;
 use descriptor::DescriptorSet;
-use pipeline::ComputePipelineAbstract;
-use pipeline::GraphicsPipelineAbstract;
+use pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineType};
 use pipeline::input_assembly::IndexType;
 use smallvec::SmallVec;
 use std::ops::Range;
@@ -125,7 +124,10 @@ impl StateCacher {
     /// This process also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after the `compare` function returns.
     #[inline]
-    pub fn bind_descriptor_sets(&mut self, graphics: bool) -> StateCacherDescriptorSets {
+    pub fn bind_descriptor_sets(
+        &mut self,
+        pipeline_type: PipelineType,
+    ) -> StateCacherDescriptorSets {
         if self.poisoned_descriptor_sets {
             self.compute_descriptor_sets = SmallVec::new();
             self.graphics_descriptor_sets = SmallVec::new();
@@ -135,10 +137,9 @@ impl StateCacher {
 
         StateCacherDescriptorSets {
             poisoned: &mut self.poisoned_descriptor_sets,
-            state: if graphics {
-                &mut self.graphics_descriptor_sets
-            } else {
-                &mut self.compute_descriptor_sets
+            state: match pipeline_type {
+                PipelineType::Graphics => &mut self.graphics_descriptor_sets,
+                PipelineType::Compute => &mut self.compute_descriptor_sets,
             },
             offset: 0,
             found_diff: None,
