@@ -5,6 +5,8 @@
 - **Breaking** Update dependency `winit` 0.21 -> 0.22
 - Update dependency `half` 1.4 -> 1.5
 - Update dependency `smallvec` 0.6 -> 1.2
+- Add an optional feature, `cgmath-vertex` (which requires cgmath 0.17), which allows common cgmath types to be used inside vertex data definitions
+    + Types supported: `Basis`, `Deg`, `Point`, `Quaternion`, `Rad`, `Vector`, `Matrix`
 
 # Version 0.17.0 (2020-02-09)
 
