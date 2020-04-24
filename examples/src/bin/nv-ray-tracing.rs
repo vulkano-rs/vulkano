@@ -19,6 +19,7 @@ extern crate vulkano_shaders;
 extern crate vulkano_win;
 extern crate winit;
 
+use vulkano::acceleration_structure::{AabbPositions, AccelerationStructure};
 use vulkano::buffer::{BufferUsage, ImmutableBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
@@ -113,6 +114,37 @@ fn main() {
         .unwrap()
     };
 
+    // We now create a buffer that will store the AABBs for custom intersections.
+    let (aabb_buffer, aabb_buffer_future) = {
+        ImmutableBuffer::from_iter(
+            [
+                AabbPositions {
+                    min: [-2.0, -0.5, -2.5],
+                    max: [-1.0, 0.5, -1.5],
+                },
+                AabbPositions {
+                    min: [-0.5, -0.5, -2.5],
+                    max: [0.5, 0.5, -1.5],
+                },
+                AabbPositions {
+                    min: [1.0, -0.5, -2.5],
+                    max: [2.0, 0.5, -1.5],
+                },
+            ]
+            .iter()
+            .cloned(),
+            BufferUsage::ray_tracing(),
+            queue.clone(),
+        )
+        .unwrap()
+    };
+
+    aabb_buffer_future
+        .then_signal_fence_and_flush()
+        .unwrap()
+        .wait(None)
+        .unwrap();
+
     mod rs {
         vulkano_shaders::shader! {
             ty: "ray_generation",
@@ -145,6 +177,17 @@ void main() {
         .raygen_shader(rs.main_entry_point(), ())
         .build(device.clone())
         .unwrap(),
+    );
+
+    // We create an acceleration structure allow traversal of the scene by rays
+    // There can be any number of acceleration structures grouped under a top
+    // level structure.
+    let acceleration_structure = Arc::new(
+        AccelerationStructure::nv()
+            .add_aabbs(aabb_buffer.clone())
+            .unwrap()
+            .build(device.clone(), queue.clone())
+            .unwrap(),
     );
 
     let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
@@ -264,6 +307,8 @@ void main() {
 
             let command_buffer =
                 AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+                    .unwrap()
+                    .build_acceleration_structure(acceleration_structure.as_ref())
                     .unwrap()
                     .trace_rays(
                         pipeline.clone(),

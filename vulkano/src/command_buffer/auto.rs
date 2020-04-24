@@ -17,6 +17,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use OomError;
+use acceleration_structure::AccelerationStructure;
 use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use command_buffer::{CommandBuffer, TraceRaysIndirectCommandKHR};
@@ -1207,6 +1208,19 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Performs a build acceleration structure dispatch
+    // TODO: should accept a list of acceleration structures
+    #[inline]
+    pub fn build_acceleration_structure(
+        mut self, acceleration_structure: &AccelerationStructure,
+    ) -> Result<Self, BuildAccelerationStructureError> {
+        assert_eq!(acceleration_structure.top_level().geometries.len(), 0);
+        unsafe {
+            self.inner.build_acceleration_structure(acceleration_structure);
+            Ok(self)
+        }
+    }
+
     /// Performs a ray tracing dispatch using the binding tables.
     ///
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
@@ -1881,6 +1895,10 @@ err_gen!(ExecuteCommandsError {
 err_gen!(UpdateBufferError {
              AutoCommandBufferBuilderContextError,
              CheckUpdateBufferError,
+         });
+
+err_gen!(BuildAccelerationStructureError {
+             AutoCommandBufferBuilderContextError,
          });
 
 err_gen!(TraceRaysError {

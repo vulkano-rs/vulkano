@@ -14,7 +14,10 @@ use std::mem;
 use std::ptr;
 use std::sync::Arc;
 
+use acceleration_structure::AccelerationStructure;
+use acceleration_structure::Level;
 use buffer::BufferAccess;
+use buffer::ImmutableBuffer;
 use command_buffer::CommandBuffer;
 use command_buffer::synced::base::Command;
 use command_buffer::synced::base::FinalCommand;
@@ -28,6 +31,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
+use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSet;
@@ -1946,6 +1950,186 @@ impl<P> SyncCommandBufferBuilder<P> {
                                ImageLayout::Undefined,
                                ImageLayout::Undefined)
             .unwrap();
+    }
+
+    /// Calls `vkCmdBuildAccelerationStructureNV`/`vkCmdBuildAccelerationStructureKHR` on the builder.
+    /// // TODO: should accept a list of acceleration structures
+    pub unsafe fn build_acceleration_structure(
+        &mut self, acceleration_structure: &AccelerationStructure,
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        struct Cmd<I, S> {
+            use_nv_extension: bool,
+            dst: Level,
+            instance_buffer: Option<I>,
+            scratch_buffer: S,
+        }
+
+        impl<P, I, S> Command<P> for Cmd<I, S>
+        where
+            I: BufferAccess + Send + Sync + 'static,
+            S: BufferAccess + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str {
+                if self.use_nv_extension {
+                    "vkCmdBuildAccelerationStructureNV"
+                } else {
+                    "vkCmdBuildAccelerationStructureKHR"
+                }
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                if self.use_nv_extension {
+                    let geometries: Vec<vk::GeometryNV> =
+                        self.dst.geometries.iter().map(|g| g.into()).collect();
+                    out.build_acceleration_structure_nv(
+                        vk::AccelerationStructureInfoNV {
+                            sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_INFO_NV,
+                            pNext: ptr::null(),
+                            type_: self.dst.type_,
+                            flags: self.dst.flags,
+                            instanceCount: self.dst.instance_count,
+                            geometryCount: geometries.len() as u32,
+                            pGeometries: geometries.as_ptr(),
+                        },
+                        self.instance_buffer.as_ref(),
+                        false,
+                        self.dst.inner_object,
+                        vk::NULL_HANDLE,
+                        &self.scratch_buffer,
+                    );
+                } else {
+                    // TODO: should pass a list of acceleration structures
+                    out.build_acceleration_structure_khr(
+                        self.dst.type_,
+                        self.dst.flags,
+                        false,
+                        self.dst.inner_object,
+                        vk::NULL_HANDLE,
+                        &self.scratch_buffer,
+                        self.dst.geometries.clone(),
+                        self.dst.instance_count,
+                    );
+                }
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                if self.use_nv_extension {
+                    Box::new("vkCmdBuildAccelerationStructureNV")
+                } else {
+                    Box::new("vkCmdBuildAccelerationStructureKHR")
+                }
+            }
+
+            fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                assert_eq!(num, 0);
+                &self.scratch_buffer
+            }
+
+            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                assert_eq!(num, 0);
+                "scratch".into()
+            }
+        }
+
+        // TODO convert to prev_cmd_resource
+        struct Cmd2 {
+            destination_stage: PipelineStages,
+        }
+        impl<P> Command<P> for Cmd2 {
+            fn name(&self) -> &'static str {
+                "vkCmdPipelineBarrier"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
+                let mut barrier = UnsafeCommandBufferBuilderPipelineBarrier::new();
+                barrier.add_memory_barrier(
+                    PipelineStages {
+                        acceleration_structure_build: true,
+                        ..PipelineStages::none()
+                    },
+                    AccessFlagBits {
+                        acceleration_structure_write: true,
+                        ..AccessFlagBits::none()
+                    },
+                    self.destination_stage,
+                    AccessFlagBits {
+                        acceleration_structure_read: true,
+                        ..AccessFlagBits::none()
+                    },
+                    false,
+                );
+                out.pipeline_barrier(&barrier);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                Box::new("vkCmdPipelineBarrier")
+            }
+        }
+
+        self.append_command(Cmd {
+            use_nv_extension: acceleration_structure.nv_extension(),
+            dst: acceleration_structure.bottom_level(),
+            instance_buffer: None::<ImmutableBuffer<vk::AccelerationStructureInstanceNV>>,
+            scratch_buffer: acceleration_structure.scratch_buffer().clone(),
+        });
+
+        self.append_command(Cmd2 {
+            destination_stage: PipelineStages {
+                acceleration_structure_build: true,
+                ..PipelineStages::none()
+            },
+        });
+
+        // TODO
+        // self.prev_cmd_resource(
+        //     KeyTy::AccelerationStructure,
+        //     0,
+        //     true,
+        //     PipelineStages {
+        //         acceleration_structure_build: true,
+        //         ..PipelineStages::none()
+        //     },
+        //     AccessFlagBits {
+        //         acceleration_structure_write: true,
+        //         ..AccessFlagBits::none()
+        //     },
+        //     ImageLayout::Undefined,
+        //     ImageLayout::Undefined,
+        // )
+        // .unwrap();
+
+        self.append_command(Cmd {
+            use_nv_extension: acceleration_structure.nv_extension(),
+            dst: acceleration_structure.top_level(),
+            instance_buffer: Some(acceleration_structure.instance_buffer().clone()),
+            scratch_buffer: acceleration_structure.scratch_buffer().clone(),
+        });
+
+        self.append_command(Cmd2 {
+            destination_stage: PipelineStages {
+                ray_tracing_shader: true,
+                ..PipelineStages::none()
+            },
+        });
+        // TODO
+        // self.prev_cmd_resource(
+        //     KeyTy::AccelerationStructure,
+        //     0,
+        //     true,
+        //     PipelineStages {
+        //         acceleration_structure_build: true,
+        //         ..PipelineStages::none()
+        //     },
+        //     AccessFlagBits {
+        //         acceleration_structure_write: true,
+        //         ..AccessFlagBits::none()
+        //     },
+        //     ImageLayout::Undefined,
+        //     ImageLayout::Undefined,
+        // )
+        // .unwrap();
+
+        Ok(())
     }
 
     /// Calls `vkCmdTraceRaysKHR` / `vkCmdTraceRaysNV` on the builder.

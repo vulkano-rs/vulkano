@@ -79,6 +79,7 @@ mod extensions;
 mod features;
 mod version;
 
+pub mod acceleration_structure;
 pub mod buffer;
 pub mod command_buffer;
 pub mod descriptor;
