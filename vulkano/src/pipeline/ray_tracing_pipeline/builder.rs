@@ -29,23 +29,140 @@ use check_errors;
 use vk;
 use VulkanObject;
 
+pub struct RayTracingPipelineGroupBuilder<Cs, Css, As, Ass, Is, Iss> {
+    pub closest_hit_shader: Option<(Cs, Css)>,
+    pub any_hit_shader: Option<(As, Ass)>,
+    pub intersection_shader: Option<(Is, Iss)>,
+}
+
+impl
+    RayTracingPipelineGroupBuilder<
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+    >
+{
+    pub(super) fn new() -> Self {
+        RayTracingPipelineGroupBuilder {
+            closest_hit_shader: None,
+            any_hit_shader: None,
+            intersection_shader: None,
+        }
+    }
+}
+
+impl<Cs1, Css1, As1, Ass1, Is1, Iss1>
+    RayTracingPipelineGroupBuilder<Cs1, Css1, As1, Ass1, Is1, Iss1>
+where
+    Cs1: RayTracingEntryPointAbstract,
+    Css1: SpecializationConstants,
+    Cs1::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    As1: RayTracingEntryPointAbstract,
+    Ass1: SpecializationConstants,
+    As1::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Is1: RayTracingEntryPointAbstract,
+    Iss1: SpecializationConstants,
+    Is1::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+{
+    /// Adds a closest hit shader to group.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn closest_hit_shader<Cs2, Css2>(
+        self,
+        shader: Cs2,
+        specialization_constants: Css2,
+    ) -> RayTracingPipelineGroupBuilder<Cs2, Css2, As1, Ass1, Is1, Iss1>
+    where
+        Cs2: RayTracingEntryPointAbstract<SpecializationConstants = Css2>,
+        Css2: SpecializationConstants,
+    {
+        RayTracingPipelineGroupBuilder {
+            closest_hit_shader: Some((shader, specialization_constants)),
+            any_hit_shader: self.any_hit_shader,
+            intersection_shader: self.intersection_shader,
+        }
+    }
+
+    /// Adds a any hit shader to group.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn any_hit_shader<As2, Ass2>(
+        self,
+        shader: As2,
+        specialization_constants: Ass2,
+    ) -> RayTracingPipelineGroupBuilder<Cs1, Css1, As2, Ass2, Is1, Iss1>
+    where
+        As2: RayTracingEntryPointAbstract<SpecializationConstants = Ass2>,
+        Ass2: SpecializationConstants,
+    {
+        RayTracingPipelineGroupBuilder {
+            closest_hit_shader: self.closest_hit_shader,
+            any_hit_shader: Some((shader, specialization_constants)),
+            intersection_shader: self.intersection_shader,
+        }
+    }
+
+    /// Adds an intersection shader to group.
+    // TODO: correct specialization constants
+    #[inline]
+    pub fn intersection_shader<Is2, Iss2>(
+        self,
+        shader: Is2,
+        specialization_constants: Iss2,
+    ) -> RayTracingPipelineGroupBuilder<Cs1, Css1, As1, Ass1, Is2, Iss2>
+    where
+        Is2: RayTracingEntryPointAbstract<SpecializationConstants = Iss2>,
+        Iss2: SpecializationConstants,
+    {
+        RayTracingPipelineGroupBuilder {
+            closest_hit_shader: self.closest_hit_shader,
+            any_hit_shader: self.any_hit_shader,
+            intersection_shader: Some((shader, specialization_constants)),
+        }
+    }
+}
+
 /// Prototype for a `RayTracingPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
-pub struct RayTracingPipelineBuilder<Rs, Rss, Ms, Mss> {
+pub struct RayTracingPipelineBuilder<Rs, Rss, Ms, Mss, Cs, Css, As, Ass, Is, Iss> {
     nv_extension: bool,
+    // TODO: Should be a list
     raygen_shader: Option<(Rs, Rss)>,
     // TODO: Should be a list
     miss_shader: Option<(Ms, Mss)>,
+    // TODO: Should be a list
+    group: RayTracingPipelineGroupBuilder<Cs, Css, As, Ass, Is, Iss>,
     max_recursion_depth: u32,
 }
 
-impl RayTracingPipelineBuilder<EmptyEntryPointDummy, (), EmptyEntryPointDummy, ()> {
+impl
+    RayTracingPipelineBuilder<
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+    >
+{
     /// Builds a new empty builder using the `nv_ray_tracing` extension.
     pub(super) fn nv(max_recursion_depth: u32) -> Self {
         RayTracingPipelineBuilder {
             nv_extension: true,
             raygen_shader: None,
             miss_shader: None,
+            group: RayTracingPipelineGroupBuilder {
+                closest_hit_shader: None,
+                any_hit_shader: None,
+                intersection_shader: None,
+            },
             max_recursion_depth,
         }
     }
@@ -56,12 +173,18 @@ impl RayTracingPipelineBuilder<EmptyEntryPointDummy, (), EmptyEntryPointDummy, (
             nv_extension: false,
             raygen_shader: None,
             miss_shader: None,
+            group: RayTracingPipelineGroupBuilder {
+                closest_hit_shader: None,
+                any_hit_shader: None,
+                intersection_shader: None,
+            },
             max_recursion_depth,
         }
     }
 }
 
-impl<Rs, Rss, Ms, Mss> RayTracingPipelineBuilder<Rs, Rss, Ms, Mss>
+impl<Rs, Rss, Ms, Mss, Cs, Css, As, Ass, Is, Iss>
+    RayTracingPipelineBuilder<Rs, Rss, Ms, Mss, Cs, Css, As, Ass, Is, Iss>
 where
     Rs: RayTracingEntryPointAbstract,
     Rss: SpecializationConstants,
@@ -69,6 +192,15 @@ where
     Ms: RayTracingEntryPointAbstract,
     Mss: SpecializationConstants,
     Ms::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Cs: RayTracingEntryPointAbstract,
+    Css: SpecializationConstants,
+    Cs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    As: RayTracingEntryPointAbstract,
+    Ass: SpecializationConstants,
+    As::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Is: RayTracingEntryPointAbstract,
+    Iss: SpecializationConstants,
+    Is::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
 {
     /// Builds the ray tracing pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
@@ -113,23 +245,191 @@ where
             let layout = shader.layout().clone();
             if let Some((ref shader, _)) = self.miss_shader {
                 let layout = layout.union(shader.layout().clone());
-                pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(
-                        layout,
-                        dynamic_buffers.into_iter().cloned(),
-                    )
-                    .build(device.clone())
-                    .unwrap(),
-                ) as Box<_>; // TODO: error
+                if let Some((ref shader, _)) = self.group.closest_hit_shader {
+                    let layout = layout.union(shader.layout().clone());
+                    if let Some((ref shader, _)) = self.group.intersection_shader {
+                        let layout = layout.union(shader.layout().clone());
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    } else {
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    }
+                } else {
+                    if let Some((ref shader, _)) = self.group.intersection_shader {
+                        let layout = layout.union(shader.layout().clone());
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    } else {
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    }
+                }
             } else {
-                pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(
-                        layout,
-                        dynamic_buffers.into_iter().cloned(),
-                    )
-                    .build(device.clone())
-                    .unwrap(),
-                ) as Box<_>; // TODO: error
+                if let Some((ref shader, _)) = self.group.closest_hit_shader {
+                    let layout = layout.union(shader.layout().clone());
+                    if let Some((ref shader, _)) = self.group.intersection_shader {
+                        let layout = layout.union(shader.layout().clone());
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    } else {
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    }
+                } else {
+                    if let Some((ref shader, _)) = self.group.intersection_shader {
+                        let layout = layout.union(shader.layout().clone());
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    } else {
+                        if let Some((ref shader, _)) = self.group.any_hit_shader {
+                            let layout = layout.union(shader.layout().clone());
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        } else {
+                            pipeline_layout = Box::new(
+                                PipelineLayoutDescTweaks::new(
+                                    layout,
+                                    dynamic_buffers.into_iter().cloned(),
+                                )
+                                .build(device.clone())
+                                .unwrap(),
+                            ) as Box<_>; // TODO: error
+                        }
+                    }
+                }
             }
         } else {
             return Err(RayTracingPipelineCreationError::NoRaygenShader);
@@ -170,60 +470,129 @@ where
         let vk = device.pointers();
 
         // Creating the specialization constants of the various stages.
-        let raygen_shader_specialization = {
-            let spec_descriptors = Rss::descriptors();
-            let constants = &self.raygen_shader.as_ref().unwrap().1;
-            vk::SpecializationInfo {
-                mapEntryCount: spec_descriptors.len() as u32,
-                pMapEntries: spec_descriptors.as_ptr() as *const _,
-                dataSize: mem::size_of_val(constants),
-                pData: constants as *const Rss as *const _,
+        let raygen_stage = {
+            let raygen_shader_specialization = {
+                let spec_descriptors = Rss::descriptors();
+                let constants = &self.raygen_shader.as_ref().unwrap().1;
+                vk::SpecializationInfo {
+                    mapEntryCount: spec_descriptors.len() as u32,
+                    pMapEntries: spec_descriptors.as_ptr() as *const _,
+                    dataSize: mem::size_of_val(constants),
+                    pData: constants as *const Rss as *const _,
+                }
+            };
+            vk::PipelineShaderStageCreateInfo {
+                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0, // reserved
+                stage: vk::SHADER_STAGE_RAYGEN_BIT_KHR,
+                module: self
+                    .raygen_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .module()
+                    .internal_object(),
+                pName: self.raygen_shader.as_ref().unwrap().0.name().as_ptr(),
+                pSpecializationInfo: &raygen_shader_specialization as *const _,
             }
         };
-        let raygen_stage = vk::PipelineShaderStageCreateInfo {
-            sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0, // reserved
-            stage: vk::SHADER_STAGE_RAYGEN_BIT_KHR,
-            module: self
-                .raygen_shader
-                .as_ref()
-                .unwrap()
-                .0
-                .module()
-                .internal_object(),
-            pName: self.raygen_shader.as_ref().unwrap().0.name().as_ptr(),
-            pSpecializationInfo: &raygen_shader_specialization as *const _,
-        };
-        let miss_shader_specialization = {
-            let spec_descriptors = Mss::descriptors();
-            let constants = &self.miss_shader.as_ref().unwrap().1;
-            vk::SpecializationInfo {
-                mapEntryCount: spec_descriptors.len() as u32,
-                pMapEntries: spec_descriptors.as_ptr() as *const _,
-                dataSize: mem::size_of_val(constants),
-                pData: constants as *const Mss as *const _,
+        let miss_stage = match self.miss_shader {
+            Some((shader, constants)) => {
+                let specialization = {
+                    let spec_descriptors = Mss::descriptors();
+                    vk::SpecializationInfo {
+                        mapEntryCount: spec_descriptors.len() as u32,
+                        pMapEntries: spec_descriptors.as_ptr() as *const _,
+                        dataSize: mem::size_of_val(&constants),
+                        pData: &constants as *const Mss as *const _,
+                    }
+                };
+                Some(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_MISS_BIT_KHR,
+                    module: shader.module().internal_object(),
+                    pName: shader.name().as_ptr(),
+                    pSpecializationInfo: &specialization as *const _,
+                })
             }
+            None => None,
         };
-        let miss_stage = vk::PipelineShaderStageCreateInfo {
-            sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-            pNext: ptr::null(),
-            flags: 0, // reserved
-            stage: vk::SHADER_STAGE_MISS_BIT_NV,
-            module: self
-                .miss_shader
-                .as_ref()
-                .unwrap()
-                .0
-                .module()
-                .internal_object(),
-            pName: self.miss_shader.as_ref().unwrap().0.name().as_ptr(),
-            pSpecializationInfo: &miss_shader_specialization as *const _,
+        let closest_hit_stage = match self.group.closest_hit_shader {
+            Some((shader, constants)) => {
+                let specialization = {
+                    let spec_descriptors = Css::descriptors();
+                    vk::SpecializationInfo {
+                        mapEntryCount: spec_descriptors.len() as u32,
+                        pMapEntries: spec_descriptors.as_ptr() as *const _,
+                        dataSize: mem::size_of_val(&constants),
+                        pData: &constants as *const Css as *const _,
+                    }
+                };
+                Some(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+                    module: shader.module().internal_object(),
+                    pName: shader.name().as_ptr(),
+                    pSpecializationInfo: &specialization as *const _,
+                })
+            }
+            None => None,
+        };
+        let any_hit_stage = match self.group.any_hit_shader {
+            Some((shader, constants)) => {
+                let specialization = {
+                    let spec_descriptors = Ass::descriptors();
+                    vk::SpecializationInfo {
+                        mapEntryCount: spec_descriptors.len() as u32,
+                        pMapEntries: spec_descriptors.as_ptr() as *const _,
+                        dataSize: mem::size_of_val(&constants),
+                        pData: &constants as *const Ass as *const _,
+                    }
+                };
+                Some(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_ANY_HIT_BIT_KHR,
+                    module: shader.module().internal_object(),
+                    pName: shader.name().as_ptr(),
+                    pSpecializationInfo: &specialization as *const _,
+                })
+            }
+            None => None,
+        };
+        let intersection_stage = match self.group.intersection_shader {
+            Some((shader, constants)) => {
+                let specialization = {
+                    let spec_descriptors = Iss::descriptors();
+                    vk::SpecializationInfo {
+                        mapEntryCount: spec_descriptors.len() as u32,
+                        pMapEntries: spec_descriptors.as_ptr() as *const _,
+                        dataSize: mem::size_of_val(&constants),
+                        pData: &constants as *const Iss as *const _,
+                    }
+                };
+                Some(vk::PipelineShaderStageCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_INTERSECTION_BIT_KHR,
+                    module: shader.module().internal_object(),
+                    pName: shader.name().as_ptr(),
+                    pSpecializationInfo: &specialization as *const _,
+                })
+            }
+            None => None,
         };
 
         let (pipeline, group_count) = if self.nv_extension {
-            let mut stages = SmallVec::<[_; 1]>::new();
-            let mut groups = SmallVec::<[_; 1]>::new();
+            let mut stages = SmallVec::<[_; 5]>::new();
+            let mut groups = SmallVec::<[_; 5]>::new();
 
             // Raygen
             groups.push(vk::RayTracingShaderGroupCreateInfoNV {
@@ -238,16 +607,66 @@ where
             stages.push(raygen_stage);
 
             // Miss
-            groups.push(vk::RayTracingShaderGroupCreateInfoNV {
-                sType: vk::STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV,
-                pNext: ptr::null(),
-                type_: vk::RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV,
-                generalShader: stages.len() as u32,
-                closestHitShader: vk::SHADER_UNUSED,
-                anyHitShader: vk::SHADER_UNUSED,
-                intersectionShader: vk::SHADER_UNUSED,
-            });
-            stages.push(miss_stage);
+            match miss_stage {
+                Some(miss_stage) => {
+                    groups.push(vk::RayTracingShaderGroupCreateInfoNV {
+                        sType: vk::STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV,
+                        pNext: ptr::null(),
+                        type_: vk::RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_NV,
+                        generalShader: stages.len() as u32,
+                        closestHitShader: vk::SHADER_UNUSED,
+                        anyHitShader: vk::SHADER_UNUSED,
+                        intersectionShader: vk::SHADER_UNUSED,
+                    });
+                    stages.push(miss_stage);
+                }
+                None => {}
+            }
+
+            // Groups
+            if closest_hit_stage.is_some()
+                || any_hit_stage.is_some()
+                || intersection_stage.is_some()
+            {
+                let mut info = vk::RayTracingShaderGroupCreateInfoNV {
+                    sType: vk::STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_NV,
+                    pNext: ptr::null(),
+                    type_: vk::RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_NV,
+                    generalShader: vk::SHADER_UNUSED,
+                    closestHitShader: vk::SHADER_UNUSED,
+                    anyHitShader: vk::SHADER_UNUSED,
+                    intersectionShader: vk::SHADER_UNUSED,
+                };
+
+                match closest_hit_stage {
+                    Some(stage) => {
+                        info.closestHitShader = stages.len() as u32;
+                        stages.push(stage);
+                    }
+                    None => {}
+                }
+
+                match any_hit_stage {
+                    Some(stage) => {
+                        info.anyHitShader = stages.len() as u32;
+                        stages.push(stage);
+                    }
+                    None => {}
+                }
+
+                match intersection_stage {
+                    Some(stage) => {
+                        // If there is an intersection stage, then the type is procedural, not triangles
+                        info.type_ = vk::RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_NV;
+                        info.intersectionShader = stages.len() as u32;
+                        stages.push(stage);
+                    }
+                    None => {}
+                }
+
+                groups.push(info);
+            }
+
             unsafe {
                 let infos = vk::RayTracingPipelineCreateInfoNV {
                     sType: vk::STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_NV,
@@ -275,8 +694,8 @@ where
                 (output.assume_init(), groups.len() as u32)
             }
         } else {
-            let mut stages = SmallVec::<[_; 1]>::new();
-            let mut groups = SmallVec::<[_; 1]>::new();
+            let mut stages = SmallVec::<[_; 5]>::new();
+            let mut groups = SmallVec::<[_; 5]>::new();
 
             // Raygen
             groups.push(vk::RayTracingShaderGroupCreateInfoKHR {
@@ -292,17 +711,67 @@ where
             stages.push(raygen_stage);
 
             // Miss
-            groups.push(vk::RayTracingShaderGroupCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                type_: vk::RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
-                generalShader: stages.len() as u32,
-                closestHitShader: vk::SHADER_UNUSED,
-                anyHitShader: vk::SHADER_UNUSED,
-                intersectionShader: vk::SHADER_UNUSED,
-                pShaderGroupCaptureReplayHandle: ptr::null(), // TODO:
-            });
-            stages.push(miss_stage);
+            match miss_stage {
+                Some(miss_stage) => {
+                    groups.push(vk::RayTracingShaderGroupCreateInfoKHR {
+                        sType: vk::STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                        pNext: ptr::null(),
+                        type_: vk::RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR,
+                        generalShader: stages.len() as u32,
+                        closestHitShader: vk::SHADER_UNUSED,
+                        anyHitShader: vk::SHADER_UNUSED,
+                        intersectionShader: vk::SHADER_UNUSED,
+                        pShaderGroupCaptureReplayHandle: ptr::null(), // TODO:
+                    });
+                    stages.push(miss_stage);
+                }
+                None => {}
+            }
+
+            // Groups
+            if closest_hit_stage.is_some()
+                || any_hit_stage.is_some()
+                || intersection_stage.is_some()
+            {
+                let mut info = vk::RayTracingShaderGroupCreateInfoKHR {
+                    sType: vk::STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR,
+                    pNext: ptr::null(),
+                    type_: vk::RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR,
+                    generalShader: vk::SHADER_UNUSED,
+                    closestHitShader: vk::SHADER_UNUSED,
+                    anyHitShader: vk::SHADER_UNUSED,
+                    intersectionShader: vk::SHADER_UNUSED,
+                    pShaderGroupCaptureReplayHandle: ptr::null(), // TODO:
+                };
+
+                match closest_hit_stage {
+                    Some(stage) => {
+                        info.closestHitShader = stages.len() as u32;
+                        stages.push(stage);
+                    }
+                    None => {}
+                }
+
+                match any_hit_stage {
+                    Some(stage) => {
+                        info.anyHitShader = stages.len() as u32;
+                        stages.push(stage);
+                    }
+                    None => {}
+                }
+
+                match intersection_stage {
+                    Some(stage) => {
+                        // If there is an intersection stage, then the type is procedural, not triangles
+                        info.type_ = vk::RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
+                        info.intersectionShader = stages.len() as u32;
+                        stages.push(stage);
+                    }
+                    None => {}
+                }
+
+                groups.push(info);
+            }
 
             let library_info = vk::PipelineLibraryCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR,
@@ -363,7 +832,9 @@ where
     // TODO: add build_with_cache method
 }
 
-impl<Rs1, Rss1, Ms1, Mss1> RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1> {
+impl<Rs1, Rss1, Ms1, Mss1, Cs1, Css1, As1, Ass1, Is1, Iss1>
+    RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1, Cs1, Css1, As1, Ass1, Is1, Iss1>
+{
     // TODO: add pipeline derivate system
 
     /// Adds a raygen shader group to use.
@@ -374,7 +845,7 @@ impl<Rs1, Rss1, Ms1, Mss1> RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1> {
         self,
         shader: Rs2,
         specialization_constants: Rss2,
-    ) -> RayTracingPipelineBuilder<Rs2, Rss2, Ms1, Mss1>
+    ) -> RayTracingPipelineBuilder<Rs2, Rss2, Ms1, Mss1, Cs1, Css1, As1, Ass1, Is1, Iss1>
     where
         Rs2: RayTracingEntryPointAbstract<SpecializationConstants = Rss2>,
         Rss2: SpecializationConstants,
@@ -384,6 +855,7 @@ impl<Rs1, Rss1, Ms1, Mss1> RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1> {
             max_recursion_depth: self.max_recursion_depth,
             raygen_shader: Some((shader, specialization_constants)),
             miss_shader: self.miss_shader,
+            group: self.group,
         }
     }
 
@@ -393,7 +865,7 @@ impl<Rs1, Rss1, Ms1, Mss1> RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1> {
     #[inline]
     pub fn miss_shader<Ms2, Mss2>(
         self, shader: Ms2, specialization_constants: Mss2,
-    ) -> RayTracingPipelineBuilder<Rs1, Rss1, Ms2, Mss2>
+    ) -> RayTracingPipelineBuilder<Rs1, Rss1, Ms2, Mss2, Cs1, Css1, As1, Ass1, Is1, Iss1>
     where
         Ms2: RayTracingEntryPointAbstract<SpecializationConstants = Mss2>,
         Mss2: SpecializationConstants,
@@ -403,22 +875,58 @@ impl<Rs1, Rss1, Ms1, Mss1> RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1> {
             max_recursion_depth: self.max_recursion_depth,
             raygen_shader: self.raygen_shader,
             miss_shader: Some((shader, specialization_constants)),
+            group: self.group,
+        }
+    }
+
+    /// Add a ray tracing group
+    #[inline]
+    pub fn group<Cs2, Css2, As2, Ass2, Is2, Iss2>(
+        self,
+        group: RayTracingPipelineGroupBuilder<Cs2, Css2, As2, Ass2, Is2, Iss2>,
+    ) -> RayTracingPipelineBuilder<Rs1, Rss1, Ms1, Mss1, Cs2, Css2, As2, Ass2, Is2, Iss2>
+    where
+        Cs2: RayTracingEntryPointAbstract<SpecializationConstants = Css2>,
+        Css2: SpecializationConstants,
+        As2: RayTracingEntryPointAbstract<SpecializationConstants = Ass2>,
+        Ass2: SpecializationConstants,
+        Is2: RayTracingEntryPointAbstract<SpecializationConstants = Iss2>,
+        Iss2: SpecializationConstants,
+    {
+        RayTracingPipelineBuilder {
+            nv_extension: self.nv_extension,
+            max_recursion_depth: self.max_recursion_depth,
+            raygen_shader: self.raygen_shader,
+            miss_shader: self.miss_shader,
+            group,
         }
     }
 }
 
-impl<Rs, Rss, Ms, Mss> Clone for RayTracingPipelineBuilder<Rs, Rss, Ms, Mss>
+impl<Rs, Rss, Ms, Mss, Cs, Css, As, Ass, Is, Iss> Clone
+    for RayTracingPipelineBuilder<Rs, Rss, Ms, Mss, Cs, Css, As, Ass, Is, Iss>
 where
     Rs: Clone,
     Rss: Clone,
     Ms: Clone,
     Mss: Clone,
+    Cs: Clone,
+    Css: Clone,
+    As: Clone,
+    Ass: Clone,
+    Is: Clone,
+    Iss: Clone,
 {
     fn clone(&self) -> Self {
         RayTracingPipelineBuilder {
             nv_extension: self.nv_extension,
             raygen_shader: self.raygen_shader.clone(),
             miss_shader: self.miss_shader.clone(),
+            group: RayTracingPipelineGroupBuilder {
+                closest_hit_shader: self.group.closest_hit_shader.clone(),
+                any_hit_shader: self.group.any_hit_shader.clone(),
+                intersection_shader: self.group.intersection_shader.clone(),
+            },
             max_recursion_depth: self.max_recursion_depth,
         }
     }

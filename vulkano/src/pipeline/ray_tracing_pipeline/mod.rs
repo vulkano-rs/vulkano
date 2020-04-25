@@ -27,6 +27,7 @@ use VulkanObject;
 
 pub use self::builder::RayTracingPipelineBuilder;
 pub use self::creation_error::RayTracingPipelineCreationError;
+use pipeline::ray_tracing_pipeline::builder::RayTracingPipelineGroupBuilder;
 
 mod builder;
 mod creation_error;
@@ -57,7 +58,18 @@ impl RayTracingPipeline<()> {
     /// Returns a builder object that you can fill with the various parameters.
     pub fn nv<'a>(
         max_recursion_depth: u32,
-    ) -> RayTracingPipelineBuilder<EmptyEntryPointDummy, (), EmptyEntryPointDummy, ()> {
+    ) -> RayTracingPipelineBuilder<
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+    > {
         RayTracingPipelineBuilder::nv(max_recursion_depth)
     }
 
@@ -66,8 +78,30 @@ impl RayTracingPipeline<()> {
     /// Returns a builder object that you can fill with the various parameters.
     pub fn khr<'a>(
         max_recursion_depth: u32,
-    ) -> RayTracingPipelineBuilder<EmptyEntryPointDummy, (), EmptyEntryPointDummy, ()> {
+    ) -> RayTracingPipelineBuilder<
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+    > {
         RayTracingPipelineBuilder::khr(max_recursion_depth)
+    }
+
+    pub fn group<'a>() -> RayTracingPipelineGroupBuilder<
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+    > {
+        RayTracingPipelineGroupBuilder::new()
     }
 }
 

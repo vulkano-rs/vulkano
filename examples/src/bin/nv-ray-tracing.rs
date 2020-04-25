@@ -193,6 +193,38 @@ void main() {
     }
     let ms = ms::Shader::load(device.clone()).unwrap();
 
+    mod cs {
+        vulkano_shaders::shader! {
+            ty: "closest_hit",
+            src: "#version 460 core
+#extension GL_NV_ray_tracing : enable
+
+layout(location = 0) rayPayloadInNV vec4 payload;
+
+void main() {
+    payload = vec4(1, 1, 0, 1);
+}
+"
+        }
+    }
+    let cs = cs::Shader::load(device.clone()).unwrap();
+
+    mod is {
+        vulkano_shaders::shader! {
+            ty: "intersection",
+            src: "#version 460 core
+#extension GL_NV_ray_tracing : enable
+
+hitAttributeNV bool _unused_but_required;
+
+void main() {
+    reportIntersectionNV(0.01, 0);
+}
+"
+        }
+    }
+    let is = is::Shader::load(device.clone()).unwrap();
+
     // We set a limit to the recursion of a ray so that the shader does not run infinitely
     let max_recursion_depth = 5;
 
@@ -202,6 +234,7 @@ void main() {
         // and to store the result of their path tracing
         .raygen_shader(rs.main_entry_point(), ())
         .miss_shader(ms.main_entry_point(), ())
+        .group(RayTracingPipeline::group().closest_hit_shader(cs.main_entry_point(), ()).intersection_shader(is.main_entry_point(), ()))
         .build(device.clone())
         .unwrap(),
     );
@@ -254,7 +287,9 @@ void main() {
     )
     .unwrap();
     let (hit_shader_binding_table, hit_buffer_future) = ImmutableBuffer::from_iter(
-        (0..0).map(|_| 5u8),
+        group_handles[2 * group_handle_size..3 * group_handle_size]
+            .iter()
+            .copied(),
         BufferUsage::ray_tracing(),
         queue.clone(),
     )

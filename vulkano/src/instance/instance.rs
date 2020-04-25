@@ -395,17 +395,45 @@ impl Instance {
                 };
 
                 vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
-                (output.properties, PhysicalDeviceRayTracingProperties {
-                    shaderGroupHandleSize: max(nv_rt_output.shaderGroupHandleSize, khr_rt_output.shaderGroupHandleSize),
-                    maxRecursionDepth: max(nv_rt_output.maxRecursionDepth, khr_rt_output.maxRecursionDepth),
-                    maxShaderGroupStride: max(nv_rt_output.maxShaderGroupStride, khr_rt_output.maxShaderGroupStride),
-                    shaderGroupBaseAlignment: max(nv_rt_output.shaderGroupBaseAlignment, khr_rt_output.shaderGroupBaseAlignment),
-                    maxGeometryCount: max(nv_rt_output.maxGeometryCount, khr_rt_output.maxGeometryCount),
-                    maxInstanceCount: max(nv_rt_output.maxInstanceCount, khr_rt_output.maxInstanceCount),
-                    maxPrimitiveCount: max(nv_rt_output.maxTriangleCount, khr_rt_output.maxPrimitiveCount),
-                    maxDescriptorSetAccelerationStructures: max(nv_rt_output.maxDescriptorSetAccelerationStructures, khr_rt_output.maxDescriptorSetAccelerationStructures),
-                    shaderGroupHandleCaptureReplaySize: khr_rt_output.shaderGroupHandleCaptureReplaySize,
-                })
+                (
+                    output.properties,
+                    PhysicalDeviceRayTracingProperties {
+                        shader_group_handle_size: max(
+                            nv_rt_output.shaderGroupHandleSize,
+                            khr_rt_output.shaderGroupHandleSize,
+                        ),
+                        max_recursion_depth: max(
+                            nv_rt_output.maxRecursionDepth,
+                            khr_rt_output.maxRecursionDepth,
+                        ),
+                        max_shader_group_stride: max(
+                            nv_rt_output.maxShaderGroupStride,
+                            khr_rt_output.maxShaderGroupStride,
+                        ),
+                        shader_group_base_alignment: max(
+                            nv_rt_output.shaderGroupBaseAlignment,
+                            khr_rt_output.shaderGroupBaseAlignment,
+                        ),
+                        max_geometry_count: max(
+                            nv_rt_output.maxGeometryCount,
+                            khr_rt_output.maxGeometryCount,
+                        ),
+                        max_instance_count: max(
+                            nv_rt_output.maxInstanceCount,
+                            khr_rt_output.maxInstanceCount,
+                        ),
+                        max_primitive_count: max(
+                            nv_rt_output.maxTriangleCount,
+                            khr_rt_output.maxPrimitiveCount,
+                        ),
+                        max_descriptor_set_acceleration_structures: max(
+                            nv_rt_output.maxDescriptorSetAccelerationStructures,
+                            khr_rt_output.maxDescriptorSetAccelerationStructures,
+                        ),
+                        shader_group_handle_capture_replay_size: khr_rt_output
+                            .shaderGroupHandleCaptureReplaySize,
+                    },
+                )
             };
 
             let queue_families = unsafe {
@@ -727,15 +755,15 @@ impl From<Error> for InstanceCreationError {
 
 #[derive(Default)]
 struct PhysicalDeviceRayTracingProperties {
-    shaderGroupHandleSize: u32,
-    maxRecursionDepth: u32,
-    maxShaderGroupStride: u32,
-    shaderGroupBaseAlignment: u32,
-    maxGeometryCount: u64,
-    maxInstanceCount: u64,
-    maxPrimitiveCount: u64,
-    maxDescriptorSetAccelerationStructures: u32,
-    shaderGroupHandleCaptureReplaySize: u32,
+    shader_group_handle_size: u32,
+    max_recursion_depth: u32,
+    max_shader_group_stride: u32,
+    shader_group_base_alignment: u32,
+    max_geometry_count: u64,
+    max_instance_count: u64,
+    max_primitive_count: u64,
+    max_descriptor_set_acceleration_structures: u32,
+    shader_group_handle_capture_replay_size: u32,
 }
 
 struct PhysicalDeviceInfos {
@@ -1016,13 +1044,13 @@ impl<'a> PhysicalDevice<'a> {
     /// Returns the size of a shader group handle
     #[inline]
     pub fn shader_group_handle_size(&self) -> u32 {
-        self.infos().properties_ray_tracing.shaderGroupHandleSize
+        self.infos().properties_ray_tracing.shader_group_handle_size
     }
 
     /// Returns the maximum ray tracing recursion depth for a trace call
     #[inline]
     pub fn max_recursion_depth(&self) -> u32 {
-        self.infos().properties_ray_tracing.maxRecursionDepth
+        self.infos().properties_ray_tracing.max_recursion_depth
     }
 
     // Internal function to make it easier to get the infos of this device.
