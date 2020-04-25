@@ -160,13 +160,38 @@ void main() {
     const vec2 pixelCenter = coord + vec2(0.5);
     const vec2 inUV = pixelCenter / vec2(gl_LaunchSizeNV.xy);
 
-    payload = vec4(inUV.x, inUV.y, 1.0f, 1.0f);
+    float aspect = float(gl_LaunchSizeNV.x) / gl_LaunchSizeNV.y;
+    vec3 lower_left_corner = vec3(-aspect, 1.0, -1.0);
+    vec3 horizontal = vec3(2.0 * aspect, 0.0, 0.0);
+    vec3 vertical = vec3(0.0, -2.0, 0.0);
+    vec3 origin = vec3(0.0, 0.0, 0.0);
+    vec3 direction = normalize(lower_left_corner + inUV.x * horizontal + inUV.y * vertical);
+
+    traceNV(scene, gl_RayFlagsOpaqueNV, 0xFF, 0, 0, 0, origin, 0.001, direction, 1000.0, 0);
     imageStore(result, coord, payload);
 }
 "
         }
     }
     let rs = rs::Shader::load(device.clone()).unwrap();
+
+    mod ms {
+        vulkano_shaders::shader! {
+            ty: "miss",
+            src: "#version 460 core
+#extension GL_NV_ray_tracing : enable
+
+layout(location = 0) rayPayloadInNV vec4 payload;
+
+void main() {
+    vec3 unit_direction = normalize(gl_WorldRayDirectionNV);
+    float t = 0.5 * (unit_direction.y + 1.0);
+    payload = vec4(mix(vec3(0.5, 0.7, 1.0), vec3(1.0, 1.0, 1.0), t), 1.0f);
+}
+"
+        }
+    }
+    let ms = ms::Shader::load(device.clone()).unwrap();
 
     // We set a limit to the recursion of a ray so that the shader does not run infinitely
     let max_recursion_depth = 5;
@@ -176,6 +201,7 @@ void main() {
         // We need at least one ray generation shader to describe where rays go
         // and to store the result of their path tracing
         .raygen_shader(rs.main_entry_point(), ())
+        .miss_shader(ms.main_entry_point(), ())
         .build(device.clone())
         .unwrap(),
     );
@@ -222,7 +248,7 @@ void main() {
     )
     .unwrap();
     let (miss_shader_binding_table, miss_buffer_future) = ImmutableBuffer::from_iter(
-        (0..0).map(|_| 5u8),
+        group_handles[group_handle_size..2 * group_handle_size].iter().copied(),
         BufferUsage::ray_tracing(),
         queue.clone(),
     )

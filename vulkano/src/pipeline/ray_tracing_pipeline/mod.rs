@@ -57,7 +57,7 @@ impl RayTracingPipeline<()> {
     /// Returns a builder object that you can fill with the various parameters.
     pub fn nv<'a>(
         max_recursion_depth: u32,
-    ) -> RayTracingPipelineBuilder<EmptyEntryPointDummy, ()> {
+    ) -> RayTracingPipelineBuilder<EmptyEntryPointDummy, (), EmptyEntryPointDummy, ()> {
         RayTracingPipelineBuilder::nv(max_recursion_depth)
     }
 
@@ -66,7 +66,7 @@ impl RayTracingPipeline<()> {
     /// Returns a builder object that you can fill with the various parameters.
     pub fn khr<'a>(
         max_recursion_depth: u32,
-    ) -> RayTracingPipelineBuilder<EmptyEntryPointDummy, ()> {
+    ) -> RayTracingPipelineBuilder<EmptyEntryPointDummy, (), EmptyEntryPointDummy, ()> {
         RayTracingPipelineBuilder::khr(max_recursion_depth)
     }
 }
