@@ -15,8 +15,8 @@ use std::ops;
 use std::ptr;
 
 use buffer::{BufferAccess, BufferUsage, ImmutableBuffer};
-use device::Device;
 use device::Queue;
+use device::{Device, DeviceOwned};
 use format::Format;
 use memory::pool::{
     AllocFromRequirementsFilter, AllocLayout, MappingRequirement, MemoryPoolAlloc,
@@ -52,6 +52,7 @@ pub struct Level {
 
 /// Structure used by rays to find geometry in a scene
 pub struct AccelerationStructure {
+    device: Arc<Device>,
     nv_extension: bool,
     top_level: Level,
     bottom_level: Level,
@@ -427,6 +428,7 @@ impl AccelerationStructureBuilder {
             .unwrap();
 
         Ok(AccelerationStructure {
+            device: device.clone(),
             nv_extension: true,
             top_level,
             bottom_level,
@@ -716,6 +718,7 @@ impl AccelerationStructureBuilder {
             .unwrap();
 
         Ok(AccelerationStructure {
+            device: device.clone(),
             nv_extension: false,
             top_level,
             bottom_level,
@@ -1067,6 +1070,67 @@ impl<'a> From<&'a Geometry> for vk::GeometryNV {
             geometryType: geometry_type,
             geometry: geometry_nv,
             flags,
+        }
+    }
+}
+
+unsafe impl DeviceOwned for AccelerationStructure {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
+
+unsafe impl VulkanObject for AccelerationStructure {
+    type Object = vk::AccelerationStructureKHR;
+
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_ACCELERATION_STRUCTURE_KHR;
+
+    #[inline]
+    fn internal_object(&self) -> vk::AccelerationStructureKHR {
+        self.top_level.inner_object
+    }
+}
+
+impl fmt::Debug for AccelerationStructure {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "<Vulkan acceleration structure {:?}>",
+            self.top_level.inner_object
+        )
+    }
+}
+
+impl Drop for AccelerationStructure {
+    #[inline]
+    fn drop(&mut self) {
+        unsafe {
+            let vk = self.device.pointers();
+            if self.nv_extension {
+                vk.DestroyAccelerationStructureNV(
+                    self.device.internal_object(),
+                    self.top_level.inner_object,
+                    ptr::null(),
+                );
+                vk.DestroyAccelerationStructureNV(
+                    self.device.internal_object(),
+                    self.aabb_bottom_level.inner_object,
+                    ptr::null(),
+                );
+            } else {
+                vk.DestroyAccelerationStructureKHR(
+                    self.device.internal_object(),
+                    self.top_level.inner_object,
+                    ptr::null(),
+                );
+                vk.DestroyAccelerationStructureKHR(
+                    self.device.internal_object(),
+                    self.aabb_bottom_level.inner_object,
+                    ptr::null(),
+                );
+            }
         }
     }
 }

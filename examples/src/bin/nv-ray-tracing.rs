@@ -152,6 +152,7 @@ fn main() {
 #extension GL_NV_ray_tracing : enable
 
 layout(set = 0, binding = 0, rgba8) uniform image2D result;
+layout(set = 0, binding = 1) uniform accelerationStructureNV scene;
 layout(location = 0) rayPayloadNV vec4 payload;
 
 void main() {
@@ -197,6 +198,8 @@ void main() {
             Arc::new(
                 PersistentDescriptorSet::start(layout.clone())
                     .add_image(image.clone())
+                    .unwrap()
+                    .add_acceleration_structure(acceleration_structure.clone())
                     .unwrap()
                     .build()
                     .unwrap(),
@@ -282,6 +285,8 @@ void main() {
                         Arc::new(
                             PersistentDescriptorSet::start(layout.clone())
                                 .add_image(image.clone())
+                                .unwrap()
+                                .add_acceleration_structure(acceleration_structure.clone())
                                 .unwrap()
                                 .build()
                                 .unwrap(),

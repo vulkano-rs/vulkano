@@ -13,10 +13,12 @@ use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;
 use std::ops;
+use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
+use acceleration_structure::AccelerationStructure;
 use buffer::BufferAccess;
 use buffer::BufferInner;
 use buffer::BufferView;
@@ -104,6 +106,7 @@ macro_rules! descriptors_count {
                     DescriptorType::UniformBufferDynamic => self.uniform_buffer_dynamic += 1,
                     DescriptorType::StorageBufferDynamic => self.storage_buffer_dynamic += 1,
                     DescriptorType::InputAttachment => self.input_attachment += 1,
+                    DescriptorType::AccelerationStructure => self.acceleration_structure += 1,
                 };
             }
         }
@@ -220,6 +223,7 @@ descriptors_count! {
     sampler,
     combined_image_sampler,
     input_attachment,
+    acceleration_structure,
 }
 
 /// Pool from which descriptor sets are allocated from.
@@ -281,6 +285,10 @@ impl UnsafeDescriptorPool {
         elem!(combined_image_sampler,
               vk::DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
         elem!(input_attachment, vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
+        elem!(
+            acceleration_structure,
+            vk::DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR
+        );
 
         assert!(!pool_sizes.is_empty(),
                 "All the descriptors count of a pool are 0");
@@ -585,11 +593,14 @@ impl UnsafeDescriptorSet {
         let mut buffer_descriptors: SmallVec<[_; 64]> = SmallVec::new();
         let mut image_descriptors: SmallVec<[_; 64]> = SmallVec::new();
         let mut buffer_views_descriptors: SmallVec<[_; 64]> = SmallVec::new();
+        let mut acceleration_structure_descriptions: SmallVec<[_; 64]> = SmallVec::new();
 
         let mut raw_writes: SmallVec<[_; 64]> = SmallVec::new();
+        let mut raw_acceleration_structure_writes: SmallVec<[_; 64]> = SmallVec::new();
         let mut raw_writes_img_infos: SmallVec<[_; 64]> = SmallVec::new();
         let mut raw_writes_buf_infos: SmallVec<[_; 64]> = SmallVec::new();
         let mut raw_writes_buf_view_infos: SmallVec<[_; 64]> = SmallVec::new();
+        let mut raw_writes_acc_info: SmallVec<[_; 64]> = SmallVec::new();
 
         for indiv_write in writes {
             // Since the `DescriptorWrite` objects are built only through functions, we know for
@@ -610,6 +621,15 @@ impl UnsafeDescriptorSet {
                                 pBufferInfo: ptr::null(),
                                 pTexelBufferView: ptr::null(),
                             });
+            // The ray tracing pNext extension
+            raw_acceleration_structure_writes.push(
+                vk::WriteDescriptorSetAccelerationStructureKHR {
+                    sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
+                    pNext: ptr::null(),
+                    accelerationStructureCount: indiv_write.inner.len() as u32,
+                    pAccelerationStructures: ptr::null(),
+                },
+            );
 
             match indiv_write.inner[0] {
                 DescriptorWriteInner::Sampler(_) |
@@ -620,6 +640,7 @@ impl UnsafeDescriptorSet {
                     raw_writes_img_infos.push(Some(image_descriptors.len()));
                     raw_writes_buf_infos.push(None);
                     raw_writes_buf_view_infos.push(None);
+                    raw_writes_acc_info.push(None);
                 },
                 DescriptorWriteInner::UniformBuffer(_, _, _) |
                 DescriptorWriteInner::StorageBuffer(_, _, _) |
@@ -628,12 +649,20 @@ impl UnsafeDescriptorSet {
                     raw_writes_img_infos.push(None);
                     raw_writes_buf_infos.push(Some(buffer_descriptors.len()));
                     raw_writes_buf_view_infos.push(None);
+                    raw_writes_acc_info.push(None);
                 },
                 DescriptorWriteInner::UniformTexelBuffer(_) |
                 DescriptorWriteInner::StorageTexelBuffer(_) => {
                     raw_writes_img_infos.push(None);
                     raw_writes_buf_infos.push(None);
                     raw_writes_buf_view_infos.push(Some(buffer_views_descriptors.len()));
+                    raw_writes_acc_info.push(None);
+                },
+                DescriptorWriteInner::AccelerationStructure(_) => {
+                    raw_writes_img_infos.push(None);
+                    raw_writes_buf_infos.push(None);
+                    raw_writes_buf_view_infos.push(None);
+                    raw_writes_acc_info.push(Some(acceleration_structure_descriptions.len()));
                 },
             }
 
@@ -694,6 +723,9 @@ impl UnsafeDescriptorSet {
                     DescriptorWriteInner::StorageTexelBuffer(view) => {
                         buffer_views_descriptors.push(view);
                     },
+                    DescriptorWriteInner::AccelerationStructure(acceleration_structure) => {
+                        acceleration_structure_descriptions.push(acceleration_structure);
+                    },
                 }
             }
         }
@@ -714,6 +746,19 @@ impl UnsafeDescriptorSet {
             write.pTexelBufferView = match raw_writes_buf_view_infos[i] {
                 Some(off) => buffer_views_descriptors.as_ptr().offset(off as isize),
                 None => ptr::null(),
+            };
+
+            match raw_writes_acc_info[i] {
+                Some(off) => {
+                    raw_acceleration_structure_writes[i].pAccelerationStructures =
+                        acceleration_structure_descriptions
+                            .as_ptr()
+                            .offset(off as isize);
+                    write.pNext = &raw_acceleration_structure_writes[i]
+                        as *const vk::WriteDescriptorSetAccelerationStructureKHR
+                        as *const c_void;
+                }
+                None => {}
             };
         }
 
@@ -770,6 +815,7 @@ enum DescriptorWriteInner {
     DynamicUniformBuffer(vk::Buffer, usize, usize),
     DynamicStorageBuffer(vk::Buffer, usize, usize),
     InputAttachment(vk::ImageView, vk::ImageLayout),
+    AccelerationStructure(vk::AccelerationStructureKHR),
 }
 
 macro_rules! smallvec {
@@ -1013,6 +1059,19 @@ impl DescriptorWrite {
         }
     }
 
+    #[inline]
+    pub fn acceleration_structure(
+        binding: u32, array_element: u32, acceleration_structure: &Arc<AccelerationStructure>,
+    ) -> DescriptorWrite {
+        DescriptorWrite {
+            binding,
+            first_array_element: array_element,
+            inner: smallvec!(DescriptorWriteInner::AccelerationStructure(
+                acceleration_structure.internal_object()
+            )),
+        }
+    }
+
     /// Returns the type corresponding to this write.
     #[inline]
     pub fn ty(&self) -> DescriptorType {
@@ -1031,6 +1090,7 @@ impl DescriptorWrite {
             DescriptorWriteInner::DynamicStorageBuffer(_, _, _) =>
                 DescriptorType::StorageBufferDynamic,
             DescriptorWriteInner::InputAttachment(_, _) => DescriptorType::InputAttachment,
+            DescriptorWriteInner::AccelerationStructure(_) => DescriptorType::AccelerationStructure,
         }
     }
 }

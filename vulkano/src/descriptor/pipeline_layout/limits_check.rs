@@ -32,6 +32,7 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
     let mut num_sampled_images = Counter::default();
     let mut num_storage_images = Counter::default();
     let mut num_input_attachments = Counter::default();
+    let mut num_acceleration_structures = Counter::default();
 
     for set in 0 .. desc.num_sets() {
         let num_bindings_in_set = match desc.num_bindings_in_set(set) {
@@ -79,6 +80,9 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
                 },
                 DescriptorType::InputAttachment => {
                     num_input_attachments.increment(descriptor.array_count, &descriptor.stages);
+                },
+                DescriptorType::AccelerationStructure => {
+                    num_acceleration_structures.increment(descriptor.array_count, &descriptor.stages);
                 },
             }
         }

@@ -295,6 +295,10 @@ fn descriptor_infos(doc: &Spirv, pointed_ty: u32, pointer_storage: StorageClass,
                 let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
                 Some((desc, readonly, len))
             }
+            &Instruction::TypeAccelerationStructure{result_id} if result_id == pointed_ty => {
+                let desc = quote!{ DescriptorDescTy::AccelerationStructure };
+                Some((desc, true, 1))
+            },
             _ => None, // TODO: other types
         }
     }).next()

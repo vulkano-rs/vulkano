@@ -15,6 +15,7 @@ use std::sync::Arc;
 
 use OomError;
 use VulkanObject;
+use acceleration_structure::AccelerationStructure;
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
 use descriptor::descriptor::DescriptorDesc;
@@ -351,6 +352,26 @@ impl<R> PersistentDescriptorSetBuilder<R>
                                                                  PersistentDescriptorSetSampler)>,
                                  PersistentDescriptorSetError> {
         self.enter_array()?.add_sampler(sampler)?.leave_array()
+    }
+
+    /// Binds an acceleration structure as the next descriptor.
+    ///
+    /// An error is returned if the acceleration structure isn't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the acceleration structure doesn't have the same device as the descriptor set layout.
+    ///
+    #[inline]
+    pub fn add_acceleration_structure(
+        self, acceleration_structure: Arc<AccelerationStructure>,
+    ) -> Result<
+        PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetAccelerationStructure)>,
+        PersistentDescriptorSetError,
+    > {
+        self.enter_array()?
+            .add_acceleration_structure(acceleration_structure)?
+            .leave_array()
     }
 }
 
@@ -751,6 +772,64 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
                array_element: self.array_element + 1,
            })
     }
+
+    /// Binds a Acceleration Structure as the next element in the array.
+    ///
+    /// An error is returned if the acceleration structure isn't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the acceleration structure doesn't have the same device as the descriptor set layout.
+    ///
+    pub fn add_acceleration_structure(
+        mut self, acceleration_structure: Arc<AccelerationStructure>,
+    ) -> Result<
+        PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetAccelerationStructure)>,
+        PersistentDescriptorSetError,
+    > {
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            acceleration_structure.device().internal_object()
+        );
+
+        if self.array_element as u32 >= self.desc.array_count {
+            return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
+        }
+
+        let desc = match self.builder.layout.descriptor(self.builder.binding_id) {
+            Some(d) => d,
+            None => return Err(PersistentDescriptorSetError::EmptyExpected),
+        };
+
+        self.builder.writes.push(match desc.ty {
+            DescriptorDescTy::AccelerationStructure => DescriptorWrite::acceleration_structure(
+                self.builder.binding_id as u32,
+                self.array_element as u32,
+                &acceleration_structure,
+            ),
+            ty => {
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
+                    expected: ty.ty().unwrap(),
+                });
+            }
+        });
+
+        Ok(PersistentDescriptorSetBuilderArray {
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (
+                    self.builder.resources,
+                    PersistentDescriptorSetAccelerationStructure {
+                        acceleration_structure,
+                    },
+                ),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
+    }
 }
 
 // Checks whether an image view matches the descriptor.
@@ -988,6 +1067,35 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
     }
 }
 
+/// Internal object related to the `PersistentDescriptorSetAccelerationStructure` system.
+pub struct PersistentDescriptorSetAccelerationStructure {
+    acceleration_structure: Arc<AccelerationStructure>,
+}
+
+unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetAccelerationStructure)
+    where R: PersistentDescriptorSetResources
+{
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.0.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
+        self.0.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.0.num_images()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+        self.0.image(index)
+    }
+}
+
 // Part of the PersistentDescriptorSetError for the case
 // of missing usage on a buffer.
 #[derive(Debug, Clone)]
@@ -1000,6 +1108,13 @@ pub enum MissingBufferUsage {
 #[derive(Debug, Clone)]
 pub enum MissingImageUsage {
     InputAttachment, Sampled, Storage
+}
+
+// Part of the PersistentDescriptorSetError for the case
+// of missing usage on an acceleration structure.
+#[derive(Debug, Clone)]
+pub enum MissingAccelerationStructureUsage {
+    AccelerationStructure
 }
 
 /// Error related to the persistent descriptor set.

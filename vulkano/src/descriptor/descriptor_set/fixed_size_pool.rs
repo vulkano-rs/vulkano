@@ -14,6 +14,7 @@ use std::sync::Arc;
 
 use OomError;
 use VulkanObject;
+use acceleration_structure::AccelerationStructure;
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
 use descriptor::descriptor::DescriptorDesc;
@@ -554,5 +555,27 @@ impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R>
                pool: self.pool,
                inner: self.inner.add_sampler(sampler)?,
            })
+    }
+
+    /// Binds an acceleration structure as the next element in the array.
+    ///
+    /// An error is returned if the acceleration structure isn't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the acceleration structure doesn't have the same device as the descriptor set layout.
+    ///
+    pub fn add_acceleration_structure(
+        self, acceleration_structure: Arc<AccelerationStructure>,
+    ) -> Result<
+        FixedSizeDescriptorSetBuilderArray<'a, (R, PersistentDescriptorSetAccelerationStructure)>,
+        PersistentDescriptorSetError,
+    > {
+        Ok(FixedSizeDescriptorSetBuilderArray {
+            pool: self.pool,
+            inner: self
+                .inner
+                .add_acceleration_structure(acceleration_structure)?,
+        })
     }
 }

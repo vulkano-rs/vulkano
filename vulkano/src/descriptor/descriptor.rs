@@ -225,6 +225,12 @@ impl DescriptorDesc {
                     }
                 }
             },
+            DescriptorDescTy::AccelerationStructure => {
+                AccessFlagBits {
+                    acceleration_structure_read: true,
+                    ..AccessFlagBits::none()
+                }
+            },
         };
 
         (stages, access)
@@ -253,6 +259,7 @@ pub enum DescriptorDescTy {
         array_layers: DescriptorImageDescArray,
     },
     Buffer(DescriptorBufferDesc),
+    AccelerationStructure,
 }
 
 impl DescriptorDescTy {
@@ -291,6 +298,7 @@ impl DescriptorDescTy {
                          DescriptorType::UniformTexelBuffer
                      }
                  },
+                 DescriptorDescTy::AccelerationStructure => DescriptorType::AccelerationStructure,
              })
     }
 
@@ -379,6 +387,8 @@ impl DescriptorDescTy {
                                            }),
                 }
             },
+
+            (&DescriptorDescTy::AccelerationStructure, &DescriptorDescTy::AccelerationStructure) => Ok(()),
 
             // Any other combination is invalid.
             _ => Err(DescriptorDescSupersetError::TypeMismatch),
@@ -535,6 +545,7 @@ pub enum DescriptorType {
     UniformBufferDynamic = vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
     StorageBufferDynamic = vk::DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
     InputAttachment = vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+    AccelerationStructure = vk::DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
 }
 
 /// Error when checking whether a descriptor is a superset of another one.
