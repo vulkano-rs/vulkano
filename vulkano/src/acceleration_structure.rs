@@ -103,12 +103,21 @@ impl AccelerationStructure {
     }
 }
 
+struct AccelerationStructureBuilderTriangles {
+    vertex_buffer: Arc<dyn BufferAccess + Send + Sync>,
+    vertex_stride: vk::DeviceSize,
+    vertex_format: Format,
+    index_buffer: Arc<dyn BufferAccess + Send + Sync>,
+    index_type: IndexType,
+}
+
 /// Prototype of a `AccelerationStructure`.
 ///
 /// See the docs of `AccelerationStructure` for an example.
 pub struct AccelerationStructureBuilder {
     nv_extension: bool,
     // TODO: Associate `BuildAccelerationStructureFlags`
+    triangles: Vec<AccelerationStructureBuilderTriangles>,
     aabbs: Vec<Box<dyn BufferAccess + Send + Sync>>,
 }
 
@@ -117,6 +126,7 @@ impl AccelerationStructureBuilder {
     pub fn nv() -> Self {
         AccelerationStructureBuilder {
             nv_extension: true,
+            triangles: vec![],
             aabbs: vec![],
         }
     }
@@ -125,6 +135,7 @@ impl AccelerationStructureBuilder {
     pub fn khr() -> Self {
         AccelerationStructureBuilder {
             nv_extension: false,
+            triangles: vec![],
             aabbs: vec![],
         }
     }
@@ -193,6 +204,45 @@ impl AccelerationStructureBuilder {
                     flags: vk::GEOMETRY_OPAQUE_BIT_NV, // TODO
                 }
             })
+            .chain(self.triangles.into_iter().map(|ref triangle| {
+                let index_stride = match triangle.index_type {
+                    IndexType::U16 => size_of::<u16>(),
+                    IndexType::U32 => size_of::<u32>(),
+                };
+                let geometry = vk::GeometryTrianglesNV {
+                    sType: vk::STRUCTURE_TYPE_GEOMETRY_TRIANGLES_NV,
+                    pNext: ptr::null(),
+                    vertexData: triangle.vertex_buffer.inner().buffer.internal_object(),
+                    vertexOffset: triangle.vertex_buffer.inner().offset as vk::DeviceSize,
+                    vertexCount: (triangle.vertex_buffer.size() / triangle.vertex_stride as usize)
+                        as u32,
+                    vertexStride: triangle.vertex_stride,
+                    vertexFormat: triangle.vertex_format as u32,
+                    indexData: triangle.index_buffer.inner().buffer.internal_object(),
+                    indexOffset: triangle.index_buffer.inner().offset as vk::DeviceSize,
+                    indexCount: (triangle.index_buffer.size() / index_stride as usize) as u32,
+                    indexType: triangle.index_type as u32,
+                    transformData: vk::NULL_HANDLE,
+                    transformOffset: 0,
+                };
+                vk::GeometryNV {
+                    sType: vk::STRUCTURE_TYPE_GEOMETRY_NV,
+                    pNext: ptr::null(),
+                    geometryType: vk::GEOMETRY_TYPE_TRIANGLES_NV,
+                    geometry: vk::GeometryDataNV {
+                        triangles: geometry,
+                        aabbs: vk::GeometryAABBNV {
+                            sType: vk::STRUCTURE_TYPE_GEOMETRY_AABB_NV,
+                            pNext: ptr::null(),
+                            aabbData: 0,
+                            numAABBs: 0,
+                            stride: 0,
+                            offset: 0,
+                        },
+                    },
+                    flags: vk::GEOMETRY_OPAQUE_BIT_NV, // TODO
+                }
+            }))
             .collect();
 
         let bottom_level = {
@@ -388,7 +438,8 @@ impl AccelerationStructureBuilder {
                 .iter()
                 .map(|structure| unsafe {
                     let info = vk::AccelerationStructureMemoryRequirementsInfoNV {
-                        sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV,
+                        sType:
+                            vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_INFO_NV,
                         pNext: ptr::null(),
                         type_: vk::ACCELERATION_STRUCTURE_MEMORY_REQUIREMENTS_TYPE_BUILD_SCRATCH_NV,
                         accelerationStructure: structure.inner_object,
@@ -467,7 +518,23 @@ impl AccelerationStructureBuilder {
                         allowsTransforms: vk::FALSE,
                     }
                 })
-                .collect();
+                .chain(self.triangles.iter().map(|ref triangle| {
+                    let index_stride = match triangle.index_type {
+                        IndexType::U16 => size_of::<u16>(),
+                        IndexType::U32 => size_of::<u32>(),
+                    };
+                    vk::AccelerationStructureCreateGeometryTypeInfoKHR {
+                        sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_GEOMETRY_TYPE_INFO_KHR,
+                        pNext: ptr::null(),
+                        geometryType: vk::GEOMETRY_TYPE_TRIANGLES_KHR,
+                        maxPrimitiveCount: (triangle.index_buffer.size() / index_stride as usize) as u32 / 3,
+                        indexType: triangle.index_type as u32,
+                        maxVertexCount: (triangle.vertex_buffer.size() / triangle.vertex_stride as usize) as u32,
+                        vertexFormat: triangle.vertex_format as u32,
+                        allowsTransforms: vk::FALSE, // TODO
+                    }
+                }))
+            .collect();
             let create_info = vk::AccelerationStructureCreateInfoKHR {
                 sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR,
                 pNext: ptr::null(),
@@ -511,7 +578,36 @@ impl AccelerationStructureBuilder {
                                 no_duplicate_any_hit_invocation: false,
                             },
                         }
-                    }).collect(),
+                    })
+                    .chain(self.triangles.into_iter().map(|triangle|{
+                        let index_stride = match triangle.index_type {
+                            IndexType::U16 => size_of::<u16>(),
+                            IndexType::U32 => size_of::<u32>(),
+                        };
+                        Geometry {
+                            geometry_type: GeometryType::Triangles,
+                            geometry: GeometryData {
+                                triangles: GeometryTrianglesData {
+                                    vertex_data: triangle.vertex_buffer.inner().buffer.internal_object(),
+                                    vertex_offset: triangle.vertex_buffer.inner().offset as vk::DeviceSize,
+                                    vertex_count: (triangle.vertex_buffer.size() / triangle.vertex_stride as usize) as u32,
+                                    vertex_stride: triangle.vertex_stride as usize,
+                                    vertex_format: triangle.vertex_format,
+                                    index_data: triangle.index_buffer.inner().buffer.internal_object(),
+                                    index_offset: triangle.index_buffer.inner().offset as vk::DeviceSize,
+                                    index_count: (triangle.index_buffer.size() / index_stride as usize) as u32,
+                                    index_type: triangle.index_type,
+                                    transform_data: vk::NULL_HANDLE,
+                                    transform_offset: 0,
+                                },
+                            },
+                            flags: GeometryFlags {
+                                opaque: true,
+                                no_duplicate_any_hit_invocation: false,
+                            },
+                        }
+                    }))
+                    .collect(),
             }
         };
 
@@ -730,14 +826,26 @@ impl AccelerationStructureBuilder {
 
     /// Add a Triangle Mesh to the acceleration structure
     #[inline]
-    pub fn add_triangles<T>(
-        mut self, buffer: T,
+    pub fn add_triangles<V, I>(
+        mut self,
+        vertex_buffer: Arc<V>,
+        vertex_stride: vk::DeviceSize,
+        vertex_format: Format,
+        index_buffer: Arc<I>,
+        index_type: IndexType,
     ) -> Result<AccelerationStructureBuilder, AccelerationStructureCreationError>
     where
-        T: BufferAccess + Send + Sync + 'static,
+        V: BufferAccess + Send + Sync + 'static,
+        I: BufferAccess + Send + Sync + 'static,
     {
-        // TODO
-        unimplemented!("Adding triangles is not yet implemented")
+        self.triangles.push(AccelerationStructureBuilderTriangles {
+            vertex_buffer,
+            vertex_stride,
+            vertex_format,
+            index_buffer,
+            index_type,
+        });
+        Ok(self)
     }
 
     /// Add Custom Intersection Geometry to the acceleration structure
@@ -904,12 +1012,17 @@ pub enum GeometryType {
 
 #[derive(Copy, Clone)]
 pub struct GeometryTrianglesData {
-    pub vertex_format: Format,
     pub vertex_data: u64,
+    pub vertex_offset: vk::DeviceSize,
+    pub vertex_count: u32,
     pub vertex_stride: usize,
-    pub index_type: IndexType,
+    pub vertex_format: Format,
     pub index_data: u64,
+    pub index_offset: vk::DeviceSize,
+    pub index_count: u32,
+    pub index_type: IndexType,
     pub transform_data: u64,
+    pub transform_offset: vk::DeviceSize,
 }
 
 #[derive(Copy, Clone)]
@@ -950,19 +1063,24 @@ impl<'a> From<&'a vk::GeometryNV> for Geometry {
         let geometry = match geometry_nv.geometryType {
             vk::GEOMETRY_TYPE_TRIANGLES_KHR => GeometryData {
                 triangles: GeometryTrianglesData {
+                    vertex_data: geometry_nv.geometry.triangles.vertexData,
+                    vertex_offset: geometry_nv.geometry.triangles.vertexOffset,
+                    vertex_count: geometry_nv.geometry.triangles.vertexCount,
+                    vertex_stride: geometry_nv.geometry.triangles.vertexStride as usize,
                     vertex_format: Format::from_vulkan_num(
                         geometry_nv.geometry.triangles.vertexFormat,
                     )
                     .unwrap(),
-                    vertex_data: geometry_nv.geometry.triangles.vertexData,
-                    vertex_stride: geometry_nv.geometry.triangles.vertexStride as usize,
+                    index_data: geometry_nv.geometry.triangles.indexData,
+                    index_offset: geometry_nv.geometry.triangles.indexOffset,
+                    index_count: geometry_nv.geometry.triangles.indexCount,
                     index_type: match geometry_nv.geometry.triangles.indexType {
                         vk::INDEX_TYPE_UINT16 => IndexType::U16,
                         vk::INDEX_TYPE_UINT32 => IndexType::U32,
                         _ => unreachable!(),
                     },
-                    index_data: geometry_nv.geometry.triangles.indexData,
                     transform_data: geometry_nv.geometry.triangles.transformData,
+                    transform_offset: geometry_nv.geometry.triangles.transformOffset,
                 },
             },
             vk::GEOMETRY_TYPE_AABBS_KHR => GeometryData {
@@ -1006,19 +1124,19 @@ impl<'a> From<&'a Geometry> for vk::GeometryNV {
                         sType: vk::STRUCTURE_TYPE_GEOMETRY_TRIANGLES_NV,
                         pNext: ptr::null(),
                         vertexData: geometry.geometry.triangles.vertex_data,
-                        vertexOffset: 0, // TODO:
-                        vertexCount: 0,  // TODO:
+                        vertexOffset: geometry.geometry.triangles.vertex_offset,
+                        vertexCount: geometry.geometry.triangles.vertex_count,
                         vertexStride: geometry.geometry.triangles.vertex_stride as vk::DeviceSize,
                         vertexFormat: geometry.geometry.triangles.vertex_format as u32,
                         indexData: geometry.geometry.triangles.index_data,
-                        indexOffset: 0, // TODO:
-                        indexCount: 0,  // TODO:
+                        indexOffset: geometry.geometry.triangles.index_offset,
+                        indexCount: geometry.geometry.triangles.index_count,
                         indexType: match geometry.geometry.triangles.index_type {
                             IndexType::U16 => vk::INDEX_TYPE_UINT16,
                             IndexType::U32 => vk::INDEX_TYPE_UINT32,
                         },
                         transformData: geometry.geometry.triangles.transform_data,
-                        transformOffset: 0, // TODO:
+                        transformOffset: geometry.geometry.triangles.transform_offset,
                     },
                     aabbs: vk::GeometryAABBNV {
                         sType: vk::STRUCTURE_TYPE_GEOMETRY_AABB_NV,
@@ -1116,7 +1234,7 @@ impl Drop for AccelerationStructure {
                 );
                 vk.DestroyAccelerationStructureNV(
                     self.device.internal_object(),
-                    self.aabb_bottom_level.inner_object,
+                    self.bottom_level.inner_object,
                     ptr::null(),
                 );
             } else {
@@ -1127,7 +1245,7 @@ impl Drop for AccelerationStructure {
                 );
                 vk.DestroyAccelerationStructureKHR(
                     self.device.internal_object(),
-                    self.aabb_bottom_level.inner_object,
+                    self.bottom_level.inner_object,
                     ptr::null(),
                 );
             }
