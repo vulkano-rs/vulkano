@@ -41,7 +41,7 @@ use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
-use pipeline::ComputePipelineAbstract;
+use pipeline::{ComputePipelineAbstract, RayTracingPipelineAbstract, PipelineType};
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
@@ -56,6 +56,7 @@ use sync::Event;
 use sync::PipelineStages;
 use vk;
 use std::ffi::CStr;
+use acceleration_structure::{Geometry, GeometryType};
 
 /// Determines the kind of command buffer that we want to create.
 #[derive(Debug, Clone)]
@@ -455,7 +456,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     /// Does nothing if the list of descriptor sets is empty, as it would be a no-op and isn't a
     /// valid usage of the command anyway.
     #[inline]
-    pub unsafe fn bind_descriptor_sets<'s, Pl, S, I>(&mut self, graphics: bool,
+    pub unsafe fn bind_descriptor_sets<'s, Pl, S, I>(&mut self, pipeline_type: PipelineType,
                                                      pipeline_layout: &Pl, first_binding: u32,
                                                      sets: S, dynamic_offsets: I)
         where Pl: ?Sized + PipelineLayoutAbstract,
@@ -474,10 +475,10 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let num_bindings = sets.len() as u32;
         debug_assert!(first_binding + num_bindings <= pipeline_layout.num_sets() as u32);
 
-        let bind_point = if graphics {
-            vk::PIPELINE_BIND_POINT_GRAPHICS
-        } else {
-            vk::PIPELINE_BIND_POINT_COMPUTE
+        let bind_point = match pipeline_type {
+            PipelineType::Graphics => vk::PIPELINE_BIND_POINT_GRAPHICS,
+            PipelineType::Compute => vk::PIPELINE_BIND_POINT_COMPUTE,
+            PipelineType::RayTracing => vk::PIPELINE_BIND_POINT_RAY_TRACING_KHR,
         };
 
         vk.CmdBindDescriptorSets(cmd,
@@ -529,6 +530,17 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         let cmd = self.internal_object();
         let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
         vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, inner);
+    }
+
+    /// Calls `vkCmdBindPipeline` on the builder with a ray tracing pipeline.
+    #[inline]
+    pub unsafe fn bind_pipeline_ray_tracing<Rp>(&mut self, pipeline: &Rp)
+        where Rp: ?Sized + RayTracingPipelineAbstract
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        let inner = RayTracingPipelineAbstract::inner(pipeline).internal_object();
+        vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_RAY_TRACING_KHR, inner);
     }
 
     /// Calls `vkCmdBindVertexBuffers` on the builder.
@@ -1518,6 +1530,436 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             color,
         };
         vk.CmdInsertDebugUtilsLabelEXT(cmd, &info);
+    }
+
+    /// Calls `vkCmdBuildAccelerationStructureNV` on the builder.
+    #[inline]
+    pub unsafe fn build_acceleration_structure_nv<S, I>(
+        &mut self,
+        info: vk::AccelerationStructureInfoNV,
+        instance_buffer: Option<&I>,
+        update: bool,
+        dst: vk::AccelerationStructureNV,
+        src: vk::AccelerationStructureNV,
+        scratch_buffer: &S,
+    ) where
+        S: ?Sized + BufferAccess,
+        I: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let (inner_instance_buffer_object, inner_instance_buffer_offset) = match instance_buffer {
+            Some(instance) => {
+                let inner_instance_buffer = instance.inner();
+                debug_assert!(inner_instance_buffer.offset < inner_instance_buffer.buffer.size());
+                (
+                    inner_instance_buffer.buffer.internal_object(),
+                    inner_instance_buffer.offset as vk::DeviceSize,
+                )
+            }
+            None => (0, 0),
+        };
+
+        let inner_scratch_buffer = scratch_buffer.inner();
+        debug_assert!(update == (src != vk::NULL_HANDLE));
+        debug_assert!(inner_scratch_buffer.offset < inner_scratch_buffer.buffer.size());
+
+        vk.CmdBuildAccelerationStructureNV(
+            cmd,
+            &info,
+            inner_instance_buffer_object,
+            inner_instance_buffer_offset,
+            update as vk::Bool32,
+            dst,
+            src,
+            inner_scratch_buffer.buffer.internal_object(),
+            inner_scratch_buffer.offset as vk::DeviceSize,
+        );
+    }
+
+    /// Calls `vkCmdBuildAccelerationStructureKHR` on the builder.
+    // TODO: should accept a list of acceleration structures
+    #[inline]
+    pub unsafe fn build_acceleration_structure_khr<S, G>(
+        &mut self,
+        type_: vk::AccelerationStructureTypeKHR,
+        flags: vk::BuildAccelerationStructureFlagsKHR,
+        update: bool,
+        dst: vk::AccelerationStructureKHR,
+        src: vk::AccelerationStructureKHR,
+        scratch_buffer: &S,
+        geometries: G,
+        primitive_count: u32,
+    ) where
+        S: ?Sized + BufferAccess,
+        G: IntoIterator<Item=Geometry>,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_scratch_buffer = scratch_buffer.inner();
+        debug_assert!(update == (src != vk::NULL_HANDLE));
+        debug_assert!(inner_scratch_buffer.offset < inner_scratch_buffer.buffer.size());
+
+        let info = {
+            let geometries_khr: Vec<vk::AccelerationStructureGeometryKHR> = geometries
+                .into_iter()
+                .map(|g| {
+                    vk::AccelerationStructureGeometryKHR {
+                        sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR,
+                        pNext: ptr::null(),
+                        geometryType: g.geometry_type as u32,
+                        geometry: {
+                            match g.geometry_type {
+                                GeometryType::Triangles => vk::AccelerationStructureGeometryDataKHR {
+                                    triangles: vk::AccelerationStructureGeometryTrianglesDataKHR {
+                                        sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_TRIANGLES_DATA_KHR,
+                                        pNext: ptr::null(),
+                                        vertexData: vk::DeviceOrHostAddressConstKHR {
+                                            deviceAddress: {
+                                                let info = vk::BufferDeviceAddressInfoKHR {
+                                                sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                pNext: ptr::null(),
+                                                buffer: g.geometry.triangles.vertex_data,
+                                                };
+                                                vk.GetBufferDeviceAddressKHR(self.device().internal_object(), & info)
+                                            }
+                                        },
+                                        vertexStride: g.geometry.triangles.vertex_stride as vk::DeviceSize,
+                                        vertexFormat: g.geometry.triangles.vertex_format as u32,
+                                        indexData: vk::DeviceOrHostAddressConstKHR {
+                                            deviceAddress: {
+                                                let info = vk::BufferDeviceAddressInfoKHR {
+                                                    sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                    pNext: ptr::null(),
+                                                    buffer: g.geometry.triangles.index_data,
+                                                };
+                                                vk.GetBufferDeviceAddressKHR(self.device().internal_object(), & info)
+                                            }
+                                        },
+                                        indexType: match g.geometry.triangles.index_type {
+                                            IndexType::U16 => vk::INDEX_TYPE_UINT16,
+                                            IndexType::U32 => vk::INDEX_TYPE_UINT32,
+                                        },
+                                        transformData: vk::DeviceOrHostAddressConstKHR {
+                                            deviceAddress: {
+                                                let info = vk::BufferDeviceAddressInfoKHR {
+                                                    sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                    pNext: ptr::null(),
+                                                    buffer: g.geometry.triangles.transform_data,
+                                                };
+                                                vk.GetBufferDeviceAddressKHR(self.device().internal_object(), & info)
+                                            }
+                                        },
+                                    },
+                                },
+                                GeometryType::Aabbs => vk::AccelerationStructureGeometryDataKHR {
+                                    aabbs: vk::AccelerationStructureGeometryAabbsDataKHR {
+                                        sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR,
+                                        pNext: ptr::null(),
+                                        data: vk::DeviceOrHostAddressConstKHR {
+                                            deviceAddress: {
+                                                let info = vk::BufferDeviceAddressInfoKHR {
+                                                    sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                    pNext: ptr::null(),
+                                                    buffer: g.geometry.aabbs.data,
+                                                };
+                                                vk.GetBufferDeviceAddressKHR(self.device().internal_object(), & info)
+                                            }
+                                        },
+                                        stride: g.geometry.aabbs.stride as u64,
+                                    },
+                                },
+                                GeometryType::Instances => vk::AccelerationStructureGeometryDataKHR {
+                                    instances: vk::AccelerationStructureGeometryInstancesDataKHR {
+                                        sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_INSTANCES_DATA_KHR,
+                                        pNext: ptr::null(),
+                                        arrayOfPointers: g.geometry.instances.array_of_pointers as u32,
+                                        data: vk::DeviceOrHostAddressConstKHR {
+                                            deviceAddress: {
+                                                let info = vk::BufferDeviceAddressInfoKHR {
+                                                    sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                                                    pNext: ptr::null(),
+                                                    buffer: g.geometry.instances.data,
+                                                };
+                                                vk.GetBufferDeviceAddressKHR( self.device().internal_object(), & info)
+                                            }
+                                        },
+                                    },
+                                },
+                            }
+                        },
+                        flags: g.flags.into_vulkan_bits(),
+                    }
+                })
+                .collect();
+            let p_geometries: Vec<*const vk::AccelerationStructureGeometryKHR> = geometries_khr.into_iter().map(|g| {&g as *const _}).collect();
+            vk::AccelerationStructureBuildGeometryInfoKHR {
+                sType: vk::STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR,
+                pNext: ptr::null(),
+                type_,
+                flags,
+                update: update as vk::Bool32,
+                srcAccelerationStructure: src,
+                dstAccelerationStructure: dst,
+                geometryArrayOfPointers: vk::TRUE,
+                geometryCount: p_geometries.len() as u32,
+                ppGeometries: p_geometries.as_ptr(),
+                scratchData: vk::DeviceOrHostAddressKHR {
+                    deviceAddress: {
+                        let info = vk::BufferDeviceAddressInfoKHR {
+                            sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                            pNext: ptr::null(),
+                            buffer: scratch_buffer.inner().buffer.internal_object(),
+                        };
+                        vk.GetBufferDeviceAddressKHR( self.device.clone().internal_object(), & info)
+                    }
+                },
+            }
+        };
+        let offset_info = vk::AccelerationStructureBuildOffsetInfoKHR {
+            primitiveCount: primitive_count,
+            primitiveOffset: 0,
+            firstVertex: 0,
+            transformOffset: 0
+        };
+        let infos = [info];
+        let offsets = [&offset_info as *const _];
+
+        assert_eq!(infos.len(), offsets.len());
+
+        vk.CmdBuildAccelerationStructureKHR(cmd, infos.len() as u32, infos.as_ptr(), offsets.as_ptr());
+    }
+
+    /// Calls `vkCmdTraceRaysNV` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_nv<R, M, H, C>(
+        &mut self,
+        raygen_shader_binding_table: &R,
+        miss_shader_binding_table: &M,
+        hit_shader_binding_table: &H,
+        callable_shader_binding_table: &C,
+        dimensions: [u32; 3],
+    ) where
+        R: ?Sized + BufferAccess,
+        M: ?Sized + BufferAccess,
+        H: ?Sized + BufferAccess,
+        C: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_raygen = raygen_shader_binding_table.inner();
+        debug_assert!(inner_raygen.offset < inner_raygen.buffer.size());
+        debug_assert!(
+            inner_raygen.offset + raygen_shader_binding_table.size() <= inner_raygen.buffer.size()
+        );
+        debug_assert!(inner_raygen.buffer.usage_ray_tracing());
+
+        let inner_miss = miss_shader_binding_table.inner();
+        debug_assert!(inner_miss.offset < inner_miss.buffer.size());
+        debug_assert!(
+            inner_miss.offset + miss_shader_binding_table.size() <= inner_miss.buffer.size()
+        );
+        debug_assert!(inner_miss.buffer.usage_ray_tracing());
+
+        let inner_hit = hit_shader_binding_table.inner();
+        debug_assert!(inner_hit.offset < inner_hit.buffer.size());
+        debug_assert!(
+            inner_hit.offset + hit_shader_binding_table.size() <= inner_hit.buffer.size()
+        );
+        debug_assert!(inner_hit.buffer.usage_ray_tracing());
+
+        let inner_callable = callable_shader_binding_table.inner();
+        debug_assert!(inner_callable.offset < inner_callable.buffer.size());
+        debug_assert!(
+            inner_callable.offset + callable_shader_binding_table.size()
+                <= inner_callable.buffer.size()
+        );
+        debug_assert!(inner_callable.buffer.usage_ray_tracing());
+
+        vk.CmdTraceRaysNV(
+            cmd,
+            inner_raygen.buffer.internal_object(),
+            inner_raygen.offset as vk::DeviceSize,
+            inner_miss.buffer.internal_object(),
+            inner_miss.offset as vk::DeviceSize,
+            0, // TODO: Support strided buffers
+            inner_hit.buffer.internal_object(),
+            inner_hit.offset as vk::DeviceSize,
+            0, // TODO: Support strided buffers
+            inner_callable.buffer.internal_object(),
+            inner_callable.offset as vk::DeviceSize,
+            0, // TODO: Support strided buffers
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
+        );
+    }
+
+    /// Calls `vkCmdTraceRaysKHR` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_khr<R, M, H, C>(
+        &mut self,
+        raygen_shader_binding_table: &R,
+        miss_shader_binding_table: &M,
+        hit_shader_binding_table: &H,
+        callable_shader_binding_table: &C,
+        dimensions: [u32; 3],
+    ) where
+        R: ?Sized + BufferAccess,
+        M: ?Sized + BufferAccess,
+        H: ?Sized + BufferAccess,
+        C: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_raygen = raygen_shader_binding_table.inner();
+        debug_assert!(inner_raygen.offset < inner_raygen.buffer.size());
+        debug_assert!(
+            inner_raygen.offset + raygen_shader_binding_table.size() <= inner_raygen.buffer.size()
+        );
+        debug_assert!(inner_raygen.buffer.usage_ray_tracing());
+        let region_raygen = vk::StridedBufferRegionKHR {
+            buffer: inner_raygen.buffer.internal_object(),
+            offset: inner_raygen.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: raygen_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_miss = miss_shader_binding_table.inner();
+        debug_assert!(inner_miss.offset < inner_miss.buffer.size());
+        debug_assert!(
+            inner_miss.offset + miss_shader_binding_table.size() <= inner_miss.buffer.size()
+        );
+        debug_assert!(inner_miss.buffer.usage_ray_tracing());
+        let region_miss = vk::StridedBufferRegionKHR {
+            buffer: inner_miss.buffer.internal_object(),
+            offset: inner_miss.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: miss_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_hit = hit_shader_binding_table.inner();
+        debug_assert!(inner_hit.offset < inner_hit.buffer.size());
+        debug_assert!(
+            inner_hit.offset + hit_shader_binding_table.size() <= inner_hit.buffer.size()
+        );
+        debug_assert!(inner_hit.buffer.usage_ray_tracing());
+        let region_hit = vk::StridedBufferRegionKHR {
+            buffer: inner_hit.buffer.internal_object(),
+            offset: inner_hit.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: hit_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_callable = callable_shader_binding_table.inner();
+        debug_assert!(inner_callable.offset < inner_callable.buffer.size());
+        debug_assert!(
+            inner_callable.offset + callable_shader_binding_table.size()
+                <= inner_callable.buffer.size()
+        );
+        debug_assert!(inner_callable.buffer.usage_ray_tracing());
+        let region_callable = vk::StridedBufferRegionKHR {
+            buffer: inner_callable.buffer.internal_object(),
+            offset: inner_callable.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: callable_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        vk.CmdTraceRaysKHR(
+            cmd,
+            &region_raygen,
+            &region_miss,
+            &region_hit,
+            &region_callable,
+            dimensions[0],
+            dimensions[1],
+            dimensions[2],
+        );
+    }
+
+    /// Calls `vkCmdTraceRaysIndirectKHR` on the builder.
+    #[inline]
+    pub unsafe fn trace_rays_indirect_khr<R, M, H, C, B>(
+        &mut self, raygen_shader_binding_table: &R, miss_shader_binding_table: &M,
+        hit_shader_binding_table: &H, callable_shader_binding_table: &C, buffer: &B,
+    ) where
+        R: ?Sized + BufferAccess,
+        M: ?Sized + BufferAccess,
+        H: ?Sized + BufferAccess,
+        C: ?Sized + BufferAccess,
+        B: ?Sized + BufferAccess,
+    {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+
+        let inner_raygen = raygen_shader_binding_table.inner();
+        debug_assert!(inner_raygen.offset < inner_raygen.buffer.size());
+        debug_assert!(
+            inner_raygen.offset + raygen_shader_binding_table.size() < inner_raygen.buffer.size()
+        );
+        debug_assert!(inner_raygen.buffer.usage_ray_tracing());
+        let region_raygen = vk::StridedBufferRegionKHR {
+            buffer: inner_raygen.buffer.internal_object(),
+            offset: inner_raygen.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: raygen_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_miss = miss_shader_binding_table.inner();
+        debug_assert!(inner_miss.offset < inner_miss.buffer.size());
+        debug_assert!(
+            inner_miss.offset + miss_shader_binding_table.size() < inner_miss.buffer.size()
+        );
+        debug_assert!(inner_miss.buffer.usage_ray_tracing());
+        let region_miss = vk::StridedBufferRegionKHR {
+            buffer: inner_miss.buffer.internal_object(),
+            offset: inner_miss.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: miss_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_hit = hit_shader_binding_table.inner();
+        debug_assert!(inner_hit.offset < inner_hit.buffer.size());
+        debug_assert!(inner_hit.offset + hit_shader_binding_table.size() < inner_hit.buffer.size());
+        debug_assert!(inner_hit.buffer.usage_ray_tracing());
+        let region_hit = vk::StridedBufferRegionKHR {
+            buffer: inner_hit.buffer.internal_object(),
+            offset: inner_hit.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: hit_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner_callable = callable_shader_binding_table.inner();
+        debug_assert!(inner_callable.offset < inner_callable.buffer.size());
+        debug_assert!(
+            inner_callable.offset + callable_shader_binding_table.size()
+                < inner_callable.buffer.size()
+        );
+        debug_assert!(inner_callable.buffer.usage_ray_tracing());
+        let region_callable = vk::StridedBufferRegionKHR {
+            buffer: inner_callable.buffer.internal_object(),
+            offset: inner_callable.offset as vk::DeviceSize,
+            stride: 0, // TODO: Support strided buffers
+            size: callable_shader_binding_table.size() as vk::DeviceSize,
+        };
+
+        let inner = buffer.inner();
+        debug_assert!(inner.offset < inner.buffer.size());
+        debug_assert!(inner.buffer.usage_indirect_buffer());
+
+        vk.CmdTraceRaysIndirectKHR(
+            cmd,
+            &region_raygen,
+            &region_miss,
+            &region_hit,
+            &region_callable,
+            inner.buffer.internal_object(),
+            inner.offset as vk::DeviceSize,
+        );
     }
 }
 

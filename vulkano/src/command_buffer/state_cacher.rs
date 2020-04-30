@@ -7,16 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::DynamicState;
 use descriptor::DescriptorSet;
-use pipeline::ComputePipelineAbstract;
-use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
+use pipeline::{
+    ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineType, RayTracingPipelineAbstract,
+};
 use smallvec::SmallVec;
 use std::ops::Range;
 use vk;
+use VulkanObject;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
 /// that were already bound.
@@ -30,10 +31,14 @@ pub struct StateCacher {
     compute_pipeline: vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
+    // The ray tracing pipeline currently bound. 0 if nothing bound.
+    ray_tracing_pipeline: vk::Pipeline,
     // The descriptor sets for the compute pipeline.
     compute_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
     // The descriptor sets for the graphics pipeline.
     graphics_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
+    // The descriptor sets for the graphics pipeline.
+    ray_tracing_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
     // If the user starts comparing descriptor sets, but drops the helper struct in the middle of
     // the processing then we will end up in a weird state. This bool is true when we start
     // comparing sets, and is set to false when we end up comparing. If it was true when we start
@@ -64,8 +69,10 @@ impl StateCacher {
             dynamic_state: DynamicState::none(),
             compute_pipeline: 0,
             graphics_pipeline: 0,
+            ray_tracing_pipeline: 0,
             compute_descriptor_sets: SmallVec::new(),
             graphics_descriptor_sets: SmallVec::new(),
+            ray_tracing_descriptor_sets: SmallVec::new(),
             poisoned_descriptor_sets: false,
             vertex_buffers: SmallVec::new(),
             poisoned_vertex_buffers: false,
@@ -80,8 +87,10 @@ impl StateCacher {
         self.dynamic_state = DynamicState::none();
         self.compute_pipeline = 0;
         self.graphics_pipeline = 0;
+        self.ray_tracing_pipeline = 0;
         self.compute_descriptor_sets = SmallVec::new();
         self.graphics_descriptor_sets = SmallVec::new();
+        self.ray_tracing_descriptor_sets = SmallVec::new();
         self.vertex_buffers = SmallVec::new();
         self.index_buffer = None;
     }
@@ -125,20 +134,24 @@ impl StateCacher {
     /// This process also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after the `compare` function returns.
     #[inline]
-    pub fn bind_descriptor_sets(&mut self, graphics: bool) -> StateCacherDescriptorSets {
+    pub fn bind_descriptor_sets(
+        &mut self,
+        pipeline_type: PipelineType,
+    ) -> StateCacherDescriptorSets {
         if self.poisoned_descriptor_sets {
             self.compute_descriptor_sets = SmallVec::new();
             self.graphics_descriptor_sets = SmallVec::new();
+            self.ray_tracing_descriptor_sets = SmallVec::new();
         }
 
         self.poisoned_descriptor_sets = true;
 
         StateCacherDescriptorSets {
             poisoned: &mut self.poisoned_descriptor_sets,
-            state: if graphics {
-                &mut self.graphics_descriptor_sets
-            } else {
-                &mut self.compute_descriptor_sets
+            state: match pipeline_type {
+                PipelineType::Graphics => &mut self.graphics_descriptor_sets,
+                PipelineType::Compute => &mut self.compute_descriptor_sets,
+                PipelineType::RayTracing => &mut self.ray_tracing_descriptor_sets,
             },
             offset: 0,
             found_diff: None,
@@ -177,6 +190,25 @@ impl StateCacher {
             StateCacherOutcome::AlreadyOk
         } else {
             self.compute_pipeline = inner;
+            StateCacherOutcome::NeedChange
+        }
+    }
+
+    /// Checks whether we need to bind a ray tracing. Returns `StateCacherOutcome::AlreadyOk`
+    /// if the pipeline was already bound earlier, and `StateCacherOutcome::NeedChange` if you need
+    /// to actually bind the pipeline.
+    ///
+    /// This function also updates the state cacher. The state cacher assumes that the state
+    /// changes are going to be performed after this function returns.
+    pub fn bind_ray_tracing_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
+    where
+        P: RayTracingPipelineAbstract,
+    {
+        let inner = RayTracingPipelineAbstract::inner(pipeline).internal_object();
+        if inner == self.ray_tracing_pipeline {
+            StateCacherOutcome::AlreadyOk
+        } else {
+            self.ray_tracing_pipeline = inner;
             StateCacherOutcome::NeedChange
         }
     }

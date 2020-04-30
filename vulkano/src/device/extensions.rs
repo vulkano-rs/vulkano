@@ -118,6 +118,12 @@ device_extensions! {
     ext_debug_utils => b"VK_EXT_debug_utils",
     khr_multiview => b"VK_KHR_multiview",
     ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
+    nv_ray_tracing => b"VK_NV_ray_tracing",
+    khr_ray_tracing => b"VK_KHR_ray_tracing",
+    ext_descriptor_indexing => b"VK_EXT_descriptor_indexing",
+    khr_buffer_device_address => b"VK_KHR_buffer_device_address",
+    khr_deferred_host_operations => b"VK_KHR_deferred_host_operations",
+    khr_pipeline_library => b"VK_KHR_pipeline_library",
 }
 
 /// This helper type can only be instantiated inside this module.

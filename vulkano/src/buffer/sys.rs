@@ -298,6 +298,31 @@ impl UnsafeBuffer {
         (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
 
+    #[inline]
+    pub fn usage_shader_device_address(&self) -> bool {
+        (self.usage & vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT_KHR) != 0
+    }
+
+    #[inline]
+    pub fn usage_transform_feedback_buffer(&self) -> bool {
+        (self.usage & vk::BUFFER_USAGE_TRANSFORM_FEEDBACK_BUFFER_BIT_EXT) != 0
+    }
+
+    #[inline]
+    pub fn usage_transform_feedback_counter_buffer(&self) -> bool {
+        (self.usage & vk::BUFFER_USAGE_TRANSFORM_FEEDBACK_COUNTER_BUFFER_BIT_EXT) != 0
+    }
+
+    #[inline]
+    pub fn usage_conditional_rendering(&self) -> bool {
+        (self.usage & vk::BUFFER_USAGE_CONDITIONAL_RENDERING_BIT_EXT) != 0
+    }
+
+    #[inline]
+    pub fn usage_ray_tracing(&self) -> bool {
+        (self.usage & vk::BUFFER_USAGE_RAY_TRACING_BIT_KHR) != 0
+    }
+
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {

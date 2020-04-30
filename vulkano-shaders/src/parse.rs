@@ -176,6 +176,7 @@ pub enum Instruction {
     Branch { result_id: u32 },
     Kill,
     Return,
+    TypeAccelerationStructure { result_id: u32 },
 }
 
 fn parse_instruction(i: &[u32]) -> Result<(Instruction, &[u32]), ParseError> {
@@ -357,6 +358,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
            249 => Instruction::Branch { result_id: operands[0] },
            252 => Instruction::Kill,
            253 => Instruction::Return,
+           5341 => Instruction::TypeAccelerationStructure { result_id: operands[0] },
            _ => Instruction::Unknown(opcode, operands.to_owned()),
        })
 }

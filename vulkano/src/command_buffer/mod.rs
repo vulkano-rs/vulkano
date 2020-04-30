@@ -138,6 +138,14 @@ pub struct DispatchIndirectCommand {
     pub z: u32,
 }
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct TraceRaysIndirectCommandKHR {
+    pub width: u32,
+    pub height: u32,
+    pub depth: u32,
+}
+
 /// The dynamic state to use for a draw command.
 // TODO: probably not the right location
 #[derive(Debug, Clone)]

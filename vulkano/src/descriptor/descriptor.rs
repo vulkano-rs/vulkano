@@ -225,6 +225,12 @@ impl DescriptorDesc {
                     }
                 }
             },
+            DescriptorDescTy::AccelerationStructure => {
+                AccessFlagBits {
+                    acceleration_structure_read: true,
+                    ..AccessFlagBits::none()
+                }
+            },
         };
 
         (stages, access)
@@ -253,6 +259,7 @@ pub enum DescriptorDescTy {
         array_layers: DescriptorImageDescArray,
     },
     Buffer(DescriptorBufferDesc),
+    AccelerationStructure,
 }
 
 impl DescriptorDescTy {
@@ -291,6 +298,7 @@ impl DescriptorDescTy {
                          DescriptorType::UniformTexelBuffer
                      }
                  },
+                 DescriptorDescTy::AccelerationStructure => DescriptorType::AccelerationStructure,
              })
     }
 
@@ -379,6 +387,8 @@ impl DescriptorDescTy {
                                            }),
                 }
             },
+
+            (&DescriptorDescTy::AccelerationStructure, &DescriptorDescTy::AccelerationStructure) => Ok(()),
 
             // Any other combination is invalid.
             _ => Err(DescriptorDescSupersetError::TypeMismatch),
@@ -535,6 +545,7 @@ pub enum DescriptorType {
     UniformBufferDynamic = vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
     StorageBufferDynamic = vk::DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
     InputAttachment = vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+    AccelerationStructure = vk::DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR,
 }
 
 /// Error when checking whether a descriptor is a superset of another one.
@@ -636,6 +647,18 @@ pub struct ShaderStages {
     pub fragment: bool,
     /// `True` means that the descriptor will be used by the compute shader.
     pub compute: bool,
+    /// `True` means that the descriptor will be used by the raygen shader.
+    pub raygen: bool,
+    /// `True` means that the descriptor will be used by the intersection shader.
+    pub intersection: bool,
+    /// `True` means that the descriptor will be used by the any hit shader.
+    pub any_hit: bool,
+    /// `True` means that the descriptor will be used by the closest hit shader.
+    pub closest_hit: bool,
+    /// `True` means that the descriptor will be used by the miss shader.
+    pub miss: bool,
+    /// `True` means that the descriptor will be used by the callable shader.
+    pub callable: bool,
 }
 
 impl ShaderStages {
@@ -650,6 +673,12 @@ impl ShaderStages {
             geometry: true,
             fragment: true,
             compute: true,
+            raygen: true,
+            intersection: true,
+            any_hit: true,
+            closest_hit: true,
+            miss: true,
+            callable: true,
         }
     }
 
@@ -664,6 +693,12 @@ impl ShaderStages {
             geometry: false,
             fragment: false,
             compute: false,
+            raygen: false,
+            intersection: false,
+            any_hit: false,
+            closest_hit: false,
+            miss: false,
+            callable: false,
         }
     }
 
@@ -678,6 +713,12 @@ impl ShaderStages {
             geometry: true,
             fragment: true,
             compute: false,
+            raygen: false,
+            intersection: false,
+            any_hit: false,
+            closest_hit: false,
+            miss: false,
+            callable: false,
         }
     }
 
@@ -692,6 +733,32 @@ impl ShaderStages {
             geometry: false,
             fragment: false,
             compute: true,
+            raygen: false,
+            intersection: false,
+            any_hit: false,
+            closest_hit: false,
+            miss: false,
+            callable: false,
+        }
+    }
+
+    /// Creates a `ShaderStages` struct with all ray tracing stages set to `true`.
+    // TODO: add example
+    #[inline]
+    pub fn all_ray_tracing() -> ShaderStages {
+        ShaderStages {
+            vertex: false,
+            tessellation_control: false,
+            tessellation_evaluation: false,
+            geometry: false,
+            fragment: false,
+            compute: false,
+            raygen: true,
+            intersection: true,
+            any_hit: true,
+            closest_hit: true,
+            miss: true,
+            callable: true,
         }
     }
 
@@ -703,7 +770,13 @@ impl ShaderStages {
             (self.tessellation_control || !other.tessellation_control) &&
             (self.tessellation_evaluation || !other.tessellation_evaluation) &&
             (self.geometry || !other.geometry) &&
-            (self.fragment || !other.fragment) && (self.compute || !other.compute)
+            (self.fragment || !other.fragment) && (self.compute || !other.compute) &&
+            (self.raygen || !other.raygen) &&
+            (self.intersection || !other.intersection) &&
+            (self.any_hit || !other.any_hit) &&
+            (self.closest_hit || !other.closest_hit) &&
+            (self.miss || !other.miss) &&
+            (self.callable || !other.callable)
         {
             Ok(())
         } else {
@@ -719,7 +792,13 @@ impl ShaderStages {
             (self.tessellation_control && other.tessellation_control) ||
             (self.tessellation_evaluation && other.tessellation_evaluation) ||
             (self.geometry && other.geometry) || (self.fragment && other.fragment) ||
-            (self.compute && other.compute)
+            (self.compute && other.compute) ||
+            (self.raygen && other.raygen) ||
+            (self.intersection && other.intersection) ||
+            (self.any_hit && other.any_hit) ||
+            (self.closest_hit && other.closest_hit) ||
+            (self.miss && other.miss) ||
+            (self.callable && other.callable)
     }
 
     #[inline]
@@ -743,6 +822,24 @@ impl ShaderStages {
         if self.compute {
             result |= vk::SHADER_STAGE_COMPUTE_BIT;
         }
+        if self.raygen {
+            result |= vk::SHADER_STAGE_RAYGEN_BIT_KHR;
+        }
+        if self.intersection {
+            result |= vk::SHADER_STAGE_INTERSECTION_BIT_KHR;
+        }
+        if self.any_hit {
+            result |= vk::SHADER_STAGE_ANY_HIT_BIT_KHR;
+        }
+        if self.closest_hit {
+            result |= vk::SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        }
+        if self.miss {
+            result |= vk::SHADER_STAGE_MISS_BIT_KHR;
+        }
+        if self.callable {
+            result |= vk::SHADER_STAGE_CALLABLE_BIT_KHR;
+        }
         result
     }
 }
@@ -759,6 +856,12 @@ impl BitOr for ShaderStages {
             geometry: self.geometry || other.geometry,
             fragment: self.fragment || other.fragment,
             compute: self.compute || other.compute,
+            raygen: self.raygen || other.raygen,
+            intersection: self.intersection || other.intersection,
+            any_hit: self.any_hit || other.any_hit,
+            closest_hit: self.closest_hit || other.closest_hit,
+            miss: self.miss || other.miss,
+            callable: self.callable || other.callable,
         }
     }
 }
@@ -773,6 +876,7 @@ impl From<ShaderStages> for PipelineStages {
             geometry_shader: stages.geometry,
             fragment_shader: stages.fragment,
             compute_shader: stages.compute,
+            ray_tracing_shader: stages.intersects(&ShaderStages::all_ray_tracing()),
             ..PipelineStages::none()
         }
     }

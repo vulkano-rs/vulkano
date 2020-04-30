@@ -162,6 +162,30 @@ impl ShaderModule {
             marker: PhantomData,
         }
     }
+
+    /// Gets access to an entry point contained in this module.
+    ///
+    /// This is purely a *logical* operation. It returns a struct that *represents* the entry
+    /// point but doesn't actually do anything.
+    ///
+    /// # Safety
+    ///
+    /// - The user must check that the entry point exists in the module, as this is not checked
+    ///   by Vulkan.
+    /// - The layout must correctly describe the layout used by this stage.
+    ///
+    #[inline]
+    pub unsafe fn ray_tracing_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L,
+                                                          ty: RayTracingShaderType)
+                                                          -> RayTracingEntryPoint<'a, S, L> {
+        RayTracingEntryPoint {
+            module: self,
+            name: name,
+            layout: layout,
+            ty: ty,
+            marker: PhantomData,
+        }
+    }
 }
 
 unsafe impl VulkanObject for ShaderModule {
@@ -306,6 +330,21 @@ impl GeometryShaderExecutionMode {
     }
 }
 
+pub unsafe trait RayTracingEntryPointAbstract: EntryPointAbstract {
+    /// Returns the type of shader.
+    fn ty(&self) -> RayTracingShaderType;
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum RayTracingShaderType {
+    Raygen,
+    AnyHit,
+    ClosestHit,
+    Miss,
+    Intersection,
+    Callable,
+}
+
 pub unsafe trait EntryPointAbstract {
     type PipelineLayout: PipelineLayoutDesc;
     type SpecializationConstants: SpecializationConstants;
@@ -354,6 +393,52 @@ unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
     }
 }
 
+/// Represents the entry point of a ray tracing shader in a shader module.
+///
+/// Can be obtained by calling `ray_tracing_shader_entry_point()` on the shader module.
+#[derive(Debug, Copy, Clone)]
+pub struct RayTracingEntryPoint<'a, S, L> {
+    module: &'a ShaderModule,
+    name: &'a CStr,
+    layout: L,
+    ty: RayTracingShaderType,
+    marker: PhantomData<S>,
+}
+
+unsafe impl<'a, S, L> EntryPointAbstract for RayTracingEntryPoint<'a, S, L>
+    where L: PipelineLayoutDesc,
+          S: SpecializationConstants
+{
+    type PipelineLayout = L;
+    type SpecializationConstants = S;
+
+    #[inline]
+    fn module(&self) -> &ShaderModule {
+        self.module
+    }
+
+    #[inline]
+    fn name(&self) -> &CStr {
+        self.name
+    }
+
+    #[inline]
+    fn layout(&self) -> &L {
+        &self.layout
+    }
+}
+
+unsafe impl<'a, S, L> RayTracingEntryPointAbstract for RayTracingEntryPoint<'a, S, L>
+    where L: PipelineLayoutDesc,
+          S: SpecializationConstants
+{
+    #[inline]
+    fn ty(&self) -> RayTracingShaderType {
+        self.ty
+    }
+}
+
+
 /// A dummy that implements `GraphicsEntryPointAbstract` and `EntryPointAbstract`.
 ///
 /// When a function has a signature like: `fn foo<S: EntryPointAbstract>(shader: Option<S>)`, you
@@ -401,6 +486,13 @@ unsafe impl GraphicsEntryPointAbstract for EmptyEntryPointDummy {
 
     #[inline]
     fn ty(&self) -> GraphicsShaderType {
+        unreachable!()
+    }
+}
+
+unsafe impl RayTracingEntryPointAbstract for EmptyEntryPointDummy {
+    #[inline]
+    fn ty(&self) -> RayTracingShaderType {
         unreachable!()
     }
 }

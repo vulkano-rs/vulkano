@@ -400,6 +400,10 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
             DeviceRequirement::Extensions(&["khr_16bit_storage"]),
         Capability::CapabilityStorageInputOutput16 =>
             DeviceRequirement::Extensions(&["khr_16bit_storage"]),
+        Capability::CapabilityRayTracingNV =>
+            DeviceRequirement::Extensions(&["nv_ray_tracing"]),
+        Capability::CapabilityRayTracingProvisionalKHR =>
+            DeviceRequirement::Extensions(&["khr_ray_tracing"]),
     }
 }
 
@@ -420,6 +424,13 @@ fn storage_class_requirement(storage_class: &StorageClass) -> DeviceRequirement 
         StorageClass::StorageClassImage => DeviceRequirement::None,
         StorageClass::StorageClassStorageBuffer =>
             DeviceRequirement::Extensions(&["khr_storage_buffer_storage_class"]),
+        // TODO: requires either "khr_ray_tracing" or "nv_ray_tracing"
+        StorageClass::StorageClassCallableData => DeviceRequirement::None,
+        StorageClass::StorageClassIncomingCallableData => DeviceRequirement::None,
+        StorageClass::StorageClassRayPayload => DeviceRequirement::None,
+        StorageClass::StorageClassHitAttribute => DeviceRequirement::None,
+        StorageClass::StorageClassIncomingRayPayload => DeviceRequirement::None,
+        StorageClass::StorageClassShaderRecordBuffer => DeviceRequirement::None,
     }
 }
 

@@ -17,9 +17,10 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
 use OomError;
+use acceleration_structure::AccelerationStructure;
 use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
-use command_buffer::CommandBuffer;
+use command_buffer::{CommandBuffer, TraceRaysIndirectCommandKHR};
 use command_buffer::CommandBufferExecError;
 use command_buffer::DrawIndirectCommand;
 use command_buffer::DrawIndexedIndirectCommand;
@@ -65,7 +66,7 @@ use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
-use pipeline::ComputePipelineAbstract;
+use pipeline::{ComputePipelineAbstract, PipelineType, RayTracingPipelineAbstract};
 use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::Index;
 use pipeline::vertex::VertexSource;
@@ -969,7 +970,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             push_constants(&mut self.inner, pipeline.clone(), constants);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            false,
+                            PipelineType::Compute,
                             pipeline.clone(),
                             sets)?;
 
@@ -1009,7 +1010,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1066,7 +1067,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1125,7 +1126,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1190,7 +1191,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
-                            true,
+                            PipelineType::Graphics,
                             pipeline.clone(),
                             sets)?;
             vertex_buffers(&mut self.inner,
@@ -1203,6 +1204,148 @@ impl<P> AutoCommandBufferBuilder<P> {
                 .draw_indexed_indirect(indirect_buffer,
                                draw_count,
                                mem::size_of::<DrawIndexedIndirectCommand>() as u32)?;
+            Ok(self)
+        }
+    }
+
+    /// Performs a build acceleration structure dispatch
+    // TODO: should accept a list of acceleration structures
+    #[inline]
+    pub fn build_acceleration_structure(
+        mut self, acceleration_structure: &AccelerationStructure,
+    ) -> Result<Self, BuildAccelerationStructureError> {
+        assert_eq!(acceleration_structure.top_level().geometries.len(), 0);
+        unsafe {
+            self.inner.build_acceleration_structure(acceleration_structure);
+            Ok(self)
+        }
+    }
+
+    /// Performs a ray tracing dispatch using the binding tables.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    #[inline]
+    pub fn trace_rays<Rp, Rb, Mb, Hb, Cb, S, Pc>(
+        mut self,
+        pipeline: Rp,
+        raygen_shader_binding_table: Rb,
+        miss_shader_binding_table: Mb,
+        hit_shader_binding_table: Hb,
+        callable_shader_binding_table: Cb,
+        dimensions: [u32; 3],
+        sets: S,
+        constants: Pc,
+    ) -> Result<Self, TraceRaysError>
+    where
+        Rp: RayTracingPipelineAbstract + Send + Sync + 'static + Clone,
+        Rb: BufferAccess + Send + Sync + 'static,
+        Mb: BufferAccess + Send + Sync + 'static,
+        Hb: BufferAccess + Send + Sync + 'static,
+        Cb: BufferAccess + Send + Sync + 'static,
+        S: DescriptorSetsCollection,
+    {
+        unsafe {
+            // TODO: check binding table validity
+            // TODO: Check if the pipeline is using `nv_ray_tracing`
+
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_ray_tracing_pipeline(&pipeline)
+            {
+                self.inner.bind_pipeline_ray_tracing(pipeline.clone());
+            }
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            descriptor_sets(
+                &mut self.inner,
+                &mut self.state_cacher,
+                PipelineType::RayTracing,
+                pipeline.clone(),
+                sets,
+            )?;
+
+            if pipeline.use_nv_extension() {
+                debug_assert!(self.device().loaded_extensions().nv_ray_tracing);
+            } else {
+                debug_assert!(self.device().loaded_extensions().khr_ray_tracing);
+            }
+
+            self.inner.trace_rays(
+                pipeline.use_nv_extension(),
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                dimensions,
+            )?;
+            Ok(self)
+        }
+    }
+
+    /// Performs a ray tracing dispatch from the `vulkano::command_buffer::TraceRaysIndirectKhrCommand`
+    /// struct in `indirect_buffer` using the binding tables.
+    ///
+    /// This will use the `khr_ray_tracing` device extension.
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    #[inline]
+    pub fn trace_rays_indirect<Rp, Rb, Mb, Hb, Cb, Ib, S, Pc>(
+        mut self,
+        pipeline: Rp,
+        raygen_shader_binding_table: Rb,
+        miss_shader_binding_table: Mb,
+        hit_shader_binding_table: Hb,
+        callable_shader_binding_table: Cb,
+        indirect_buffer: Ib,
+        sets: S,
+        constants: Pc,
+    ) -> Result<Self, TraceRaysIndirectError>
+    where
+        Rp: RayTracingPipelineAbstract + Send + Sync + 'static + Clone,
+        Rb: BufferAccess + Send + Sync + 'static,
+        Mb: BufferAccess + Send + Sync + 'static,
+        Hb: BufferAccess + Send + Sync + 'static,
+        Cb: BufferAccess + Send + Sync + 'static,
+        S: DescriptorSetsCollection,
+        Ib: BufferAccess
+            + TypedBufferAccess<Content = [TraceRaysIndirectCommandKHR]>
+            + Send
+            + Sync
+            + 'static,
+    {
+        unsafe {
+            // TODO: check binding table validity
+            // TODO: Check if the pipeline is using `nv_ray_tracing`
+
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_ray_tracing_pipeline(&pipeline)
+            {
+                self.inner.bind_pipeline_ray_tracing(pipeline.clone());
+            }
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            descriptor_sets(
+                &mut self.inner,
+                &mut self.state_cacher,
+                PipelineType::RayTracing,
+                pipeline.clone(),
+                sets,
+            )?;
+
+            debug_assert!(!pipeline.use_nv_extension());
+            debug_assert!(self.device().loaded_extensions().khr_ray_tracing);
+
+            self.inner.trace_rays_indirect_khr(
+                raygen_shader_binding_table,
+                miss_shader_binding_table,
+                hit_shader_binding_table,
+                callable_shader_binding_table,
+                indirect_buffer,
+            )?;
             Ok(self)
         }
     }
@@ -1461,8 +1604,8 @@ unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
 }
 
 unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P>,
-                                    state_cacher: &mut StateCacher, gfx: bool, pipeline: Pl,
-                                    sets: S)
+                                    state_cacher: &mut StateCacher, pipeline_type: PipelineType,
+                                    pipeline: Pl, sets: S)
                                     -> Result<(), SyncCommandBufferBuilderError>
     where Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
           S: DescriptorSetsCollection
@@ -1470,7 +1613,7 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
     let sets = sets.into_vec();
 
     let first_binding = {
-        let mut compare = state_cacher.bind_descriptor_sets(gfx);
+        let mut compare = state_cacher.bind_descriptor_sets(pipeline_type);
         for set in sets.iter() {
             compare.add(set);
         }
@@ -1487,7 +1630,7 @@ unsafe fn descriptor_sets<P, Pl, S>(destination: &mut SyncCommandBufferBuilder<P
         sets_binder.add(set);
     }
     sets_binder
-        .submit(gfx, pipeline.clone(), first_binding, iter::empty())?;
+        .submit(pipeline_type, pipeline.clone(), first_binding, iter::empty())?;
     Ok(())
 }
 
@@ -1752,6 +1895,24 @@ err_gen!(ExecuteCommandsError {
 err_gen!(UpdateBufferError {
              AutoCommandBufferBuilderContextError,
              CheckUpdateBufferError,
+         });
+
+err_gen!(BuildAccelerationStructureError {
+             AutoCommandBufferBuilderContextError,
+         });
+
+err_gen!(TraceRaysError {
+             AutoCommandBufferBuilderContextError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             SyncCommandBufferBuilderError,
+         });
+
+err_gen!(TraceRaysIndirectError {
+             AutoCommandBufferBuilderContextError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             SyncCommandBufferBuilderError,
          });
 
 #[derive(Debug, Copy, Clone)]

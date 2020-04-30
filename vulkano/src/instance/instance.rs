@@ -9,6 +9,7 @@
 
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::cmp::max;
 use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
@@ -341,10 +342,11 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                            device: device,
-                            properties: properties,
-                            memory: memory,
-                            queue_families: queue_families,
+                            device,
+                            properties,
+                            properties_ray_tracing: Default::default(),
+                            memory,
+                            queue_families,
                             available_features: Features::from_vulkan_features(available_features),
                         });
         }
@@ -360,15 +362,78 @@ impl Instance {
         let mut output = Vec::with_capacity(physical_devices.len());
 
         for device in physical_devices.into_iter() {
-            let properties: vk::PhysicalDeviceProperties = unsafe {
+            let (properties, properties_ray_tracing) = unsafe {
+                let mut nv_rt_output = Box::new(vk::PhysicalDeviceRayTracingPropertiesNV {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_NV,
+                    pNext: ptr::null_mut(),
+                    shaderGroupHandleSize: mem::zeroed(),
+                    maxRecursionDepth: mem::zeroed(),
+                    maxShaderGroupStride: mem::zeroed(),
+                    shaderGroupBaseAlignment: mem::zeroed(),
+                    maxGeometryCount: mem::zeroed(),
+                    maxInstanceCount: mem::zeroed(),
+                    maxTriangleCount: mem::zeroed(),
+                    maxDescriptorSetAccelerationStructures: mem::zeroed(),
+                });
+                let mut khr_rt_output = Box::new(vk::PhysicalDeviceRayTracingPropertiesKHR {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PROPERTIES_KHR,
+                    pNext: nv_rt_output.as_mut() as *mut vk::PhysicalDeviceRayTracingPropertiesNV as *mut _,
+                    shaderGroupHandleSize: mem::zeroed(),
+                    maxRecursionDepth: mem::zeroed(),
+                    maxShaderGroupStride: mem::zeroed(),
+                    shaderGroupBaseAlignment: mem::zeroed(),
+                    maxGeometryCount: mem::zeroed(),
+                    maxInstanceCount: mem::zeroed(),
+                    maxPrimitiveCount: mem::zeroed(),
+                    maxDescriptorSetAccelerationStructures: mem::zeroed(),
+                    shaderGroupHandleCaptureReplaySize: mem::zeroed(),
+                });
                 let mut output = vk::PhysicalDeviceProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
-                    pNext: ptr::null_mut(),
+                    pNext: khr_rt_output.as_mut() as *mut vk::PhysicalDeviceRayTracingPropertiesKHR as *mut _,
                     properties: mem::zeroed(),
                 };
 
                 vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
-                output.properties
+                (
+                    output.properties,
+                    PhysicalDeviceRayTracingProperties {
+                        shader_group_handle_size: max(
+                            nv_rt_output.shaderGroupHandleSize,
+                            khr_rt_output.shaderGroupHandleSize,
+                        ),
+                        max_recursion_depth: max(
+                            nv_rt_output.maxRecursionDepth,
+                            khr_rt_output.maxRecursionDepth,
+                        ),
+                        max_shader_group_stride: max(
+                            nv_rt_output.maxShaderGroupStride,
+                            khr_rt_output.maxShaderGroupStride,
+                        ),
+                        shader_group_base_alignment: max(
+                            nv_rt_output.shaderGroupBaseAlignment,
+                            khr_rt_output.shaderGroupBaseAlignment,
+                        ),
+                        max_geometry_count: max(
+                            nv_rt_output.maxGeometryCount,
+                            khr_rt_output.maxGeometryCount,
+                        ),
+                        max_instance_count: max(
+                            nv_rt_output.maxInstanceCount,
+                            khr_rt_output.maxInstanceCount,
+                        ),
+                        max_primitive_count: max(
+                            nv_rt_output.maxTriangleCount,
+                            khr_rt_output.maxPrimitiveCount,
+                        ),
+                        max_descriptor_set_acceleration_structures: max(
+                            nv_rt_output.maxDescriptorSetAccelerationStructures,
+                            khr_rt_output.maxDescriptorSetAccelerationStructures,
+                        ),
+                        shader_group_handle_capture_replay_size: khr_rt_output
+                            .shaderGroupHandleCaptureReplaySize,
+                    },
+                )
             };
 
             let queue_families = unsafe {
@@ -415,10 +480,11 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                            device: device,
-                            properties: properties,
-                            memory: memory,
-                            queue_families: queue_families,
+                            device,
+                            properties,
+                            properties_ray_tracing,
+                            memory,
+                            queue_families,
                             available_features: Features::from_vulkan_features(available_features),
                         });
         }
@@ -687,9 +753,23 @@ impl From<Error> for InstanceCreationError {
     }
 }
 
+#[derive(Default)]
+struct PhysicalDeviceRayTracingProperties {
+    shader_group_handle_size: u32,
+    max_recursion_depth: u32,
+    max_shader_group_stride: u32,
+    shader_group_base_alignment: u32,
+    max_geometry_count: u64,
+    max_instance_count: u64,
+    max_primitive_count: u64,
+    max_descriptor_set_acceleration_structures: u32,
+    shader_group_handle_capture_replay_size: u32,
+}
+
 struct PhysicalDeviceInfos {
     device: vk::PhysicalDevice,
     properties: vk::PhysicalDeviceProperties,
+    properties_ray_tracing: PhysicalDeviceRayTracingProperties,
     queue_families: Vec<vk::QueueFamilyProperties>,
     memory: vk::PhysicalDeviceMemoryProperties,
     available_features: Features,
@@ -959,6 +1039,18 @@ impl<'a> PhysicalDevice<'a> {
     pub fn uuid(&self) -> &[u8; 16] {
         // must be equal to vk::UUID_SIZE
         &self.infos().properties.pipelineCacheUUID
+    }
+
+    /// Returns the size of a shader group handle
+    #[inline]
+    pub fn shader_group_handle_size(&self) -> u32 {
+        self.infos().properties_ray_tracing.shader_group_handle_size
+    }
+
+    /// Returns the maximum ray tracing recursion depth for a trace call
+    #[inline]
+    pub fn max_recursion_depth(&self) -> u32 {
+        self.infos().properties_ray_tracing.max_recursion_depth
     }
 
     // Internal function to make it easier to get the infos of this device.
