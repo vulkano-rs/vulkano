@@ -62,13 +62,11 @@ fn main() {
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
+        .build_vk_surface(&event_loop, instance.clone()).unwrap();
 
     let queue_family = physical
         .queue_families()
-        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-        .unwrap();
+        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false)).unwrap();
 
     let device_ext = DeviceExtensions {
         khr_swapchain: true,
@@ -79,8 +77,7 @@ fn main() {
         physical.supported_features(),
         &device_ext,
         [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
+    ).unwrap();
 
     let queue = queues.next().unwrap();
 
@@ -107,8 +104,7 @@ fn main() {
             FullscreenExclusive::Default,
             true,
             ColorSpace::SrgbNonLinear,
-        )
-        .unwrap()
+        ).unwrap()
     };
 
     // Vertex Buffer Pool
@@ -162,8 +158,7 @@ fn main() {
                 color: [color],
                 depth_stencil: {}
             }
-        )
-        .unwrap(),
+        ).unwrap(),
     );
 
     let pipeline = Arc::new(
@@ -174,8 +169,7 @@ fn main() {
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
-            .unwrap(),
+            .build(device.clone()).unwrap(),
     );
 
     let mut dynamic_state = DynamicState {
@@ -244,8 +238,7 @@ fn main() {
 
                 // Rotate once (PI*2) every 5 seconds
                 let elapsed = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .unwrap()
+                    .duration_since(UNIX_EPOCH).unwrap()
                     .as_secs_f64();
                 const DURATION: f64 = 5.0;
                 let remainder = elapsed.rem_euclid(DURATION);
@@ -278,24 +271,17 @@ fn main() {
                 let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
                     device.clone(),
                     queue.family(),
-                )
-                .unwrap()
-                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
-                .unwrap()
+                ).unwrap()
+                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values).unwrap()
                 // Draw our buffer
-                .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
-                .unwrap()
-                .end_render_pass()
-                .unwrap()
-                .build()
-                .unwrap();
+                .draw(pipeline.clone(), &dynamic_state, buffer, (), ()).unwrap()
+                .end_render_pass().unwrap()
+                .build().unwrap();
 
                 let future = previous_frame_end
-                    .take()
-                    .unwrap()
+                    .take().unwrap()
                     .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer)
-                    .unwrap()
+                    .then_execute(queue.clone(), command_buffer).unwrap()
                     .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
                     .then_signal_fence_and_flush();
 
@@ -338,10 +324,8 @@ fn window_size_dependent_setup(
         .map(|image| {
             Arc::new(
                 Framebuffer::start(render_pass.clone())
-                    .add(image.clone())
-                    .unwrap()
-                    .build()
-                    .unwrap(),
+                    .add(image.clone()).unwrap()
+                    .build().unwrap(),
             ) as Arc<dyn FramebufferAbstract + Send + Sync>
         })
         .collect::<Vec<_>>()
