@@ -1,4 +1,4 @@
-// Copyright (c) 2016 The vulkano developers
+// Copyright (c) 2020 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
 // http://www.apache.org/licenses/LICENSE-2.0> or the MIT
@@ -7,7 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+// BufferPool Example
+//
+// Modified triangle example to show BufferPool
+// Using a pool allows multiple buffers to be "in-flight" simultaneously
+//  and is suited to highly dynamic, similar sized chunks of data
+//
+// NOTE:(jdnewman85) ATM (5/4/2020) CpuBufferPool.next() and .chunk() have identical documentation
+//      I was unable to get next() to work. The compiler complained that the resulting buffer
+//      didn't implement VertexSource. Similar issues have been reported.
+//      See: https://github.com/vulkano-rs/vulkano/issues/1221
+//      Finally, I have not profiled CpuBufferPool against CpuAccessibleBuffer
+
+use vulkano::buffer::CpuBufferPool;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
@@ -15,7 +27,8 @@ use vulkano::image::SwapchainImage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace, FullscreenExclusive};
+use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError,
+    ColorSpace, FullscreenExclusive};
 use vulkano::swapchain;
 use vulkano::sync::{GpuFuture, FlushError};
 use vulkano::sync;
@@ -26,6 +39,13 @@ use winit::event_loop::{EventLoop, ControlFlow};
 use winit::event::{Event, WindowEvent};
 
 use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Default, Debug, Clone)]
+struct Vertex {
+    position: [f32; 2],
+}
+vulkano::impl_vertex!(Vertex, position);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
@@ -33,8 +53,10 @@ fn main() {
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
+
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
+
     let queue_family = physical.queue_families().find(|&q| {
         q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
     }).unwrap();
@@ -48,6 +70,7 @@ fn main() {
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).unwrap();
         let usage = caps.supported_usage_flags;
+
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
@@ -58,17 +81,8 @@ fn main() {
 
     };
 
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex { position: [f32; 2] }
-        vulkano::impl_vertex!(Vertex, position);
-
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, [
-            Vertex { position: [-0.5, -0.25] },
-            Vertex { position: [0.0, 0.5] },
-            Vertex { position: [0.25, -0.1] }
-        ].iter().cloned()).unwrap()
-    };
+    // Vertex Buffer Pool
+    let buffer_pool: CpuBufferPool<Vertex> = CpuBufferPool::vertex_buffer(device.clone());
 
     mod vs {
         vulkano_shaders::shader!{
@@ -173,9 +187,39 @@ fn main() {
 
                 let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
 
+                // Rotate once (PI*2) every 5 seconds
+                let elapsed = SystemTime::now()
+                    .duration_since(UNIX_EPOCH).unwrap()
+                    .as_secs_f64();
+                const DURATION:f64 = 5.0;
+                let remainder = elapsed.rem_euclid(DURATION);
+                let delta = (remainder / DURATION) as f32;
+                let angle = delta * std::f32::consts::PI*2.0;
+                const RADIUS:f32 = 0.5;
+                // 120Degree offset in radians
+                const ANGLE_OFFSET:f32 = (std::f32::consts::PI*2.0) / 3.0;
+                // Calculate vertices
+                let data = [
+                    Vertex {
+                        position: [angle.cos() * RADIUS,
+                                   angle.sin() * RADIUS],
+                    },
+                    Vertex {
+                        position: [(angle+ANGLE_OFFSET).cos() * RADIUS,
+                                   (angle+ANGLE_OFFSET).sin() * RADIUS],
+                    },
+                    Vertex {
+                        position: [(angle-ANGLE_OFFSET).cos() * RADIUS,
+                                   (angle-ANGLE_OFFSET).sin() * RADIUS],
+                    },
+                ];
+
+                // Allocate a new chunk from buffer_pool
+                let buffer = buffer_pool.chunk(data.to_vec()).unwrap();
                 let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
                     .begin_render_pass(framebuffers[image_num].clone(), false, clear_values).unwrap()
-                    .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ()).unwrap()
+                    // Draw our buffer
+                    .draw(pipeline.clone(), &dynamic_state, buffer, (), ()).unwrap()
                     .end_render_pass().unwrap()
                     .build().unwrap();
 
