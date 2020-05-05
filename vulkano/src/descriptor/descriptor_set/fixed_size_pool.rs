@@ -447,6 +447,25 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R>
                inner: self.inner.add_sampler(sampler)?,
            })
     }
+
+    /// Binds an array of image views, with a sampler, as the next set of descriptors.
+    /// The number of images in the array must match the size of appropriate descriptor in the layout.
+    /// 
+    /// An error is returned if any of the the image views aren't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the image view or the sampler doesn't have the same device as the descriptor set
+    /// layout.
+    #[inline]
+    pub fn add_sampled_image_array<T>(self, image_views: Vec<T>, sampler: Arc<Sampler>)
+        -> Result<FixedSizeDescriptorSetBuilder<'a, ((R, PersistentDescriptorSetImgArray<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        where T: ImageViewAccess + Clone {
+            Ok(FixedSizeDescriptorSetBuilder {
+                pool: self.pool,
+                inner: self.inner.add_sampled_image_array(image_views, sampler)?,
+            })
+         }
 }
 
 /// Same as `FixedSizeDescriptorSetBuilder`, but we're in an array.
@@ -555,4 +574,15 @@ impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R>
                inner: self.inner.add_sampler(sampler)?,
            })
     }
+
+    pub fn add_sampled_image_array<T>(self, image_views: Vec<T>, sampler: Arc<Sampler>)
+        -> Result<FixedSizeDescriptorSetBuilderArray<'a, ((R, PersistentDescriptorSetImgArray<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        where T: ImageViewAccess + Clone
+    {
+        Ok(FixedSizeDescriptorSetBuilderArray {
+               pool: self.pool,
+               inner: self.inner.add_sampled_image_array(image_views, sampler)?,
+           })
+    }
+
 }

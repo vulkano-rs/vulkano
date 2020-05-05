@@ -352,6 +352,24 @@ impl<R> PersistentDescriptorSetBuilder<R>
                                  PersistentDescriptorSetError> {
         self.enter_array()?.add_sampler(sampler)?.leave_array()
     }
+
+    /// Binds an array of image views, with a sampler, as the next set of descriptors.
+    /// The number of images in the array must match the size of appropriate descriptor in the layout.
+    /// 
+    /// An error is returned if any of the the image views aren't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the image view or the sampler doesn't have the same device as the descriptor set
+    /// layout.
+
+    #[inline]
+    pub fn add_sampled_image_array<T>(self, image_views: Vec<T>, sampler: Arc<Sampler>)
+        -> Result<PersistentDescriptorSetBuilder<((R, PersistentDescriptorSetImgArray<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        where T: ImageViewAccess + Clone {
+            self.enter_array()?.add_sampled_image_array(image_views, sampler)?.leave_array()
+        }
+
 }
 
 /// Same as `PersistentDescriptorSetBuilder`, but we're in an array.
@@ -701,6 +719,80 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
            })
     }
 
+    /// Binds an array of image views, with a sampler, as the next element in the array.
+    /// The number of images in the array must match the size of appropriate descriptor in the layout.
+    /// 
+    /// An error is returned if any of the the image views aren't compatible with the descriptor.
+    ///
+    /// # Panic
+    ///
+    /// Panics if the image view or the sampler doesn't have the same device as the descriptor set
+    /// layout.
+    pub fn add_sampled_image_array<T>(mut self, image_views: Vec<T>, sampler: Arc<Sampler>)
+        -> Result<PersistentDescriptorSetBuilderArray<((R, PersistentDescriptorSetImgArray<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
+        where T: ImageViewAccess + Clone
+    {
+        if self.array_element as u32 >= self.desc.array_count {
+            return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
+        }
+
+        let desc = match self.builder
+            .layout
+            .descriptor(self.builder.binding_id) {
+            Some(d) => d,
+            None => return Err(PersistentDescriptorSetError::EmptyExpected),
+        };
+
+        image_views.iter().for_each(|image_view| {
+            assert_eq!(self.builder.layout.device().internal_object(), 
+                   image_view.parent().inner().image.device().internal_object());
+            assert_eq!(self.builder.layout.device().internal_object(),
+                   sampler.device().internal_object());
+        });
+
+        let sampleable = image_views.iter().map(|image_view| image_view.can_be_sampled(&sampler)).all(|sampleable| sampleable);
+        if !sampleable {
+            return Err(PersistentDescriptorSetError::IncompatibleImageViewSampler)
+        };
+
+        image_views.iter().enumerate().try_for_each(|(i, image_view)| {
+            match &desc.ty {
+                DescriptorDescTy::CombinedImageSampler(ref desc) => {
+                    let match_result = image_match_desc(&image_view, &desc);
+                    if match_result.is_ok() {
+                        self.builder.writes.push(
+                            DescriptorWrite::combined_image_sampler(self.builder.binding_id as u32,
+                                (self.array_element + i) as u32,
+                                &sampler,
+                                &image_view));
+                    }
+                    match_result
+                },
+                ty => {
+                    return Err(PersistentDescriptorSetError::WrongDescriptorTy {
+                                           expected: ty.ty().unwrap(),
+                    });
+                }
+            }            
+        })?;
+
+        Ok(PersistentDescriptorSetBuilderArray {
+               builder: PersistentDescriptorSetBuilder {
+                   layout: self.builder.layout,
+                   binding_id: self.builder.binding_id,
+                   writes: self.builder.writes,
+                   resources: ((self.builder.resources,
+                                PersistentDescriptorSetImgArray {
+                                    images: image_views.clone(),
+                                    descriptor_num: self.builder.binding_id as u32,
+                                }),
+                               PersistentDescriptorSetSampler { sampler: sampler }),
+               },
+               desc: self.desc,
+               array_element: self.array_element + image_views.len(),
+           })
+    }
+
     /// Binds a sampler as the next element in the array.
     ///
     /// An error is returned if the sampler isn't compatible with the descriptor.
@@ -953,6 +1045,44 @@ unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorS
             Some(img)
         } else if index == self.0.num_images() {
             Some((&self.1.image, self.1.descriptor_num))
+        } else {
+            None
+        }
+    }
+}
+
+/// Internal object related to the `PersistentDescriptorSet` system.
+pub struct PersistentDescriptorSetImgArray<I> {
+    images: Vec<I>,
+    descriptor_num: u32,
+}
+
+unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorSetImgArray<I>)
+    where R: PersistentDescriptorSetResources,
+          I: ImageViewAccess
+{
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.0.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
+        self.0.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.0.num_images() + self.1.images.len()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+        if let Some(img) = self.0.image(index) {
+            Some(img)
+        } else if index >= self.0.num_images() && index < self.0.num_images() + self.1.images.len() {
+            let subindex = index - self.0.num_images();
+            Some((&self.1.images[subindex], self.1.descriptor_num))
         } else {
             None
         }
