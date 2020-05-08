@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::ops::Range;
+use std::hash::Hash;
+use std::hash::Hasher;
 
 use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
@@ -29,17 +31,6 @@ pub unsafe trait BufferAccess: DeviceOwned {
 
     /// Returns the size of the buffer in bytes.
     fn size(&self) -> usize;
-
-    /// Returns the length of the buffer in number of elements.
-    ///
-    /// This method can only be called for buffers whose type is known to be an array.
-    #[inline]
-    fn len(&self) -> usize
-        where Self: TypedBufferAccess,
-              Self::Content: Content
-    {
-        self.size() / <Self::Content as Content>::indiv_size()
-    }
 
     /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
@@ -96,7 +87,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool;
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool;
 
     /// Returns true if an access to `self` potentially overlaps the same memory as an access to
     /// `other`.
@@ -107,7 +98,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, other: &ImageAccess) -> bool;
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool;
 
     /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
     /// overlap in memory must return the same key.
@@ -119,7 +110,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self) -> u64;
+    fn conflict_key(&self) -> (u64, usize);
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -150,7 +141,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
 }
 
 /// Inner information about a buffer.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferInner<'a> {
     /// The underlying buffer object.
     pub buffer: &'a UnsafeBuffer,
@@ -174,17 +165,17 @@ unsafe impl<T> BufferAccess for T
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         (**self).conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         (**self).conflicts_image(other)
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
+    fn conflict_key(&self) -> (u64, usize) {
         (**self).conflict_key()
     }
 
@@ -208,6 +199,14 @@ unsafe impl<T> BufferAccess for T
 pub unsafe trait TypedBufferAccess: BufferAccess {
     /// The type of the content.
     type Content: ?Sized;
+
+    /// Returns the length of the buffer in number of elements.
+    ///
+    /// This method can only be called for buffers whose type is known to be an array.
+    #[inline]
+    fn len(&self) -> usize where Self::Content: Content {
+        self.size() / <Self::Content as Content>::indiv_size()
+    }
 }
 
 unsafe impl<T> TypedBufferAccess for T
@@ -215,4 +214,21 @@ unsafe impl<T> TypedBufferAccess for T
           T::Target: TypedBufferAccess
 {
     type Content = <T::Target as TypedBufferAccess>::Content;
+}
+
+impl PartialEq for dyn BufferAccess + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl Eq for dyn BufferAccess + Send + Sync {}
+
+impl Hash for dyn BufferAccess + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
 }

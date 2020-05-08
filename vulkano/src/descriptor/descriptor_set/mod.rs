@@ -35,8 +35,13 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
+use std::hash::Hash;
+use std::hash::Hasher;
+
 use SafeDeref;
+use VulkanObject;
 use buffer::BufferAccess;
+use device::DeviceOwned;
 use descriptor::descriptor::DescriptorDesc;
 use image::ImageViewAccess;
 
@@ -77,7 +82,7 @@ mod unsafe_layout;
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-pub unsafe trait DescriptorSet: DescriptorSetDesc {
+pub unsafe trait DescriptorSet: DescriptorSetDesc + DeviceOwned {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
 
@@ -88,7 +93,7 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
     /// returns the index of the descriptor that uses this buffer.
     ///
     /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)>;
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)>;
 
     /// Returns the number of images within this descriptor set.
     fn num_images(&self) -> usize;
@@ -97,7 +102,7 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
     /// the index of the descriptor that uses this image.
     ///
     /// The valid range is between 0 and `num_images()`.
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)>;
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)>;
 }
 
 unsafe impl<T> DescriptorSet for T
@@ -115,7 +120,7 @@ unsafe impl<T> DescriptorSet for T
     }
 
     #[inline]
-    fn buffer(&self, index: usize) -> Option<(&BufferAccess, u32)> {
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
         (**self).buffer(index)
     }
 
@@ -125,8 +130,26 @@ unsafe impl<T> DescriptorSet for T
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
         (**self).image(index)
+    }
+}
+
+impl PartialEq for dyn DescriptorSet + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner().internal_object() == other.inner().internal_object() &&
+        self.device() == other.device()
+    }
+}
+
+impl Eq for dyn DescriptorSet + Send + Sync {}
+
+impl Hash for dyn DescriptorSet + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().internal_object().hash(state);
+        self.device().hash(state);
     }
 }
 

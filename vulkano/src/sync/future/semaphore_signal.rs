@@ -108,7 +108,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
                     unimplemented!() // TODO: how to do that?
                     /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
                     builder.add_signal_semaphore(&self.semaphore);
-                    try!(builder.submit(&queue));*/
+                    builder.submit(&queue)?;*/
                 },
                 SubmitAnyBuilder::QueuePresent(present) => {
                     present.submit(&queue)?;
@@ -143,7 +143,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.previous
             .check_buffer_access(buffer, exclusive, queue)
@@ -151,7 +151,7 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.previous

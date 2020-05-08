@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Images storage (1D, 2D, 3D, arrays, etc.).
+//! Image storage (1D, 2D, 3D, arrays, etc.).
 //!
-//! An *image* is a location in memory whose purpose is to store multi-dimensional data. Its
-//! most common usage is to store a 2D array of color pixels (in other words an *image* in the
+//! An *image* is a region of memory whose purpose is to store multi-dimensional data. Its
+//! most common use is to store a 2D array of color pixels (in other words an *image* in
 //! everyday language), but it can also be used to store arbitrary data.
 //!
 //! The advantage of using an image compared to a buffer is that the memory layout is optimized
@@ -22,8 +22,8 @@
 //!
 //! # Images and image views
 //!
-//! There is a distinction between *images* and *image views*. As its name tells, an image view
-//! describes how the GPU must interpret the image.
+//! There is a distinction between *images* and *image views*. As its name suggests, an image
+//! view describes how the GPU must interpret the image.
 //!
 //! Transfer and memory operations operate on images themselves, while reading/writing an image
 //! operates on image views. You can create multiple image views from the same image.
@@ -41,7 +41,7 @@
 //! - An `ImmutableImage` stores data which never need be changed after the initial upload,
 //!   like a texture.
 //!
-//! # Low-level informations
+//! # Low-level information
 //!
 //! To be written.
 //!
@@ -306,13 +306,13 @@ impl Dimensions {
     #[inline]
     pub fn to_view_type(&self) -> ViewType {
         match *self {
-            Dimensions::Dim1d { .. } => ViewType::Dim1d, 
-            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray, 
-            Dimensions::Dim2d { .. } => ViewType::Dim2d, 
-            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray, 
-            Dimensions::Dim3d { .. } => ViewType::Dim3d, 
-            Dimensions::Cubemap { .. } => ViewType::Cubemap, 
-            Dimensions::CubemapArray { .. } => ViewType::CubemapArray, 
+            Dimensions::Dim1d { .. } => ViewType::Dim1d,
+            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray,
+            Dimensions::Dim2d { .. } => ViewType::Dim2d,
+            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray,
+            Dimensions::Dim3d { .. } => ViewType::Dim3d,
+            Dimensions::Cubemap { .. } => ViewType::Cubemap,
+            Dimensions::CubemapArray { .. } => ViewType::CubemapArray,
         }
     }
 
@@ -415,17 +415,11 @@ impl ImageDimensions {
     ///     array_layers: 1,
     /// };
     ///
-    /// assert_eq!(dims.max_mipmaps(), 7);
+    /// assert_eq!(dims.max_mipmaps(), 6);
     /// ```
     ///
-    /// # Panic
-    ///
-    /// May panic if the dimensions are 0.
-    ///
     pub fn max_mipmaps(&self) -> u32 {
-        let max_dim = cmp::max(cmp::max(self.width(), self.height()), self.depth());
-        let num_zeroes = 32 - (max_dim - 1).leading_zeros();
-        num_zeroes + 1
+        32 - (self.width() | self.height() | self.depth()).leading_zeros()
     }
 
     /// Returns the dimensions of the `level`th mipmap level. If `level` is 0, then the dimensions
@@ -447,19 +441,19 @@ impl ImageDimensions {
     ///
     /// assert_eq!(dims.mipmap_dimensions(0), Some(dims));
     /// assert_eq!(dims.mipmap_dimensions(1), Some(ImageDimensions::Dim2d {
-    ///     width: 512,
+    ///     width: 481,
     ///     height: 128,
     ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(6), Some(ImageDimensions::Dim2d {
-    ///     width: 16,
+    ///     width: 15,
     ///     height: 4,
     ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(9), Some(ImageDimensions::Dim2d {
-    ///     width: 2,
+    ///     width: 1,
     ///     height: 1,
     ///     cubemap_compatible: false,
     ///     array_layers: 1,
@@ -469,7 +463,7 @@ impl ImageDimensions {
     ///
     /// # Panic
     ///
-    /// In debug mode, panicks if `width`, `height` or `depth` is equal to 0. In release, returns
+    /// In debug mode, Panics if `width`, `height` or `depth` is equal to 0. In release, returns
     /// an unspecified value.
     ///
     pub fn mipmap_dimensions(&self, level: u32) -> Option<ImageDimensions> {
@@ -489,7 +483,7 @@ impl ImageDimensions {
                      debug_assert_ne!(width, 0);
                      ImageDimensions::Dim1d {
                          array_layers: array_layers,
-                         width: (((width - 1) >> level) + 1).next_power_of_two(),
+                         width: cmp::max(1, width >> level),
                      }
                  },
 
@@ -502,8 +496,8 @@ impl ImageDimensions {
                      debug_assert_ne!(width, 0);
                      debug_assert_ne!(height, 0);
                      ImageDimensions::Dim2d {
-                         width: (((width - 1) >> level) + 1).next_power_of_two(),
-                         height: (((height - 1) >> level) + 1).next_power_of_two(),
+                         width: cmp::max(1, width >> level),
+                         height: cmp::max(1, height >> level),
                          array_layers: array_layers,
                          cubemap_compatible: cubemap_compatible,
                      }
@@ -517,9 +511,9 @@ impl ImageDimensions {
                      debug_assert_ne!(width, 0);
                      debug_assert_ne!(height, 0);
                      ImageDimensions::Dim3d {
-                         width: (((width - 1) >> level) + 1).next_power_of_two(),
-                         height: (((height - 1) >> level) + 1).next_power_of_two(),
-                         depth: (((depth - 1) >> level) + 1).next_power_of_two(),
+                         width: cmp::max(1, width >> level),
+                         height: cmp::max(1, height >> level),
+                         depth: cmp::max(1, depth >> level),
                      }
                  },
              })
@@ -546,7 +540,7 @@ mod tests {
             cubemap_compatible: false,
             array_layers: 1,
         };
-        assert_eq!(dims.max_mipmaps(), 3);
+        assert_eq!(dims.max_mipmaps(), 2);
 
         let dims = ImageDimensions::Dim2d {
             width: 512,
@@ -568,67 +562,61 @@ mod tests {
         assert_eq!(dims.mipmap_dimensions(0), Some(dims));
         assert_eq!(dims.mipmap_dimensions(1),
                    Some(ImageDimensions::Dim2d {
-                            width: 256,
-                            height: 128,
+                            width: 141,
+                            height: 87,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(2),
                    Some(ImageDimensions::Dim2d {
-                            width: 128,
-                            height: 64,
+                            width: 70,
+                            height: 43,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(3),
                    Some(ImageDimensions::Dim2d {
-                            width: 64,
-                            height: 32,
+                            width: 35,
+                            height: 21,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
+
         assert_eq!(dims.mipmap_dimensions(4),
                    Some(ImageDimensions::Dim2d {
-                            width: 32,
-                            height: 16,
+                            width: 17,
+                            height: 10,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(5),
                    Some(ImageDimensions::Dim2d {
-                            width: 16,
-                            height: 8,
+                            width: 8,
+                            height: 5,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
         assert_eq!(dims.mipmap_dimensions(6),
-                   Some(ImageDimensions::Dim2d {
-                            width: 8,
-                            height: 4,
-                            cubemap_compatible: false,
-                            array_layers: 1,
-                        }));
-        assert_eq!(dims.mipmap_dimensions(7),
                    Some(ImageDimensions::Dim2d {
                             width: 4,
                             height: 2,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
-        assert_eq!(dims.mipmap_dimensions(8),
+        assert_eq!(dims.mipmap_dimensions(7),
                    Some(ImageDimensions::Dim2d {
                             width: 2,
                             height: 1,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
-        assert_eq!(dims.mipmap_dimensions(9),
+        assert_eq!(dims.mipmap_dimensions(8),
                    Some(ImageDimensions::Dim2d {
                             width: 1,
                             height: 1,
                             cubemap_compatible: false,
                             array_layers: 1,
                         }));
-        assert_eq!(dims.mipmap_dimensions(10), None);
+        assert_eq!(dims.mipmap_dimensions(9), None);
     }
 }

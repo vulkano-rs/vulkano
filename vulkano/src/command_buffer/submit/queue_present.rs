@@ -11,7 +11,6 @@ use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
 use std::ptr;
 
 use device::DeviceOwned;
@@ -158,7 +157,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 }
             };
 
-            let mut results = vec![mem::uninitialized(); self.swapchains.len()]; // TODO: alloca
+            let mut results = vec![vk::SUCCESS; self.swapchains.len()];
 
             let vk = queue.device().pointers();
             let queue = queue.internal_object_guard();
@@ -179,10 +178,9 @@ impl<'a> SubmitPresentBuilder<'a> {
 
             check_errors(vk.QueuePresentKHR(*queue, &infos))?;
 
-            // TODO: AMD driver initially didn't write the results ; check that it's been fixed
-            //for result in results {
-            //try!(check_errors(result));
-            //}
+            for result in results {
+                check_errors(result)?;
+            }
 
             Ok(())
         }
@@ -212,6 +210,10 @@ pub enum SubmitPresentError {
     /// The surface is no longer accessible and must be recreated.
     SurfaceLost,
 
+    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullscreenExclusiveLost,
+
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
@@ -225,11 +227,12 @@ impl error::Error for SubmitPresentError {
             SubmitPresentError::DeviceLost => "the connection to the device has been lost",
             SubmitPresentError::SurfaceLost => "the surface of this swapchain is no longer valid",
             SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
+            SubmitPresentError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
         }
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SubmitPresentError::OomError(ref err) => Some(err),
             _ => None,
@@ -253,6 +256,7 @@ impl From<Error> for SubmitPresentError {
             Error::DeviceLost => SubmitPresentError::DeviceLost,
             Error::SurfaceLost => SubmitPresentError::SurfaceLost,
             Error::OutOfDate => SubmitPresentError::OutOfDate,
+            Error::FullscreenExclusiveLost => SubmitPresentError::FullscreenExclusiveLost,
             _ => panic!("unexpected error: {:?}", err),
         }
     }

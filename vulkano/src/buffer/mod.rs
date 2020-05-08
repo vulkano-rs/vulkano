@@ -36,7 +36,7 @@
 //! - A [`CpuAccessibleBuffer`](cpu_access/struct.CpuAccessibleBuffer.html) is a simple buffer that
 //!   can be used to prototype. It may be removed from vulkano in the far future.
 //!
-//! Here is a quick way to choose which buffer to use. Do you need to often need to read or write
+//! Here is a quick way to choose which buffer to use. Do you often need to read or write
 //! the content of the buffer? If so, use a `CpuBufferPool`. Otherwise, do you need to be able to
 //! modify the content of the buffer after its initialization? If so, use a `DeviceLocalBuffer`.
 //! If no to both questions, use an `ImmutableBuffer`.
@@ -70,7 +70,7 @@
 //! - As a storage buffer. Storage buffers can be read and written.
 //! - As a uniform texel buffer. Contrary to a uniform buffer, the data is interpreted by the
 //!   GPU and can be for example normalized.
-//! - As a storage texel buffer. Additionnally, some data formats can be modified with atomic
+//! - As a storage texel buffer. Additionally, some data formats can be modified with atomic
 //!   operations.
 //!
 //! Using uniform/storage texel buffers requires creating a *buffer view*. See the `view` module

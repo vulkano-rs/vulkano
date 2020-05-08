@@ -115,7 +115,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
     /// > "don't know". Therefore returning `Err` is never unsafe.
-    fn check_buffer_access(&self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+    fn check_buffer_access(&self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
                            -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
@@ -132,7 +132,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
@@ -292,13 +292,13 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
@@ -319,7 +319,7 @@ pub enum AccessError {
         requested: ImageLayout,
     },
 
-    /// Trying to use an image without transitionning it from the "undefined" or "preinitialized"
+    /// Trying to use an image without transitioning it from the "undefined" or "preinitialized"
     /// layouts first.
     ImageNotInitialized {
         /// The layout that was requested for the image.
@@ -347,7 +347,7 @@ impl error::Error for AccessError {
                 unimplemented!() // TODO: find a description
             },
             AccessError::ImageNotInitialized { .. } => {
-                "trying to use an image without transitionning it from the undefined or \
+                "trying to use an image without transitioning it from the undefined or \
                  preinitialized layouts first"
             },
             AccessError::BufferNotInitialized => {
@@ -424,6 +424,10 @@ pub enum FlushError {
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
 
+    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullscreenExclusiveLost,
+
     /// The flush operation needed to block, but the timeout has elapsed.
     Timeout,
 }
@@ -437,13 +441,14 @@ impl error::Error for FlushError {
             FlushError::DeviceLost => "the connection to the device has been lost",
             FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
             FlushError::OutOfDate => "the swapchain needs to be recreated",
+            FlushError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
             FlushError::Timeout => "the flush operation needed to block, but the timeout has \
                                     elapsed",
         }
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FlushError::AccessError(ref err) => Some(err),
             FlushError::OomError(ref err) => Some(err),
@@ -474,6 +479,7 @@ impl From<SubmitPresentError> for FlushError {
             SubmitPresentError::DeviceLost => FlushError::DeviceLost,
             SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
             SubmitPresentError::OutOfDate => FlushError::OutOfDate,
+            SubmitPresentError::FullscreenExclusiveLost => FlushError::FullscreenExclusiveLost,
         }
     }
 }

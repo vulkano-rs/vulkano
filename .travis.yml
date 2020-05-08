@@ -1,51 +1,69 @@
 language: rust
-rust:
-    - nightly
-    - stable
+
+jobs:
+  fast_finish: true
+  include:
+#    - os: windows
+#      env: PYTHONPATH=C:\Python38
+#      env: PATH="C:\Python38;$PATH"
+#      rust:
+#        - stable
+#    - os: windows
+#      env: PYTHONPATH=C:\Python38
+#      env: PATH="C:\Python38;$PATH"
+#      rust:
+#        - nightly
+    - os: linux
+      dist: bionic
+      rust:
+        - stable
+    - os: linux
+      dist: bionic
+      rust:
+        - nightly
+    - os: osx
+      rust:
+        - stable
+    - os: osx
+      rust:
+        - nightly
 
 cache:
-  cargo
+  directories:
+    - $TRAVIS_HOME/.cargo/
+    - $TRAVIS_BUILD_DIR/target/debug/build
+    - $TRAVIS_BUILD_DIR/target/debug/deps
+    - $TRAVIS_BUILD_DIR/target/debug/incremental
 
-install:
-  - export CXX="g++-4.8"
+before_cache:
+  - rm -rf $TRAVIS_HOME/.cargo/registry/src
 
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    - george-edison55-precise-backports     # recent version of cmake
-    packages:
-    - gcc-4.8
-    - g++-4.8       # required to compile glslang
-    - clang
-    - cmake
-    - cmake-data
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
 
 script:
-    - cargo test --all -j 1
+  - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
+  - travis_wait 30 cargo build -j 2 --all
+  - travis_wait 30 cargo test -j 2 --all
 
 after_success:
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path glsl-to-spirv/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml
-    - |
-        [ $TRAVIS_BRANCH = master ] &&
-        [ $TRAVIS_PULL_REQUEST = false ] &&
-        cargo publish --token ${CRATESIO_TOKEN} --manifest-path vulkano-shader-derive/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vk-sys/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano-win/Cargo.toml
+  - |
+    [ $TRAVIS_BRANCH = master ] &&
+    [ $TRAVIS_PULL_REQUEST = false ] &&
+    [ $TRAVIS_OS_NAME = linux ] &&
+    travis_wait 30 cargo publish -j 2 --token ${CRATESIO_TOKEN} --manifest-path vulkano-shaders/Cargo.toml

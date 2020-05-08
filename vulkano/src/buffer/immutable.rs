@@ -19,6 +19,8 @@
 //!
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
@@ -97,6 +99,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     {
         let source = CpuAccessibleBuffer::from_data(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
+                                                    false,
                                                     data)?;
         ImmutableBuffer::from_buffer(source, usage, queue)
     }
@@ -180,6 +183,7 @@ impl<T> ImmutableBuffer<[T]> {
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
+                                                    false,
                                                     data)?;
         ImmutableBuffer::from_buffer(source, usage, queue)
     }
@@ -328,18 +332,18 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.inner.key()
+    fn conflict_key(&self) -> (u64, usize) {
+        (self.inner.key(), 0)
     }
 
     #[inline]
@@ -375,6 +379,23 @@ unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A> {
     }
 }
 
+impl<T: ?Sized, A> PartialEq for ImmutableBuffer<T, A> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, A> Eq for ImmutableBuffer<T, A> {}
+
+impl<T: ?Sized, A> Hash for ImmutableBuffer<T, A> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
+}
+
 /// Access to the immutable buffer that can be used for the initial upload.
 //#[derive(Debug)]      // TODO:
 pub struct ImmutableBufferInitialization<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
@@ -394,18 +415,18 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.buffer.inner.key()
+    fn conflict_key(&self) -> (u64, usize) {
+        (self.buffer.inner.key(), 0)
     }
 
     #[inline]
@@ -453,6 +474,23 @@ impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
     }
 }
 
+impl<T: ?Sized, A> PartialEq for ImmutableBufferInitialization<T, A> {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, A> Eq for ImmutableBufferInitialization<T, A> {}
+
+impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A> {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use buffer::BufferUsage;
@@ -469,7 +507,7 @@ mod tests {
         let (buffer, _) = ImmutableBuffer::from_data(12u32, BufferUsage::all(), queue.clone())
             .unwrap();
 
-        let destination = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0)
+        let destination = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0)
             .unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
@@ -498,6 +536,7 @@ mod tests {
 
         let destination = CpuAccessibleBuffer::from_iter(device.clone(),
                                                          BufferUsage::all(),
+                                                         false,
                                                          (0 .. 512).map(|_| 0u32))
             .unwrap();
 
@@ -549,7 +588,7 @@ mod tests {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         assert_should_panic!({
                                  // TODO: check Result error instead of panicking
@@ -575,7 +614,7 @@ mod tests {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()
@@ -600,7 +639,7 @@ mod tests {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
-        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0).unwrap();
+        let source = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
         let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
             .unwrap()

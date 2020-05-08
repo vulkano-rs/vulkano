@@ -25,7 +25,7 @@
 //!   commands (ie. everything but drawing, clearing, etc.) and cannot enter a render pass. They
 //!   can only be called from a primary command buffer outside of a render pass.
 //!
-//! Using secondary command buffers leads to slightly lower performances on the GPU, but they have
+//! Using secondary command buffers leads to slightly lower performance on the GPU, but they have
 //! two advantages on the CPU side:
 //!
 //! - Building a command buffer is a single-threaded operation, but by using secondary command
@@ -82,9 +82,11 @@ pub use self::auto::BuildError;
 pub use self::auto::ClearColorImageError;
 pub use self::auto::CopyBufferError;
 pub use self::auto::CopyBufferImageError;
+pub use self::auto::CopyImageError;
 pub use self::auto::DispatchError;
 pub use self::auto::DrawError;
 pub use self::auto::DrawIndexedError;
+pub use self::auto::DrawIndexedIndirectError;
 pub use self::auto::DrawIndirectError;
 pub use self::auto::ExecuteCommandsError;
 pub use self::auto::FillBufferError;
@@ -97,6 +99,7 @@ pub use self::traits::CommandBufferExecFuture;
 
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
+use pipeline::depth_stencil::DynamicStencilValue;
 
 pub mod pool;
 pub mod submit;
@@ -142,7 +145,10 @@ pub struct DynamicState {
     pub line_width: Option<f32>,
     pub viewports: Option<Vec<Viewport>>,
     pub scissors: Option<Vec<Scissor>>,
-    // TODO: missing fields
+    pub compare_mask: Option<DynamicStencilValue>,
+    pub write_mask: Option<DynamicStencilValue>,
+    pub reference: Option<DynamicStencilValue>,
+
 }
 
 impl DynamicState {
@@ -152,6 +158,9 @@ impl DynamicState {
             line_width: None,
             viewports: None,
             scissors: None,
+            compare_mask: None,
+            write_mask: None,
+            reference: None
         }
     }
 }

@@ -33,7 +33,6 @@ pub enum CheckCopyBufferImageTy {
 ///
 /// - Panics if the buffer and image were not created with `device`.
 ///
-// TODO: handle compressed image formats
 pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
                                         ty: CheckCopyBufferImageTy, image_offset: [u32; 3],
                                         image_size: [u32; 3], image_first_layer: u32,
@@ -98,8 +97,7 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
     image.format().ensure_accepts()?;
 
     {
-        let num_texels = image_size[0] * image_size[1] * image_size[2] * image_num_layers;
-        let required_len = num_texels as usize * image.format().rate() as usize;
+        let required_len = required_len_for_format(image.format(), image_size, image_num_layers);
         if required_len > buffer.len() {
             return Err(CheckCopyBufferImageError::BufferTooSmall {
                            required_len: required_len,
@@ -111,6 +109,39 @@ pub fn check_copy_buffer_image<B, I, P>(device: &Device, buffer: &B, image: &I,
     // TODO: check memory overlap?
 
     Ok(())
+}
+
+/// Computes the minimum required len in elements for buffer with image data in specified
+/// format of specified size.
+fn required_len_for_format<P>(format: Format, image_size: [u32; 3], image_num_layers: u32) -> usize
+where Format: AcceptsPixels<P>
+{
+    let (block_width, block_height) = format.block_dimensions();
+    let num_blocks = (image_size[0] + block_width - 1) / block_width * ((image_size[1] + block_height - 1) / block_height) * image_size[2] * image_num_layers;
+    let required_len = num_blocks as usize * format.rate() as usize;
+
+    return required_len;
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::format::Format;
+    use command_buffer::validity::copy_image_buffer::required_len_for_format;
+
+    #[test]
+    fn test_required_len_for_format() {
+        // issue #1292
+        assert_eq!(required_len_for_format::<u8>(Format::BC1_RGBUnormBlock, [2048, 2048, 1], 1), 2097152);
+        // other test cases
+        assert_eq!(required_len_for_format::<u8>(Format::R8G8B8A8Unorm, [2048, 2048, 1], 1), 16777216);
+        assert_eq!(required_len_for_format::<u8>(Format::R4G4UnormPack8, [512, 512, 1], 1), 262144);
+        assert_eq!(required_len_for_format::<u8>(Format::R8G8B8Uscaled, [512, 512, 1], 1), 786432);
+        assert_eq!(required_len_for_format::<u8>(Format::R32G32Uint, [512, 512, 1], 1), 2097152);
+        assert_eq!(required_len_for_format::<u32>(Format::R32G32Uint, [512, 512, 1], 1), 524288);
+        assert_eq!(required_len_for_format::<[u32; 2]>(Format::R32G32Uint, [512, 512, 1], 1), 262144);
+        assert_eq!(required_len_for_format::<u8>(Format::ASTC_8x8UnormBlock, [512, 512, 1], 1), 65536);
+        assert_eq!(required_len_for_format::<u8>(Format::ASTC_12x12SrgbBlock, [512, 512, 1], 1), 29584);
+    }
 }
 
 /// Error that can happen from `check_copy_buffer_image`.
@@ -165,7 +196,7 @@ impl error::Error for CheckCopyBufferImageError {
         }
     }
 
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CheckCopyBufferImageError::WrongPixelType(ref err) => {
                 Some(err)

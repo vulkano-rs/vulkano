@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -20,9 +20,9 @@ use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
 use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::LoadOp;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
@@ -59,7 +59,7 @@ impl<D> RenderPass<D>
     ///
     /// # Panic
     ///
-    /// - Can panic if it detects some violations in the restrictions. Only unexpensive checks are
+    /// - Can panic if it detects some violations in the restrictions. Only inexpensive checks are
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///
@@ -299,8 +299,8 @@ impl<D> RenderPass<D>
         let dependencies = description
             .dependency_descs()
             .map(|dependency| {
-                debug_assert!(dependency.source_subpass < passes.len());
-                debug_assert!(dependency.destination_subpass < passes.len());
+                debug_assert!(dependency.source_subpass as u32 == vk::SUBPASS_EXTERNAL || dependency.source_subpass < passes.len());
+                debug_assert!(dependency.destination_subpass as u32 == vk::SUBPASS_EXTERNAL || dependency.destination_subpass < passes.len());
 
                 vk::SubpassDependency {
                     srcSubpass: dependency.source_subpass as u32,
@@ -343,12 +343,12 @@ impl<D> RenderPass<D>
                 },
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateRenderPass(device.internal_object(),
                                              &infos,
                                              ptr::null(),
-                                             &mut output))?;
-            output
+                                             output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(RenderPass {
@@ -376,7 +376,7 @@ impl<D> RenderPass<D> {
     /// Returns the granularity of this render pass.
     ///
     /// If the render area of a render pass in a command buffer is a multiple of this granularity,
-    /// then the performances will be optimal. Performances are always optimal for render areas
+    /// then the performance will be optimal. Performances are always optimal for render areas
     /// that cover the whole framebuffer.
     pub fn granularity(&self) -> [u32; 2] {
         let mut granularity = self.granularity.lock().unwrap();
@@ -387,9 +387,10 @@ impl<D> RenderPass<D> {
 
         unsafe {
             let vk = self.device.pointers();
-            let mut out = mem::uninitialized();
-            vk.GetRenderAreaGranularity(self.device.internal_object(), self.render_pass, &mut out);
+            let mut out = MaybeUninit::uninit();
+            vk.GetRenderAreaGranularity(self.device.internal_object(), self.render_pass, out.as_mut_ptr());
 
+			let out = out.assume_init();
             debug_assert_ne!(out.width, 0);
             debug_assert_ne!(out.height, 0);
             let gran = [out.width, out.height];
@@ -417,7 +418,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         self.desc.attachment_desc(num)
     }
 
@@ -427,7 +428,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         self.desc.subpass_desc(num)
     }
 
@@ -437,7 +438,7 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         self.desc.dependency_desc(num)
     }
 }
@@ -446,7 +447,7 @@ unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
     where D: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.desc.convert_clear_values(vals)
     }
 }
@@ -496,7 +497,7 @@ pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
     type Object = vk::RenderPass;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_RENDER_PASS_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_RENDER_PASS;
 
     #[inline]
     fn internal_object(&self) -> vk::RenderPass {
@@ -525,7 +526,7 @@ impl error::Error for RenderPassCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             RenderPassCreationError::OomError(ref err) => Some(err),
             _ => None,

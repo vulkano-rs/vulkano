@@ -7,28 +7,26 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-extern crate vulkano;
-
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::{ImmutableImage, ImageUsage, ImageLayout};
+use vulkano::image::ImmutableImage;
 use vulkano::image::Dimensions;
 use vulkano::instance;
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
-use vulkano::instance::debug::{DebugCallback, MessageTypes};
+use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
 
 fn main() {
     // Vulkano Debugging Example Code
     //
-    // This example code will demonstrate using the debug functions of the Vulkano api.
+    // This example code will demonstrate using the debug functions of the Vulkano API.
     //
     // There is documentation here about how to setup debugging:
     // https://vulkan.lunarg.com/doc/view/1.0.13.0/windows/layers.html
     //
     // .. but if you just want a template of code that has everything ready to go then follow
-    // this example. First, enable debugging using this extension: VK_EXT_debug_report
+    // this example. First, enable debugging using this extension: VK_EXT_debug_utils
     let extensions = InstanceExtensions {
-        ext_debug_report: true,
+        ext_debug_utils: true,
         ..InstanceExtensions::none()
     };
 
@@ -39,8 +37,8 @@ fn main() {
     // The main layer you might want is: VK_LAYER_LUNARG_standard_validation
     // This includes a number of the other layers for you and is quite detailed.
     //
-    // Additional layers can be installed (gpu vendor provided, something you found on github, etc)
-    // and you should verify that list for safety - Volkano will return an error if you specify
+    // Additional layers can be installed (gpu vendor provided, something you found on GitHub, etc)
+    // and you should verify that list for safety - Vulkano will return an error if you specify
     // any layers that are not installed on this system. That code to do could look like this:
     println!("List of Vulkan debugging layers available to use:");
     let mut layers = instance::layers_list().unwrap();
@@ -50,7 +48,7 @@ fn main() {
 
     // NOTE: To simplify the example code we won't verify these layer(s) are actually in the layers list:
     let layer = "VK_LAYER_LUNARG_standard_validation";
-    let layers = vec![&layer];
+    let layers = vec![layer];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
     let instance = Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
@@ -62,45 +60,55 @@ fn main() {
     // Note: If you let this debug_callback binding fall out of scope then the callback will stop providing events
     // Note: There is a helper method too: DebugCallback::errors_and_warnings(&instance, |msg| {...
 
-    let all = MessageTypes {
+    let severity = MessageSeverity {
         error: true,
         warning: true,
-        performance_warning: true,
         information: true,
-        debug: true,
+        verbose: true,
     };
 
-    let _debug_callback = DebugCallback::new(&instance, all, |msg| {
-        let ty = if msg.ty.error {
+    let ty = MessageType::all();
+
+    let _debug_callback = DebugCallback::new(&instance, severity, ty, |msg| {
+        let severity = if msg.severity.error {
             "error"
-        } else if msg.ty.warning {
+        } else if msg.severity.warning {
             "warning"
-        } else if msg.ty.performance_warning {
-            "performance_warning"
-        } else if msg.ty.information {
+        } else if msg.severity.information {
             "information"
-        } else if msg.ty.debug {
-            "debug"
+        } else if msg.severity.verbose {
+            "verbose"
         } else {
             panic!("no-impl");
         };
-        println!("{} {}: {}", msg.layer_prefix, ty, msg.description);
+
+        let ty = if msg.ty.general {
+            "general"
+        } else if msg.ty.validation {
+            "validation"
+        } else if msg.ty.performance {
+            "performance" }
+        else {
+            panic!("no-impl");
+        };
+
+        println!("{} {} {}: {}", msg.layer_prefix, ty, severity, msg.description);
     }).ok();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
-    // Create vulkan objects in the same way as the other examples                                               //
+    // Create Vulkan objects in the same way as the other examples                                               //
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
-    let queue = physical.queue_families().next().expect("couldn't find a queue family");
-    let (device, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue, 0.5)]).expect("failed to create device");
+    let queue_family = physical.queue_families().next().expect("couldn't find a queue family");
+    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue_family, 0.5)]).expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
     let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
-    const data: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
-    let (image, _) = ImmutableImage::from_iter(data.iter().cloned(), dimensions, pixel_format,
+    const DATA: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
+    let _ = ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
                                                queue.clone()).unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)

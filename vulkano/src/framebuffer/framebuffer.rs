@@ -12,7 +12,7 @@ use std::cmp;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -22,9 +22,9 @@ use format::ClearValue;
 use framebuffer::AttachmentsList;
 use framebuffer::FramebufferAbstract;
 use framebuffer::IncompatibleRenderPassAttachmentError;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
@@ -241,7 +241,7 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     /// > **Note**: This is a very rare corner case and you shouldn't have to use this function
     /// > in most situations.
     #[inline]
-    pub fn boxed(self) -> FramebufferBuilder<Rp, Box<AttachmentsList>>
+    pub fn boxed(self) -> FramebufferBuilder<Rp, Box<dyn AttachmentsList>>
         where A: 'static
     {
         FramebufferBuilder {
@@ -305,12 +305,12 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 layers: dimensions[2],
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateFramebuffer(device.internal_object(),
                                               &infos,
                                               ptr::null(),
-                                              &mut output))?;
-            output
+                                              output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Framebuffer {
@@ -376,7 +376,7 @@ unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
         self.resources.as_image_view_access(index)
     }
 }
@@ -390,7 +390,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
         self.render_pass.attachment_desc(num)
     }
 
@@ -400,7 +400,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         self.render_pass.subpass_desc(num)
     }
 
@@ -410,7 +410,7 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
     }
 
     #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
         self.render_pass.dependency_desc(num)
     }
 }
@@ -419,7 +419,7 @@ unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
     where Rp: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.render_pass.convert_clear_values(vals)
     }
 }
@@ -457,7 +457,7 @@ pub struct FramebufferSys<'a>(vk::Framebuffer, PhantomData<&'a ()>);
 unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
     type Object = vk::Framebuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_FRAMEBUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_FRAMEBUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::Framebuffer {
@@ -522,7 +522,7 @@ impl error::Error for FramebufferCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FramebufferCreationError::OomError(ref err) => Some(err),
             FramebufferCreationError::IncompatibleAttachment(ref err) => Some(err),

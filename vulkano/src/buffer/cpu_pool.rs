@@ -8,6 +8,8 @@
 // according to those terms.
 
 use std::cmp;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
@@ -300,7 +302,7 @@ impl<T, A> CpuBufferPool<T, A>
     ///
     /// # Panic
     ///
-    /// Panicks if the length of the iterator didn't match the actual number of element.
+    /// Panics if the length of the iterator didn't match the actual number of element.
     ///
     pub fn chunk<I>(&self, data: I) -> Result<CpuBufferPoolChunk<T, A>, DeviceMemoryAllocError>
         where I: IntoIterator<Item = T>,
@@ -315,12 +317,10 @@ impl<T, A> CpuBufferPool<T, A>
             Err(d) => d,
         };
 
-        // TODO: choose the capacity better?
-        let next_capacity = cmp::max(data.len(), 1) *
-            match *mutex {
-                Some(ref b) => b.capacity * 2,
-                None => 3,
-            };
+        let next_capacity = match *mutex {
+            Some(ref b) if data.len() < b.capacity => 2 * b.capacity,
+            _ => 2 * data.len(),
+        };
 
         self.reset_buf(&mut mutex, next_capacity)?;
 
@@ -400,7 +400,7 @@ impl<T, A> CpuBufferPool<T, A>
     //
     // # Panic
     //
-    // Panicks if the length of the iterator didn't match the actual number of element.
+    // Panics if the length of the iterator didn't match the actual number of element.
     //
     fn try_next_impl<I>(&self, cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
                         mut data: I)
@@ -610,18 +610,22 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.buffer.inner.key() + self.index as u64
+    fn conflict_key(&self) -> (u64, usize) {
+        (
+            self.buffer.inner.key(),
+            // ensure the special cased empty buffers don't collide with a regular buffer starting at 0
+            if self.requested_len == 0 { usize::max_value() } else { self.index }
+        )
     }
 
     #[inline]
@@ -719,6 +723,29 @@ unsafe impl<T, A> DeviceOwned for CpuBufferPoolChunk<T, A>
     }
 }
 
+impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T, A> Eq for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{}
+
+impl<T, A> Hash for CpuBufferPoolChunk<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
+}
+
 impl<T, A> Clone for CpuBufferPoolSubbuffer<T, A>
     where A: MemoryPool
 {
@@ -741,17 +768,17 @@ unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
+    fn conflict_key(&self) -> (u64, usize) {
         self.chunk.conflict_key()
     }
 
@@ -783,6 +810,29 @@ unsafe impl<T, A> DeviceOwned for CpuBufferPoolSubbuffer<T, A>
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.chunk.buffer.inner.device()
+    }
+}
+
+impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{}
+
+impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
+    where A: MemoryPool
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 

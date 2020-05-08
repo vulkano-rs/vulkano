@@ -31,12 +31,11 @@
 //!
 //! ## Creating a surface from a window
 //!
-//! There are 6 extensions that each allow you to create a surface from a type of window:
+//! There are 5 extensions that each allow you to create a surface from a type of window:
 //!
 //! - `VK_KHR_xlib_surface`
 //! - `VK_KHR_xcb_surface`
 //! - `VK_KHR_wayland_surface`
-//! - `VK_KHR_mir_surface`
 //! - `VK_KHR_android_surface`
 //! - `VK_KHR_win32_surface`
 //!
@@ -121,7 +120,7 @@
 //! on the device (and not on the instance like `VK_KHR_surface`):
 //!
 //! ```no_run
-//! # use vulkano::instance::DeviceExtensions;
+//! # use vulkano::device::DeviceExtensions;
 //! let ext = DeviceExtensions {
 //!     khr_swapchain: true,
 //!     .. DeviceExtensions::none()
@@ -144,7 +143,10 @@
 //! let dimensions = caps.current_extent.unwrap_or([640, 480]);
 //!
 //! // Try to use double-buffering.
-//! let buffers_count = max(min(2, caps.min_image_count), caps.max_image_count.unwrap_or(2));
+//! let buffers_count = match caps.max_image_count {
+//!     None => max(2, caps.min_image_count),
+//!     Some(limit) => min(max(2, caps.min_image_count), limit)
+//! };
 //!
 //! // Preserve the current surface transform.
 //! let transform = caps.current_transform;
@@ -163,19 +165,20 @@
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
 //! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha};
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullscreenExclusive};
 //! # fn create_swapchain(
 //! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
-//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
-//! # ) -> Result<(), Box<std::error::Error>> {
+//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
+//! #     present_mode: PresentMode, fullscreen_exclusive: FullscreenExclusive
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // The created swapchain will be used as a color attachment for rendering.
 //! let usage = ImageUsage {
 //!     color_attachment: true,
 //!     .. ImageUsage::none()
 //! };
 //!
-//! let sharing_mode = SharingMode::Exclusive(present_queue.family().id());
+//! let sharing_mode = SharingMode::Exclusive;
 //!
 //! // Create the swapchain and its buffers.
 //! let (swapchain, buffers) = Swapchain::new(
@@ -201,10 +204,12 @@
 //!     composite_alpha,
 //!     // How to present images.
 //!     present_mode,
+//!     // How to handle fullscreen exclusivity
+//!     fullscreen_exclusive,
 //!     // Clip the parts of the buffer which aren't visible.
 //!     true,
 //!     // No previous swapchain.
-//!     None
+//!     ColorSpace::SrgbNonLinear
 //! )?;
 //!
 //! # Ok(())
@@ -216,7 +221,7 @@
 //!
 //! ## Acquiring and presenting images
 //!
-//! Once you created a swapchain and retreived all the images that belong to it (see previous
+//! Once you created a swapchain and retrieved all the images that belong to it (see previous
 //! section), you can draw on it. This is done in three steps:
 //!
 //!  - Call `swapchain::acquire_next_image`. This function will return the index of the image
@@ -229,12 +234,25 @@
 //!    the implementation that you are finished drawing to the image and that it can queue a
 //!    command to present the image on the screen after the draw operations are finished.
 //!
-//! TODO: add example here
+//! ```
+//! use vulkano::swapchain;
+//! use vulkano::sync::GpuFuture;
+//! # let queue: ::std::sync::Arc<::vulkano::device::Queue> = return;
+//! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain<()>> = return;
+//! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
-//!     let index = swapchain::acquire_next_image(None).unwrap();
-//!     draw(images[index]);
-//!     swapchain::present(queue, index).unwrap();
+//!     # let mut command_buffer: ::vulkano::command_buffer::AutoCommandBuffer<()> = return;
+//!     let (image_num, suboptimal, acquire_future)
+//!         = swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
+//!
+//!     // The command_buffer contains the draw commands that modify the framebuffer
+//!     // constructed from images[image_num]
+//!     acquire_future
+//!         .then_execute(queue.clone(), command_buffer).unwrap()
+//!         .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+//!         .then_signal_fence_and_flush().unwrap();
 //! }
+//! ```
 //!
 //! ## Recreating a swapchain
 //!
@@ -247,10 +265,8 @@
 //! rendering, you will need to *recreate* the swapchain by creating a new swapchain and passing
 //! as last parameter the old swapchain.
 //!
-//! TODO: suboptimal stuff
 //!
 //! ```
-//! # use std::time::Duration;
 //! use vulkano::swapchain;
 //! use vulkano::swapchain::AcquireError;
 //! use vulkano::sync::GpuFuture;
@@ -262,13 +278,13 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate_with_dimension([1024, 768]).unwrap();
+//!         swapchain = swapchain.0.recreate_with_dimensions([1024, 768]).unwrap();
 //!         recreate_swapchain = false;
 //!     }
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+//!     let (index, suboptimal, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
 //!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)
@@ -279,9 +295,11 @@
 //!     let final_future = acq_future
 //!         // .then_execute(...)
 //!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
-//!         .then_signal_fence();
+//!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
 //!
-//!     final_future.flush().unwrap();      // TODO: PresentError?
+//!     if suboptimal {
+//!         recreate_swapchain = true;
+//!     }
 //! }
 //! ```
 //!
@@ -314,6 +332,8 @@ pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;
 pub use self::swapchain::present;
 pub use self::swapchain::present_incremental;
+pub use self::swapchain::FullscreenExclusive;
+pub use self::swapchain::FullscreenExclusiveError;
 
 mod capabilities;
 pub mod display;

@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
+/// Builds a `RenderPass` object whose template parameter is of indeterminate type.
 #[macro_export]
 macro_rules! single_pass_renderpass {
     (
@@ -19,7 +19,7 @@ macro_rules! single_pass_renderpass {
             $(resolve: [$($resolve_atch:ident),*])*$(,)*
         }
     ) => (
-        ordered_passes_renderpass!(
+        $crate::ordered_passes_renderpass!(
             $device,
             attachments: { $($a)* },
             passes: [
@@ -34,7 +34,7 @@ macro_rules! single_pass_renderpass {
     )
 }
 
-/// Builds a `RenderPass` object whose template parameter is of undeterminate type.
+/// Builds a `RenderPass` object whose template parameter is of indeterminate type.
 #[macro_export]
 macro_rules! ordered_passes_renderpass {
     (
@@ -72,9 +72,9 @@ macro_rules! ordered_passes_renderpass {
             use $crate::format::Format;
             use $crate::framebuffer::RenderPassDesc;
             use $crate::framebuffer::RenderPassDescClearValues;
-            use $crate::framebuffer::LayoutAttachmentDescription;
-            use $crate::framebuffer::LayoutPassDescription;
-            use $crate::framebuffer::LayoutPassDependencyDescription;
+            use $crate::framebuffer::AttachmentDescription;
+            use $crate::framebuffer::PassDescription;
+            use $crate::framebuffer::PassDependencyDescription;
             use $crate::image::ImageLayout;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
@@ -93,7 +93,7 @@ macro_rules! ordered_passes_renderpass {
                 }
 
                 #[inline]
-                fn attachment_desc(&self, id: usize) -> Option<LayoutAttachmentDescription> {
+                fn attachment_desc(&self, id: usize) -> Option<AttachmentDescription> {
                     attachment(self, id)
                 }
 
@@ -103,7 +103,7 @@ macro_rules! ordered_passes_renderpass {
                 }
 
                 #[inline]
-                fn subpass_desc(&self, id: usize) -> Option<LayoutPassDescription> {
+                fn subpass_desc(&self, id: usize) -> Option<PassDescription> {
                     subpass(id)
                 }
 
@@ -113,13 +113,13 @@ macro_rules! ordered_passes_renderpass {
                 }
 
                 #[inline]
-                fn dependency_desc(&self, id: usize) -> Option<LayoutPassDependencyDescription> {
+                fn dependency_desc(&self, id: usize) -> Option<PassDependencyDescription> {
                     dependency(id)
                 }
             }
 
             unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
-                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<dyn Iterator<Item = ClearValue>> {
                     // FIXME: safety checks
                     Box::new(values.into_iter())
                 }
@@ -136,7 +136,7 @@ macro_rules! ordered_passes_renderpass {
             }
 
             #[inline]
-            fn attachment(desc: &CustomRenderPassDesc, id: usize) -> Option<LayoutAttachmentDescription> {
+            fn attachment(desc: &CustomRenderPassDesc, id: usize) -> Option<AttachmentDescription> {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
 
@@ -146,7 +146,7 @@ macro_rules! ordered_passes_renderpass {
                     if id == num {
                         let (initial_layout, final_layout) = attachment_layouts(num);
 
-                        return Some($crate::framebuffer::LayoutAttachmentDescription {
+                        return Some($crate::framebuffer::AttachmentDescription {
                             format: desc.$atch_name.0,
                             samples: desc.$atch_name.1,
                             load: $crate::framebuffer::LoadOp::$load,
@@ -175,7 +175,7 @@ macro_rules! ordered_passes_renderpass {
             }
 
             #[inline]
-            fn subpass(id: usize) -> Option<LayoutPassDescription> {
+            fn subpass(id: usize) -> Option<PassDescription> {
                 #![allow(unused_assignments)]
                 #![allow(unused_mut)]
                 #![allow(unused_variables)]
@@ -195,7 +195,7 @@ macro_rules! ordered_passes_renderpass {
                             depth = Some(($depth_atch, ImageLayout::DepthStencilAttachmentOptimal));
                         )*
 
-                        let mut desc = LayoutPassDescription {
+                        let mut desc = PassDescription {
                             color_attachments: vec![
                                 $(
                                     ($color_atch, ImageLayout::ColorAttachmentOptimal)
@@ -238,14 +238,14 @@ macro_rules! ordered_passes_renderpass {
             }
 
             #[inline]
-            fn dependency(id: usize) -> Option<LayoutPassDependencyDescription> {
+            fn dependency(id: usize) -> Option<PassDependencyDescription> {
                 let num_passes = num_subpasses();
 
                 if id + 1 >= num_passes {
                     return None;
                 }
 
-                Some(LayoutPassDependencyDescription {
+                Some(PassDependencyDescription {
                     source_subpass: id,
                     destination_subpass: id + 1,
                     source_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
@@ -312,18 +312,6 @@ macro_rules! ordered_passes_renderpass {
                 })*
 
                 $(if $atch_name == num {
-                    // If the clear OP is Clear or DontCare, default to the Undefined layout.
-                    if initial_layout == Some(ImageLayout::DepthStencilAttachmentOptimal) ||
-                        initial_layout == Some(ImageLayout::ColorAttachmentOptimal) ||
-                        initial_layout == Some(ImageLayout::TransferDstOptimal)
-                    {
-                        if $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::Clear ||
-                            $crate::framebuffer::LoadOp::$load == $crate::framebuffer::LoadOp::DontCare
-                        {
-                            initial_layout = Some(ImageLayout::Undefined);
-                        }
-                    }
-
                     $(initial_layout = Some($init_layout);)*
                     $(final_layout = Some($final_layout);)*
                 })*

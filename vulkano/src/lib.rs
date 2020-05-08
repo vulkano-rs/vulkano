@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+#![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 //! Safe and rich Rust wrapper around the Vulkan API.
 //!
 //! # Brief summary of Vulkan
@@ -21,7 +22,7 @@
 //!
 //! - Once you have chosen a physical device to use, you can create a
 //!   [`Device`](device/index.html) object from it. The `Device` is the most important
-//!   object of Vulkan, as it represents an open channel of communicaton with a physical device.
+//!   object of Vulkan, as it represents an open channel of communication with a physical device.
 //!   You always need to have one before you can do interesting things with Vulkan.
 //!
 //! - [*Buffers*](buffer/index.html) and [*images*](image/index.html) can be used to store data on
@@ -73,6 +74,8 @@ pub extern crate half;
 #[macro_use]
 mod tests;
 
+#[macro_use]
+mod extensions;
 mod features;
 mod version;
 
@@ -125,8 +128,8 @@ pub unsafe trait VulkanObject {
     /// The type of the object.
     type Object: VulkanHandle;
 
-    /// The `DebugReportObjectTypeEXT` of the internal Vulkan handle.
-    const TYPE: vk::DebugReportObjectTypeEXT;
+    /// The `ObjectType` of the internal Vulkan handle.
+    const TYPE: vk::ObjectType;
 
     /// Returns a reference to the object.
     fn internal_object(&self) -> Self::Object;
@@ -195,7 +198,7 @@ enum Success {
 /// All possible errors returned by any Vulkan function.
 ///
 /// This type is not public. Instead all public error types should implement `From<Error>` and
-/// panic for error code that arent supposed to happen.
+/// panic for error code that aren't supposed to happen.
 #[derive(Debug, Copy, Clone)]
 #[repr(u32)]
 // TODO: being pub is necessary because of the weird visibility rules in rustc
@@ -217,6 +220,7 @@ pub(crate) enum Error {
     IncompatibleDisplay = vk::ERROR_INCOMPATIBLE_DISPLAY_KHR,
     ValidationFailed = vk::ERROR_VALIDATION_FAILED_EXT,
     OutOfPoolMemory = vk::ERROR_OUT_OF_POOL_MEMORY_KHR,
+    FullscreenExclusiveLost = vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
 }
 
 /// Checks whether the result returned correctly.
@@ -246,6 +250,7 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
         vk::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
+        vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => Err(Error::FullscreenExclusiveLost),
         vk::ERROR_INVALID_SHADER_NV => panic!("Vulkan function returned \
                                                VK_ERROR_INVALID_SHADER_NV"),
         c => unreachable!("Unexpected error code returned by Vulkan: {}", c),

@@ -10,13 +10,13 @@
 use std::ops::BitOr;
 use vk;
 
-/// Describes how a buffer is going to be used. This is **not** an optimization.
+/// Describes how a buffer is going to be used. This is **not** just an optimization.
 ///
 /// If you try to use a buffer in a way that you didn't declare, a panic will happen.
 ///
 /// Some methods are provided to build `BufferUsage` structs for some common situations. However
 /// there is no restriction in the combination of BufferUsages that can be enabled.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct BufferUsage {
     pub transfer_source: bool,
     pub transfer_destination: bool,

@@ -10,7 +10,7 @@
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
@@ -29,9 +29,9 @@ use vk;
 
 /// A fence is used to know when a command buffer submission has finished its execution.
 ///
-/// When a command buffer accesses a ressource, you have to ensure that the CPU doesn't access
-/// the same ressource simultaneously (except for concurrent reads). Therefore in order to know
-/// when the CPU can access a ressource again, a fence has to be used.
+/// When a command buffer accesses a resource, you have to ensure that the CPU doesn't access
+/// the same resource simultaneously (except for concurrent reads). Therefore in order to know
+/// when the CPU can access a resource again, a fence has to be used.
 #[derive(Debug)]
 pub struct Fence<D = Arc<Device>>
     where D: SafeDeref<Target = Device>
@@ -107,12 +107,12 @@ impl<D> Fence<D>
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateFence(device.internal_object(),
                                         &infos,
                                         ptr::null(),
-                                        &mut output))?;
-            output
+                                        output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Fence {
@@ -307,7 +307,7 @@ unsafe impl<D> VulkanObject for Fence<D>
 {
     type Object = vk::Fence;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_FENCE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_FENCE;
 
     #[inline]
     fn internal_object(&self) -> vk::Fence {
@@ -356,7 +356,7 @@ impl error::Error for FenceWaitError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FenceWaitError::OomError(ref err) => Some(err),
             _ => None,

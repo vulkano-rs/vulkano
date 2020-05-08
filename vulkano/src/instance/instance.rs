@@ -13,11 +13,14 @@ use std::error;
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::mem;
 use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
+use std::mem::MaybeUninit;
 
 use Error;
 use OomError;
@@ -30,9 +33,9 @@ use instance::loader::Loader;
 use instance::loader::LoadingError;
 use vk;
 
-use features::Features;
 use instance::{InstanceExtensions, RawInstanceExtensions};
 use version::Version;
+use features::Features;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -52,7 +55,7 @@ use version::Version;
 ///
 /// A layer is a component that will hook and potentially modify the Vulkan function calls.
 /// For example, activating a layer could add a frames-per-second counter on the screen, or it
-/// could send informations to a debugger that will debug your application.
+/// could send information to a debugger that will debug your application.
 ///
 /// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
 /// > and Linux layers can be installed by third party installers or by package managers and can
@@ -68,19 +71,25 @@ use version::Version;
 ///
 /// ## Example
 ///
-/// ```ignore
-/// // FIXME: this example doesn't run because of ownership problems ; Instance::new() needs a tweak
-/// use vulkano::instance;
-/// use vulkano::instance::Instance;
-/// use vulkano::instance::InstanceExtensions;
-///
-/// // For the sake of the example, we activate all the layers that contain the word "foo" in their
-/// // description.
-/// let layers = instance::layers_list().unwrap()
+/// ```
+/// # use vulkano::instance;
+/// # use vulkano::instance::Instance;
+/// # use vulkano::instance::InstanceExtensions;
+/// # use std::sync::Arc;
+/// # use std::error::Error;
+/// # fn test() -> Result<Arc<Instance>, Box<Error>> {
+/// // For the sake of the example, we activate all the layers that
+/// // contain the word "foo" in their description.
+/// let layers: Vec<_> = instance::layers_list()?
 ///     .filter(|l| l.description().contains("foo"))
+///     .collect();
+///
+/// let layer_names = layers.iter()
 ///     .map(|l| l.name());
 ///
-/// let instance = Instance::new(None, &InstanceExtensions::none(), layers).unwrap();
+/// let instance = Instance::new(None, &InstanceExtensions::none(), layer_names)?;
+/// # Ok(instance)
+/// # }
 /// ```
 // TODO: mention that extensions must be supported by layers as well
 pub struct Instance {
@@ -88,9 +97,9 @@ pub struct Instance {
     //alloc: Option<Box<Alloc + Send + Sync>>,
     physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
-    extensions: InstanceExtensions,
+    extensions: RawInstanceExtensions,
     layers: SmallVec<[CString; 16]>,
-    function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>,
+    function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
 }
 
 // TODO: fix the underlying cause instead
@@ -127,12 +136,12 @@ impl Instance {
     //       the choice to Vulkan
     pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
                            -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a &'a str>,
+        where L: IntoIterator<Item = &'a str>,
               Ext: Into<RawInstanceExtensions>
     {
         let layers = layers
             .into_iter()
-            .map(|&layer| CString::new(layer).unwrap())
+            .map(|layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
         Instance::new_inner(app_infos,
@@ -142,15 +151,15 @@ impl Instance {
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.
-    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<Loader + Send + Sync>>,
+    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
                                    app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
                                    -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a &'a str>,
+        where L: IntoIterator<Item = &'a str>,
               Ext: Into<RawInstanceExtensions>
     {
         let layers = layers
             .into_iter()
-            .map(|&layer| CString::new(layer).unwrap())
+            .map(|layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
         Instance::new_inner(app_infos,
@@ -161,7 +170,7 @@ impl Instance {
 
     fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
                  layers: SmallVec<[CString; 16]>,
-                 function_pointers: OwnedOrRef<FunctionPointers<Box<Loader + Send + Sync>>>)
+                 function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>)
                  -> Result<Arc<Instance>, InstanceCreationError> {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
@@ -215,7 +224,7 @@ impl Instance {
                     .unwrap_or(0),
                 apiVersion: Version {
                     major: 1,
-                    minor: 0,
+                    minor: 1,
                     patch: 0,
                 }.into_vulkan_version(), // TODO:
             })
@@ -237,7 +246,7 @@ impl Instance {
 
         // Creating the Vulkan instance.
         let instance = unsafe {
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             let infos = vk::InstanceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
                 pNext: ptr::null(),
@@ -254,8 +263,8 @@ impl Instance {
             };
 
             let entry_points = function_pointers.entry_points();
-            check_errors(entry_points.CreateInstance(&infos, ptr::null(), &mut output))?;
-            output
+            check_errors(entry_points.CreateInstance(&infos, ptr::null(), output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         // Loading the function pointers of the newly-created instance.
@@ -276,12 +285,11 @@ impl Instance {
             devices
         };
 
-        // TODO: should be Into
-        let extensions: InstanceExtensions = (&extensions).into();
+        let vk_khr_get_physical_device_properties2 = CString::new(b"VK_KHR_get_physical_device_properties2".to_vec()).unwrap();
 
         // Getting the properties of all physical devices.
         // If possible, we use VK_KHR_get_physical_device_properties2.
-        let physical_devices = if extensions.khr_get_physical_device_properties2 {
+        let physical_devices = if extensions.iter().any(|v| *v == vk_khr_get_physical_device_properties2) {
             Instance::init_physical_devices2(&vk, physical_devices, &extensions)
         } else {
             Instance::init_physical_devices(&vk, physical_devices)
@@ -305,9 +313,9 @@ impl Instance {
 
         for device in physical_devices.into_iter() {
             let properties: vk::PhysicalDeviceProperties = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceProperties(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceProperties(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             let queue_families = unsafe {
@@ -321,15 +329,15 @@ impl Instance {
             };
 
             let memory: vk::PhysicalDeviceMemoryProperties = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceMemoryProperties(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceMemoryProperties(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             let available_features: vk::PhysicalDeviceFeatures = unsafe {
-                let mut output = mem::uninitialized();
-                vk.GetPhysicalDeviceFeatures(device, &mut output);
-                output
+                let mut output = MaybeUninit::uninit();
+                vk.GetPhysicalDeviceFeatures(device, output.as_mut_ptr());
+                output.assume_init()
             };
 
             output.push(PhysicalDeviceInfos {
@@ -347,7 +355,7 @@ impl Instance {
     /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
     fn init_physical_devices2(vk: &vk::InstancePointers,
                               physical_devices: Vec<vk::PhysicalDevice>,
-                              extensions: &InstanceExtensions)
+                              extensions: &RawInstanceExtensions)
                               -> Vec<PhysicalDeviceInfos> {
         let mut output = Vec::with_capacity(physical_devices.len());
 
@@ -356,7 +364,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
                     pNext: ptr::null_mut(),
-                    properties: mem::uninitialized(),
+                    properties: mem::zeroed(),
                 };
 
                 vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
@@ -372,7 +380,7 @@ impl Instance {
                              vk::QueueFamilyProperties2KHR {
                                  sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
                                  pNext: ptr::null_mut(),
-                                 queueFamilyProperties: mem::uninitialized(),
+                                 queueFamilyProperties: mem::zeroed(),
                              }
                          })
                     .collect::<Vec<_>>();
@@ -390,7 +398,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceMemoryProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_MEMORY_PROPERTIES_2_KHR,
                     pNext: ptr::null_mut(),
-                    memoryProperties: mem::uninitialized(),
+                    memoryProperties: mem::zeroed(),
                 };
                 vk.GetPhysicalDeviceMemoryProperties2KHR(device, &mut output);
                 output.memoryProperties
@@ -400,7 +408,7 @@ impl Instance {
                 let mut output = vk::PhysicalDeviceFeatures2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
                     pNext: ptr::null_mut(),
-                    features: mem::uninitialized(),
+                    features: mem::zeroed(),
                 };
                 vk.GetPhysicalDeviceFeatures2KHR(device, &mut output);
                 output.features
@@ -420,7 +428,7 @@ impl Instance {
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever
     /// it needs to allocate memory on the host.
     ///
-    /// Note that this allocator can be overriden when you create a `Device`, a `MemoryPool`, etc.
+    /// Note that this allocator can be overridden when you create a `Device`, a `MemoryPool`, etc.
     pub fn with_alloc(app_infos: Option<&ApplicationInfo>, alloc: Box<Alloc + Send + Sync>) -> Arc<Instance> {
         unimplemented!()
     }*/
@@ -443,10 +451,15 @@ impl Instance {
     ///
     /// let extensions = InstanceExtensions::supported_by_core().unwrap();
     /// let instance = Instance::new(None, &extensions, None).unwrap();
-    /// assert_eq!(instance.loaded_extensions(), &extensions);
+    /// assert_eq!(instance.loaded_extensions(), extensions);
     /// ```
     #[inline]
-    pub fn loaded_extensions(&self) -> &InstanceExtensions {
+    pub fn loaded_extensions(&self) -> InstanceExtensions {
+        InstanceExtensions::from(&self.extensions)
+    }
+
+     #[inline]
+    pub fn raw_loaded_extensions(&self) -> &RawInstanceExtensions {
         &self.extensions
     }
 
@@ -468,7 +481,7 @@ impl fmt::Debug for Instance {
 unsafe impl VulkanObject for Instance {
     type Object = vk::Instance;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_INSTANCE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_INSTANCE;
 
     #[inline]
     fn internal_object(&self) -> vk::Instance {
@@ -482,6 +495,22 @@ impl Drop for Instance {
         unsafe {
             self.vk.DestroyInstance(self.instance, ptr::null());
         }
+    }
+}
+
+impl PartialEq for Instance {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.instance == other.instance
+    }
+}
+
+impl Eq for Instance {}
+
+impl Hash for Instance {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.instance.hash(state);
     }
 }
 
@@ -613,7 +642,7 @@ impl error::Error for InstanceCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),
@@ -942,7 +971,7 @@ impl<'a> PhysicalDevice<'a> {
 unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
     type Object = vk::PhysicalDevice;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_PHYSICAL_DEVICE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PHYSICAL_DEVICE;
 
     #[inline]
     fn internal_object(&self) -> vk::PhysicalDevice {
@@ -1032,6 +1061,28 @@ impl<'a> QueueFamily<'a> {
         self.physical_device.infos().queue_families[self.id as usize].queueCount as usize
     }
 
+    /// If timestamps are supported, returns the number of bits supported by timestamp operations.
+    /// The returned value will be in the range 36..64.
+    /// If timestamps are not supported, returns None.
+    #[inline]
+    pub fn timestamp_valid_bits(&self) -> Option<u32> {
+        let value = self.physical_device.infos().queue_families[self.id as usize].timestampValidBits;
+        if value == 0 {
+            None
+        } else {
+            Some(value)
+        }
+    }
+
+    /// Returns the minimum granularity supported for image transfers in terms
+    /// of `[width, height, depth]`
+    #[inline]
+    pub fn min_image_transfer_granularity(&self) -> [u32; 3] {
+        let ref granularity = self.physical_device.infos().queue_families[self.id as usize]
+            .minImageTransferGranularity;
+        [granularity.width, granularity.height, granularity.depth]
+    }
+
     /// Returns true if queues of this family can execute graphics operations.
     #[inline]
     pub fn supports_graphics(&self) -> bool {
@@ -1045,15 +1096,13 @@ impl<'a> QueueFamily<'a> {
     }
 
     /// Returns true if queues of this family can execute transfer operations.
-    ///
-    /// > **Note**: Queues that support graphics or compute operations also always support transfer
-    /// > operations. As of writing this, this function will always return true. The purpose of
-    /// > this function is to be future-proofed in case queues that don't support transfer
-    /// > operations are ever added to Vulkan.
+    /// > **Note**: While all queues that can perform graphics or compute operations can implicitly perform
+    /// > transfer operations, graphics & compute queues only optionally indicate support for tranfers.
+    /// > Many discrete cards will have one queue family that exclusively sets the VK_QUEUE_TRANSFER_BIT
+    /// > to indicate a special relationship with the DMA module and more efficient transfers.
     #[inline]
-    pub fn supports_transfers(&self) -> bool {
-        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0 || self.supports_graphics() ||
-            self.supports_compute()
+    pub fn explicitly_supports_transfers(&self) -> bool {
+        (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
     }
 
     /// Returns true if queues of this family can execute sparse resources binding operations.
@@ -1068,6 +1117,14 @@ impl<'a> QueueFamily<'a> {
         self.physical_device.infos().queue_families[self.id as usize].queueFlags
     }
 }
+
+impl<'a> PartialEq for QueueFamily<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.physical_device.internal_object() == other.physical_device.internal_object()
+    }
+}
+
+impl<'a> Eq for QueueFamily<'a> { }
 
 /// Iterator for all the queue families available on a physical device.
 #[derive(Debug, Clone)]

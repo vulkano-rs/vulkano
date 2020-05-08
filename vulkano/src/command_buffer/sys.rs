@@ -13,7 +13,6 @@ use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-use std::ffi::CStr;
 
 use OomError;
 use VulkanObject;
@@ -47,6 +46,7 @@ use pipeline::GraphicsPipelineAbstract;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
+use pipeline::depth_stencil::StencilFaceFlags;
 use query::QueryPipelineStatisticFlags;
 use query::UnsafeQueriesRange;
 use query::UnsafeQuery;
@@ -55,6 +55,7 @@ use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
 use vk;
+use std::ffi::CStr;
 
 /// Determines the kind of command buffer that we want to create.
 #[derive(Debug, Clone)]
@@ -1029,7 +1030,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     #[inline]
     pub unsafe fn copy_query_pool_results(&mut self, queries: UnsafeQueriesRange,
-                                          destination: &BufferAccess, stride: usize) {
+                                          destination: &dyn BufferAccess, stride: usize) {
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage_transfer_destination());
@@ -1342,32 +1343,31 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         vk.CmdSetLineWidth(cmd, line_width);
     }
 
-    // TODO: missing enum for face_mask
-    /*/// Calls `vkCmdSetStencilCompareMask` on the builder.
-    #[inline]
-    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: , compare_mask: u32) {
-        let vk = self.device().pointers();
-        let cmd = self.internal_object();
-        vk.CmdSetStencilCompareMask(cmd, face_mask, compare_mask);
-    }*/
 
-    // TODO: missing enum for face_mask
-    /*/// Calls `vkCmdSetStencilReference` on the builder.
+    /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, face_mask: , reference: u32) {
+    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: StencilFaceFlags, compare_mask: u32) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdSetStencilReference(cmd, face_mask, reference);
-    }*/
+        vk.CmdSetStencilCompareMask(cmd, face_mask as u32, compare_mask);
+    }
 
-    // TODO: missing enum for face_mask
-    /*/// Calls `vkCmdSetStencilWriteMask` on the builder.
+
+    /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: , write_mask: u32) {
+    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaceFlags, reference: u32) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdSetStencilWriteMask(cmd, face_mask, write_mask);
-    }*/
+        vk.CmdSetStencilReference(cmd, face_mask as u32, reference);
+    }
+
+    /// Calls `vkCmdSetStencilWriteMask` on the builder.
+    #[inline]
+    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaceFlags, write_mask: u32) {
+        let vk = self.device().pointers();
+        let cmd = self.internal_object();
+        vk.CmdSetStencilWriteMask(cmd, face_mask as u32, write_mask);
+    }
 
     /// Calls `vkCmdSetScissor` on the builder.
     ///
@@ -1472,10 +1472,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                              query.index());
     }
 
-    /// Calls `vkCmdDebugMarkerBeginEXT` on the builder.
-    ///
-    /// # Panics
-    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    /// Calls `vkCmdBeginDebugUtilsLabelEXT` on the builder.
     ///
     /// # Safety
     /// The command pool that this command buffer was allocated from must support graphics or
@@ -1484,36 +1481,28 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        let info = vk::DebugMarkerMarkerInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+        let info = vk::DebugUtilsLabelEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
             pNext: ptr::null(),
-            pMarkerName: name.as_ptr(),
-            color: color,
+            pLabelName: name.as_ptr(),
+            color,
         };
-        vk.CmdDebugMarkerBeginEXT(cmd, &info);
+        vk.CmdBeginDebugUtilsLabelEXT(cmd, &info);
     }
 
-    /// Calls `vkCmdDebugMarkerEndEXT` on the builder.
-    ///
-    /// # Panics
-    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
     ///
     /// # Safety
-    /// There must be an outstanding `vkCmdDebugMarkerBeginEXT` command prior to the
-    /// `vkCmdDebugMarkerEndEXT` on the queue that this command buffer is submitted to. If the
-    /// matching `vkCmdDebugMarkerBeginEXT` command was in a secondary command buffer, the
-    /// `vkCmdDebugMarkerEndEXT` must be in the same command buffer.
+    /// There must be an outstanding `vkCmdBeginDebugUtilsLabelEXT` command prior to the
+    /// `vkQueueEndDebugUtilsLabelEXT` on the queue tha `CommandBuffer` is submitted to.
     #[inline]
     pub unsafe fn debug_marker_end(&mut self) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdDebugMarkerEndEXT(cmd);
+        vk.CmdEndDebugUtilsLabelEXT(cmd);
     }
 
-    /// Calls `vkCmdDebugMarkerInsertEXT` on the builder.
-    ///
-    /// # Panics
-    /// Requires the `VK_EXT_debug_marker` device extension to be loaded.
+    /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
     ///
     /// # Safety
     /// The command pool that this command buffer was allocated from must support graphics or
@@ -1522,13 +1511,13 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        let info = vk::DebugMarkerMarkerInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT,
+        let info = vk::DebugUtilsLabelEXT {
+            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
             pNext: ptr::null(),
-            pMarkerName: name.as_ptr(),
-            color: color,
+            pLabelName: name.as_ptr(),
+            color,
         };
-        vk.CmdDebugMarkerInsertEXT(cmd, &info);
+        vk.CmdInsertDebugUtilsLabelEXT(cmd, &info);
     }
 }
 
@@ -1542,7 +1531,7 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBufferBuilder<P> {
 unsafe impl<P> VulkanObject for UnsafeCommandBufferBuilder<P> {
     type Object = vk::CommandBuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
@@ -1798,7 +1787,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     ///
     /// Also adds an execution dependency similar to `add_execution_dependency`.
     ///
-    /// Also allows transfering buffer ownership between queues.
+    /// Also allows transferring buffer ownership between queues.
     ///
     /// # Safety
     ///
@@ -1849,7 +1838,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     /// Adds an image memory barrier. This is the equivalent of `add_buffer_memory_barrier` but
     /// for images.
     ///
-    /// In addition to transfering image ownership between queues, it also allows changing the
+    /// In addition to transferring image ownership between queues, it also allows changing the
     /// layout of images.
     ///
     /// Also adds an execution dependency similar to `add_execution_dependency`.
@@ -1952,7 +1941,7 @@ unsafe impl<P> DeviceOwned for UnsafeCommandBuffer<P> {
 unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> {
     type Object = vk::CommandBuffer;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_COMMAND_BUFFER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {

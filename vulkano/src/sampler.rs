@@ -64,7 +64,7 @@
 
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
@@ -152,12 +152,12 @@ impl Sampler {
     ///
     /// `mip_lod_bias` is a value to add to .
     ///
-    /// `max_anisotropy` must be superior or equal to 1.0. If superior to 1.0, the implementation
-    /// will use anistropic filtering. Using a value superior to 1.0 requires the
-    /// `sampler_anisotropy` feature to be enabled when creating the device.
+    /// `max_anisotropy` must be greater than or equal to 1.0. If greater than 1.0, the
+    /// implementation will use anisotropic filtering. Using a value greater than 1.0 requires
+    /// the `sampler_anisotropy` feature to be enabled when creating the device.
     ///
     /// `min_lod` and `max_lod` are respectively the minimum and maximum mipmap level to use.
-    /// `max_lod` must always be superior or equal to `min_lod`.
+    /// `max_lod` must always be greater than or equal to `min_lod`.
     ///
     /// # Panic
     ///
@@ -316,12 +316,12 @@ impl Sampler {
                 unnormalizedCoordinates: vk::FALSE,
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSampler(device.internal_object(),
                                           &infos,
                                           ptr::null(),
-                                          &mut output))?;
-            output
+                                          output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Arc::new(Sampler {
@@ -403,12 +403,12 @@ impl Sampler {
                 unnormalizedCoordinates: vk::TRUE,
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateSampler(device.internal_object(),
                                           &infos,
                                           ptr::null(),
-                                          &mut output))?;
-            output
+                                          output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Arc::new(Sampler {
@@ -482,7 +482,7 @@ unsafe impl DeviceOwned for Sampler {
 unsafe impl VulkanObject for Sampler {
     type Object = vk::Sampler;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SAMPLER_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SAMPLER;
 
     #[inline]
     fn internal_object(&self) -> vk::Sampler {
@@ -527,8 +527,8 @@ pub enum MipmapMode {
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
     Nearest = vk::SAMPLER_MIPMAP_MODE_NEAREST,
 
-    /// Take the two mipmaps whose dimensions are immediately inferior and superior to the
-    /// dimensions of the destination, calculate the value for both, and interpolate them.
+    /// Take the mipmap whose dimensions are no greater than that of the destination together
+    /// with the next higher level mipmap, calculate the value for both, and interpolate them.
     Linear = vk::SAMPLER_MIPMAP_MODE_LINEAR,
 }
 
@@ -658,8 +658,8 @@ pub enum SamplerCreationError {
     /// Note the specs guarantee that at least 4000 samplers can exist simultaneously.
     TooManyObjects,
 
-    /// Using an anisotropy superior to 1.0 requires enabling the `sampler_anisotropy` feature when
-    /// creating the device.
+    /// Using an anisotropy greater than 1.0 requires enabling the `sampler_anisotropy` feature
+    /// when creating the device.
     SamplerAnisotropyFeatureNotEnabled,
 
     /// The requested anisotropy level exceeds the device's limits.
@@ -699,7 +699,7 @@ impl error::Error for SamplerCreationError {
     }
 
     #[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SamplerCreationError::OomError(ref err) => Some(err),
             _ => None,

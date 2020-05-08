@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam::sync::MsQueue;
+use crossbeam::queue::SegQueue;
 use fnv::FnvHashMap;
 use std::collections::hash_map::Entry;
 use std::marker::PhantomData;
@@ -59,9 +59,9 @@ struct StandardCommandPoolPerThread {
     // The Vulkan pool of this thread.
     pool: Mutex<UnsafeCommandPool>,
     // List of existing primary command buffers that are available for reuse.
-    available_primary_command_buffers: MsQueue<UnsafeCommandPoolAlloc>,
+    available_primary_command_buffers: SegQueue<UnsafeCommandPoolAlloc>,
     // List of existing secondary command buffers that are available for reuse.
-    available_secondary_command_buffers: MsQueue<UnsafeCommandPoolAlloc>,
+    available_secondary_command_buffers: SegQueue<UnsafeCommandPoolAlloc>,
 }
 
 impl StandardCommandPool {
@@ -105,8 +105,8 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                     UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
                 let pt = Arc::new(StandardCommandPoolPerThread {
                                       pool: Mutex::new(new_pool),
-                                      available_primary_command_buffers: MsQueue::new(),
-                                      available_secondary_command_buffers: MsQueue::new(),
+                                      available_primary_command_buffers: SegQueue::new(),
+                                      available_secondary_command_buffers: SegQueue::new(),
                                   });
 
                 entry.insert(Arc::downgrade(&pt));
@@ -126,7 +126,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             };
 
             for _ in 0 .. count as usize {
-                if let Some(cmd) = existing.try_pop() {
+                if let Ok(cmd) = existing.pop() {
                     output.push(StandardCommandPoolBuilder {
                                     inner: StandardCommandPoolAlloc {
                                         cmd: ManuallyDrop::new(cmd),

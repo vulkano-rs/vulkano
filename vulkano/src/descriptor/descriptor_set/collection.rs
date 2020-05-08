@@ -13,7 +13,7 @@ use descriptor::descriptor_set::DescriptorSetDesc;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>>;
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>>;
 
     /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
     ///
@@ -30,7 +30,7 @@ pub unsafe trait DescriptorSetsCollection {
 
 unsafe impl DescriptorSetsCollection for () {
     #[inline]
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
         vec![]
     }
 
@@ -49,7 +49,7 @@ unsafe impl<T> DescriptorSetsCollection for T
     where T: DescriptorSet + Send + Sync + 'static
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
         vec![Box::new(self) as Box<_>]
     }
 
@@ -70,6 +70,28 @@ unsafe impl<T> DescriptorSetsCollection for T
     }
 }
 
+unsafe impl<T> DescriptorSetsCollection for Vec<T>
+    where T: DescriptorSet + Send + Sync + 'static
+{
+    #[inline]
+    fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
+        let mut v = Vec::new();
+        for o in self {
+            v.push(Box::new(o) as Box<_>);
+        }
+        return v;
+    }
+
+    #[inline]
+    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+        self.get(set).map(|x| x.num_bindings())
+    }
+    #[inline]
+    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+        self.get(set).and_then(|x| x.descriptor(binding))
+    }
+}
+
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
         unsafe impl<$first$(, $others)+> DescriptorSetsCollection for ($first, $($others),+)
@@ -77,7 +99,7 @@ macro_rules! impl_collection {
                   $(, $others: DescriptorSet + DescriptorSetDesc + Send + Sync + 'static)*
         {
             #[inline]
-            fn into_vec(self) -> Vec<Box<DescriptorSet + Send + Sync>> {
+            fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
                 #![allow(non_snake_case)]
 
                 let ($first, $($others,)*) = self;

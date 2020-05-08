@@ -7,45 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use enums::*;
+use crate::enums::*;
 
-/// Parses a SPIR-V document.
-pub fn parse_spirv(data: &[u8]) -> Result<Spirv, ParseError> {
-    if data.len() < 20 {
-        return Err(ParseError::MissingHeader);
-    }
-
-    // we need to determine whether we are in big endian order or little endian order depending
-    // on the magic number at the start of the file
-    let data = if data[0] == 0x07 && data[1] == 0x23 && data[2] == 0x02 && data[3] == 0x03 {
-        // big endian
-        data.chunks(4)
-            .map(|c| {
-                     ((c[0] as u32) << 24) | ((c[1] as u32) << 16) | ((c[2] as u32) << 8) |
-                         c[3] as u32
-                 })
-            .collect::<Vec<_>>()
-
-    } else if data[3] == 0x07 && data[2] == 0x23 && data[1] == 0x02 && data[0] == 0x03 {
-        // little endian
-        data.chunks(4)
-            .map(|c| {
-                     ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) |
-                         c[0] as u32
-                 })
-            .collect::<Vec<_>>()
-
-    } else {
-        return Err(ParseError::MissingHeader);
-    };
-
-    parse_u32s(&data)
-}
-
-/// Parses a SPIR-V document from a list of u32s.
-///
-/// Endianess has already been handled.
-fn parse_u32s(i: &[u32]) -> Result<Spirv, ParseError> {
+/// Parses a SPIR-V document from a list of words.
+pub fn parse_spirv(i: &[u32]) -> Result<Spirv, ParseError> {
     if i.len() < 5 {
         return Err(ParseError::MissingHeader);
     }
@@ -195,6 +160,17 @@ pub enum Instruction {
         member: u32,
         decoration: Decoration,
         params: Vec<u32>,
+    },
+    DecorationGroup {
+        result_id: u32,
+    },
+    GroupDecorate {
+        decoration_group: u32,
+        targets: Vec<u32>,
+    },
+    GroupMemberDecorate {
+        decoration_group: u32,
+        targets: Vec<(u32, u32)>,
     },
     Label { result_id: u32 },
     Branch { result_id: u32 },
@@ -366,6 +342,17 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
                decoration: Decoration::from_num(operands[2])?,
                params: operands[3 ..].to_owned(),
            },
+           73 => Instruction::DecorationGroup {
+                result_id: operands[0],
+           },
+           74 => Instruction::GroupDecorate {
+               decoration_group: operands[0],
+               targets: operands[1 ..].to_owned(),
+           },
+           75 => Instruction::GroupMemberDecorate {
+               decoration_group: operands[0],
+               targets: operands.chunks(2).map(|x| (x[0], x[1])).collect(),
+           },
            248 => Instruction::Label { result_id: operands[0] },
            249 => Instruction::Branch { result_id: operands[0] },
            252 => Instruction::Kill,
@@ -392,13 +379,164 @@ fn parse_string(data: &[u32]) -> (String, &[u32]) {
     (s, &data[r ..])
 }
 
+pub(crate) struct FoundDecoration {
+    pub target_id: u32,
+    pub params: Vec<u32>
+}
+
+impl Spirv {
+    /// Returns the params and the id of all decorations that match the passed Decoration type
+    ///
+    /// for each matching OpDecorate:
+    ///     if it points at a regular target:
+    ///         creates a FoundDecoration with its params and target_id
+    ///     if it points at a group:
+    ///         the OpDecorate's target_id is ignored and a seperate FoundDecoration is created only for each target_id given in matching OpGroupDecorate instructions.
+    pub(crate) fn get_decorations(&self, find_decoration: Decoration) -> Vec<FoundDecoration> {
+        let mut decorations = vec!();
+        for instruction in &self.instructions {
+            if let Instruction::Decorate { target_id, ref decoration, ref params } = instruction {
+                if *decoration == find_decoration {
+                    // assume by default it is just pointing at the target_id
+                    let mut target_ids = vec!(*target_id);
+
+                    // however it might be pointing at a group, which can have multiple target_ids
+                    for inner_instruction in &self.instructions {
+                        if let Instruction::DecorationGroup { result_id } = inner_instruction {
+                            if *result_id == *target_id {
+                                target_ids.clear();
+
+                                for inner_instruction in &self.instructions {
+                                    if let Instruction::GroupDecorate { decoration_group, targets } = inner_instruction {
+                                        if *decoration_group == *target_id {
+                                            target_ids.extend(targets);
+                                        }
+                                    }
+                                }
+
+                                // result_id must be unique so we can safely break here
+                                break
+                            }
+                        }
+                    }
+
+                    // create for all target_ids found
+                    for target_id in target_ids {
+                        decorations.push(FoundDecoration {
+                            target_id,
+                            params: params.clone()
+                        });
+                    }
+                }
+            }
+        }
+        decorations
+    }
+
+    /// Returns the params held by the decoration for the specified id and type
+    /// Searches OpDecorate and OpGroupMemberDecorate
+    /// Returns None if such a decoration does not exist
+    pub(crate) fn get_decoration_params(&self, id: u32, find_decoration: Decoration) -> Option<Vec<u32>> {
+        for instruction in &self.instructions {
+            match instruction {
+                Instruction::Decorate { target_id, ref decoration, ref params }
+                if *target_id == id && *decoration == find_decoration => {
+                    return Some(params.clone());
+                }
+                Instruction::GroupDecorate { decoration_group, ref targets } => {
+                    for group_target_id in targets {
+                        if *group_target_id == id {
+                            for instruction in &self.instructions {
+                                if let Instruction::Decorate { target_id, ref decoration, ref params } = instruction {
+                                    if target_id == decoration_group && *decoration == find_decoration {
+                                        return Some(params.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => (),
+            };
+        }
+        None
+    }
+
+    /// Returns the params held by the decoration for the member specified by id, member and type
+    /// Searches OpMemberDecorate and OpGroupMemberDecorate
+    /// Returns None if such a decoration does not exist
+    pub(crate) fn get_member_decoration_params(&self, struct_id: u32, member_literal: u32, find_decoration: Decoration) -> Option<Vec<u32>> {
+        for instruction in &self.instructions {
+            match instruction {
+                Instruction::MemberDecorate { target_id, member, ref decoration, ref params }
+                if *target_id == struct_id && *member == member_literal && *decoration == find_decoration => {
+                    return Some(params.clone());
+                }
+                Instruction::GroupMemberDecorate { decoration_group, ref targets } => {
+                    for (group_target_struct_id, group_target_member_literal) in targets {
+                        if *group_target_struct_id == struct_id && *group_target_member_literal == member_literal {
+                            for instruction in &self.instructions {
+                                if let Instruction::Decorate { target_id, ref decoration, ref params } = instruction {
+                                    if target_id == decoration_group && *decoration == find_decoration {
+                                        return Some(params.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => (),
+            };
+        }
+        None
+    }
+
+    /// Returns the params held by the Decoration::DecorationBuiltIn for the specified struct id
+    /// Searches OpMemberDecorate and OpGroupMemberDecorate
+    /// Returns None if such a decoration does not exist
+    ///
+    /// This function does not need a member_literal argument because the spirv spec requires that a
+    /// struct must contain either all builtin or all non-builtin members.
+    pub(crate) fn get_member_decoration_builtin_params(&self, struct_id: u32) -> Option<Vec<u32>> {
+        for instruction in &self.instructions {
+            match instruction {
+                Instruction::MemberDecorate { target_id, decoration: Decoration::DecorationBuiltIn, ref params, .. }
+                if *target_id == struct_id => {
+                    return Some(params.clone());
+                }
+                Instruction::GroupMemberDecorate { decoration_group, ref targets } => {
+                    for (group_target_struct_id, _) in targets {
+                        if *group_target_struct_id == struct_id {
+                            for instruction in &self.instructions {
+                                if let Instruction::Decorate { target_id, decoration: Decoration::DecorationBuiltIn, ref params } = instruction {
+                                    if target_id == decoration_group {
+                                        return Some(params.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => (),
+            };
+        }
+        None
+    }
+}
+
 #[cfg(test)]
 mod test {
-    use parse;
+    use crate::parse;
 
     #[test]
     fn test() {
         let data = include_bytes!("../tests/frag.spv");
-        parse::parse_spirv(data).unwrap();
+        let insts: Vec<_> = data.chunks(4)
+            .map(|c| {
+                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
+            })
+            .collect();
+
+        parse::parse_spirv(&insts).unwrap();
     }
 }

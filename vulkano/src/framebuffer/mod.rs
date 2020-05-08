@@ -34,7 +34,7 @@
 //! In vulkano a render pass is represented by the `RenderPass` struct. This struct has a template
 //! parameter that contains the description of the render pass. The `RenderPassAbstract` trait is
 //! implemented on all instances of `RenderPass<_>` and makes it easier to store render passes
-//! without having to explicitely write its type.
+//! without having to explicitly write its type.
 //!
 //! The template parameter of the `RenderPass` struct must implement the `RenderPassDesc` trait.
 //! In order to create a render pass, you can create an object that implements this trait, then
@@ -93,9 +93,9 @@
 pub use self::attachments_list::AttachmentsList;
 pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
 pub use self::compat_atch::ensure_image_view_compatible;
-pub use self::desc::LayoutAttachmentDescription;
-pub use self::desc::LayoutPassDependencyDescription;
-pub use self::desc::LayoutPassDescription;
+pub use self::desc::AttachmentDescription;
+pub use self::desc::PassDependencyDescription;
+pub use self::desc::PassDescription;
 pub use self::desc::LoadOp;
 pub use self::desc::RenderPassDesc;
 pub use self::desc::RenderPassDescAttachments;

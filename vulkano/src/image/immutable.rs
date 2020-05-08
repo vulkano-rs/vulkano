@@ -8,6 +8,8 @@
 // according to those terms.
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -201,6 +203,7 @@ impl<F> ImmutableImage<F> {
     {
         let source = CpuAccessibleBuffer::from_iter(queue.device().clone(),
                                                     BufferUsage::transfer_source(),
+                                                    false,
                                                     iter)?;
         ImmutableImage::from_buffer(source, dimensions, format, queue)
     }
@@ -293,12 +296,12 @@ unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
@@ -351,7 +354,7 @@ unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
     where F: 'static + Send + Sync
 {
     #[inline]
-    fn parent(&self) -> &ImageAccess {
+    fn parent(&self) -> &dyn ImageAccess {
         self
     }
 
@@ -391,6 +394,28 @@ unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
     }
 }
 
+impl<F, A> PartialEq for ImmutableImage<F, A>
+    where F: 'static + Send + Sync
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<F, A> Eq for ImmutableImage<F, A>
+    where F: 'static + Send + Sync
+{}
+
+impl<F, A> Hash for ImmutableImage<F, A>
+    where F: 'static + Send + Sync
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
+    }
+}
+
 unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     where F: 'static + Send + Sync
 {
@@ -410,12 +435,12 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
@@ -454,5 +479,27 @@ unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
     unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
         assert_eq!(new_layout, Some(self.image.layout));
         self.image.initialized.store(true, Ordering::Relaxed);
+    }
+}
+
+impl<F, A> PartialEq for ImmutableImageInitialization<F, A>
+    where F: 'static + Send + Sync
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<F, A> Eq for ImmutableImageInitialization<F, A>
+    where F: 'static + Send + Sync
+{}
+
+impl<F, A> Hash for ImmutableImageInitialization<F, A>
+    where F: 'static + Send + Sync
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
     }
 }

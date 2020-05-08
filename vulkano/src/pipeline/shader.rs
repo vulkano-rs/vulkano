@@ -13,7 +13,7 @@
 //! code and can contain one or more entry points. Note that for the moment the official
 //! GLSL-to-SPIR-V compiler does not support multiple entry points.
 //!
-//! The vulkano library does not provide any functionnality that checks and introspects the SPIR-V
+//! The vulkano library does not provide any functionality that checks and introspects the SPIR-V
 //! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
@@ -25,6 +25,7 @@ use std::iter;
 use std::iter::Empty as EmptyIter;
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
@@ -99,12 +100,12 @@ impl ShaderModule {
             };
 
             let vk = device.pointers();
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateShaderModule(device.internal_object(),
                                                &infos,
                                                ptr::null(),
-                                               &mut output))?;
-            output
+                                               output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(Arc::new(ShaderModule {
@@ -166,7 +167,7 @@ impl ShaderModule {
 unsafe impl VulkanObject for ShaderModule {
     type Object = vk::ShaderModule;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_SHADER_MODULE_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SHADER_MODULE;
 
     #[inline]
     fn internal_object(&self) -> vk::ShaderModule {
@@ -628,7 +629,7 @@ unsafe impl SpecializationConstants for () {
     }
 }
 
-/// Describes an indiviual constant to set in the shader. Also a field in the struct.
+/// Describes an individual constant to set in the shader. Also a field in the struct.
 // Implementation note: has the same memory representation as a `VkSpecializationMapEntry`.
 #[repr(C)]
 pub struct SpecializationMapEntry {

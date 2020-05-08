@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
+
 use buffer::BufferAccess;
 use format::ClearValue;
 use format::Format;
@@ -16,6 +19,7 @@ use format::PossibleFloatFormatDesc;
 use format::PossibleSintFormatDesc;
 use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
+use format::PossibleCompressedFormatDesc;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageLayout;
@@ -41,7 +45,7 @@ pub unsafe trait ImageAccess {
     #[inline]
     fn has_color(&self) -> bool {
         let format = self.format();
-        format.is_float() || format.is_uint() || format.is_sint()
+        format.is_float() || format.is_uint() || format.is_sint() || format.is_compressed()
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
@@ -92,6 +96,27 @@ pub unsafe trait ImageAccess {
         self.inner().image.supports_blit_destination()
     }
 
+    /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
+    /// This method allows the image memory barrier creation process to signal when an image
+    /// has been transitioned out of its initial `Undefined` or `Preinitialized` state. This
+    /// allows vulkano to avoid creating unnecessary image memory barriers between future
+    /// uses of the image.
+    ///
+    /// ## Unsafe
+    ///
+    /// If a user calls this method outside of the intended context and signals that the layout
+    /// is no longer `Undefined` or `Preinitialized` when it is still in an `Undefined` or
+    /// `Preinitialized` state, this may result in the vulkan implementation attempting to use
+    /// an image in an invalid layout. The same problem must be considered by the implementer
+    /// of the method.
+    unsafe fn layout_initialized(&self) {}
+
+    fn is_layout_initialized(&self) -> bool {false}
+
+    unsafe fn preinitialized_layout(&self) -> bool {
+        self.inner().image.preinitialized_layout()
+    }
+
     /// Returns the layout that the image has when it is first used in a primary command buffer.
     ///
     /// The first time you use an image in an `AutoCommandBufferBuilder`, vulkano will suppose that
@@ -133,7 +158,7 @@ pub unsafe trait ImageAccess {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool;
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool;
 
     /// Returns true if an access to `self` potentially overlaps the same memory as an
     /// access to `other`.
@@ -143,7 +168,7 @@ pub unsafe trait ImageAccess {
     ///
     /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
     /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, other: &ImageAccess) -> bool;
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool;
 
     /// Returns a key that uniquely identifies the memory content of the image.
     /// Two ranges that potentially overlap in memory must return the same key.
@@ -161,7 +186,7 @@ pub unsafe trait ImageAccess {
     ///
     /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
     /// GPU operation requires an exclusive access to the image (which includes image layout
-    /// transitions) then `exlusive_access` should be true.
+    /// transitions) then `exclusive_access` should be true.
     ///
     /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
     /// actual layout doesn't match this expected layout, then an error should be returned. If
@@ -189,7 +214,7 @@ pub unsafe trait ImageAccess {
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
-    /// If the GPU operation that we unlock from transitionned the image to another layout, then
+    /// If the GPU operation that we unlock from transitioned the image to another layout, then
     /// it should be passed as parameter.
     ///
     /// A layout transition requires exclusive access to the image, which means two things:
@@ -202,15 +227,15 @@ pub unsafe trait ImageAccess {
     /// # Safety
     ///
     /// - Must only be called once per previous lock.
-    /// - The transitionned layout must be supported by the image (eg. the layout shouldn't be
+    /// - The transitioned layout must be supported by the image (eg. the layout shouldn't be
     ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
-    /// - The transitionned layout must not be `Undefined`.
+    /// - The transitioned layout must not be `Undefined`.
     ///
-    unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>);
+    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>);
 }
 
 /// Inner information about an image.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ImageInner<'a> {
     /// The underlying image object.
     pub image: &'a UnsafeImage,
@@ -248,12 +273,12 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         (**self).conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         (**self).conflicts_image(other)
     }
 
@@ -274,8 +299,34 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    unsafe fn unlock(&self, transitionned_layout: Option<ImageLayout>) {
-        (**self).unlock(transitionned_layout)
+    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
+        (**self).unlock(transitioned_layout)
+    }
+
+    #[inline]
+    unsafe fn layout_initialized(&self) {
+        (**self).layout_initialized();
+    }
+
+    #[inline]
+    fn is_layout_initialized(&self) -> bool {
+        (**self).is_layout_initialized()
+    }
+}
+
+impl PartialEq for dyn ImageAccess + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl Eq for dyn ImageAccess + Send + Sync {}
+
+impl Hash for dyn ImageAccess + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
     }
 }
 
@@ -310,12 +361,12 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.image.conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.image.conflicts_image(other)
     }
 
@@ -341,6 +392,28 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 }
 
+impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl<I> Eq for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{}
+
+impl<I> Hash for ImageAccessFromUndefinedLayout<I>
+    where I: ImageAccess
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+    }
+}
+
 /// Extension trait for images. Checks whether the value `T` can be used as a clear value for the
 /// given image.
 // TODO: isn't that for image views instead?
@@ -355,7 +428,7 @@ pub unsafe trait ImageContent<P>: ImageAccess {
 
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAccess {
-    fn parent(&self) -> &ImageAccess;
+    fn parent(&self) -> &dyn ImageAccess;
 
     /// Returns the dimensions of the image view.
     fn dimensions(&self) -> Dimensions;
@@ -407,7 +480,7 @@ unsafe impl<T> ImageViewAccess for T
           T::Target: ImageViewAccess
 {
     #[inline]
-    fn parent(&self) -> &ImageAccess {
+    fn parent(&self) -> &dyn ImageAccess {
         (**self).parent()
     }
 
@@ -446,6 +519,22 @@ unsafe impl<T> ImageViewAccess for T
     #[inline]
     fn can_be_sampled(&self, sampler: &Sampler) -> bool {
         (**self).can_be_sampled(sampler)
+    }
+}
+
+impl PartialEq for dyn ImageViewAccess + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner()
+    }
+}
+
+impl Eq for dyn ImageViewAccess + Send + Sync {}
+
+impl Hash for dyn ImageViewAccess + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
     }
 }
 

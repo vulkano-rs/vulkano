@@ -53,7 +53,7 @@
 //! Respecting the order of operations on the GPU is important, as it is what *proves* vulkano that
 //! what you are doing is indeed safe. For example if you submit two operations that modify the
 //! same buffer, then you need to execute one after the other instead of submitting them
-//! independantly. Failing to do so would mean that these two operations could potentially execute
+//! independently. Failing to do so would mean that these two operations could potentially execute
 //! simultaneously on the GPU, which would be unsafe.
 //!
 //! This is done by calling one of the methods of the `GpuFuture` trait. For example calling
@@ -109,6 +109,7 @@ use std::sync::Arc;
 pub use self::event::Event;
 pub use self::fence::Fence;
 pub use self::fence::FenceWaitError;
+pub use self::future::now;
 pub use self::future::AccessCheckError;
 pub use self::future::AccessError;
 pub use self::future::FenceSignalFuture;
@@ -117,7 +118,6 @@ pub use self::future::GpuFuture;
 pub use self::future::JoinFuture;
 pub use self::future::NowFuture;
 pub use self::future::SemaphoreSignalFuture;
-pub use self::future::now;
 pub use self::pipeline::AccessFlagBits;
 pub use self::pipeline::PipelineStages;
 pub use self::semaphore::Semaphore;
@@ -131,13 +131,13 @@ mod semaphore;
 /// Declares in which queue(s) a resource can be used.
 ///
 /// When you create a buffer or an image, you have to tell the Vulkan library in which queue
-/// families it will be used. The vulkano library requires you to tell in which queue famiily
+/// families it will be used. The vulkano library requires you to tell in which queue family
 /// the resource will be used, even for exclusive mode.
 #[derive(Debug, Clone, PartialEq, Eq)]
 // TODO: remove
 pub enum SharingMode {
     /// The resource is used is only one queue family.
-    Exclusive(u32),
+    Exclusive,
     /// The resource is used in multiple queue families. Can be slower than `Exclusive`.
     Concurrent(Vec<u32>), // TODO: Vec is too expensive here
 }
@@ -145,7 +145,7 @@ pub enum SharingMode {
 impl<'a> From<&'a Arc<Queue>> for SharingMode {
     #[inline]
     fn from(queue: &'a Arc<Queue>) -> SharingMode {
-        SharingMode::Exclusive(queue.family().id())
+        SharingMode::Exclusive
     }
 }
 
@@ -159,7 +159,8 @@ impl<'a> From<&'a [&'a Arc<Queue>]> for SharingMode {
 /// Declares in which queue(s) a resource can be used.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sharing<I>
-    where I: Iterator<Item = u32>
+where
+    I: Iterator<Item = u32>,
 {
     /// The resource is used is only one queue family.
     Exclusive,

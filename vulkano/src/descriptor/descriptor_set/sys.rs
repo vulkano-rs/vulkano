@@ -11,7 +11,7 @@ use smallvec::SmallVec;
 use std::cmp;
 use std::error;
 use std::fmt;
-use std::mem;
+use std::mem::MaybeUninit;
 use std::ops;
 use std::ptr;
 use std::sync::Arc;
@@ -299,12 +299,12 @@ impl UnsafeDescriptorPool {
                 pPoolSizes: pool_sizes.as_ptr(),
             };
 
-            let mut output = mem::uninitialized();
+            let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateDescriptorPool(device.internal_object(),
                                                  &infos,
                                                  ptr::null(),
-                                                 &mut output))?;
-            output
+                                                 output.as_mut_ptr()))?;
+            output.assume_init()
         };
 
         Ok(UnsafeDescriptorPool {
@@ -596,7 +596,7 @@ impl UnsafeDescriptorSet {
             // sure that it's impossible to have an empty descriptor write.
             debug_assert!(!indiv_write.inner.is_empty());
 
-            // The whole struct that wr write here is valid, except for pImageInfo, pBufferInfo
+            // The whole struct thats written here is valid, except for pImageInfo, pBufferInfo
             // and pTexelBufferView which are placeholder values.
             raw_writes.push(vk::WriteDescriptorSet {
                                 sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
@@ -732,7 +732,7 @@ impl UnsafeDescriptorSet {
 unsafe impl VulkanObject for UnsafeDescriptorSet {
     type Object = vk::DescriptorSet;
 
-    const TYPE: vk::DebugReportObjectTypeEXT = vk::DEBUG_REPORT_OBJECT_TYPE_DESCRIPTOR_SET_EXT;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DESCRIPTOR_SET;
 
     #[inline]
     fn internal_object(&self) -> vk::DescriptorSet {

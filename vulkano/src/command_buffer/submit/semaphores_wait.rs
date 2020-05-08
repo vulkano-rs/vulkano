@@ -41,7 +41,7 @@ impl<'a> SubmitSemaphoresWaitBuilder<'a> {
     /// Merges this builder with another builder.
     #[inline]
     pub fn merge(&mut self, mut other: SubmitSemaphoresWaitBuilder<'a>) {
-        self.semaphores.extend(other.semaphores.drain());
+        self.semaphores.extend(other.semaphores.drain(..));
     }
 }
 
@@ -50,7 +50,7 @@ impl<'a> Into<SubmitCommandBufferBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a
     fn into(mut self) -> SubmitCommandBufferBuilder<'a> {
         unsafe {
             let mut builder = SubmitCommandBufferBuilder::new();
-            for sem in self.semaphores.drain() {
+            for sem in self.semaphores.drain(..) {
                 builder.add_wait_semaphore(sem,
                                            PipelineStages {
                                                // TODO: correct stages ; hard
@@ -68,7 +68,7 @@ impl<'a> Into<SubmitPresentBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a> {
     fn into(mut self) -> SubmitPresentBuilder<'a> {
         unsafe {
             let mut builder = SubmitPresentBuilder::new();
-            for sem in self.semaphores.drain() {
+            for sem in self.semaphores.drain(..) {
                 builder.add_wait_semaphore(sem);
             }
             builder

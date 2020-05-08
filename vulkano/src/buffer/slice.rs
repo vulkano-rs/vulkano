@@ -7,8 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::sync::Arc;
 
@@ -117,8 +120,8 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<R, B>
         where F: for<'r> FnOnce(&'r T) -> &'r R // TODO: bounds on R
     {
-        let data: &T = mem::zeroed();
-        let result = f(data);
+        let data: MaybeUninit<&T> = MaybeUninit::zeroed();
+        let result = f(data.assume_init());
         let size = mem::size_of_val(result);
         let result = result as *const R as *const () as usize;
 
@@ -130,6 +133,38 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
             resource: self.resource,
             offset: self.offset + result,
             size: size,
+        }
+    }
+
+    /// Changes the `T` generic parameter of the `BufferSlice` to the desired type. This can be
+    /// useful when you have a buffer with various types of data and want to create a typed slice
+    /// of a region that contains a single type of data.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// # use std::sync::Arc;
+    /// # use vulkano::buffer::BufferSlice;
+    /// # use vulkano::buffer::immutable::ImmutableBuffer;
+    /// # struct VertexImpl;
+    /// let blob_slice: BufferSlice<[u8], Arc<ImmutableBuffer<[u8]>>> = return;
+    /// let vertex_slice: BufferSlice<[VertexImpl], Arc<ImmutableBuffer<[u8]>>> = unsafe {
+    ///     blob_slice.reinterpret::<[VertexImpl]>()
+    /// };
+    /// ```
+    ///
+    /// # Safety
+    ///
+    /// Correct `offset` and `size` must be ensured before using this `BufferSlice` on the device.
+    /// See `BufferSlice::slice` for adjusting these properties.
+    #[inline]
+    pub unsafe fn reinterpret<R: ?Sized>(self) -> BufferSlice<R, B>
+    {
+        BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset,
+            size: self.size,
         }
     }
 }
@@ -195,17 +230,17 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.resource.conflicts_buffer(other)
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.resource.conflicts_image(other)
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
+    fn conflict_key(&self) -> (u64, usize) {
         self.resource.conflict_key()
     }
 
@@ -249,6 +284,29 @@ impl<T, B> From<BufferSlice<T, B>> for BufferSlice<[T], B> {
             offset: r.offset,
             size: r.size,
         }
+    }
+}
+
+impl<T: ?Sized, B> PartialEq for BufferSlice<T, B>
+    where B: BufferAccess
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, B> Eq for BufferSlice<T, B>
+    where B: BufferAccess
+{}
+
+impl<T: ?Sized, B> Hash for BufferSlice<T, B>
+    where B: BufferAccess
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
     }
 }
 

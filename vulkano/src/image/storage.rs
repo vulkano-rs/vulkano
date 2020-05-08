@@ -8,6 +8,8 @@
 // according to those terms.
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
@@ -198,12 +200,12 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
@@ -268,7 +270,7 @@ unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
           A: MemoryPool
 {
     #[inline]
-    fn parent(&self) -> &ImageAccess {
+    fn parent(&self) -> &dyn ImageAccess {
         self
     }
 
@@ -305,6 +307,31 @@ unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
+    }
+}
+
+impl<F, A> PartialEq for StorageImage<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<F, A> Eq for StorageImage<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{}
+
+impl<F, A> Hash for StorageImage<F, A>
+    where F: 'static + Send + Sync,
+          A: MemoryPool
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
     }
 }
 

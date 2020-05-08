@@ -14,6 +14,8 @@
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
@@ -196,18 +198,18 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &BufferAccess) -> bool {
+    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]
-    fn conflicts_image(&self, other: &ImageAccess) -> bool {
+    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
         false
     }
 
     #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.inner.key()
+    fn conflict_key(&self) -> (u64, usize) {
+        (self.inner.key(), 0)
     }
 
     #[inline]
@@ -283,4 +285,27 @@ unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
     where T: 'static + Send + Sync
 {
     type Content = T;
+}
+
+impl<T: ?Sized, A> PartialEq for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, A> Eq for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
+{}
+
+impl<T: ?Sized, A> Hash for DeviceLocalBuffer<T, A>
+    where T: 'static + Send + Sync
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
 }

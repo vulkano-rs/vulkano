@@ -8,9 +8,9 @@
 // according to those terms.
 
 use format::ClearValue;
-use framebuffer::LayoutAttachmentDescription;
-use framebuffer::LayoutPassDependencyDescription;
-use framebuffer::LayoutPassDescription;
+use framebuffer::AttachmentDescription;
+use framebuffer::PassDependencyDescription;
+use framebuffer::PassDescription;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use std::iter;
@@ -39,7 +39,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn attachment_desc(&self, _: usize) -> Option<LayoutAttachmentDescription> {
+    fn attachment_desc(&self, _: usize) -> Option<AttachmentDescription> {
         None
     }
 
@@ -49,9 +49,9 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<LayoutPassDescription> {
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
         if num == 0 {
-            Some(LayoutPassDescription {
+            Some(PassDescription {
                      color_attachments: vec![],
                      depth_stencil: None,
                      input_attachments: vec![],
@@ -69,7 +69,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
     }
 
     #[inline]
-    fn dependency_desc(&self, _: usize) -> Option<LayoutPassDependencyDescription> {
+    fn dependency_desc(&self, _: usize) -> Option<PassDependencyDescription> {
         None
     }
 
@@ -115,7 +115,7 @@ unsafe impl RenderPassDesc for EmptySinglePassRenderPassDesc {
 
 unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<dyn Iterator<Item = ClearValue>> {
         assert!(values.is_empty()); // TODO: error instead
         Box::new(iter::empty())
     }
@@ -123,7 +123,7 @@ unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for EmptySinglePassRender
 
 unsafe impl RenderPassDescClearValues<()> for EmptySinglePassRenderPassDesc {
     #[inline]
-    fn convert_clear_values(&self, _: ()) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, _: ()) -> Box<dyn Iterator<Item = ClearValue>> {
         Box::new(iter::empty())
     }
 }

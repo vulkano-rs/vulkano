@@ -120,7 +120,7 @@ enum FenceSignalFutureState<F> {
     Cleaned,
 
     // A function panicked while the state was being modified. Should never happen.
-    Poisonned,
+    Poisoned,
 }
 
 impl<F> FenceSignalFuture<F>
@@ -194,10 +194,10 @@ impl<F> FenceSignalFuture<F>
     fn flush_impl(&self, state: &mut MutexGuard<FenceSignalFutureState<F>>)
                   -> Result<(), FlushError> {
         unsafe {
-            // In this function we temporarily replace the current state with `Poisonned` at the
+            // In this function we temporarily replace the current state with `Poisoned` at the
             // beginning, and we take care to always put back a value into `state` before
             // returning (even in case of error).
-            let old_state = mem::replace(&mut **state, FenceSignalFutureState::Poisonned);
+            let old_state = mem::replace(&mut **state, FenceSignalFutureState::Poisoned);
 
             let (previous, fence, partially_flushed) = match old_state {
                 FenceSignalFutureState::Pending(prev, fence) => {
@@ -207,7 +207,7 @@ impl<F> FenceSignalFuture<F>
                     (prev, fence, true)
                 },
                 other => {
-                    // We were already flushed in the past, or we're already poisonned. Don't do
+                    // We were already flushed in the past, or we're already poisoned. Don't do
                     // anything.
                     **state = other;
                     return Ok(());
@@ -305,7 +305,7 @@ impl<F> FenceSignalFutureState<F> {
             FenceSignalFutureState::PartiallyFlushed(ref prev, _) => Some(prev),
             FenceSignalFutureState::Flushed(ref prev, _) => Some(prev),
             FenceSignalFutureState::Cleaned => None,
-            FenceSignalFutureState::Poisonned => None,
+            FenceSignalFutureState::Poisoned => None,
         }
     }
 }
@@ -333,7 +333,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
                 }
             },
             FenceSignalFutureState::Cleaned |
-            FenceSignalFutureState::Poisonned => (),
+            FenceSignalFutureState::Poisoned => (),
             FenceSignalFutureState::Pending(_, _) => unreachable!(),
             FenceSignalFutureState::PartiallyFlushed(_, _) => unreachable!(),
         }
@@ -355,7 +355,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
                 prev.signal_finished();
             },
             FenceSignalFutureState::Cleaned |
-            FenceSignalFutureState::Poisonned => (),
+            FenceSignalFutureState::Poisoned => (),
             _ => unreachable!(),
         }
     }
@@ -389,7 +389,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
@@ -400,7 +400,7 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
@@ -442,7 +442,7 @@ impl<F> Drop for FenceSignalFuture<F>
             FenceSignalFutureState::Cleaned => {
                 // Also a normal situation. The user called `cleanup_finished()` before dropping.
             },
-            FenceSignalFutureState::Poisonned => {
+            FenceSignalFutureState::Poisoned => {
                 // The previous future was already dropped and blocked the current queue.
             },
             FenceSignalFutureState::Pending(_, _) |
@@ -491,13 +491,13 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)

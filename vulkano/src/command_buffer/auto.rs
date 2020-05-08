@@ -22,6 +22,7 @@ use buffer::TypedBufferAccess;
 use command_buffer::CommandBuffer;
 use command_buffer::CommandBufferExecError;
 use command_buffer::DrawIndirectCommand;
+use command_buffer::DrawIndexedIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::StateCacher;
 use command_buffer::StateCacherOutcome;
@@ -75,13 +76,10 @@ use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
 
-///
-///
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
 /// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
 /// is built, however, it *does* implement `Send` and `Sync`.
-///
 pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     inner: SyncCommandBufferBuilder<P>,
     state_cacher: StateCacher,
@@ -93,7 +91,7 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     compute_allowed: bool,
 
     // If we're inside a render pass, contains the render pass and the subpass index.
-    render_pass: Option<(Box<RenderPassAbstract>, u32)>,
+    render_pass: Option<(Box<dyn RenderPassAbstract>, u32)>,
 
     // True if we are a secondary command buffer.
     secondary_cb: bool,
@@ -549,7 +547,7 @@ impl<P> AutoCommandBufferBuilder<P> {
                     None => panic!("Not enough clear values")
                 }
             }
-            
+
             if clear_values_copy.count() != 0 {
                 panic!("Too many clear values")
             }
@@ -582,7 +580,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///   the extent. Same for the Y coordinate for one-dimensional images.
     /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
     ///
-    /// If `layer_count` is superior to 1, the copy will happen between each individual layer as
+    /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
     /// if they were separate images.
     ///
     /// # Panic
@@ -667,7 +665,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///   the bottom-right offset. Same for the Y coordinate for one-dimensional images.
     /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
     ///
-    /// If `layer_count` is superior to 1, the blit will happen between each individual layer as
+    /// If `layer_count` is greater than 1, the blit will happen between each individual layer as
     /// if they were separate images.
     ///
     /// # Panic
@@ -980,8 +978,11 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Draw once, using the `vertex_buffer`.
+    ///
+    /// To use only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: DynamicState, vertices: V, sets: S,
+    pub fn draw<V, Gp, S, Pc>(mut self, pipeline: Gp, dynamic: &DynamicState, vertex_buffer: V, sets: S,
                               constants: Pc)
                               -> Result<Self, DrawError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -991,10 +992,10 @@ impl<P> AutoCommandBufferBuilder<P> {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1005,7 +1006,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1025,9 +1026,12 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Draw once, using the `vertex_buffer` and the `index_buffer`.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: DynamicState,
-                                             vertices: V, index_buffer: Ib, sets: S, constants: Pc)
+    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
+                                             vertex_buffer: V, index_buffer: Ib, sets: S, constants: Pc)
                                              -> Result<Self, DrawIndexedError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
@@ -1039,10 +1043,10 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1059,7 +1063,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1073,14 +1077,22 @@ impl<P> AutoCommandBufferBuilder<P> {
             debug_assert!(self.graphics_allowed);
 
             self.inner
-                .draw_indexed(ib_infos.num_indices as u32, 1, 0, 0, 0);
+                .draw_indexed(ib_infos.num_indices as u32,
+                              vb_infos.instance_count as u32,
+                              0,
+                              0,
+                              0);
             Ok(self)
         }
     }
 
+    /// Performs multiple draws, one draw for each `vulkano::command_buffer::DrawIndirectCommand` struct in `indirect_buffer`.
+    /// The `vertex_buffer` is used by all draws.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: DynamicState,
-                                           vertices: V, indirect_buffer: Ib, sets: S, constants: Pc)
+    pub fn draw_indirect<V, Gp, S, Pc, Ib>(mut self, pipeline: Gp, dynamic: &DynamicState,
+                                           vertex_buffer: V, indirect_buffer: Ib, sets: S, constants: Pc)
                                            -> Result<Self, DrawIndirectError>
         where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
               S: DescriptorSetsCollection,
@@ -1094,10 +1106,10 @@ impl<P> AutoCommandBufferBuilder<P> {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, &dynamic)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(&pipeline, &constants)?;
             check_descriptor_sets_validity(&pipeline, &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertices)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
 
@@ -1110,7 +1122,7 @@ impl<P> AutoCommandBufferBuilder<P> {
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
             push_constants(&mut self.inner, pipeline.clone(), constants);
-            set_state(&mut self.inner, dynamic);
+            set_state(&mut self.inner, &dynamic);
             descriptor_sets(&mut self.inner,
                             &mut self.state_cacher,
                             true,
@@ -1126,6 +1138,71 @@ impl<P> AutoCommandBufferBuilder<P> {
                 .draw_indirect(indirect_buffer,
                                draw_count,
                                mem::size_of::<DrawIndirectCommand>() as u32)?;
+            Ok(self)
+        }
+    }
+
+    /// Performs multiple draws, one draw for each `vulkano::command_buffer::DrawIndexedIndirectCommand` struct in `indirect_buffer`.
+    /// The `index_buffer` and `vertex_buffer` are used by all draws.
+    ///
+    /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
+    #[inline]
+    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(mut self, pipeline: Gp, dynamic: &DynamicState,
+                                           vertex_buffer: V, index_buffer: Ib, indirect_buffer: Inb, sets: S, constants: Pc)
+                                           -> Result<Self, DrawIndexedIndirectError>
+        where Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+              S: DescriptorSetsCollection,
+              Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+              Inb: BufferAccess
+                      + TypedBufferAccess<Content = [DrawIndexedIndirectCommand]>
+                      + Send
+                      + Sync
+                      + 'static,
+              I: Index + 'static
+    {
+        unsafe {
+            // TODO: must check that pipeline is compatible with render pass
+
+            self.ensure_inside_render_pass_inline(&pipeline)?;
+            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
+            check_dynamic_state_validity(&pipeline, dynamic)?;
+            check_push_constants_validity(&pipeline, &constants)?;
+            check_descriptor_sets_validity(&pipeline, &sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
+
+            let draw_count = indirect_buffer.len() as u32;
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_graphics_pipeline(&pipeline)
+            {
+                self.inner.bind_pipeline_graphics(pipeline.clone());
+            }
+
+            if let StateCacherOutcome::NeedChange =
+                self.state_cacher.bind_index_buffer(&index_buffer, I::ty())
+            {
+                self.inner.bind_index_buffer(index_buffer, I::ty())?;
+            }
+
+            let dynamic = self.state_cacher.dynamic_state(dynamic);
+
+            push_constants(&mut self.inner, pipeline.clone(), constants);
+            set_state(&mut self.inner, &dynamic);
+            descriptor_sets(&mut self.inner,
+                            &mut self.state_cacher,
+                            true,
+                            pipeline.clone(),
+                            sets)?;
+            vertex_buffers(&mut self.inner,
+                           &mut self.state_cacher,
+                           vb_infos.vertex_buffers)?;
+
+            debug_assert!(self.graphics_allowed);
+
+            self.inner
+                .draw_indexed_indirect(indirect_buffer,
+                               draw_count,
+                               mem::size_of::<DrawIndexedIndirectCommand>() as u32)?;
             Ok(self)
         }
     }
@@ -1182,10 +1259,32 @@ impl<P> AutoCommandBufferBuilder<P> {
         Ok(self)
     }
 
+    /// Adds a command that executes all the commands in a vector.
+    ///
+    /// **This function is unsafe for now because safety checks and synchronization are not
+    /// implemented.**
+    // TODO: implement correctly
+    pub unsafe fn execute_commands_from_vec<C>(mut self, command_buffers: Vec<C>)
+                                      -> Result<Self, ExecuteCommandsError>
+        where C: CommandBuffer + Send + Sync + 'static
+    {
+        {
+            let mut builder = self.inner.execute_commands();
+            for cmd_buffer in command_buffers {
+                builder.add(cmd_buffer);
+            }
+            builder.submit()?;
+        }
+
+        self.state_cacher.invalidate();
+
+        Ok(self)
+    }
+
     /// Adds a command that writes the content of a buffer.
     ///
     /// This function is similar to the `memset` function in C. The `data` parameter is a number
-    /// that will be repeatidely written through the entire buffer.
+    /// that will be repeatedly written through the entire buffer.
     ///
     /// > **Note**: This function is technically safe because buffers can only contain integers or
     /// > floating point numbers, which are always valid whatever their memory representation is.
@@ -1304,7 +1403,7 @@ unsafe fn push_constants<P, Pl, Pc>(destination: &mut SyncCommandBufferBuilder<P
 }
 
 // Shortcut function to change the state of the pipeline.
-unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: DynamicState) {
+unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &DynamicState) {
     if let Some(line_width) = dynamic.line_width {
         destination.set_line_width(line_width);
     }
@@ -1316,12 +1415,24 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: D
     if let Some(ref scissors) = dynamic.scissors {
         destination.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter()); // TODO: don't collect
     }
+
+    if let Some(compare_mask) = dynamic.compare_mask {
+        destination.set_stencil_compare_mask(compare_mask);
+    }
+
+    if let Some(write_mask) = dynamic.write_mask {
+        destination.set_stencil_write_mask(write_mask);
+    }
+
+    if let Some(reference) = dynamic.reference {
+        destination.set_stencil_reference(reference);
+    }
 }
 
 // Shortcut function to bind vertex buffers.
 unsafe fn vertex_buffers<P>(destination: &mut SyncCommandBufferBuilder<P>,
                             state_cacher: &mut StateCacher,
-                            vertex_buffers: Vec<Box<BufferAccess + Send + Sync>>)
+                            vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>)
                             -> Result<(), SyncCommandBufferBuilderError> {
     let binding_range = {
         let mut compare = state_cacher.bind_vertex_buffers();
@@ -1417,7 +1528,7 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
-    fn lock_submit(&self, future: &GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
+    fn lock_submit(&self, future: &dyn GpuFuture, queue: &Queue) -> Result<(), CommandBufferExecError> {
         match self.submit_state {
             SubmitState::OneTime { ref already_submitted } => {
                 let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
@@ -1472,13 +1583,13 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &BufferAccess, exclusive: bool, queue: &Queue)
+        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
         -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &ImageAccess, layout: ImageLayout, exclusive: bool,
+    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
                           queue: &Queue)
                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.inner
@@ -1515,7 +1626,7 @@ macro_rules! err_gen {
             }
 
             #[inline]
-            fn cause(&self) -> Option<&error::Error> {
+            fn cause(&self) -> Option<&dyn error::Error> {
                 match *self {
                     $(
                         $name::$err(ref err) => Some(err),
@@ -1620,6 +1731,16 @@ err_gen!(DrawIndirectError {
              CheckPushConstantsValidityError,
              CheckDescriptorSetsValidityError,
              CheckVertexBufferError,
+             SyncCommandBufferBuilderError,
+         });
+
+err_gen!(DrawIndexedIndirectError {
+             AutoCommandBufferBuilderContextError,
+             CheckDynamicStateValidityError,
+             CheckPushConstantsValidityError,
+             CheckDescriptorSetsValidityError,
+             CheckVertexBufferError,
+             CheckIndexBufferError,
              SyncCommandBufferBuilderError,
          });
 

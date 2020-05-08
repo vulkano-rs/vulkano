@@ -31,7 +31,7 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns the attachment of the framebuffer with the given index.
     ///
     /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
-    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess>;
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess>;
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
@@ -67,7 +67,7 @@ unsafe impl<T> FramebufferAbstract for T
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
         (**self).attached_image_view(index)
     }
 }
@@ -134,7 +134,7 @@ pub unsafe trait RenderPassDescClearValues<C> {
     /// that matches the attachment.
     ///
     // TODO: meh for boxing
-    fn convert_clear_values(&self, C) -> Box<Iterator<Item = ClearValue>>;
+    fn convert_clear_values(&self, C) -> Box<dyn Iterator<Item = ClearValue>>;
 }
 
 unsafe impl<T, C> RenderPassDescClearValues<C> for T
@@ -142,7 +142,7 @@ unsafe impl<T, C> RenderPassDescClearValues<C> for T
           T::Target: RenderPassDescClearValues<C>
 {
     #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<Iterator<Item = ClearValue>> {
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         (**self).convert_clear_values(vals)
     }
 }

@@ -13,49 +13,38 @@
 // been more or more used for general-purpose operations as well. This is called "General-Purpose
 // GPU", or *GPGPU*. This is what this example demonstrates.
 
-// Note that since we don't create any window, fewer imports are needed.
-#[macro_use]
-extern crate vulkano;
-#[macro_use]
-extern crate vulkano_shader_derive;
-
-use vulkano::buffer::BufferUsage;
-use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::Device;
-use vulkano::device::DeviceExtensions;
-use vulkano::instance::Instance;
-use vulkano::instance::InstanceExtensions;
+use vulkano::descriptor::PipelineLayoutAbstract;
+use vulkano::device::{Device, DeviceExtensions};
+use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
-use vulkano::sync::now;
 use vulkano::sync::GpuFuture;
+use vulkano::sync;
 
 use std::sync::Arc;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(None, &InstanceExtensions::none(), None)
-        .expect("failed to create Vulkan instance");
+    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
 
     // Choose which physical device to use.
-    let physical = vulkano::instance::PhysicalDevice::enumerate(&instance)
-        .next().expect("no device available");
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     // Choose the queue of the physical device which is going to run our compute operation.
     //
     // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
     // that supports compute operations.
-    let queue = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
+    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
 
     // Now initializing the device.
-    let (device, mut queues) = {
-        Device::new(physical, physical.supported_features(), &DeviceExtensions::none(),
-                    [(queue, 0.5)].iter().cloned()).expect("failed to create device")
-    };
+    let (device, mut queues) = Device::new(physical, physical.supported_features(),
+        &DeviceExtensions{khr_storage_buffer_storage_class:true, ..DeviceExtensions::none()},
+        [(queue_family, 0.5)].iter().cloned()).unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
-    // example we use only one queue, so we just retreive the first and only element of the
+    // example we use only one queue, so we just retrieve the first and only element of the
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
@@ -71,40 +60,36 @@ fn main() {
     // or four by four, a GPU will do it by groups of 32 or 64.
     //
     // Note however that in a real-life situation for such a simple operation the cost of
-    // accessing memory usually outweights the benefits of a faster calculation. Since both the CPU
+    // accessing memory usually outweighs the benefits of a faster calculation. Since both the CPU
     // and the GPU will need to access data, there is no other choice but to transfer the data
     // through the slow PCI express bus.
 
     // We need to create the compute pipeline that describes our operation.
     //
     // If you are familiar with graphics pipeline, the principle is the same except that compute
-    // pipelines are much more simple to create.
+    // pipelines are much simpler to create.
     let pipeline = Arc::new({
-        // TODO: explain
         mod cs {
-            #[derive(VulkanoShader)]
-            #[ty = "compute"]
-            #[src = "
-#version 450
+            vulkano_shaders::shader!{
+                ty: "compute",
+                src: "
+                    #version 450
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+                    layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
+                    layout(set = 0, binding = 0) buffer Data {
+                        uint data[];
+                    } data;
 
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    data.data[idx] *= 12;
-}"
-]
-            struct Dummy;
+                    void main() {
+                        uint idx = gl_GlobalInvocationID.x;
+                        data.data[idx] *= 12;
+                    }
+                "
+            }
         }
-
-        let shader = cs::Shader::load(device.clone())
-            .expect("failed to create shader module");
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &())
-            .expect("failed to create compute pipeline")
+        let shader = cs::Shader::load(device.clone()).unwrap();
+        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
     });
 
     // We start by creating the buffer that will store the data.
@@ -112,8 +97,7 @@ void main() {
         // Iterator that produces the data.
         let data_iter = (0 .. 65536u32).map(|n| n);
         // Builds the buffer and fills it with this iterator.
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-                                       data_iter).expect("failed to create buffer")
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter).unwrap()
     };
 
     // In order to let the shader access the buffer, we need to build a *descriptor set* that
@@ -124,7 +108,8 @@ void main() {
     //
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
-    let set = Arc::new(PersistentDescriptorSet::start(pipeline.clone(), 0)
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
         .add_buffer(data_buffer.clone()).unwrap()
         .build().unwrap()
     );
@@ -136,15 +121,15 @@ void main() {
         //
         // Note that we clone the pipeline and the set. Since they are both wrapped around an
         // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
-        // clonable anyway). In this example we would avoid cloning them since this is the last
+        // cloneable anyway). In this example we would avoid cloning them since this is the last
         // time we use them, but in a real code you would probably need to clone them.
         .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
         // Finish building the command buffer by calling `build`.
         .build().unwrap();
 
     // Let's execute this command buffer now.
-    // To do so, we TODO: this is a bit clumsby, probably needs a shortcut
-    let future = now(device.clone())
+    // To do so, we TODO: this is a bit clumsy, probably needs a shortcut
+    let future = sync::now(device.clone())
         .then_execute(queue.clone(), command_buffer).unwrap()
 
         // This line instructs the GPU to signal a *fence* once the command buffer has finished
@@ -153,7 +138,7 @@ void main() {
         // We need to signal a fence here because below we want to block the CPU until the GPU has
         // reached that point in the execution.
         .then_signal_fence_and_flush().unwrap();
-    
+
     // Blocks execution until the GPU has finished the operation. This method only exists on the
     // future that corresponds to a signalled fence. In other words, this method wouldn't be
     // available if we didn't call `.then_signal_fence_and_flush()` earlier.
@@ -170,7 +155,7 @@ void main() {
     // Now that the GPU is done, the content of the buffer should have been modified. Let's
     // check it out.
     // The call to `read()` would return an error if the buffer was still in use by the GPU.
-    let data_buffer_content = data_buffer.read().expect("failed to lock buffer for reading");
+    let data_buffer_content = data_buffer.read().unwrap();
     for n in 0 .. 65536u32 {
         assert_eq!(data_buffer_content[n as usize], n * 12);
     }
