@@ -72,17 +72,26 @@ pub fn write_specialization_constants(doc: &Spirv) -> TokenStream {
         let (rust_ty, rust_size, rust_alignment) = spec_const_type_from_id(doc, type_id);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
-        let constant_id = doc.get_decoration_params(result_id, Decoration::DecorationSpecId)
-            .unwrap()[0];
+        let constant_id = doc.get_decoration_params(result_id, Decoration::DecorationSpecId);
 
-        spec_consts.push(SpecConst {
-            name: spirv_search::name_from_id(doc, result_id),
-            constant_id,
-            rust_ty,
-            rust_size,
-            rust_alignment: rust_alignment as u32,
-            default_value,
-        });
+        if let Some(constant_id) = constant_id {
+            let constant_id = constant_id[0];
+
+            let mut name = spirv_search::name_from_id(doc, result_id);
+
+            if name == "__unnamed".to_owned() {
+                name = String::from(format!("constant_{}", constant_id));
+            }
+
+            spec_consts.push(SpecConst {
+                name,
+                constant_id,
+                rust_ty,
+                rust_size,
+                rust_alignment: rust_alignment as u32,
+                default_value,
+            });
+        }
     }
 
     let map_entries = {
