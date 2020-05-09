@@ -63,10 +63,9 @@ use sync::Sharing;
 /// Buffer whose content is accessible by the CPU.
 ///
 /// Setting the `host_cached` field on the various initializers to `true` will make it so
-/// the `CpuAccessibleBuffer` perfers to allocate from host_cached memory. Host cached
+/// the `CpuAccessibleBuffer` prefers to allocate from host_cached memory. Host cached
 /// memory caches GPU data on the CPU side. This can be more performant in cases where
 /// the cpu needs to read data coming off the GPU.
-
 #[derive(Debug)]
 pub struct CpuAccessibleBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner content.
