@@ -1,5 +1,7 @@
 # Unreleased
 
+- Allow applications to access the instance and device pointers
+
 # Version 0.18.0 (2020-03-11)
 
 - **Breaking** Update dependency `winit` 0.21 -> 0.22
