@@ -343,7 +343,7 @@ impl Device {
 
     /// Grants access to the pointers to the Vulkan functions of the device.
     #[inline]
-    pub(crate) fn pointers(&self) -> &vk::DevicePointers {
+    pub fn pointers(&self) -> &vk::DevicePointers {
         &self.vk
     }
 
