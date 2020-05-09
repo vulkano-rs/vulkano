@@ -1,8 +1,8 @@
 # Unreleased
 
-- Fixed Vulkano Shaders bug when compute shader local group layout values bound to specialization constants.
-  Now it is possible to define the layout in form of `layout(local_size_x_id = 12, local_size_y_id = 13, local_size_z = 1) in;`
-  and then set the values as `SpecializationConstants {constant_12: 8, constant_13: 4, ...}`.
+- Provides new API to fetch additional information of the Physical Device from the `PhysicalDeviceProperties2KHR` structure whenever it possible. In the current implementation only `subgroupSize` property is fetching. This interface can be extended in the future to obtain more metadata depending on community needs.
+- `dynamic-local-size` compute shader example added showing how to utilize `subgroupSize` to compute and set shader's local size in run time.
+- Fixed Vulkano Shaders bug when compute shader local group layout values bound to specialization constants. Now it is possible to define the layout in form of `layout(local_size_x_id = 12, local_size_y_id = 13, local_size_z = 1) in;` and then set the values as `SpecializationConstants {constant_12: 8, constant_13: 4, ...}`.
 - Allow applications to access the instance and device pointers
 
 # Version 0.18.0 (2020-03-11)

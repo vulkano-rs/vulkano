@@ -166,6 +166,7 @@ pub const STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR: u32 = 1000005000;
 pub const STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR: u32 = 1000006000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES: u32 = 1000094000;
 pub const STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK: u32 = 1000122000 + (122 * 1000);
 pub const STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (123 * 1000);
 pub const STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT:u32 = 1000128000;
@@ -831,6 +832,7 @@ pub type ColorComponentFlags = Flags;
 pub type PipelineDynamicStateCreateFlags = Flags;
 pub type PipelineLayoutCreateFlags = Flags;
 pub type ShaderStageFlags = Flags;
+pub type SubgroupFeatureFlags = Flags;
 pub type SamplerCreateFlags = Flags;
 pub type DescriptorSetLayoutCreateFlags = Flags;
 
@@ -2483,8 +2485,18 @@ pub struct PhysicalDeviceFeatures2KHR {
 #[repr(C)]
 pub struct PhysicalDeviceProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut PhysicalDeviceSubgroupProperties,
     pub properties: PhysicalDeviceProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceSubgroupProperties {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub subgroupSize: u32,
+    pub supportedStages: ShaderStageFlags,
+    pub supportedOperations: SubgroupFeatureFlags,
+    pub quadOperationsInAllStages: Bool32,
 }
 
 #[repr(C)]

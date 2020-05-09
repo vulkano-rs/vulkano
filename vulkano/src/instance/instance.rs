@@ -341,10 +341,11 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                            device: device,
-                            properties: properties,
-                            memory: memory,
-                            queue_families: queue_families,
+                            device,
+                            properties,
+                            extended_properties: PhysicalDeviceExtendedProperties::empty(),
+                            memory,
+                            queue_families,
                             available_features: Features::from_vulkan_features(available_features),
                         });
         }
@@ -360,14 +361,32 @@ impl Instance {
         let mut output = Vec::with_capacity(physical_devices.len());
 
         for device in physical_devices.into_iter() {
+            let mut extended_properties = PhysicalDeviceExtendedProperties::empty();
+
             let properties: vk::PhysicalDeviceProperties = unsafe {
+                let mut subgroup_properties = vk::PhysicalDeviceSubgroupProperties {
+                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES,
+                    pNext: ptr::null_mut(),
+                    subgroupSize: 0,
+                    supportedStages: 0,
+                    supportedOperations: 0,
+                    quadOperationsInAllStages: 0,
+                };
+
                 let mut output = vk::PhysicalDeviceProperties2KHR {
                     sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
-                    pNext: ptr::null_mut(),
+                    pNext: &mut subgroup_properties,
                     properties: mem::zeroed(),
                 };
 
                 vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
+
+                extended_properties = PhysicalDeviceExtendedProperties {
+                    subgroup_size: Some(subgroup_properties.subgroupSize),
+
+                    ..extended_properties
+                };
+
                 output.properties
             };
 
@@ -415,10 +434,11 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                            device: device,
-                            properties: properties,
-                            memory: memory,
-                            queue_families: queue_families,
+                            device,
+                            properties,
+                            extended_properties,
+                            memory,
+                            queue_families,
                             available_features: Features::from_vulkan_features(available_features),
                         });
         }
@@ -690,9 +710,36 @@ impl From<Error> for InstanceCreationError {
 struct PhysicalDeviceInfos {
     device: vk::PhysicalDevice,
     properties: vk::PhysicalDeviceProperties,
+    extended_properties: PhysicalDeviceExtendedProperties,
     queue_families: Vec<vk::QueueFamilyProperties>,
     memory: vk::PhysicalDeviceMemoryProperties,
     available_features: Features,
+}
+
+/// Represents additional information related to Physical Devices fetched from
+/// `vkGetPhysicalDeviceProperties` call. Certain features available only when
+/// appropriate `Instance` extensions enabled. The core extension required
+/// for this features is `InstanceExtensions::khr_get_physical_device_properties2`
+///
+/// TODO: Only a small subset of available properties(https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDeviceProperties2.html) is implemented at this moment.
+pub struct PhysicalDeviceExtendedProperties {
+    subgroup_size: Option<u32>,
+}
+
+impl PhysicalDeviceExtendedProperties {
+    fn empty() -> Self {
+        Self {
+            subgroup_size: None,
+        }
+    }
+
+    /// The default number of invocations in each subgroup
+    ///
+    /// See https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDeviceSubgroupProperties.html for details
+    #[inline]
+    pub fn subgroup_size(&self) -> &Option<u32> {
+        &self.subgroup_size
+    }
 }
 
 /// Represents one of the available devices on this machine.
@@ -959,6 +1006,11 @@ impl<'a> PhysicalDevice<'a> {
     pub fn uuid(&self) -> &[u8; 16] {
         // must be equal to vk::UUID_SIZE
         &self.infos().properties.pipelineCacheUUID
+    }
+
+    #[inline]
+    pub fn extended_properties(&self) -> &PhysicalDeviceExtendedProperties {
+        &self.infos().extended_properties
     }
 
     // Internal function to make it easier to get the infos of this device.
