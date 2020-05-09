@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
+use std::sync::Arc;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::CommandBuffer;
 use vulkano::device::Queue;
@@ -96,52 +96,53 @@ impl FrameSystem {
         // instead.
         let render_pass = Arc::new(
             vulkano::ordered_passes_renderpass!(gfx_queue.device().clone(),
-            attachments: {
-                // The image that will contain the final rendering (in this example the swapchain
-                // image, but it could be another image).
-                final_color: {
-                    load: Clear,
-                    store: Store,
-                    format: final_output_format,
-                    samples: 1,
+                attachments: {
+                    // The image that will contain the final rendering (in this example the swapchain
+                    // image, but it could be another image).
+                    final_color: {
+                        load: Clear,
+                        store: Store,
+                        format: final_output_format,
+                        samples: 1,
+                    },
+                    // Will be bound to `self.diffuse_buffer`.
+                    diffuse: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::A2B10G10R10UnormPack32,
+                        samples: 1,
+                    },
+                    // Will be bound to `self.normals_buffer`.
+                    normals: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R16G16B16A16Sfloat,
+                        samples: 1,
+                    },
+                    // Will be bound to `self.depth_buffer`.
+                    depth: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::D16Unorm,
+                        samples: 1,
+                    }
                 },
-                // Will be bound to `self.diffuse_buffer`.
-                diffuse: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::A2B10G10R10UnormPack32,
-                    samples: 1,
-                },
-                // Will be bound to `self.normals_buffer`.
-                normals: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R16G16B16A16Sfloat,
-                    samples: 1,
-                },
-                // Will be bound to `self.depth_buffer`.
-                depth: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::D16Unorm,
-                    samples: 1,
-                }
-            },
-            passes: [
-                // Write to the diffuse, normals and depth attachments.
-                {
-                    color: [diffuse, normals],
-                    depth_stencil: {depth},
-                    input: []
-                },
-                // Apply lighting by reading these three attachments and writing to `final_color`.
-                {
-                    color: [final_color],
-                    depth_stencil: {},
-                    input: [diffuse, normals, depth]
-                }
-            ]
-        ).unwrap(),
+                passes: [
+                    // Write to the diffuse, normals and depth attachments.
+                    {
+                        color: [diffuse, normals],
+                        depth_stencil: {depth},
+                        input: []
+                    },
+                    // Apply lighting by reading these three attachments and writing to `final_color`.
+                    {
+                        color: [final_color],
+                        depth_stencil: {},
+                        input: [diffuse, normals, depth]
+                    }
+                ]
+            )
+            .unwrap(),
         );
 
         // For now we create three temporary images with a dimension of 1 by 1 pixel.
@@ -152,21 +153,27 @@ impl FrameSystem {
             input_attachment: true,
             ..ImageUsage::none()
         };
-        let diffuse_buffer = AttachmentImage::with_usage(gfx_queue.device().clone(),
-                                                         [1, 1],
-                                                         Format::A2B10G10R10UnormPack32,
-                                                         atch_usage)
-            .unwrap();
-        let normals_buffer = AttachmentImage::with_usage(gfx_queue.device().clone(),
-                                                         [1, 1],
-                                                         Format::R16G16B16A16Sfloat,
-                                                         atch_usage)
-            .unwrap();
-        let depth_buffer = AttachmentImage::with_usage(gfx_queue.device().clone(),
-                                                       [1, 1],
-                                                       Format::D16Unorm,
-                                                       atch_usage)
-            .unwrap();
+        let diffuse_buffer = AttachmentImage::with_usage(
+            gfx_queue.device().clone(),
+            [1, 1],
+            Format::A2B10G10R10UnormPack32,
+            atch_usage,
+        )
+        .unwrap();
+        let normals_buffer = AttachmentImage::with_usage(
+            gfx_queue.device().clone(),
+            [1, 1],
+            Format::R16G16B16A16Sfloat,
+            atch_usage,
+        )
+        .unwrap();
+        let depth_buffer = AttachmentImage::with_usage(
+            gfx_queue.device().clone(),
+            [1, 1],
+            Format::D16Unorm,
+            atch_usage,
+        )
+        .unwrap();
 
         // Initialize the three lighting systems.
         // Note that we need to pass to them the subpass where they will be executed.
@@ -175,8 +182,7 @@ impl FrameSystem {
             AmbientLightingSystem::new(gfx_queue.clone(), lighting_subpass.clone());
         let directional_lighting_system =
             DirectionalLightingSystem::new(gfx_queue.clone(), lighting_subpass.clone());
-        let point_lighting_system =
-            PointLightingSystem::new(gfx_queue.clone(), lighting_subpass);
+        let point_lighting_system = PointLightingSystem::new(gfx_queue.clone(), lighting_subpass);
 
         FrameSystem {
             gfx_queue,
@@ -209,10 +215,15 @@ impl FrameSystem {
     /// - `world_to_framebuffer` is the matrix that will be used to convert from 3D coordinates in
     ///   the world into 2D coordinates on the framebuffer.
     ///
-    pub fn frame<F, I>(&mut self, before_future: F, final_image: I,
-                       world_to_framebuffer: Matrix4<f32>) -> Frame
-        where F: GpuFuture + 'static,
-              I: ImageAccess + ImageViewAccess + Clone + Send + Sync + 'static
+    pub fn frame<F, I>(
+        &mut self,
+        before_future: F,
+        final_image: I,
+        world_to_framebuffer: Matrix4<f32>,
+    ) -> Frame
+    where
+        F: GpuFuture + 'static,
+        I: ImageAccess + ImageViewAccess + Clone + Send + Sync + 'static,
     {
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
@@ -229,51 +240,64 @@ impl FrameSystem {
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
             // render pass their content becomes undefined.
-            self.diffuse_buffer = AttachmentImage::with_usage(self.gfx_queue.device().clone(),
-                                                              img_dims,
-                                                              Format::A2B10G10R10UnormPack32,
-                                                              atch_usage)
-                .unwrap();
-            self.normals_buffer = AttachmentImage::with_usage(self.gfx_queue.device().clone(),
-                                                              img_dims,
-                                                              Format::R16G16B16A16Sfloat,
-                                                              atch_usage)
-                .unwrap();
-            self.depth_buffer = AttachmentImage::with_usage(self.gfx_queue.device().clone(),
-                                                            img_dims,
-                                                            Format::D16Unorm,
-                                                            atch_usage)
-                .unwrap();
+            self.diffuse_buffer = AttachmentImage::with_usage(
+                self.gfx_queue.device().clone(),
+                img_dims,
+                Format::A2B10G10R10UnormPack32,
+                atch_usage,
+            )
+            .unwrap();
+            self.normals_buffer = AttachmentImage::with_usage(
+                self.gfx_queue.device().clone(),
+                img_dims,
+                Format::R16G16B16A16Sfloat,
+                atch_usage,
+            )
+            .unwrap();
+            self.depth_buffer = AttachmentImage::with_usage(
+                self.gfx_queue.device().clone(),
+                img_dims,
+                Format::D16Unorm,
+                atch_usage,
+            )
+            .unwrap();
         }
 
         // Build the framebuffer. The image must be attached in the same order as they were defined
         // with the `ordered_passes_renderpass!` macro.
-        let framebuffer = Arc::new(Framebuffer::start(self.render_pass.clone())
-            .add(final_image.clone())
-            .unwrap()
-            .add(self.diffuse_buffer.clone())
-            .unwrap()
-            .add(self.normals_buffer.clone())
-            .unwrap()
-            .add(self.depth_buffer.clone())
-            .unwrap()
-            .build()
-            .unwrap());
+        let framebuffer = Arc::new(
+            Framebuffer::start(self.render_pass.clone())
+                .add(final_image.clone())
+                .unwrap()
+                .add(self.diffuse_buffer.clone())
+                .unwrap()
+                .add(self.normals_buffer.clone())
+                .unwrap()
+                .add(self.depth_buffer.clone())
+                .unwrap()
+                .build()
+                .unwrap(),
+        );
 
         // Start the command buffer builder that will be filled throughout the frame handling.
-        let command_buffer =
-            Some(AutoCommandBufferBuilder::primary_one_time_submit(self.gfx_queue
-                                                                       .device()
-                                                                       .clone(),
-                                                                   self.gfx_queue.family())
-                    .unwrap()
-                    .begin_render_pass(framebuffer.clone(),
-                                    true,
-                                    vec![[0.0, 0.0, 0.0, 0.0].into(),
-                                    [0.0, 0.0, 0.0, 0.0].into(),
-                                    [0.0, 0.0, 0.0, 0.0].into(),
-                                    1.0f32.into()])
-                    .unwrap());
+        let command_buffer = Some(
+            AutoCommandBufferBuilder::primary_one_time_submit(
+                self.gfx_queue.device().clone(),
+                self.gfx_queue.family(),
+            )
+            .unwrap()
+            .begin_render_pass(
+                framebuffer.clone(),
+                true,
+                vec![
+                    [0.0, 0.0, 0.0, 0.0].into(),
+                    [0.0, 0.0, 0.0, 0.0].into(),
+                    [0.0, 0.0, 0.0, 0.0].into(),
+                    1.0f32.into(),
+                ],
+            )
+            .unwrap(),
+        );
 
         Frame {
             system: self,
@@ -317,16 +341,18 @@ impl<'a> Frame<'a> {
     pub fn next_pass<'f>(&'f mut self) -> Option<Pass<'f, 'a>> {
         // This function reads `num_pass` increments its value, and returns a struct corresponding
         // to that pass that the user will be able to manipulate in order to customize the pass.
-        match { let current_pass = self.num_pass; self.num_pass += 1; current_pass } {
+        match {
+            let current_pass = self.num_pass;
+            self.num_pass += 1;
+            current_pass
+        } {
             0 => {
                 // If we are in the pass 0 then we haven't start anything yet.
                 // We already called `begin_render_pass` (in the `frame()` method), and that's the
                 // state we are in.
                 // We return an object that will allow the user to draw objects on the scene.
-                Some(Pass::Deferred(DrawPass {
-                                    frame: self,
-                                }))
-            },
+                Some(Pass::Deferred(DrawPass { frame: self }))
+            }
 
             1 => {
                 // If we are in pass 1 then we have finished drawing the objects on the scene.
@@ -336,35 +362,36 @@ impl<'a> Frame<'a> {
                         .take()
                         .unwrap()
                         .next_subpass(true)
-                        .unwrap()
+                        .unwrap(),
                 );
 
                 // And returning an object that will allow the user to apply lighting to the scene.
-                Some(Pass::Lighting(LightingPass {
-                                    frame: self,
-                                }))
-            },
+                Some(Pass::Lighting(LightingPass { frame: self }))
+            }
 
             2 => {
                 // If we are in pass 2 then we have finished applying lighting.
                 // We take the builder, call `end_render_pass()`, and then `build()` it to obtain
                 // an actual command buffer.
-                let command_buffer =
-                    self.command_buffer
-                        .take()
-                        .unwrap()
-                        .end_render_pass()
-                        .unwrap()
-                        .build()
-                        .unwrap();
+                let command_buffer = self
+                    .command_buffer
+                    .take()
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap()
+                    .build()
+                    .unwrap();
 
                 // Extract `before_main_cb_future` and append the command buffer execution to it.
-                let after_main_cb = self.before_main_cb_future.take().unwrap()
+                let after_main_cb = self
+                    .before_main_cb_future
+                    .take()
+                    .unwrap()
                     .then_execute(self.system.gfx_queue.clone(), command_buffer)
                     .unwrap();
                 // We obtain `after_main_cb`, which we give to the user.
                 Some(Pass::Finished(Box::new(after_main_cb)))
-            },
+            }
 
             // If the pass is over 2 then the frame is in the finished state and can't do anything
             // more.
@@ -397,19 +424,22 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     /// Appends a command that executes a secondary command buffer that performs drawing.
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
-        where C: CommandBuffer + Send + Sync + 'static
+    where
+        C: CommandBuffer + Send + Sync + 'static,
     {
         // Note that vulkano doesn't perform any safety check for now when executing secondary
         // command buffers, hence why it is unsafe. This operation will be safe in the future
         // however.
         // TODO: ^
         unsafe {
-            self.frame.command_buffer = Some(self.frame
-                .command_buffer
-                .take()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap());
+            self.frame.command_buffer = Some(
+                self.frame
+                    .command_buffer
+                    .take()
+                    .unwrap()
+                    .execute_commands(command_buffer)
+                    .unwrap(),
+            );
         }
     }
 
@@ -444,13 +474,19 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         // TODO: ^
         unsafe {
             let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = self.frame.system.ambient_lighting_system.draw([dims[0], dims[1]], self.frame.system.diffuse_buffer.clone(), color);
-            self.frame.command_buffer = Some(self.frame
-                .command_buffer
-                .take()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap());
+            let command_buffer = self.frame.system.ambient_lighting_system.draw(
+                [dims[0], dims[1]],
+                self.frame.system.diffuse_buffer.clone(),
+                color,
+            );
+            self.frame.command_buffer = Some(
+                self.frame
+                    .command_buffer
+                    .take()
+                    .unwrap()
+                    .execute_commands(command_buffer)
+                    .unwrap(),
+            );
         }
     }
 
@@ -465,13 +501,21 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         // TODO: ^
         unsafe {
             let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = self.frame.system.directional_lighting_system.draw([dims[0], dims[1]], self.frame.system.diffuse_buffer.clone(), self.frame.system.normals_buffer.clone(), direction, color);
-            self.frame.command_buffer = Some(self.frame
-                .command_buffer
-                .take()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap());
+            let command_buffer = self.frame.system.directional_lighting_system.draw(
+                [dims[0], dims[1]],
+                self.frame.system.diffuse_buffer.clone(),
+                self.frame.system.normals_buffer.clone(),
+                direction,
+                color,
+            );
+            self.frame.command_buffer = Some(
+                self.frame
+                    .command_buffer
+                    .take()
+                    .unwrap()
+                    .execute_commands(command_buffer)
+                    .unwrap(),
+            );
         }
     }
 
@@ -488,20 +532,25 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
         unsafe {
             let dims = self.frame.framebuffer.dimensions();
             let command_buffer = {
-                self.frame.system.point_lighting_system.draw([dims[0], dims[1]],
+                self.frame.system.point_lighting_system.draw(
+                    [dims[0], dims[1]],
                     self.frame.system.diffuse_buffer.clone(),
                     self.frame.system.normals_buffer.clone(),
                     self.frame.system.depth_buffer.clone(),
                     self.frame.world_to_framebuffer.invert().unwrap(),
-                    position, color)
+                    position,
+                    color,
+                )
             };
 
-            self.frame.command_buffer = Some(self.frame
-                .command_buffer
-                .take()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap());
+            self.frame.command_buffer = Some(
+                self.frame
+                    .command_buffer
+                    .take()
+                    .unwrap()
+                    .execute_commands(command_buffer)
+                    .unwrap(),
+            );
         }
     }
 }

@@ -24,10 +24,14 @@ use std::fmt;
 /// Panics if the attachment number is out of range.
 // TODO: add a specializable trait instead, that uses this function
 // TODO: ImageView instead of ImageViewAccess?
-pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usize, image: &I)
-                                           -> Result<(), IncompatibleRenderPassAttachmentError>
-    where Rp: ?Sized + RenderPassDesc,
-          I: ?Sized + ImageViewAccess
+pub fn ensure_image_view_compatible<Rp, I>(
+    render_pass: &Rp,
+    attachment_num: usize,
+    image: &I,
+) -> Result<(), IncompatibleRenderPassAttachmentError>
+where
+    Rp: ?Sized + RenderPassDesc,
+    I: ?Sized + ImageViewAccess,
 {
     let attachment_desc = render_pass
         .attachment_desc(attachment_num)
@@ -35,23 +39,23 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
 
     if image.format() != attachment_desc.format {
         return Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
-                       expected: attachment_desc.format,
-                       obtained: image.format(),
-                   });
+            expected: attachment_desc.format,
+            obtained: image.format(),
+        });
     }
 
     if image.samples() != attachment_desc.samples {
         return Err(IncompatibleRenderPassAttachmentError::SamplesMismatch {
-                       expected: attachment_desc.samples,
-                       obtained: image.samples(),
-                   });
+            expected: attachment_desc.samples,
+            obtained: image.samples(),
+        });
     }
 
     if !image.identity_swizzle() {
         return Err(IncompatibleRenderPassAttachmentError::NotIdentitySwizzled);
     }
 
-    for subpass_num in 0 .. render_pass.num_subpasses() {
+    for subpass_num in 0..render_pass.num_subpasses() {
         let subpass = render_pass
             .subpass_desc(subpass_num)
             .expect("Subpass num out of range ; wrong RenderPassDesc trait impl");
@@ -77,7 +81,9 @@ pub fn ensure_image_view_compatible<Rp, I>(render_pass: &Rp, attachment_num: usi
                     .image
                     .usage_depth_stencil_attachment()
                 {
-                    return Err(IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage);
+                    return Err(
+                        IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage,
+                    );
                 }
             }
         }
@@ -141,25 +147,25 @@ impl error::Error for IncompatibleRenderPassAttachmentError {
         match *self {
             IncompatibleRenderPassAttachmentError::FormatMismatch { .. } => {
                 "mismatch between the format expected by the render pass and the actual format"
-            },
+            }
             IncompatibleRenderPassAttachmentError::SamplesMismatch { .. } => {
                 "mismatch between the number of samples expected by the render pass and the actual \
                  number of samples"
-            },
+            }
             IncompatibleRenderPassAttachmentError::NotIdentitySwizzled => {
                 "the image view does not use identity swizzling"
-            },
+            }
             IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage => {
                 "the image is used as a color attachment but is missing the color attachment usage"
-            },
+            }
             IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage => {
                 "the image is used as a depth/stencil attachment but is missing the depth-stencil \
                  attachment usage"
-            },
+            }
             IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage => {
                 "the image is used as an input attachment but is missing the input \
                  attachment usage"
-            },
+            }
         }
     }
 }
@@ -173,8 +179,8 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
 
 #[cfg(test)]
 mod tests {
-    use super::IncompatibleRenderPassAttachmentError;
     use super::ensure_image_view_compatible;
+    use super::IncompatibleRenderPassAttachmentError;
     use format::Format;
     use framebuffer::EmptySinglePassRenderPassDesc;
     use image::AttachmentImage;
@@ -196,7 +202,8 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap();
+        )
+        .unwrap();
 
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
 
@@ -220,15 +227,16 @@ mod tests {
                 color: [color],
                 depth_stencil: {}
             }
-        ).unwrap();
+        )
+        .unwrap();
 
         let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
 
         match ensure_image_view_compatible(&rp, 0, &img) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
-                    expected: Format::R16G16Sfloat,
-                    obtained: Format::R8G8B8A8Unorm,
-                }) => (),
+                expected: Format::R16G16Sfloat,
+                obtained: Format::R8G8B8A8Unorm,
+            }) => (),
             e => panic!("{:?}", e),
         }
     }

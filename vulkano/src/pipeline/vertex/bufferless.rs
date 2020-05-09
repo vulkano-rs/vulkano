@@ -32,15 +32,27 @@ pub struct BufferlessVertices {
 }
 
 unsafe impl VertexSource<BufferlessVertices> for BufferlessDefinition {
-    fn decode(&self, n: BufferlessVertices)
-              -> (Vec<Box<dyn BufferAccess + Sync + Send + 'static>>, usize, usize) {
+    fn decode(
+        &self,
+        n: BufferlessVertices,
+    ) -> (
+        Vec<Box<dyn BufferAccess + Sync + Send + 'static>>,
+        usize,
+        usize,
+    ) {
         (Vec::new(), n.vertices, n.instances)
     }
 }
 
 unsafe impl<T> VertexSource<Vec<T>> for BufferlessDefinition {
-    fn decode<'l>(&self, _: Vec<T>)
-                  -> (Vec<Box<dyn BufferAccess + Sync + Send + 'static>>, usize, usize) {
+    fn decode<'l>(
+        &self,
+        _: Vec<T>,
+    ) -> (
+        Vec<Box<dyn BufferAccess + Sync + Send + 'static>>,
+        usize,
+        usize,
+    ) {
         panic!("bufferless drawing should not be supplied with buffers")
     }
 }
@@ -49,8 +61,9 @@ unsafe impl<I> VertexDefinition<I> for BufferlessDefinition {
     type BuffersIter = iter::Empty<(u32, usize, InputRate)>;
     type AttribsIter = iter::Empty<(u32, u32, AttributeInfo)>;
     fn definition(
-        &self, _: &I)
-        -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
+        &self,
+        _: &I,
+    ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         Ok((iter::empty(), iter::empty()))
     }
 }

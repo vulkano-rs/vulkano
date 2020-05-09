@@ -122,7 +122,8 @@ unsafe impl VertexMember for f64 {
 }
 
 unsafe impl<T> VertexMember for (T,)
-    where T: VertexMember
+where
+    T: VertexMember,
 {
     #[inline]
     fn format() -> (VertexMemberTy, usize) {
@@ -131,7 +132,8 @@ unsafe impl<T> VertexMember for (T,)
 }
 
 unsafe impl<T> VertexMember for (T, T)
-    where T: VertexMember
+where
+    T: VertexMember,
 {
     #[inline]
     fn format() -> (VertexMemberTy, usize) {
@@ -141,7 +143,8 @@ unsafe impl<T> VertexMember for (T, T)
 }
 
 unsafe impl<T> VertexMember for (T, T, T)
-    where T: VertexMember
+where
+    T: VertexMember,
 {
     #[inline]
     fn format() -> (VertexMemberTy, usize) {
@@ -151,7 +154,8 @@ unsafe impl<T> VertexMember for (T, T, T)
 }
 
 unsafe impl<T> VertexMember for (T, T, T, T)
-    where T: VertexMember
+where
+    T: VertexMember,
 {
     #[inline]
     fn format() -> (VertexMemberTy, usize) {
@@ -161,9 +165,10 @@ unsafe impl<T> VertexMember for (T, T, T, T)
 }
 
 macro_rules! impl_vm_array {
-    ($sz:expr) => (
+    ($sz:expr) => {
         unsafe impl<T> VertexMember for [T; $sz]
-            where T: VertexMember
+        where
+            T: VertexMember,
         {
             #[inline]
             fn format() -> (VertexMemberTy, usize) {
@@ -171,7 +176,7 @@ macro_rules! impl_vm_array {
                 (ty, sz * $sz)
             }
         }
-    );
+    };
 }
 
 impl_vm_array!(1);

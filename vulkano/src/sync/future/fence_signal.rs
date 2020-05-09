@@ -31,7 +31,8 @@ use sync::PipelineStages;
 /// Builds a new fence signal future.
 #[inline]
 pub fn then_signal_fence<F>(future: F, behavior: FenceSignalFutureBehavior) -> FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     let device = future.device().clone();
 
@@ -90,7 +91,8 @@ pub enum FenceSignalFutureBehavior {
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished \
               processing the submission"]
 pub struct FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     // Current state. See the docs of `FenceSignalFutureState`.
     state: Mutex<FenceSignalFutureState<F>>,
@@ -124,7 +126,8 @@ enum FenceSignalFutureState<F> {
 }
 
 impl<F> FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     /// Blocks the current thread until the fence is signaled by the GPU. Performs a flush if
     /// necessary.
@@ -146,7 +149,7 @@ impl<F> FenceSignalFuture<F>
                     previous.signal_finished();
                 }
                 Ok(())
-            },
+            }
             FenceSignalFutureState::Cleaned => Ok(()),
             _ => unreachable!(),
         }
@@ -154,7 +157,8 @@ impl<F> FenceSignalFuture<F>
 }
 
 impl<F> FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     // Implementation of `cleanup_finished`, but takes a `&self` instead of a `&mut self`.
     // This is an external function so that we can also call it from an `Arc<FenceSignalFuture>`.
@@ -165,23 +169,21 @@ impl<F> FenceSignalFuture<F>
         match *state {
             FenceSignalFutureState::Flushed(ref mut prev, ref fence) => {
                 match fence.wait(Some(Duration::from_secs(0))) {
-                    Ok(()) => unsafe {
-                        prev.signal_finished()
-                    },
+                    Ok(()) => unsafe { prev.signal_finished() },
                     Err(_) => {
                         prev.cleanup_finished();
                         return;
-                    },
+                    }
                 }
-            },
+            }
             FenceSignalFutureState::Pending(ref mut prev, _) => {
                 prev.cleanup_finished();
                 return;
-            },
+            }
             FenceSignalFutureState::PartiallyFlushed(ref mut prev, _) => {
                 prev.cleanup_finished();
                 return;
-            },
+            }
             _ => return,
         };
 
@@ -191,8 +193,10 @@ impl<F> FenceSignalFuture<F>
     }
 
     // Implementation of `flush`. You must lock the state and pass the mutex guard here.
-    fn flush_impl(&self, state: &mut MutexGuard<FenceSignalFutureState<F>>)
-                  -> Result<(), FlushError> {
+    fn flush_impl(
+        &self,
+        state: &mut MutexGuard<FenceSignalFutureState<F>>,
+    ) -> Result<(), FlushError> {
         unsafe {
             // In this function we temporarily replace the current state with `Poisoned` at the
             // beginning, and we take care to always put back a value into `state` before
@@ -200,18 +204,14 @@ impl<F> FenceSignalFuture<F>
             let old_state = mem::replace(&mut **state, FenceSignalFutureState::Poisoned);
 
             let (previous, fence, partially_flushed) = match old_state {
-                FenceSignalFutureState::Pending(prev, fence) => {
-                    (prev, fence, false)
-                },
-                FenceSignalFutureState::PartiallyFlushed(prev, fence) => {
-                    (prev, fence, true)
-                },
+                FenceSignalFutureState::Pending(prev, fence) => (prev, fence, false),
+                FenceSignalFutureState::PartiallyFlushed(prev, fence) => (prev, fence, true),
                 other => {
                     // We were already flushed in the past, or we're already poisoned. Don't do
                     // anything.
                     **state = other;
                     return Ok(());
-                },
+                }
             };
 
             // TODO: meh for unwrap
@@ -230,13 +230,13 @@ impl<F> FenceSignalFuture<F>
                     let mut b = SubmitCommandBufferBuilder::new();
                     b.set_fence_signal(&fence);
                     b.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
-                },
+                }
                 SubmitAnyBuilder::SemaphoresWait(sem) => {
                     debug_assert!(!partially_flushed);
                     let b: SubmitCommandBufferBuilder = sem.into();
                     debug_assert!(!b.has_fence());
                     b.submit(&queue).map_err(|err| OutcomeErr::Full(err.into()))
-                },
+                }
                 SubmitAnyBuilder::CommandBuffer(mut cb_builder) => {
                     debug_assert!(!partially_flushed);
                     // The assert below could technically be a debug assertion as it is part of the
@@ -249,7 +249,7 @@ impl<F> FenceSignalFuture<F>
                     cb_builder
                         .submit(&queue)
                         .map_err(|err| OutcomeErr::Full(err.into()))
-                },
+                }
                 SubmitAnyBuilder::BindSparse(mut sparse) => {
                     debug_assert!(!partially_flushed);
                     // Same remark as `CommandBuffer`.
@@ -258,7 +258,7 @@ impl<F> FenceSignalFuture<F>
                     sparse
                         .submit(&queue)
                         .map_err(|err| OutcomeErr::Full(err.into()))
-                },
+                }
                 SubmitAnyBuilder::QueuePresent(present) => {
                     let intermediary_result = if partially_flushed {
                         Ok(())
@@ -269,13 +269,12 @@ impl<F> FenceSignalFuture<F>
                         Ok(()) => {
                             let mut b = SubmitCommandBufferBuilder::new();
                             b.set_fence_signal(&fence);
-                            b.submit(&queue).map_err(|err| OutcomeErr::Partial(err.into()))
-                        },
-                        Err(err) => {
-                            Err(OutcomeErr::Full(err.into()))
-                        },
+                            b.submit(&queue)
+                                .map_err(|err| OutcomeErr::Partial(err.into()))
+                        }
+                        Err(err) => Err(OutcomeErr::Full(err.into())),
                     }
-                },
+                }
             };
 
             // Restore the state before returning.
@@ -283,15 +282,15 @@ impl<F> FenceSignalFuture<F>
                 Ok(()) => {
                     **state = FenceSignalFutureState::Flushed(previous, fence);
                     Ok(())
-                },
+                }
                 Err(OutcomeErr::Partial(err)) => {
                     **state = FenceSignalFutureState::PartiallyFlushed(previous, fence);
                     Err(err)
-                },
+                }
                 Err(OutcomeErr::Full(err)) => {
                     **state = FenceSignalFutureState::Pending(previous, fence);
                     Err(err)
-                },
+                }
             }
         }
     }
@@ -311,7 +310,8 @@ impl<F> FenceSignalFutureState<F> {
 }
 
 unsafe impl<F> GpuFuture for FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -324,16 +324,13 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
         self.flush_impl(&mut state)?;
 
         match *state {
-            FenceSignalFutureState::Flushed(_, ref fence) => {
-                match self.behavior {
-                    FenceSignalFutureBehavior::Block { timeout } => {
-                        fence.wait(timeout)?;
-                    },
-                    FenceSignalFutureBehavior::Continue => (),
+            FenceSignalFutureState::Flushed(_, ref fence) => match self.behavior {
+                FenceSignalFutureBehavior::Block { timeout } => {
+                    fence.wait(timeout)?;
                 }
+                FenceSignalFutureBehavior::Continue => (),
             },
-            FenceSignalFutureState::Cleaned |
-            FenceSignalFutureState::Poisoned => (),
+            FenceSignalFutureState::Cleaned | FenceSignalFutureState::Poisoned => (),
             FenceSignalFutureState::Pending(_, _) => unreachable!(),
             FenceSignalFutureState::PartiallyFlushed(_, _) => unreachable!(),
         }
@@ -353,9 +350,8 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
         match *state {
             FenceSignalFutureState::Flushed(ref prev, _) => {
                 prev.signal_finished();
-            },
-            FenceSignalFutureState::Cleaned |
-            FenceSignalFutureState::Poisoned => (),
+            }
+            FenceSignalFutureState::Cleaned | FenceSignalFutureState::Poisoned => (),
             _ => unreachable!(),
         }
     }
@@ -370,10 +366,8 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
                 } else {
                     true
                 }
-            },
-            FenceSignalFutureBehavior::Block { .. } => {
-                true
-            },
+            }
+            FenceSignalFutureBehavior::Block { .. } => true,
         }
     }
 
@@ -389,8 +383,11 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
             previous.check_buffer_access(buffer, exclusive, queue)
@@ -400,9 +397,13 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let state = self.state.lock().unwrap();
         if let Some(previous) = state.get_prev() {
             previous.check_image_access(image, layout, exclusive, queue)
@@ -413,7 +414,8 @@ unsafe impl<F> GpuFuture for FenceSignalFuture<F>
 }
 
 unsafe impl<F> DeviceOwned for FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -422,7 +424,8 @@ unsafe impl<F> DeviceOwned for FenceSignalFuture<F>
 }
 
 impl<F> Drop for FenceSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     fn drop(&mut self) {
         let mut state = self.state.lock().unwrap();
@@ -438,24 +441,25 @@ impl<F> Drop for FenceSignalFuture<F>
                 unsafe {
                     previous.signal_finished();
                 }
-            },
+            }
             FenceSignalFutureState::Cleaned => {
                 // Also a normal situation. The user called `cleanup_finished()` before dropping.
-            },
+            }
             FenceSignalFutureState::Poisoned => {
                 // The previous future was already dropped and blocked the current queue.
-            },
-            FenceSignalFutureState::Pending(_, _) |
-            FenceSignalFutureState::PartiallyFlushed(_, _) => {
+            }
+            FenceSignalFutureState::Pending(_, _)
+            | FenceSignalFutureState::PartiallyFlushed(_, _) => {
                 // Flushing produced an error. There's nothing more we can do except drop the
                 // previous future and let it block the current queue.
-            },
+            }
         }
     }
 }
 
 unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -491,15 +495,22 @@ unsafe impl<F> GpuFuture for Arc<FenceSignalFuture<F>>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
 }

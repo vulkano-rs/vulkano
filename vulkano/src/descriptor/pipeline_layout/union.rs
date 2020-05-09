@@ -31,8 +31,9 @@ impl<A, B> PipelineLayoutDescUnion<A, B> {
 }
 
 unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
-    where A: PipelineLayoutDesc,
-          B: PipelineLayoutDesc
+where
+    A: PipelineLayoutDesc,
+    B: PipelineLayoutDesc,
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -76,7 +77,7 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
     fn num_push_constants_ranges(&self) -> usize {
         // We simply call `push_constants_range` repeatedly to determine when it is over.
         // TODO: consider caching this
-        (self.a.num_push_constants_ranges() ..)
+        (self.a.num_push_constants_ranges()..)
             .filter(|&n| self.push_constants_range(n).is_none())
             .next()
             .unwrap()
@@ -94,7 +95,7 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
 
         if let Some(mut pc) = self.a.push_constants_range(num) {
             // We try to find the ranges in `self.b` that share the same stages as us.
-            for n in 0 .. self.b.num_push_constants_ranges() {
+            for n in 0..self.b.num_push_constants_ranges() {
                 let other_pc = self.b.push_constants_range(n).unwrap();
 
                 if other_pc.stages.intersects(&pc.stages) {
@@ -102,7 +103,6 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
                         pc.size += pc.offset - other_pc.offset;
                         pc.size = cmp::max(pc.size, other_pc.size);
                         pc.offset = other_pc.offset;
-
                     } else if other_pc.offset > pc.offset {
                         pc.size = cmp::max(pc.size, other_pc.size + (other_pc.offset - pc.offset));
                     }
@@ -113,10 +113,10 @@ unsafe impl<A, B> PipelineLayoutDesc for PipelineLayoutDescUnion<A, B>
         }
 
         let mut num = num - self.a.num_push_constants_ranges();
-        'outer_loop: for b_r in 0 .. self.b.num_push_constants_ranges() {
+        'outer_loop: for b_r in 0..self.b.num_push_constants_ranges() {
             let pc = self.b.push_constants_range(b_r).unwrap();
 
-            for n in 0 .. self.a.num_push_constants_ranges() {
+            for n in 0..self.a.num_push_constants_ranges() {
                 let other_pc = self.a.push_constants_range(n).unwrap();
                 if other_pc.stages.intersects(&pc.stages) {
                     continue 'outer_loop;

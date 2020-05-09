@@ -17,9 +17,6 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 
-use Error;
-use OomError;
-use VulkanObject;
 use check_errors;
 use device::Device;
 use device::DeviceOwned;
@@ -27,6 +24,9 @@ use instance::MemoryType;
 use memory::Content;
 use memory::DedicatedAlloc;
 use vk;
+use Error;
+use OomError;
+use VulkanObject;
 
 /// Represents memory that has been allocated.
 ///
@@ -62,8 +62,11 @@ impl DeviceMemory {
     /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
     ///
     #[inline]
-    pub fn alloc(device: Arc<Device>, memory_type: MemoryType, size: usize)
-                 -> Result<DeviceMemory, DeviceMemoryAllocError> {
+    pub fn alloc(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+    ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         DeviceMemory::dedicated_alloc(device, memory_type, size, DedicatedAlloc::None)
     }
 
@@ -75,12 +78,17 @@ impl DeviceMemory {
     /// If the `VK_KHR_dedicated_allocation` extension is enabled on the device, then it will be
     /// used by this method. Otherwise the `resource` parameter will be ignored.
     #[inline]
-    pub fn dedicated_alloc(device: Arc<Device>, memory_type: MemoryType, size: usize,
-                           resource: DedicatedAlloc)
-                           -> Result<DeviceMemory, DeviceMemoryAllocError> {
+    pub fn dedicated_alloc(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+        resource: DedicatedAlloc,
+    ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         assert!(size >= 1);
-        assert_eq!(device.physical_device().internal_object(),
-                   memory_type.physical_device().internal_object());
+        assert_eq!(
+            device.physical_device().internal_object(),
+            memory_type.physical_device().internal_object()
+        );
 
         // Note: This check is disabled because MoltenVK doesn't report correct heap sizes yet.
         // More generally, whether or not this check is useful is questionable.
@@ -100,25 +108,19 @@ impl DeviceMemory {
             // Decide whether we are going to pass a `vkMemoryDedicatedAllocateInfoKHR`.
             let dedicated_alloc_info = if device.loaded_extensions().khr_dedicated_allocation {
                 match resource {
-                    DedicatedAlloc::Buffer(buffer) => {
-                        Some(vk::MemoryDedicatedAllocateInfoKHR {
-                                 sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
-                                 pNext: ptr::null(),
-                                 image: 0,
-                                 buffer: buffer.internal_object(),
-                             })
-                    },
-                    DedicatedAlloc::Image(image) => {
-                        Some(vk::MemoryDedicatedAllocateInfoKHR {
-                                 sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
-                                 pNext: ptr::null(),
-                                 image: image.internal_object(),
-                                 buffer: 0,
-                             })
-                    },
-                    DedicatedAlloc::None => {
-                        None
-                    },
+                    DedicatedAlloc::Buffer(buffer) => Some(vk::MemoryDedicatedAllocateInfoKHR {
+                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                        pNext: ptr::null(),
+                        image: 0,
+                        buffer: buffer.internal_object(),
+                    }),
+                    DedicatedAlloc::Image(image) => Some(vk::MemoryDedicatedAllocateInfoKHR {
+                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                        pNext: ptr::null(),
+                        image: image.internal_object(),
+                        buffer: 0,
+                    }),
+                    DedicatedAlloc::None => None,
                 }
             } else {
                 None
@@ -135,20 +137,22 @@ impl DeviceMemory {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.AllocateMemory(device.internal_object(),
-                                           &infos,
-                                           ptr::null(),
-                                           output.as_mut_ptr()))?;
+            check_errors(vk.AllocateMemory(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             *allocation_count += 1;
             output.assume_init()
         };
 
         Ok(DeviceMemory {
-               memory: memory,
-               device: device,
-               size: size,
-               memory_type_index: memory_type.id(),
-           })
+            memory: memory,
+            device: device,
+            size: size,
+            memory_type_index: memory_type.id(),
+        })
     }
 
     /// Allocates a chunk of memory and maps it.
@@ -159,15 +163,21 @@ impl DeviceMemory {
     /// - Panics if the memory type is not host-visible.
     ///
     #[inline]
-    pub fn alloc_and_map(device: Arc<Device>, memory_type: MemoryType, size: usize)
-                         -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
+    pub fn alloc_and_map(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+    ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         DeviceMemory::dedicated_alloc_and_map(device, memory_type, size, DedicatedAlloc::None)
     }
 
     /// Equivalent of `dedicated_alloc` for `alloc_and_map`.
-    pub fn dedicated_alloc_and_map(device: Arc<Device>, memory_type: MemoryType, size: usize,
-                                   resource: DedicatedAlloc)
-                                   -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
+    pub fn dedicated_alloc_and_map(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+        resource: DedicatedAlloc,
+    ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
@@ -177,20 +187,22 @@ impl DeviceMemory {
 
         let ptr = unsafe {
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.MapMemory(device.internal_object(),
-                                      mem.memory,
-                                      0,
-                                      mem.size as vk::DeviceSize,
-                                      0, /* reserved flags */
-                                      output.as_mut_ptr()))?;
+            check_errors(vk.MapMemory(
+                device.internal_object(),
+                mem.memory,
+                0,
+                mem.size as vk::DeviceSize,
+                0, /* reserved flags */
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(MappedDeviceMemory {
-               memory: mem,
-               pointer: ptr,
-               coherent: coherent,
-           })
+            memory: mem,
+            pointer: ptr,
+            coherent: coherent,
+        })
     }
 
     /// Returns the memory type this chunk was allocated on.
@@ -243,7 +255,8 @@ impl Drop for DeviceMemory {
         unsafe {
             let vk = self.device.pointers();
             vk.FreeMemory(self.device.internal_object(), self.memory, ptr::null());
-            let mut allocation_count = self.device
+            let mut allocation_count = self
+                .device
                 .allocation_count()
                 .lock()
                 .expect("Poisoned mutex");
@@ -322,12 +335,15 @@ impl MappedDeviceMemory {
     ///
     #[inline]
     pub unsafe fn read_write<T: ?Sized>(&self, range: Range<usize>) -> CpuAccess<T>
-        where T: Content
+    where
+        T: Content,
     {
         let vk = self.memory.device().pointers();
-        let pointer = T::ref_from_ptr((self.pointer as usize + range.start) as *mut _,
-                                      range.end - range.start)
-            .unwrap(); // TODO: error
+        let pointer = T::ref_from_ptr(
+            (self.pointer as usize + range.start) as *mut _,
+            range.end - range.start,
+        )
+        .unwrap(); // TODO: error
 
         if !self.coherent {
             let range = vk::MappedMemoryRange {
@@ -372,10 +388,8 @@ unsafe impl DeviceOwned for MappedDeviceMemory {
     }
 }
 
-unsafe impl Send for MappedDeviceMemory {
-}
-unsafe impl Sync for MappedDeviceMemory {
-}
+unsafe impl Send for MappedDeviceMemory {}
+unsafe impl Sync for MappedDeviceMemory {}
 
 impl fmt::Debug for MappedDeviceMemory {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -404,7 +418,8 @@ impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
     #[doc(hidden)]
     #[inline]
     pub fn map<U: ?Sized + 'a, F>(self, f: F) -> CpuAccess<'a, U>
-        where F: FnOnce(*mut T) -> *mut U
+    where
+        F: FnOnce(*mut T) -> *mut U,
     {
         CpuAccess {
             pointer: f(self.pointer),
@@ -415,10 +430,8 @@ impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
     }
 }
 
-unsafe impl<'a, T: ?Sized + 'a> Send for CpuAccess<'a, T> {
-}
-unsafe impl<'a, T: ?Sized + 'a> Sync for CpuAccess<'a, T> {
-}
+unsafe impl<'a, T: ?Sized + 'a> Send for CpuAccess<'a, T> {}
+unsafe impl<'a, T: ?Sized + 'a> Sync for CpuAccess<'a, T> {}
 
 impl<'a, T: ?Sized + 'a> Deref for CpuAccess<'a, T> {
     type Target = T;
@@ -475,8 +488,9 @@ impl error::Error for DeviceMemoryAllocError {
     fn description(&self) -> &str {
         match *self {
             DeviceMemoryAllocError::OomError(_) => "not enough memory available",
-            DeviceMemoryAllocError::TooManyObjects =>
-                "the maximum number of allocations has been exceeded",
+            DeviceMemoryAllocError::TooManyObjects => {
+                "the maximum number of allocations has been exceeded"
+            }
             DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
         }
     }
@@ -501,8 +515,9 @@ impl From<Error> for DeviceMemoryAllocError {
     #[inline]
     fn from(err: Error) -> DeviceMemoryAllocError {
         match err {
-            e @ Error::OutOfHostMemory |
-            e @ Error::OutOfDeviceMemory => DeviceMemoryAllocError::OomError(e.into()),
+            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => {
+                DeviceMemoryAllocError::OomError(e.into())
+            }
             Error::TooManyObjects => DeviceMemoryAllocError::TooManyObjects,
             Error::MemoryMapFailed => DeviceMemoryAllocError::MemoryMapFailed,
             _ => panic!("unexpected error: {:?}", err),
@@ -519,9 +534,9 @@ impl From<OomError> for DeviceMemoryAllocError {
 
 #[cfg(test)]
 mod tests {
-    use OomError;
     use memory::DeviceMemory;
     use memory::DeviceMemoryAllocError;
+    use OomError;
 
     #[test]
     fn create() {
@@ -535,8 +550,8 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
         let mem_ty = device.physical_device().memory_types().next().unwrap();
         assert_should_panic!({
-                                 let _ = DeviceMemory::alloc(device.clone(), mem_ty, 0);
-                             });
+            let _ = DeviceMemory::alloc(device.clone(), mem_ty, 0);
+        });
     }
 
     #[test]
@@ -570,7 +585,7 @@ mod tests {
 
         let mut allocs = Vec::new();
 
-        for _ in 0 .. 4 {
+        for _ in 0..4 {
             match DeviceMemory::alloc(device.clone(), mem_ty, heap_size / 3) {
                 Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory)) => return, // test succeeded
                 Ok(a) => allocs.push(a),

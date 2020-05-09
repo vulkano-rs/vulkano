@@ -97,9 +97,9 @@ pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 
+use pipeline::depth_stencil::DynamicStencilValue;
 use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
-use pipeline::depth_stencil::DynamicStencilValue;
 
 pub mod pool;
 pub mod submit;
@@ -148,7 +148,6 @@ pub struct DynamicState {
     pub compare_mask: Option<DynamicStencilValue>,
     pub write_mask: Option<DynamicStencilValue>,
     pub reference: Option<DynamicStencilValue>,
-
 }
 
 impl DynamicState {
@@ -160,7 +159,7 @@ impl DynamicState {
             scissors: None,
             compare_mask: None,
             write_mask: None,
-            reference: None
+            reference: None,
         }
     }
 }

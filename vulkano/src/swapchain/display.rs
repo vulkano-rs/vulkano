@@ -35,13 +35,13 @@ use std::vec::IntoIter;
 
 use instance::Instance;
 use instance::PhysicalDevice;
-use swapchain::SupportedSurfaceTransforms;
 use swapchain::capabilities;
+use swapchain::SupportedSurfaceTransforms;
 
-use OomError;
-use VulkanObject;
 use check_errors;
 use vk;
+use OomError;
+use VulkanObject;
 
 // TODO: extract this to a `display` module and solve the visibility problems
 
@@ -65,48 +65,66 @@ impl DisplayPlane {
 
         let num = unsafe {
             let mut num: u32 = 0;
-            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
-                                                                       &mut num,
-                                                                       ptr::null_mut()))?;
+            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(
+                device.internal_object(),
+                &mut num,
+                ptr::null_mut(),
+            ))?;
             num
         };
 
         let planes: Vec<vk::DisplayPlanePropertiesKHR> = unsafe {
             let mut planes = Vec::with_capacity(num as usize);
             let mut num = num;
-            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(device.internal_object(),
-                                                                       &mut num,
-                                                                       planes.as_mut_ptr()))?;
+            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(
+                device.internal_object(),
+                &mut num,
+                planes.as_mut_ptr(),
+            ))?;
             planes.set_len(num as usize);
             planes
         };
 
-        Ok(planes.into_iter().enumerate().map(|(index, prop)| {
-            let num = unsafe {
-                let mut num: u32 = 0;
-                check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(), index as u32,
-                                                                    &mut num, ptr::null_mut())).unwrap();       // TODO: shouldn't unwrap
-                num
-            };
+        Ok(planes
+            .into_iter()
+            .enumerate()
+            .map(|(index, prop)| {
+                let num = unsafe {
+                    let mut num: u32 = 0;
+                    check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(
+                        device.internal_object(),
+                        index as u32,
+                        &mut num,
+                        ptr::null_mut(),
+                    ))
+                    .unwrap(); // TODO: shouldn't unwrap
+                    num
+                };
 
-            let supported_displays: Vec<vk::DisplayKHR> = unsafe {
-                let mut displays = Vec::with_capacity(num as usize);
-                let mut num = num;
-                check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(device.internal_object(),
-                                                                    index as u32, &mut num,
-                                                                    displays.as_mut_ptr())).unwrap();       // TODO: shouldn't unwrap
-                displays.set_len(num as usize);
-                displays
-            };
+                let supported_displays: Vec<vk::DisplayKHR> = unsafe {
+                    let mut displays = Vec::with_capacity(num as usize);
+                    let mut num = num;
+                    check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(
+                        device.internal_object(),
+                        index as u32,
+                        &mut num,
+                        displays.as_mut_ptr(),
+                    ))
+                    .unwrap(); // TODO: shouldn't unwrap
+                    displays.set_len(num as usize);
+                    displays
+                };
 
-            DisplayPlane {
-                instance: device.instance().clone(),
-                physical_device: device.index(),
-                index: index as u32,
-                properties: prop,
-                supported_displays: supported_displays,
-            }
-        }).collect::<Vec<_>>().into_iter())
+                DisplayPlane {
+                    instance: device.instance().clone(),
+                    physical_device: device.index(),
+                    index: index as u32,
+                    properties: prop,
+                    supported_displays: supported_displays,
+                }
+            })
+            .collect::<Vec<_>>()
+            .into_iter())
     }
 
     /// Enumerates all the display planes that are available on a given physical device.
@@ -165,33 +183,35 @@ impl Display {
 
         let num = unsafe {
             let mut num = 0;
-            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
-                                                                  &mut num,
-                                                                  ptr::null_mut()))?;
+            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(
+                device.internal_object(),
+                &mut num,
+                ptr::null_mut(),
+            ))?;
             num
         };
 
         let displays: Vec<vk::DisplayPropertiesKHR> = unsafe {
             let mut displays = Vec::with_capacity(num as usize);
             let mut num = num;
-            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(device.internal_object(),
-                                                                  &mut num,
-                                                                  displays.as_mut_ptr()))?;
+            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(
+                device.internal_object(),
+                &mut num,
+                displays.as_mut_ptr(),
+            ))?;
             displays.set_len(num as usize);
             displays
         };
 
         Ok(displays
-               .into_iter()
-               .map(|prop| {
-                        Display {
-                            instance: device.instance().clone(),
-                            physical_device: device.index(),
-                            properties: Arc::new(prop),
-                        }
-                    })
-               .collect::<Vec<_>>()
-               .into_iter())
+            .into_iter()
+            .map(|prop| Display {
+                instance: device.instance().clone(),
+                physical_device: device.index(),
+                properties: Arc::new(prop),
+            })
+            .collect::<Vec<_>>()
+            .into_iter())
     }
 
     /// Enumerates all the displays that are available on a given physical device.
@@ -263,35 +283,37 @@ impl Display {
 
         let num = unsafe {
             let mut num = 0;
-            check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                        self.properties.display,
-                                                        &mut num,
-                                                        ptr::null_mut()))?;
+            check_errors(vk.GetDisplayModePropertiesKHR(
+                self.physical_device().internal_object(),
+                self.properties.display,
+                &mut num,
+                ptr::null_mut(),
+            ))?;
             num
         };
 
         let modes: Vec<vk::DisplayModePropertiesKHR> = unsafe {
             let mut modes = Vec::with_capacity(num as usize);
             let mut num = num;
-            check_errors(vk.GetDisplayModePropertiesKHR(self.physical_device().internal_object(),
-                                                        self.properties.display,
-                                                        &mut num,
-                                                        modes.as_mut_ptr()))?;
+            check_errors(vk.GetDisplayModePropertiesKHR(
+                self.physical_device().internal_object(),
+                self.properties.display,
+                &mut num,
+                modes.as_mut_ptr(),
+            ))?;
             modes.set_len(num as usize);
             modes
         };
 
         Ok(modes
-               .into_iter()
-               .map(|mode| {
-                        DisplayMode {
-                            display: self.clone(),
-                            display_mode: mode.displayMode,
-                            parameters: mode.parameters,
-                        }
-                    })
-               .collect::<Vec<_>>()
-               .into_iter())
+            .into_iter()
+            .map(|mode| DisplayMode {
+                display: self.clone(),
+                display_mode: mode.displayMode,
+                parameters: mode.parameters,
+            })
+            .collect::<Vec<_>>()
+            .into_iter())
     }
 
     /// Returns a list of all modes available on this display.

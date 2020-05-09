@@ -14,11 +14,11 @@ use std::iter::FromIterator;
 use std::ptr;
 use std::str;
 
-use VulkanObject;
 use check_errors;
-use instance::PhysicalDevice;
 use extensions::SupportedExtensionsError;
+use instance::PhysicalDevice;
 use vk;
+use VulkanObject;
 
 macro_rules! device_extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (

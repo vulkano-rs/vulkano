@@ -14,39 +14,52 @@
 // properly is important to achieve maximal performance that particular device
 // can provide.
 
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
+use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
+use vulkano::format::Format;
+use vulkano::image::{Dimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
-use vulkano::sync::GpuFuture;
 use vulkano::sync;
-use vulkano::format::Format;
-use vulkano::image::{StorageImage, Dimensions};
-use std::sync::Arc;
-use std::path::Path;
-use std::fs::File;
-use std::io::BufWriter;
+use vulkano::sync::GpuFuture;
 
 fn main() {
-    let instance = Instance::new(None, &InstanceExtensions {
-        // This extension is required to obtain physical device metadata
-        // about the device workgroup size limits
-        khr_get_physical_device_properties2: true,
+    let instance = Instance::new(
+        None,
+        &InstanceExtensions {
+            // This extension is required to obtain physical device metadata
+            // about the device workgroup size limits
+            khr_get_physical_device_properties2: true,
 
-        ..InstanceExtensions::none()
-    }, None).unwrap();
+            ..InstanceExtensions::none()
+        },
+        None,
+    )
+    .unwrap();
 
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
-    let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_compute())
+        .unwrap();
+    let (device, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &DeviceExtensions::none(),
+        [(queue_family, 0.5)].iter().cloned(),
+    )
+    .unwrap();
     let queue = queues.next().unwrap();
 
     mod cs {
-        vulkano_shaders::shader!{
+        vulkano_shaders::shader! {
             ty: "compute",
             src: "
                 #version 450
@@ -112,11 +125,15 @@ fn main() {
     // local size can lead to significant performance penalty.
     let (local_size_x, local_size_y) = match physical.extended_properties().subgroup_size() {
         Some(subgroup_size) => {
-            println!("Subgroup size for '{}' device is {}", physical.name(), subgroup_size);
+            println!(
+                "Subgroup size for '{}' device is {}",
+                physical.name(),
+                subgroup_size
+            );
 
             // Most of the subgroup values are divisors of 8
             (8, subgroup_size / 8)
-        },
+        }
         None => {
             println!("This Vulkan driver doesn't provide physical device Subgroup information");
 
@@ -125,7 +142,10 @@ fn main() {
         }
     };
 
-    println!("Local size will be set to: ({}, {}, 1)", local_size_x, local_size_y);
+    println!(
+        "Local size will be set to: ({}, {}, 1)",
+        local_size_x, local_size_y
+    );
 
     let spec_consts = cs::SpecializationConstants {
         red: 0.2,
@@ -134,37 +154,62 @@ fn main() {
         constant_1: local_size_x, // specifying local size constants
         constant_2: local_size_y,
     };
-    let pipeline = Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &spec_consts).unwrap());
-
-    let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width: 1024, height: 1024 },
-        Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
-
-    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
-    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-        .add_image(image.clone()).unwrap()
-        .build().unwrap()
+    let pipeline = Arc::new(
+        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &spec_consts).unwrap(),
     );
 
-    let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false,
-        (0 .. 1024 * 1024 * 4).map(|_| 0u8)).unwrap();
+    let image = StorageImage::new(
+        device.clone(),
+        Dimensions::Dim2d {
+            width: 1024,
+            height: 1024,
+        },
+        Format::R8G8B8A8Unorm,
+        Some(queue.family()),
+    )
+    .unwrap();
 
-    let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-        .dispatch(
-            [
-                1024 / local_size_x, // Note that dispatch dimensions must be
-                1024 / local_size_y, // proportional to local size
-                1
-            ],
-            pipeline.clone(),
-            set.clone(),
-            ()
-        ).unwrap()
-        .copy_image_to_buffer(image.clone(), buf.clone()).unwrap()
-        .build().unwrap();
+    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let set = Arc::new(
+        PersistentDescriptorSet::start(layout.clone())
+            .add_image(image.clone())
+            .unwrap()
+            .build()
+            .unwrap(),
+    );
+
+    let buf = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        (0..1024 * 1024 * 4).map(|_| 0u8),
+    )
+    .unwrap();
+
+    let command_buffer =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+            .unwrap()
+            .dispatch(
+                [
+                    1024 / local_size_x, // Note that dispatch dimensions must be
+                    1024 / local_size_y, // proportional to local size
+                    1,
+                ],
+                pipeline.clone(),
+                set.clone(),
+                (),
+            )
+            .unwrap()
+            .copy_image_to_buffer(image.clone(), buf.clone())
+            .unwrap()
+            .build()
+            .unwrap();
 
     let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer).unwrap()
-        .then_signal_fence_and_flush().unwrap();
+        .then_execute(queue.clone(), command_buffer)
+        .unwrap()
+        .then_signal_fence_and_flush()
+        .unwrap();
 
     future.wait(None).unwrap();
 

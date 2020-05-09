@@ -7,16 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use VulkanObject;
 use buffer::BufferAccess;
 use command_buffer::DynamicState;
 use descriptor::DescriptorSet;
+use pipeline::input_assembly::IndexType;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
-use pipeline::input_assembly::IndexType;
 use smallvec::SmallVec;
 use std::ops::Range;
 use vk;
+use VulkanObject;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
 /// that were already bound.
@@ -95,14 +95,14 @@ impl StateCacher {
         let mut changed = DynamicState::none();
 
         macro_rules! cmp {
-            ($field:ident) => (
+            ($field:ident) => {
                 if self.dynamic_state.$field != incoming.$field {
                     changed.$field = incoming.$field.clone();
                     if incoming.$field.is_some() {
                         self.dynamic_state.$field = incoming.$field.clone();
                     }
                 }
-            );
+            };
         }
 
         cmp!(line_width);
@@ -152,7 +152,8 @@ impl StateCacher {
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
     pub fn bind_graphics_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
-        where P: GraphicsPipelineAbstract
+    where
+        P: GraphicsPipelineAbstract,
     {
         let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
         if inner == self.graphics_pipeline {
@@ -170,7 +171,8 @@ impl StateCacher {
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
     pub fn bind_compute_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
-        where P: ComputePipelineAbstract
+    where
+        P: ComputePipelineAbstract,
     {
         let inner = pipeline.inner().internal_object();
         if inner == self.compute_pipeline {
@@ -214,7 +216,8 @@ impl StateCacher {
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
     pub fn bind_index_buffer<B>(&mut self, index_buffer: &B, ty: IndexType) -> StateCacherOutcome
-        where B: ?Sized + BufferAccess
+    where
+        B: ?Sized + BufferAccess,
     {
         let value = {
             let inner = index_buffer.inner();
@@ -249,7 +252,8 @@ impl<'s> StateCacherDescriptorSets<'s> {
     /// Adds a descriptor set to the list to compare.
     #[inline]
     pub fn add<S>(&mut self, set: &S)
-        where S: ?Sized + DescriptorSet
+    where
+        S: ?Sized + DescriptorSet,
     {
         let raw = set.inner().internal_object();
 
@@ -260,7 +264,6 @@ impl<'s> StateCacherDescriptorSets<'s> {
             }
 
             self.state[self.offset] = raw;
-
         } else {
             self.state.push(raw);
         }
@@ -305,7 +308,8 @@ impl<'s> StateCacherVertexBuffers<'s> {
     /// Adds a vertex buffer to the list to compare.
     #[inline]
     pub fn add<B>(&mut self, buffer: &B)
-        where B: ?Sized + BufferAccess
+    where
+        B: ?Sized + BufferAccess,
     {
         let raw = {
             let inner = buffer.inner();
@@ -321,7 +325,6 @@ impl<'s> StateCacherVertexBuffers<'s> {
             }
 
             self.state[self.offset] = raw;
-
         } else {
             self.state.push(raw);
         }
@@ -348,9 +351,9 @@ impl<'s> StateCacherVertexBuffers<'s> {
         self.state.truncate(self.offset);
 
         self.first_diff.map(|first| {
-                                debug_assert!(first <= self.last_diff);
-                                first .. (self.last_diff + 1)
-                            })
+            debug_assert!(first <= self.last_diff);
+            first..(self.last_diff + 1)
+        })
     }
 }
 
@@ -365,19 +368,23 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf =
-            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY.iter())
-                .unwrap();
+        let buf = CpuAccessibleBuffer::from_data(
+            device,
+            BufferUsage::vertex_buffer(),
+            false,
+            EMPTY.iter(),
+        )
+        .unwrap();
 
         let mut cacher = StateCacher::new();
 
         {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf);
-            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+            assert_eq!(bind_vb.compare(), Some(0..1));
         }
 
-        for _ in 0 .. 3 {
+        for _ in 0..3 {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf);
             assert_eq!(bind_vb.compare(), None);
@@ -389,16 +396,20 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf =
-            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY.iter())
-                .unwrap();
+        let buf = CpuAccessibleBuffer::from_data(
+            device,
+            BufferUsage::vertex_buffer(),
+            false,
+            EMPTY.iter(),
+        )
+        .unwrap();
 
         let mut cacher = StateCacher::new();
 
         {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf);
-            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+            assert_eq!(bind_vb.compare(), Some(0..1));
         }
 
         {
@@ -412,7 +423,7 @@ mod tests {
         {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf);
-            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+            assert_eq!(bind_vb.compare(), Some(0..1));
         }
     }
 
@@ -421,21 +432,27 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf1 = CpuAccessibleBuffer::from_data(device.clone(),
-                                                  BufferUsage::vertex_buffer(),
-                                                  false,
-                                                  EMPTY.iter())
-            .unwrap();
-        let buf2 = CpuAccessibleBuffer::from_data(device.clone(),
-                                                  BufferUsage::vertex_buffer(),
-                                                  false,
-                                                  EMPTY.iter())
-            .unwrap();
-        let buf3 = CpuAccessibleBuffer::from_data(device,
-                                                  BufferUsage::vertex_buffer(),
-                                                  false,
-                                                  EMPTY.iter())
-            .unwrap();
+        let buf1 = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::vertex_buffer(),
+            false,
+            EMPTY.iter(),
+        )
+        .unwrap();
+        let buf2 = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::vertex_buffer(),
+            false,
+            EMPTY.iter(),
+        )
+        .unwrap();
+        let buf3 = CpuAccessibleBuffer::from_data(
+            device,
+            BufferUsage::vertex_buffer(),
+            false,
+            EMPTY.iter(),
+        )
+        .unwrap();
 
         let mut cacher = StateCacher::new();
 
@@ -443,7 +460,7 @@ mod tests {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf1);
             bind_vb.add(&buf2);
-            assert_eq!(bind_vb.compare(), Some(0 .. 2));
+            assert_eq!(bind_vb.compare(), Some(0..2));
         }
 
         {
@@ -451,7 +468,7 @@ mod tests {
             bind_vb.add(&buf1);
             bind_vb.add(&buf2);
             bind_vb.add(&buf3);
-            assert_eq!(bind_vb.compare(), Some(2 .. 3));
+            assert_eq!(bind_vb.compare(), Some(2..3));
         }
 
         {
@@ -464,14 +481,14 @@ mod tests {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf1);
             bind_vb.add(&buf3);
-            assert_eq!(bind_vb.compare(), Some(1 .. 2));
+            assert_eq!(bind_vb.compare(), Some(1..2));
         }
 
         {
             let mut bind_vb = cacher.bind_vertex_buffers();
             bind_vb.add(&buf2);
             bind_vb.add(&buf3);
-            assert_eq!(bind_vb.compare(), Some(0 .. 1));
+            assert_eq!(bind_vb.compare(), Some(0..1));
         }
     }
 }

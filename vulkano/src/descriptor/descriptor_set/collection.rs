@@ -46,7 +46,8 @@ unsafe impl DescriptorSetsCollection for () {
 }
 
 unsafe impl<T> DescriptorSetsCollection for T
-    where T: DescriptorSet + Send + Sync + 'static
+where
+    T: DescriptorSet + Send + Sync + 'static,
 {
     #[inline]
     fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
@@ -71,7 +72,8 @@ unsafe impl<T> DescriptorSetsCollection for T
 }
 
 unsafe impl<T> DescriptorSetsCollection for Vec<T>
-    where T: DescriptorSet + Send + Sync + 'static
+where
+    T: DescriptorSet + Send + Sync + 'static,
 {
     #[inline]
     fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
@@ -161,29 +163,4 @@ macro_rules! impl_collection {
     ($i:ident) => ();
 }
 
-impl_collection!(Z,
-                 Y,
-                 X,
-                 W,
-                 V,
-                 U,
-                 T,
-                 S,
-                 R,
-                 Q,
-                 P,
-                 O,
-                 N,
-                 M,
-                 L,
-                 K,
-                 J,
-                 I,
-                 H,
-                 G,
-                 F,
-                 E,
-                 D,
-                 C,
-                 B,
-                 A);
+impl_collection!(Z, Y, X, W, V, U, T, S, R, Q, P, O, N, M, L, K, J, I, H, G, F, E, D, C, B, A);

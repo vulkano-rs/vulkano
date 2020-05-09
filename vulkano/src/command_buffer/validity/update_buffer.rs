@@ -12,10 +12,10 @@ use std::error;
 use std::fmt;
 use std::mem;
 
-use VulkanObject;
 use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
+use VulkanObject;
 
 /// Checks whether an update buffer command is valid.
 ///
@@ -23,13 +23,19 @@ use device::DeviceOwned;
 ///
 /// - Panics if the buffer not created with `device`.
 ///
-pub fn check_update_buffer<B, D>(device: &Device, buffer: &B, data: &D)
-                                 -> Result<(), CheckUpdateBufferError>
-    where B: ?Sized + TypedBufferAccess<Content = D>,
-          D: ?Sized
+pub fn check_update_buffer<B, D>(
+    device: &Device,
+    buffer: &B,
+    data: &D,
+) -> Result<(), CheckUpdateBufferError>
+where
+    B: ?Sized + TypedBufferAccess<Content = D>,
+    D: ?Sized,
 {
-    assert_eq!(buffer.inner().buffer.device().internal_object(),
-               device.internal_object());
+    assert_eq!(
+        buffer.inner().buffer.device().internal_object(),
+        device.internal_object()
+    );
 
     if !buffer.inner().buffer.usage_transfer_destination() {
         return Err(CheckUpdateBufferError::BufferMissingUsage);
@@ -69,10 +75,10 @@ impl error::Error for CheckUpdateBufferError {
         match *self {
             CheckUpdateBufferError::BufferMissingUsage => {
                 "the transfer destination usage must be enabled on the buffer"
-            },
+            }
             CheckUpdateBufferError::WrongAlignment => {
                 "the offset or size are not aligned to 4 bytes"
-            },
+            }
             CheckUpdateBufferError::DataTooLarge => "data is too large",
         }
     }
@@ -95,9 +101,13 @@ mod tests {
     #[test]
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(), false, 0u32)
-                .unwrap();
+        let buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::vertex_buffer(),
+            false,
+            0u32,
+        )
+        .unwrap();
 
         match check_update_buffer(&device, &buffer, &0) {
             Err(CheckUpdateBufferError::BufferMissingUsage) => (),
@@ -108,12 +118,14 @@ mod tests {
     #[test]
     fn data_too_large() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
-                                                    BufferUsage::transfer_destination(),
-                                                    false,
-                                                    0 .. 65536)
-            .unwrap();
-        let data = (0 .. 65536).collect::<Vec<u32>>();
+        let buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::transfer_destination(),
+            false,
+            0..65536,
+        )
+        .unwrap();
+        let data = (0..65536).collect::<Vec<u32>>();
 
         match check_update_buffer(&device, &buffer, &data[..]) {
             Err(CheckUpdateBufferError::DataTooLarge) => (),
@@ -124,12 +136,14 @@ mod tests {
     #[test]
     fn data_just_large_enough() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
-                                                    BufferUsage::transfer_destination(),
-                                                    false,
-                                                    (0 .. 100000).map(|_| 0))
-            .unwrap();
-        let data = (0 .. 65536).map(|_| 0).collect::<Vec<u8>>();
+        let buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::transfer_destination(),
+            false,
+            (0..100000).map(|_| 0),
+        )
+        .unwrap();
+        let data = (0..65536).map(|_| 0).collect::<Vec<u8>>();
 
         match check_update_buffer(&device, &buffer, &data[..]) {
             Ok(_) => (),
@@ -140,14 +154,16 @@ mod tests {
     #[test]
     fn wrong_alignment() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
-                                                    BufferUsage::transfer_destination(),
-                                                    false,
-                                                    0 .. 100)
-            .unwrap();
-        let data = (0 .. 30).collect::<Vec<u8>>();
+        let buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::transfer_destination(),
+            false,
+            0..100,
+        )
+        .unwrap();
+        let data = (0..30).collect::<Vec<u8>>();
 
-        match check_update_buffer(&device, &buffer.slice(1 .. 50).unwrap(), &data[..]) {
+        match check_update_buffer(&device, &buffer.slice(1..50).unwrap(), &data[..]) {
             Err(CheckUpdateBufferError::WrongAlignment) => (),
             _ => panic!(),
         }
@@ -160,7 +176,7 @@ mod tests {
         let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), false, 0u32).unwrap();
 
         assert_should_panic!({
-                                 let _ = check_update_buffer(&dev2, &buffer, &0);
-                             });
+            let _ = check_update_buffer(&dev2, &buffer, &0);
+        });
     }
 }

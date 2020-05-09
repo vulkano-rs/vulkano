@@ -11,14 +11,14 @@
 
 /// Creates an instance or returns if initialization fails.
 macro_rules! instance {
-    () => ({
+    () => {{
         use instance;
 
         match instance::Instance::new(None, &instance::InstanceExtensions::none(), None) {
             Ok(i) => i,
-            Err(_) => return
+            Err(_) => return,
         }
-    })
+    }};
 }
 
 /// Creates a device and a queue for graphics operations.
@@ -67,10 +67,8 @@ macro_rules! gfx_dev_and_queue {
 }
 
 macro_rules! assert_should_panic {
-    ($msg:expr, $code:block) => ({
-        let res = ::std::panic::catch_unwind(|| {
-            $code
-        });
+    ($msg:expr, $code:block) => {{
+        let res = ::std::panic::catch_unwind(|| $code);
 
         match res {
             Ok(_) => panic!("Test expected to panic but didn't"),
@@ -84,16 +82,14 @@ macro_rules! assert_should_panic {
                 }
             }
         }
-    });
+    }};
 
-    ($code:block) => ({
-        let res = ::std::panic::catch_unwind(|| {
-            $code
-        });
+    ($code:block) => {{
+        let res = ::std::panic::catch_unwind(|| $code);
 
         match res {
             Ok(_) => panic!("Test expected to panic but didn't"),
             Err(_) => {}
         }
-    });
+    }};
 }

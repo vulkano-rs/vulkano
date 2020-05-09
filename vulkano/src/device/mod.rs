@@ -91,9 +91,10 @@
 
 use fnv::FnvHasher;
 use smallvec::SmallVec;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::error;
+use std::ffi::CStr;
 use std::fmt;
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
@@ -105,7 +106,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
-use std::ffi::CStr;
 
 use command_buffer::pool::StandardCommandPool;
 use descriptor::descriptor_set::StdDescriptorPool;
@@ -114,25 +114,25 @@ use instance::PhysicalDevice;
 use instance::QueueFamily;
 use memory::pool::StdMemoryPool;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use SynchronizedVulkanObject;
-use VulkanObject;
 use VulkanHandle;
-use check_errors;
-use vk;
+use VulkanObject;
 
 pub use self::extensions::DeviceExtensions;
 pub use self::extensions::RawDeviceExtensions;
-pub use ::features::Features;
+pub use features::Features;
 mod extensions;
 
 use format::Format;
-use image::ImageType;
-use image::ImageTiling;
-use image::ImageUsage;
-use image::ImageFormatProperties;
 use image::ImageCreateFlags;
+use image::ImageFormatProperties;
+use image::ImageTiling;
+use image::ImageType;
+use image::ImageUsage;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -155,10 +155,8 @@ pub struct Device {
 
 // The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
 // them for the device itself.
-unsafe impl Send for Device {
-}
-unsafe impl Sync for Device {
-}
+unsafe impl Send for Device {}
+unsafe impl Sync for Device {}
 
 impl Device {
     /// Builds a new Vulkan device for the given physical device.
@@ -181,11 +179,15 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I, Ext>(phys: PhysicalDevice, requested_features: &Features, extensions: Ext,
-                           queue_families: I)
-                           -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
-        where I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
-              Ext: Into<RawDeviceExtensions>
+    pub fn new<'a, I, Ext>(
+        phys: PhysicalDevice,
+        requested_features: &Features,
+        extensions: Ext,
+        queue_families: I,
+    ) -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
+    where
+        I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
+        Ext: Into<RawDeviceExtensions>,
     {
         let queue_families = queue_families.into_iter();
 
@@ -207,7 +209,8 @@ impl Device {
         // Because there's no way to query the list of layers enabled for an instance, we need
         // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
         // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = phys.instance()
+        let layers_ptr = phys
+            .instance()
             .loaded_layers()
             .map(|layer| layer.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
@@ -226,8 +229,10 @@ impl Device {
 
             for (queue_family, priority) in queue_families {
                 // checking the parameters
-                assert_eq!(queue_family.physical_device().internal_object(),
-                           phys.internal_object());
+                assert_eq!(
+                    queue_family.physical_device().internal_object(),
+                    phys.internal_object()
+                );
                 if priority < 0.0 || priority > 1.0 {
                     return Err(DeviceCreationError::PriorityOutOfRange);
                 }
@@ -296,47 +301,50 @@ impl Device {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk_i.CreateDevice(phys.internal_object(),
-                                           &infos,
-                                           ptr::null(),
-                                           output.as_mut_ptr()))?;
+            check_errors(vk_i.CreateDevice(
+                phys.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         // loading the function pointers of the newly-created device
         let vk = vk::DevicePointers::load(|name| unsafe {
-                                              vk_i.GetDeviceProcAddr(device, name.as_ptr()) as
-                                                  *const _
-                                          });
+            vk_i.GetDeviceProcAddr(device, name.as_ptr()) as *const _
+        });
 
         let mut active_queue_families: SmallVec<[u32; 8]> = SmallVec::new();
         for (queue_family, _) in output_queues.iter() {
-            if let None = active_queue_families.iter().find(|&&qf| qf == *queue_family) {
+            if let None = active_queue_families
+                .iter()
+                .find(|&&qf| qf == *queue_family)
+            {
                 active_queue_families.push(*queue_family);
             }
         }
 
-        let device =
-            Arc::new(Device {
-                         instance: phys.instance().clone(),
-                         physical_device: phys.index(),
-                         device: device,
-                         vk: vk,
-                         standard_pool: Mutex::new(Weak::new()),
-                         standard_descriptor_pool: Mutex::new(Weak::new()),
-                         standard_command_pools: Mutex::new(Default::default()),
-                         features: Features {
-                             // Always enabled ; see above
-                             robust_buffer_access: true,
-                             ..requested_features.clone()
-                         },
-                         extensions: (&extensions).into(),
-                         active_queue_families,
-                         allocation_count: Mutex::new(0),
-                         fence_pool: Mutex::new(Vec::new()),
-                         semaphore_pool: Mutex::new(Vec::new()),
-                         event_pool: Mutex::new(Vec::new()),
-                     });
+        let device = Arc::new(Device {
+            instance: phys.instance().clone(),
+            physical_device: phys.index(),
+            device: device,
+            vk: vk,
+            standard_pool: Mutex::new(Weak::new()),
+            standard_descriptor_pool: Mutex::new(Weak::new()),
+            standard_command_pools: Mutex::new(Default::default()),
+            features: Features {
+                // Always enabled ; see above
+                robust_buffer_access: true,
+                ..requested_features.clone()
+            },
+            extensions: (&extensions).into(),
+            active_queue_families,
+            allocation_count: Mutex::new(0),
+            fence_pool: Mutex::new(Vec::new()),
+            semaphore_pool: Mutex::new(Vec::new()),
+            event_pool: Mutex::new(Vec::new()),
+        });
 
         // Iterator for the produced queues.
         let output_queues = QueuesIter {
@@ -387,12 +395,15 @@ impl Device {
     /// > **Note**: Will return `-> impl ExactSizeIterator<Item = QueueFamily>` in the future.
     // TODO: ^
     #[inline]
-    pub fn active_queue_families<'a>(&'a self)
-                                     -> Box<dyn ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
+    pub fn active_queue_families<'a>(
+        &'a self,
+    ) -> Box<dyn ExactSizeIterator<Item = QueueFamily<'a>> + 'a> {
         let physical_device = self.physical_device();
-        Box::new(self.active_queue_families
-                     .iter()
-                     .map(move |&id| physical_device.queue_family_by_id(id).unwrap()))
+        Box::new(
+            self.active_queue_families
+                .iter()
+                .map(move |&id| physical_device.queue_family_by_id(id).unwrap()),
+        )
     }
 
     /// Returns the features that are enabled in the device.
@@ -454,12 +465,12 @@ impl Device {
                 let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 *entry.get_mut() = Arc::downgrade(&new_pool);
                 new_pool
-            },
+            }
             Entry::Vacant(entry) => {
                 let new_pool = Arc::new(StandardCommandPool::new(me.clone(), queue));
                 entry.insert(Arc::downgrade(&new_pool));
                 new_pool
-            },
+            }
         }
     }
 
@@ -490,7 +501,11 @@ impl Device {
     ///
     /// # Panics
     /// * If `object` is not owned by this device.
-    pub fn set_object_name<T: VulkanObject + DeviceOwned>(&self, object: &T, name: &CStr) -> Result<(), OomError> {
+    pub fn set_object_name<T: VulkanObject + DeviceOwned>(
+        &self,
+        object: &T,
+        name: &CStr,
+    ) -> Result<(), OomError> {
         assert!(object.device().internal_object() == self.internal_object());
         unsafe { self.set_object_name_raw(T::TYPE, object.internal_object().value(), name) }
     }
@@ -499,7 +514,12 @@ impl Device {
     ///
     /// # Safety
     /// `object` must be a Vulkan handle owned by this device, and its type must be accurately described by `ty`.
-    pub unsafe fn set_object_name_raw(&self, ty: vk::ObjectType, object: u64, name: &CStr) -> Result<(), OomError> {
+    pub unsafe fn set_object_name_raw(
+        &self,
+        ty: vk::ObjectType,
+        object: u64,
+        name: &CStr,
+    ) -> Result<(), OomError> {
         let info = vk::DebugUtilsObjectNameInfoEXT {
             sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
             pNext: ptr::null(),
@@ -511,30 +531,42 @@ impl Device {
         Ok(())
     }
 
-    /// Checks the given combination of image attributes/configuration for compatibility with the physical device. 
-    /// 
+    /// Checks the given combination of image attributes/configuration for compatibility with the physical device.
+    ///
     /// Returns a struct with additional capabilities available for this image configuration.
-    pub fn image_format_properties(&self, format: Format, ty: ImageType, tiling: ImageTiling, usage: ImageUsage, create_flags: ImageCreateFlags) -> Result<ImageFormatProperties, String> {
+    pub fn image_format_properties(
+        &self,
+        format: Format,
+        ty: ImageType,
+        tiling: ImageTiling,
+        usage: ImageUsage,
+        create_flags: ImageCreateFlags,
+    ) -> Result<ImageFormatProperties, String> {
         let vk_i = self.instance().pointers();
         let mut output = MaybeUninit::uninit();
         let physical_device = self.physical_device().internal_object();
         unsafe {
-            let r = vk_i.GetPhysicalDeviceImageFormatProperties(physical_device,
-                                                                format as u32,
-                                                                ty.into(),
-                                                                tiling.into(),
-                                                                usage.to_usage_bits(),
-                                                                create_flags.into(),
-                                                                output.as_mut_ptr());
+            let r = vk_i.GetPhysicalDeviceImageFormatProperties(
+                physical_device,
+                format as u32,
+                ty.into(),
+                tiling.into(),
+                usage.to_usage_bits(),
+                create_flags.into(),
+                output.as_mut_ptr(),
+            );
 
             match check_errors(r) {
                 Ok(_) => Ok(output.assume_init().into()),
-                Err(e) =>
-                    return Err(String::from(format!("Image properties not supported. {:#?}", e))),
+                Err(e) => {
+                    return Err(String::from(format!(
+                        "Image properties not supported. {:#?}",
+                        e
+                    )))
+                }
             }
         }
     }
-
 }
 
 impl fmt::Debug for Device {
@@ -590,7 +622,6 @@ impl Hash for Device {
     }
 }
 
-
 /// Implemented on objects that belong to a Vulkan device.
 ///
 /// # Safety
@@ -603,8 +634,9 @@ pub unsafe trait DeviceOwned {
 }
 
 unsafe impl<T> DeviceOwned for T
-    where T: Deref,
-          T::Target: DeviceOwned
+where
+    T: Deref,
+    T::Target: DeviceOwned,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -643,11 +675,11 @@ impl Iterator for QueuesIter {
                 .GetDeviceQueue(self.device.device, family, id, output.as_mut_ptr());
 
             Some(Arc::new(Queue {
-                              queue: Mutex::new(output.assume_init()),
-                              device: self.device.clone(),
-                              family: family,
-                              id: id,
-                          }))
+                queue: Mutex::new(output.assume_init()),
+                device: self.device.clone(),
+                family: family,
+                id: id,
+            }))
         }
     }
 
@@ -658,8 +690,7 @@ impl Iterator for QueuesIter {
     }
 }
 
-impl ExactSizeIterator for QueuesIter {
-}
+impl ExactSizeIterator for QueuesIter {}
 
 /// Error that can be returned when creating a device.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -691,30 +722,26 @@ impl error::Error for DeviceCreationError {
         match *self {
             DeviceCreationError::InitializationFailed => {
                 "failed to create the device for an implementation-specific reason"
-            },
+            }
             DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-            DeviceCreationError::OutOfDeviceMemory => {
-                "no memory available on the graphical device"
-            },
-            DeviceCreationError::DeviceLost => {
-                "failed to connect to the device"
-            },
+            DeviceCreationError::OutOfDeviceMemory => "no memory available on the graphical device",
+            DeviceCreationError::DeviceLost => "failed to connect to the device",
             DeviceCreationError::TooManyQueuesForFamily => {
                 "tried to create too many queues for a given family"
-            },
+            }
             DeviceCreationError::FeatureNotPresent => {
                 "some of the requested features are unsupported by the physical device"
-            },
+            }
             DeviceCreationError::PriorityOutOfRange => {
                 "the priority of one of the queues is out of the [0.0; 1.0] range"
-            },
+            }
             DeviceCreationError::ExtensionNotPresent => {
                 "some of the requested device extensions are not supported by the physical device"
-            },
+            }
             DeviceCreationError::TooManyObjects => {
                 "you have reached the limit to the number of devices that can be created from the
                  same physical device"
-            },
+            }
         }
     }
 }
@@ -762,8 +789,9 @@ impl Queue {
     /// Returns true if this is the same queue as another one.
     #[inline]
     pub fn is_same(&self, other: &Queue) -> bool {
-        self.id == other.id && self.family == other.family &&
-            self.device.internal_object() == other.device.internal_object()
+        self.id == other.id
+            && self.family == other.family
+            && self.device.internal_object() == other.device.internal_object()
     }
 
     /// Returns the family this queue belongs to.
@@ -801,7 +829,7 @@ impl PartialEq for Queue {
     }
 }
 
-impl Eq for Queue { }
+impl Eq for Queue {}
 
 unsafe impl DeviceOwned for Queue {
     fn device(&self) -> &Arc<Device> {
@@ -842,13 +870,15 @@ mod tests {
         };
 
         let family = physical.queue_families().next().unwrap();
-        let queues = (0 .. family.queues_count() + 1).map(|_| (family, 1.0));
+        let queues = (0..family.queues_count() + 1).map(|_| (family, 1.0));
 
-        match Device::new(physical,
-                            &Features::none(),
-                            &DeviceExtensions::none(),
-                            queues) {
-            Err(DeviceCreationError::TooManyQueuesForFamily) => return,     // Success
+        match Device::new(
+            physical,
+            &Features::none(),
+            &DeviceExtensions::none(),
+            queues,
+        ) {
+            Err(DeviceCreationError::TooManyQueuesForFamily) => return, // Success
             _ => panic!(),
         };
     }
@@ -869,11 +899,13 @@ mod tests {
             return;
         }
 
-        match Device::new(physical,
-                            &features,
-                            &DeviceExtensions::none(),
-                            Some((family, 1.0))) {
-            Err(DeviceCreationError::FeatureNotPresent) => return,     // Success
+        match Device::new(
+            physical,
+            &features,
+            &DeviceExtensions::none(),
+            Some((family, 1.0)),
+        ) {
+            Err(DeviceCreationError::FeatureNotPresent) => return, // Success
             _ => panic!(),
         };
     }
@@ -888,19 +920,23 @@ mod tests {
 
         let family = physical.queue_families().next().unwrap();
 
-        match Device::new(physical,
-                            &Features::none(),
-                            &DeviceExtensions::none(),
-                            Some((family, 1.4))) {
-            Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
+        match Device::new(
+            physical,
+            &Features::none(),
+            &DeviceExtensions::none(),
+            Some((family, 1.4)),
+        ) {
+            Err(DeviceCreationError::PriorityOutOfRange) => (), // Success
             _ => panic!(),
         };
 
-        match Device::new(physical,
-                            &Features::none(),
-                            &DeviceExtensions::none(),
-                            Some((family, -0.2))) {
-            Err(DeviceCreationError::PriorityOutOfRange) => (),     // Success
+        match Device::new(
+            physical,
+            &Features::none(),
+            &DeviceExtensions::none(),
+            Some((family, -0.2)),
+        ) {
+            Err(DeviceCreationError::PriorityOutOfRange) => (), // Success
             _ => panic!(),
         };
     }

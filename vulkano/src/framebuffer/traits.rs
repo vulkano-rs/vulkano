@@ -53,8 +53,9 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
 }
 
 unsafe impl<T> FramebufferAbstract for T
-    where T: SafeDeref,
-          T::Target: FramebufferAbstract
+where
+    T: SafeDeref,
+    T::Target: FramebufferAbstract,
 {
     #[inline]
     fn inner(&self) -> FramebufferSys {
@@ -104,8 +105,9 @@ pub unsafe trait RenderPassAbstract: DeviceOwned + RenderPassDesc {
 }
 
 unsafe impl<T> RenderPassAbstract for T
-    where T: SafeDeref,
-          T::Target: RenderPassAbstract
+where
+    T: SafeDeref,
+    T::Target: RenderPassAbstract,
 {
     #[inline]
     fn inner(&self) -> RenderPassSys {
@@ -138,8 +140,9 @@ pub unsafe trait RenderPassDescClearValues<C> {
 }
 
 unsafe impl<T, C> RenderPassDescClearValues<C> for T
-    where T: SafeDeref,
-          T::Target: RenderPassDescClearValues<C>
+where
+    T: SafeDeref,
+    T::Target: RenderPassDescClearValues<C>,
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
@@ -157,7 +160,8 @@ unsafe impl<T, C> RenderPassDescClearValues<C> for T
 // TODO: once specialization lands, this trait can be specialized for pairs that are known to
 //       always be compatible
 pub unsafe trait RenderPassSubpassInterface<Other: ?Sized>: RenderPassDesc
-    where Other: ShaderInterfaceDef
+where
+    Other: ShaderInterfaceDef,
 {
     /// Returns `true` if this subpass is compatible with the fragment output definition.
     /// Also returns `false` if the subpass is out of range.
@@ -166,13 +170,15 @@ pub unsafe trait RenderPassSubpassInterface<Other: ?Sized>: RenderPassDesc
 }
 
 unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
-    where A: RenderPassDesc,
-          B: ShaderInterfaceDef
+where
+    A: RenderPassDesc,
+    B: ShaderInterfaceDef,
 {
     fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
         let pass_descr = match RenderPassDesc::subpass_descs(self)
             .skip(subpass as usize)
-            .next() {
+            .next()
+        {
             Some(s) => s,
             None => return false,
         };
@@ -211,7 +217,8 @@ unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
 //       always be compatible
 // TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
 pub unsafe trait RenderPassCompatible<Other: ?Sized>: RenderPassDesc
-    where Other: RenderPassDesc
+where
+    Other: RenderPassDesc,
 {
     /// Returns `true` if this layout is compatible with the other layout, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
@@ -220,15 +227,16 @@ pub unsafe trait RenderPassCompatible<Other: ?Sized>: RenderPassDesc
 }
 
 unsafe impl<A: ?Sized, B: ?Sized> RenderPassCompatible<B> for A
-    where A: RenderPassDesc,
-          B: RenderPassDesc
+where
+    A: RenderPassDesc,
+    B: RenderPassDesc,
 {
     fn is_compatible_with(&self, other: &B) -> bool {
         if self.num_attachments() != other.num_attachments() {
             return false;
         }
 
-        for atch_num in 0 .. self.num_attachments() {
+        for atch_num in 0..self.num_attachments() {
             let my_atch = self.attachment_desc(atch_num).unwrap();
             let other_atch = other.attachment_desc(atch_num).unwrap();
 
@@ -256,17 +264,17 @@ pub struct Subpass<L> {
 }
 
 impl<L> Subpass<L>
-    where L: RenderPassDesc
+where
+    L: RenderPassDesc,
 {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
     pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
         if (id as usize) < render_pass.num_subpasses() {
             Some(Subpass {
-                     render_pass: render_pass,
-                     subpass_id: id,
-                 })
-
+                render_pass: render_pass,
+                subpass_id: id,
+            })
         } else {
             None
         }
@@ -313,10 +321,12 @@ impl<L> Subpass<L>
     /// Returns true if the subpass has any color or depth/stencil attachment.
     #[inline]
     pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
-        self.num_color_attachments() >= 1 ||
-            self.render_pass
+        self.num_color_attachments() >= 1
+            || self
+                .render_pass
                 .has_depth_stencil_attachment(self.subpass_id)
-                .unwrap() != (false, false)
+                .unwrap()
+                != (false, false)
     }
 
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`

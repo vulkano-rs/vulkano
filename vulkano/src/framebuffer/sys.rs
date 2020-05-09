@@ -19,20 +19,20 @@ use std::sync::Mutex;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
-use framebuffer::EmptySinglePassRenderPassDesc;
 use framebuffer::AttachmentDescription;
+use framebuffer::EmptySinglePassRenderPassDesc;
+use framebuffer::LoadOp;
 use framebuffer::PassDependencyDescription;
 use framebuffer::PassDescription;
-use framebuffer::LoadOp;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use VulkanObject;
-use check_errors;
-use vk;
 
 /// Defines the layout of multiple subpasses.
 ///
@@ -53,7 +53,8 @@ pub struct RenderPass<D> {
 }
 
 impl<D> RenderPass<D>
-    where D: RenderPassDesc
+where
+    D: RenderPassDesc,
 {
     /// Builds a new render pass.
     ///
@@ -63,43 +64,47 @@ impl<D> RenderPass<D>
     /// performed. `debug_assert!` is used, so some restrictions are only checked in debug
     /// mode.
     ///
-    pub fn new(device: Arc<Device>, description: D)
-               -> Result<RenderPass<D>, RenderPassCreationError> {
+    pub fn new(
+        device: Arc<Device>,
+        description: D,
+    ) -> Result<RenderPass<D>, RenderPassCreationError> {
         let vk = device.pointers();
 
         // If the first use of an attachment in this render pass is as an input attachment, and
         // the attachment is not also used as a color or depth/stencil attachment in the same
         // subpass, then loadOp must not be VK_ATTACHMENT_LOAD_OP_CLEAR
-        debug_assert!(description.attachment_descs().enumerate().all(|(atch_num,
-          attachment)| {
-            if attachment.load != LoadOp::Clear {
-                return true;
-            }
-
-            for p in description.subpass_descs() {
-                if p.color_attachments
-                    .iter()
-                    .find(|&&(a, _)| a == atch_num)
-                    .is_some()
-                {
+        debug_assert!(description
+            .attachment_descs()
+            .enumerate()
+            .all(|(atch_num, attachment)| {
+                if attachment.load != LoadOp::Clear {
                     return true;
                 }
-                if let Some((a, _)) = p.depth_stencil {
-                    if a == atch_num {
+
+                for p in description.subpass_descs() {
+                    if p.color_attachments
+                        .iter()
+                        .find(|&&(a, _)| a == atch_num)
+                        .is_some()
+                    {
                         return true;
                     }
+                    if let Some((a, _)) = p.depth_stencil {
+                        if a == atch_num {
+                            return true;
+                        }
+                    }
+                    if p.input_attachments
+                        .iter()
+                        .find(|&&(a, _)| a == atch_num)
+                        .is_some()
+                    {
+                        return false;
+                    }
                 }
-                if p.input_attachments
-                    .iter()
-                    .find(|&&(a, _)| a == atch_num)
-                    .is_some()
-                {
-                    return false;
-                }
-            }
 
-            true
-        }));
+                true
+            }));
 
         let attachments = description
             .attachment_descs()
@@ -130,57 +135,65 @@ impl<D> RenderPass<D>
             .subpass_descs()
             .flat_map(|pass| {
                 // Performing some validation with debug asserts.
-                debug_assert!(pass.resolve_attachments.is_empty() ||
-                                  pass.resolve_attachments.len() == pass.color_attachments.len());
-                debug_assert!(pass.resolve_attachments
-                                  .iter()
-                                  .all(|a| attachments[a.0].samples == 1));
-                debug_assert!(pass.resolve_attachments.is_empty() ||
-                                  pass.color_attachments
-                                      .iter()
-                                      .all(|a| attachments[a.0].samples > 1));
-                debug_assert!(pass.resolve_attachments.is_empty() ||
-                                  pass.resolve_attachments
-                                      .iter()
-                                      .zip(pass.color_attachments.iter())
-                                      .all(|(r, c)| {
-                                               attachments[r.0].format == attachments[c.0].format
-                                           }));
-                debug_assert!(pass.color_attachments
-                                  .iter()
-                                  .cloned()
-                                  .chain(pass.depth_stencil.clone().into_iter())
-                                  .chain(pass.input_attachments.iter().cloned())
-                                  .chain(pass.resolve_attachments.iter().cloned())
-                                  .all(|(a, _)| {
-                                           pass.preserve_attachments
-                                               .iter()
-                                               .find(|&&b| a == b)
-                                               .is_none()
-                                       }));
                 debug_assert!(
-                    pass.color_attachments
-                        .iter()
-                        .cloned()
-                        .chain(pass.depth_stencil.clone().into_iter())
-                        .all(|(atch, layout)| if let Some(r) =
-                            pass.input_attachments.iter().find(|r| r.0 == atch)
-                        {
+                    pass.resolve_attachments.is_empty()
+                        || pass.resolve_attachments.len() == pass.color_attachments.len()
+                );
+                debug_assert!(pass
+                    .resolve_attachments
+                    .iter()
+                    .all(|a| attachments[a.0].samples == 1));
+                debug_assert!(
+                    pass.resolve_attachments.is_empty()
+                        || pass
+                            .color_attachments
+                            .iter()
+                            .all(|a| attachments[a.0].samples > 1)
+                );
+                debug_assert!(
+                    pass.resolve_attachments.is_empty()
+                        || pass
+                            .resolve_attachments
+                            .iter()
+                            .zip(pass.color_attachments.iter())
+                            .all(|(r, c)| { attachments[r.0].format == attachments[c.0].format })
+                );
+                debug_assert!(pass
+                    .color_attachments
+                    .iter()
+                    .cloned()
+                    .chain(pass.depth_stencil.clone().into_iter())
+                    .chain(pass.input_attachments.iter().cloned())
+                    .chain(pass.resolve_attachments.iter().cloned())
+                    .all(|(a, _)| {
+                        pass.preserve_attachments
+                            .iter()
+                            .find(|&&b| a == b)
+                            .is_none()
+                    }));
+                debug_assert!(pass
+                    .color_attachments
+                    .iter()
+                    .cloned()
+                    .chain(pass.depth_stencil.clone().into_iter())
+                    .all(|(atch, layout)| {
+                        if let Some(r) = pass.input_attachments.iter().find(|r| r.0 == atch) {
                             r.1 == layout
                         } else {
                             true
-                        })
-                );
+                        }
+                    }));
 
-                let resolve = pass.resolve_attachments
+                let resolve = pass
+                    .resolve_attachments
                     .into_iter()
                     .map(|(offset, img_la)| {
-                             debug_assert!(offset < attachments.len());
-                             vk::AttachmentReference {
-                                 attachment: offset as u32,
-                                 layout: img_la as u32,
-                             }
-                         });
+                        debug_assert!(offset < attachments.len());
+                        vk::AttachmentReference {
+                            attachment: offset as u32,
+                            layout: img_la as u32,
+                        }
+                    });
 
                 let color = pass.color_attachments.into_iter().map(|(offset, img_la)| {
                     debug_assert!(offset < attachments.len());
@@ -200,12 +213,13 @@ impl<D> RenderPass<D>
 
                 let depthstencil = if let Some((offset, img_la)) = pass.depth_stencil {
                     Some(vk::AttachmentReference {
-                             attachment: offset as u32,
-                             layout: img_la as u32,
-                         })
+                        attachment: offset as u32,
+                        layout: img_la as u32,
+                    })
                 } else {
                     None
-                }.into_iter();
+                }
+                .into_iter();
 
                 color.chain(input).chain(resolve).chain(depthstencil)
             })
@@ -217,10 +231,10 @@ impl<D> RenderPass<D>
         let preserve_attachments_references = description
             .subpass_descs()
             .flat_map(|pass| {
-                          pass.preserve_attachments
-                              .into_iter()
-                              .map(|offset| offset as u32)
-                      })
+                pass.preserve_attachments
+                    .into_iter()
+                    .map(|offset| offset as u32)
+            })
             .collect::<SmallVec<[_; 16]>>();
 
         // Now iterating over passes.
@@ -233,8 +247,8 @@ impl<D> RenderPass<D>
             let mut out: SmallVec<[_; 16]> = SmallVec::new();
 
             for pass in description.subpass_descs() {
-                if pass.color_attachments.len() as u32 >
-                    device.physical_device().limits().max_color_attachments()
+                if pass.color_attachments.len() as u32
+                    > device.physical_device().limits().max_color_attachments()
                 {
                     return Err(RenderPassCreationError::ColorAttachmentsLimitExceeded);
                 }
@@ -259,33 +273,33 @@ impl<D> RenderPass<D>
                 preserve_ref_index += pass.preserve_attachments.len();
 
                 out.push(vk::SubpassDescription {
-                             flags: 0, // reserved
-                             pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
-                             inputAttachmentCount: pass.input_attachments.len() as u32,
-                             pInputAttachments: if pass.input_attachments.is_empty() {
-                                 ptr::null()
-                             } else {
-                                 input_attachments
-                             },
-                             colorAttachmentCount: pass.color_attachments.len() as u32,
-                             pColorAttachments: if pass.color_attachments.is_empty() {
-                                 ptr::null()
-                             } else {
-                                 color_attachments
-                             },
-                             pResolveAttachments: if pass.resolve_attachments.is_empty() {
-                                 ptr::null()
-                             } else {
-                                 resolve_attachments
-                             },
-                             pDepthStencilAttachment: depth_stencil,
-                             preserveAttachmentCount: pass.preserve_attachments.len() as u32,
-                             pPreserveAttachments: if pass.preserve_attachments.is_empty() {
-                                 ptr::null()
-                             } else {
-                                 preserve_attachments
-                             },
-                         });
+                    flags: 0, // reserved
+                    pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
+                    inputAttachmentCount: pass.input_attachments.len() as u32,
+                    pInputAttachments: if pass.input_attachments.is_empty() {
+                        ptr::null()
+                    } else {
+                        input_attachments
+                    },
+                    colorAttachmentCount: pass.color_attachments.len() as u32,
+                    pColorAttachments: if pass.color_attachments.is_empty() {
+                        ptr::null()
+                    } else {
+                        color_attachments
+                    },
+                    pResolveAttachments: if pass.resolve_attachments.is_empty() {
+                        ptr::null()
+                    } else {
+                        resolve_attachments
+                    },
+                    pDepthStencilAttachment: depth_stencil,
+                    preserveAttachmentCount: pass.preserve_attachments.len() as u32,
+                    pPreserveAttachments: if pass.preserve_attachments.is_empty() {
+                        ptr::null()
+                    } else {
+                        preserve_attachments
+                    },
+                });
             }
 
             assert!(!out.is_empty());
@@ -299,8 +313,14 @@ impl<D> RenderPass<D>
         let dependencies = description
             .dependency_descs()
             .map(|dependency| {
-                debug_assert!(dependency.source_subpass as u32 == vk::SUBPASS_EXTERNAL || dependency.source_subpass < passes.len());
-                debug_assert!(dependency.destination_subpass as u32 == vk::SUBPASS_EXTERNAL || dependency.destination_subpass < passes.len());
+                debug_assert!(
+                    dependency.source_subpass as u32 == vk::SUBPASS_EXTERNAL
+                        || dependency.source_subpass < passes.len()
+                );
+                debug_assert!(
+                    dependency.destination_subpass as u32 == vk::SUBPASS_EXTERNAL
+                        || dependency.destination_subpass < passes.len()
+                );
 
                 vk::SubpassDependency {
                     srcSubpass: dependency.source_subpass as u32,
@@ -344,19 +364,21 @@ impl<D> RenderPass<D>
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateRenderPass(device.internal_object(),
-                                             &infos,
-                                             ptr::null(),
-                                             output.as_mut_ptr()))?;
+            check_errors(vk.CreateRenderPass(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(RenderPass {
-               device: device.clone(),
-               render_pass: render_pass,
-               desc: description,
-               granularity: Mutex::new(None),
-           })
+            device: device.clone(),
+            render_pass: render_pass,
+            desc: description,
+            granularity: Mutex::new(None),
+        })
     }
 }
 
@@ -366,8 +388,8 @@ impl RenderPass<EmptySinglePassRenderPassDesc> {
     /// This method is useful for quick tests.
     #[inline]
     pub fn empty_single_pass(
-        device: Arc<Device>)
-        -> Result<RenderPass<EmptySinglePassRenderPassDesc>, RenderPassCreationError> {
+        device: Arc<Device>,
+    ) -> Result<RenderPass<EmptySinglePassRenderPassDesc>, RenderPassCreationError> {
         RenderPass::new(device, EmptySinglePassRenderPassDesc)
     }
 }
@@ -388,9 +410,13 @@ impl<D> RenderPass<D> {
         unsafe {
             let vk = self.device.pointers();
             let mut out = MaybeUninit::uninit();
-            vk.GetRenderAreaGranularity(self.device.internal_object(), self.render_pass, out.as_mut_ptr());
+            vk.GetRenderAreaGranularity(
+                self.device.internal_object(),
+                self.render_pass,
+                out.as_mut_ptr(),
+            );
 
-			let out = out.assume_init();
+            let out = out.assume_init();
             debug_assert_ne!(out.width, 0);
             debug_assert_ne!(out.height, 0);
             let gran = [out.width, out.height];
@@ -410,7 +436,8 @@ impl<D> RenderPass<D> {
 }
 
 unsafe impl<D> RenderPassDesc for RenderPass<D>
-    where D: RenderPassDesc
+where
+    D: RenderPassDesc,
 {
     #[inline]
     fn num_attachments(&self) -> usize {
@@ -444,7 +471,8 @@ unsafe impl<D> RenderPassDesc for RenderPass<D>
 }
 
 unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
-    where D: RenderPassDescClearValues<C>
+where
+    D: RenderPassDescClearValues<C>,
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
@@ -453,7 +481,8 @@ unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
 }
 
 unsafe impl<D> RenderPassAbstract for RenderPass<D>
-    where D: RenderPassDesc
+where
+    D: RenderPassDesc,
 {
     #[inline]
     fn inner(&self) -> RenderPassSys {
@@ -469,7 +498,8 @@ unsafe impl<D> DeviceOwned for RenderPass<D> {
 }
 
 impl<D> fmt::Debug for RenderPass<D>
-    where D: fmt::Debug
+where
+    D: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("RenderPass")
@@ -521,7 +551,7 @@ impl error::Error for RenderPassCreationError {
             RenderPassCreationError::OomError(_) => "not enough memory available",
             RenderPassCreationError::ColorAttachmentsLimitExceeded => {
                 "the maximum number of color attachments has been exceeded"
-            },
+            }
         }
     }
 
@@ -552,12 +582,10 @@ impl From<Error> for RenderPassCreationError {
     #[inline]
     fn from(err: Error) -> RenderPassCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                RenderPassCreationError::OomError(OomError::from(err))
-            },
+            err @ Error::OutOfHostMemory => RenderPassCreationError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => {
                 RenderPassCreationError::OomError(OomError::from(err))
-            },
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -583,8 +611,7 @@ mod tests {
             return; // test ignored
         }
 
-        let rp =
-            single_pass_renderpass! {
+        let rp = single_pass_renderpass! {
             device.clone(),
             attachments: {
                 a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
@@ -623,7 +650,8 @@ mod tests {
                 color: [a],
                 depth_stencil: {}
             }
-        }.unwrap();
+        }
+        .unwrap();
 
         let granularity = rp.granularity();
         assert_ne!(granularity[0], 0);

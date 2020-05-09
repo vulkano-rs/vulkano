@@ -38,12 +38,12 @@
 use std::hash::Hash;
 use std::hash::Hasher;
 
+use buffer::BufferAccess;
+use descriptor::descriptor::DescriptorDesc;
+use device::DeviceOwned;
+use image::ImageViewAccess;
 use SafeDeref;
 use VulkanObject;
-use buffer::BufferAccess;
-use device::DeviceOwned;
-use descriptor::descriptor::DescriptorDesc;
-use image::ImageViewAccess;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::fixed_size_pool::FixedSizeDescriptorSet;
@@ -106,8 +106,9 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc + DeviceOwned {
 }
 
 unsafe impl<T> DescriptorSet for T
-    where T: SafeDeref,
-          T::Target: DescriptorSet
+where
+    T: SafeDeref,
+    T::Target: DescriptorSet,
 {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
@@ -138,8 +139,8 @@ unsafe impl<T> DescriptorSet for T
 impl PartialEq for dyn DescriptorSet + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
-        self.inner().internal_object() == other.inner().internal_object() &&
-        self.device() == other.device()
+        self.inner().internal_object() == other.inner().internal_object()
+            && self.device() == other.device()
     }
 }
 
@@ -163,8 +164,9 @@ pub unsafe trait DescriptorSetDesc {
 }
 
 unsafe impl<T> DescriptorSetDesc for T
-    where T: SafeDeref,
-          T::Target: DescriptorSetDesc
+where
+    T: SafeDeref,
+    T::Target: DescriptorSetDesc,
 {
     #[inline]
     fn num_bindings(&self) -> usize {

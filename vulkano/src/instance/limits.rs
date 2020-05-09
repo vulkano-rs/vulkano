@@ -37,7 +37,7 @@ macro_rules! limits_impl {
     )
 }
 
-limits_impl!{
+limits_impl! {
     max_image_dimension_1d: u32 => maxImageDimension1D,
     max_image_dimension_2d: u32 => maxImageDimension2D,
     max_image_dimension_3d: u32 => maxImageDimension3D,

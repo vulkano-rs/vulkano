@@ -46,9 +46,9 @@ impl RectangleLayer {
         // FIXME negative offset is not disallowed by spec, but semantically should not be possible
         debug_assert!(self.offset[0] >= 0);
         debug_assert!(self.offset[1] >= 0);
-        self.offset[0] as u32 + self.extent[0] <= swapchain.dimensions()[0] &&
-            self.offset[1] as u32 + self.extent[1] <= swapchain.dimensions()[1] &&
-            self.layer < swapchain.layers()
+        self.offset[0] as u32 + self.extent[0] <= swapchain.dimensions()[0]
+            && self.offset[1] as u32 + self.extent[1] <= swapchain.dimensions()[1]
+            && self.layer < swapchain.layers()
     }
 
     pub(crate) fn to_vk(&self) -> vk::RectLayerKHR {

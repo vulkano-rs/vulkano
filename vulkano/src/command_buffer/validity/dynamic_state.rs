@@ -14,9 +14,12 @@ use command_buffer::DynamicState;
 use pipeline::GraphicsPipelineAbstract;
 
 /// Checks whether states that are about to be set are correct.
-pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
-                                        -> Result<(), CheckDynamicStateValidityError>
-    where Pl: GraphicsPipelineAbstract
+pub fn check_dynamic_state_validity<Pl>(
+    pipeline: &Pl,
+    state: &DynamicState,
+) -> Result<(), CheckDynamicStateValidityError>
+where
+    Pl: GraphicsPipelineAbstract,
 {
     let device = pipeline.device();
 
@@ -28,7 +31,6 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         } else {
             return Err(CheckDynamicStateValidityError::LineWidthMissing);
         }
-
     } else {
         if state.line_width.is_some() {
             return Err(CheckDynamicStateValidityError::LineWidthNotDynamic);
@@ -39,14 +41,13 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let Some(ref viewports) = state.viewports {
             if viewports.len() != pipeline.num_viewports() as usize {
                 return Err(CheckDynamicStateValidityError::ViewportsCountMismatch {
-                               expected: pipeline.num_viewports() as usize,
-                               obtained: viewports.len(),
-                           });
+                    expected: pipeline.num_viewports() as usize,
+                    obtained: viewports.len(),
+                });
             }
         } else {
             return Err(CheckDynamicStateValidityError::ViewportsMissing);
         }
-
     } else {
         if state.viewports.is_some() {
             return Err(CheckDynamicStateValidityError::ViewportsNotDynamic);
@@ -57,14 +58,13 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let Some(ref scissors) = state.scissors {
             if scissors.len() != pipeline.num_viewports() as usize {
                 return Err(CheckDynamicStateValidityError::ScissorsCountMismatch {
-                               expected: pipeline.num_viewports() as usize,
-                               obtained: scissors.len(),
-                           });
+                    expected: pipeline.num_viewports() as usize,
+                    obtained: scissors.len(),
+                });
             }
         } else {
             return Err(CheckDynamicStateValidityError::ScissorsMissing);
         }
-
     } else {
         if state.scissors.is_some() {
             return Err(CheckDynamicStateValidityError::ScissorsNotDynamic);
@@ -75,7 +75,6 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let None = state.compare_mask {
             return Err(CheckDynamicStateValidityError::CompareMaskMissing);
         }
-
     } else {
         if state.compare_mask.is_some() {
             return Err(CheckDynamicStateValidityError::CompareMaskNotDynamic);
@@ -86,7 +85,6 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let None = state.write_mask {
             return Err(CheckDynamicStateValidityError::WriteMaskMissing);
         }
-
     } else {
         if state.write_mask.is_some() {
             return Err(CheckDynamicStateValidityError::WriteMaskNotDynamic);
@@ -97,7 +95,6 @@ pub fn check_dynamic_state_validity<Pl>(pipeline: &Pl, state: &DynamicState)
         if let None = state.reference {
             return Err(CheckDynamicStateValidityError::ReferenceMissing);
         }
-
     } else {
         if state.reference.is_some() {
             return Err(CheckDynamicStateValidityError::ReferenceNotDynamic);

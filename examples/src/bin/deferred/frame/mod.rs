@@ -13,8 +13,8 @@
 // of lighting sources.
 
 pub use self::system::DrawPass;
-pub use self::system::FrameSystem;
 pub use self::system::Frame;
+pub use self::system::FrameSystem;
 pub use self::system::LightingPass;
 pub use self::system::Pass;
 

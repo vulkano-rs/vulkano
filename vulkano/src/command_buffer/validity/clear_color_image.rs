@@ -10,9 +10,9 @@
 use std::error;
 use std::fmt;
 
-use VulkanObject;
 use device::Device;
 use image::ImageAccess;
+use VulkanObject;
 
 /// Checks whether a clear color image command is valid.
 ///
@@ -20,13 +20,21 @@ use image::ImageAccess;
 ///
 /// - Panics if the destination was not created with `device`.
 ///
-pub fn check_clear_color_image<I>(device: &Device, image: &I, first_layer: u32, num_layers: u32,
-                                  first_mipmap: u32, num_mipmaps: u32)
-                                  -> Result<(), CheckClearColorImageError>
-    where I: ?Sized + ImageAccess
+pub fn check_clear_color_image<I>(
+    device: &Device,
+    image: &I,
+    first_layer: u32,
+    num_layers: u32,
+    first_mipmap: u32,
+    num_mipmaps: u32,
+) -> Result<(), CheckClearColorImageError>
+where
+    I: ?Sized + ImageAccess,
 {
-    assert_eq!(image.inner().image.device().internal_object(),
-               device.internal_object());
+    assert_eq!(
+        image.inner().image.device().internal_object(),
+        device.internal_object()
+    );
 
     if !image.inner().image.usage_transfer_destination() {
         return Err(CheckClearColorImageError::MissingTransferUsage);
@@ -58,10 +66,10 @@ impl error::Error for CheckClearColorImageError {
         match *self {
             CheckClearColorImageError::MissingTransferUsage => {
                 "the image is missing the transfer destination usage"
-            },
+            }
             CheckClearColorImageError::OutOfRange => {
                 "the array layers and mipmap levels are out of range"
-            },
+            }
         }
     }
 }

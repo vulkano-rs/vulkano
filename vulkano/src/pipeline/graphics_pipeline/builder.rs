@@ -50,13 +50,13 @@ use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use pipeline::viewport::ViewportsState;
 
-use VulkanObject;
 use check_errors;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescTweaks;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use framebuffer::RenderPassSubpassInterface;
 use vk;
+use VulkanObject;
 
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
@@ -86,18 +86,21 @@ struct TessInfo<Tcs, Tcss, Tes, Tess> {
 }
 
 impl
-    GraphicsPipelineBuilder<BufferlessDefinition,
-                            EmptyEntryPointDummy,
-                            (),
-                            EmptyEntryPointDummy,
-                            (),
-                            EmptyEntryPointDummy,
-                            (),
-                            EmptyEntryPointDummy,
-                            (),
-                            EmptyEntryPointDummy,
-                            (),
-                            ()> {
+    GraphicsPipelineBuilder<
+        BufferlessDefinition,
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        (),
+    >
+{
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         unsafe {
@@ -129,36 +132,41 @@ impl
 
 impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
-    where Vdef: VertexDefinition<Vs::InputDefinition>,
-          Vs: GraphicsEntryPointAbstract,
-          Fs: GraphicsEntryPointAbstract,
-          Gs: GraphicsEntryPointAbstract,
-          Tcs: GraphicsEntryPointAbstract,
-          Tes: GraphicsEntryPointAbstract,
-          Vss: SpecializationConstants,
-          Tcss: SpecializationConstants,
-          Tess: SpecializationConstants,
-          Gss: SpecializationConstants,
-          Fss: SpecializationConstants,
-          Vs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-          Fs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-          Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-          Tes::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-          Gs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-          Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-          Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
-          Gs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition>
-                                   + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-          Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition>
-                                   + ShaderInterfaceDefMatch<Tes::OutputDefinition>
-                                   + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-          Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>
+where
+    Vdef: VertexDefinition<Vs::InputDefinition>,
+    Vs: GraphicsEntryPointAbstract,
+    Fs: GraphicsEntryPointAbstract,
+    Gs: GraphicsEntryPointAbstract,
+    Tcs: GraphicsEntryPointAbstract,
+    Tes: GraphicsEntryPointAbstract,
+    Vss: SpecializationConstants,
+    Tcss: SpecializationConstants,
+    Tess: SpecializationConstants,
+    Gss: SpecializationConstants,
+    Fss: SpecializationConstants,
+    Vs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Fs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Tes::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Gs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
+    Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+    Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
+    Gs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition>
+        + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+    Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition>
+        + ShaderInterfaceDefMatch<Tes::OutputDefinition>
+        + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
+    Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>,
 {
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
-    pub fn build(self, device: Arc<Device>)
-                 -> Result<GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
-                           GraphicsPipelineCreationError> {
+    pub fn build(
+        self,
+        device: Arc<Device>,
+    ) -> Result<
+        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
+        GraphicsPipelineCreationError,
+    > {
         self.with_auto_layout(device, &[])
     }
 
@@ -166,35 +174,46 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     ///
     /// Configures the inferred layout for each descriptor `(set, binding)` in `dynamic_buffers` to accept dynamic
     /// buffers.
-    pub fn with_auto_layout(self, device: Arc<Device>, dynamic_buffers: &[(usize, usize)])
-                            -> Result<GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
-                                      GraphicsPipelineCreationError>
-    {
+    pub fn with_auto_layout(
+        self,
+        device: Arc<Device>,
+        dynamic_buffers: &[(usize, usize)],
+    ) -> Result<
+        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
+        GraphicsPipelineCreationError,
+    > {
         let pipeline_layout;
 
         if let Some(ref tess) = self.tessellation {
             if let Some(ref gs) = self.geometry_shader {
-                if let Err(err) = tess.tessellation_control_shader
+                if let Err(err) = tess
+                    .tessellation_control_shader
                     .0
                     .input()
                     .matches(self.vertex_shader.as_ref().unwrap().0.output())
                 {
-                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                    return Err(
+                        GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err),
+                    );
                 }
-                if let Err(err) = tess.tessellation_evaluation_shader
+                if let Err(err) = tess
+                    .tessellation_evaluation_shader
                     .0
                     .input()
                     .matches(tess.tessellation_control_shader.0.output())
                 {
-                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                    return Err(
+                        GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err),
+                    );
                 }
-                if let Err(err) = gs.0
-                    .input()
-                    .matches(tess.tessellation_evaluation_shader.0.output())
+                if let Err(err) =
+                    gs.0.input()
+                        .matches(tess.tessellation_evaluation_shader.0.output())
                 {
                     return Err(GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(err));
                 }
-                if let Err(err) = self.fragment_shader
+                if let Err(err) = self
+                    .fragment_shader
                     .as_ref()
                     .unwrap()
                     .0
@@ -205,30 +224,61 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(self.vertex_shader.as_ref().unwrap().0.layout().clone()
-                          .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
-                          .union(self.tessellation.as_ref().unwrap().tessellation_control_shader.0.layout().clone())    // FIXME: unwrap()
-                          .union(self.tessellation.as_ref().unwrap().tessellation_evaluation_shader.0.layout().clone())    // FIXME: unwrap()
-                          .union(self.geometry_shader.as_ref().unwrap().0.layout().clone()),    // FIXME: unwrap()
-                          dynamic_buffers.into_iter().cloned()
-                    ).build(device.clone()).unwrap()) as Box<_>; // TODO: error
-
+                    PipelineLayoutDescTweaks::new(
+                        self.vertex_shader
+                            .as_ref()
+                            .unwrap()
+                            .0
+                            .layout()
+                            .clone()
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                            .union(
+                                self.tessellation
+                                    .as_ref()
+                                    .unwrap()
+                                    .tessellation_control_shader
+                                    .0
+                                    .layout()
+                                    .clone(),
+                            ) // FIXME: unwrap()
+                            .union(
+                                self.tessellation
+                                    .as_ref()
+                                    .unwrap()
+                                    .tessellation_evaluation_shader
+                                    .0
+                                    .layout()
+                                    .clone(),
+                            ) // FIXME: unwrap()
+                            .union(self.geometry_shader.as_ref().unwrap().0.layout().clone()), // FIXME: unwrap()
+                        dynamic_buffers.into_iter().cloned(),
+                    )
+                    .build(device.clone())
+                    .unwrap(),
+                ) as Box<_>; // TODO: error
             } else {
-                if let Err(err) = tess.tessellation_control_shader
+                if let Err(err) = tess
+                    .tessellation_control_shader
                     .0
                     .input()
                     .matches(self.vertex_shader.as_ref().unwrap().0.output())
                 {
-                    return Err(GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err));
+                    return Err(
+                        GraphicsPipelineCreationError::VertexTessControlStagesMismatch(err),
+                    );
                 }
-                if let Err(err) = tess.tessellation_evaluation_shader
+                if let Err(err) = tess
+                    .tessellation_evaluation_shader
                     .0
                     .input()
                     .matches(tess.tessellation_control_shader.0.output())
                 {
-                    return Err(GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err));
+                    return Err(
+                        GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(err),
+                    );
                 }
-                if let Err(err) = self.fragment_shader
+                if let Err(err) = self
+                    .fragment_shader
                     .as_ref()
                     .unwrap()
                     .0
@@ -239,14 +289,38 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(self.vertex_shader.as_ref().unwrap().0.layout().clone()
-                          .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
-                          .union(self.tessellation.as_ref().unwrap().tessellation_control_shader.0.layout().clone())    // FIXME: unwrap()
-                          .union(self.tessellation.as_ref().unwrap().tessellation_evaluation_shader.0.layout().clone()),    // FIXME: unwrap()
-                          dynamic_buffers.into_iter().cloned()
-                    ).build(device.clone()).unwrap()) as Box<_>; // TODO: error
+                    PipelineLayoutDescTweaks::new(
+                        self.vertex_shader
+                            .as_ref()
+                            .unwrap()
+                            .0
+                            .layout()
+                            .clone()
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                            .union(
+                                self.tessellation
+                                    .as_ref()
+                                    .unwrap()
+                                    .tessellation_control_shader
+                                    .0
+                                    .layout()
+                                    .clone(),
+                            ) // FIXME: unwrap()
+                            .union(
+                                self.tessellation
+                                    .as_ref()
+                                    .unwrap()
+                                    .tessellation_evaluation_shader
+                                    .0
+                                    .layout()
+                                    .clone(),
+                            ), // FIXME: unwrap()
+                        dynamic_buffers.into_iter().cloned(),
+                    )
+                    .build(device.clone())
+                    .unwrap(),
+                ) as Box<_>; // TODO: error
             }
-
         } else {
             if let Some(ref geometry_shader) = self.geometry_shader {
                 if let Err(err) = geometry_shader
@@ -254,9 +328,12 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     .input()
                     .matches(self.vertex_shader.as_ref().unwrap().0.output())
                 {
-                    return Err(GraphicsPipelineCreationError::VertexGeometryStagesMismatch(err));
+                    return Err(GraphicsPipelineCreationError::VertexGeometryStagesMismatch(
+                        err,
+                    ));
                 }
-                if let Err(err) = self.fragment_shader
+                if let Err(err) = self
+                    .fragment_shader
                     .as_ref()
                     .unwrap()
                     .0
@@ -267,34 +344,48 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(self.vertex_shader.as_ref().unwrap().0.layout().clone()
-                          .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
-                          .union(self.geometry_shader.as_ref().unwrap().0.layout().clone()),    // FIXME: unwrap()
-                          dynamic_buffers.into_iter().cloned()
-                    ).build(device.clone()).unwrap()) as Box<_>; // TODO: error
-
+                    PipelineLayoutDescTweaks::new(
+                        self.vertex_shader
+                            .as_ref()
+                            .unwrap()
+                            .0
+                            .layout()
+                            .clone()
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                            .union(self.geometry_shader.as_ref().unwrap().0.layout().clone()), // FIXME: unwrap()
+                        dynamic_buffers.into_iter().cloned(),
+                    )
+                    .build(device.clone())
+                    .unwrap(),
+                ) as Box<_>; // TODO: error
             } else {
-                if let Err(err) = self.fragment_shader
+                if let Err(err) = self
+                    .fragment_shader
                     .as_ref()
                     .unwrap()
                     .0
                     .input()
                     .matches(self.vertex_shader.as_ref().unwrap().0.output())
                 {
-                    return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(err));
+                    return Err(GraphicsPipelineCreationError::VertexFragmentStagesMismatch(
+                        err,
+                    ));
                 }
 
-                pipeline_layout =
-                    Box::new(
-                        PipelineLayoutDescTweaks::new(self.vertex_shader
-                              .as_ref()
-                              .unwrap()
-                              .0
-                              .layout()
-                              .clone()
-                              .union(self.fragment_shader.as_ref().unwrap().0.layout().clone()),
-                              dynamic_buffers.into_iter().cloned()
-                        ).build(device.clone()).unwrap()) as Box<_>; // TODO: error
+                pipeline_layout = Box::new(
+                    PipelineLayoutDescTweaks::new(
+                        self.vertex_shader
+                            .as_ref()
+                            .unwrap()
+                            .0
+                            .layout()
+                            .clone()
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone()),
+                        dynamic_buffers.into_iter().cloned(),
+                    )
+                    .build(device.clone())
+                    .unwrap(),
+                ) as Box<_>; // TODO: error
             }
         }
 
@@ -306,10 +397,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Does the same as `build`, except that `build` automatically builds the pipeline layout
     /// object corresponding to the union of your shaders while this function allows you to specify
     /// the pipeline layout.
-    pub fn with_pipeline_layout<Pl>(mut self, device: Arc<Device>, pipeline_layout: Pl)
-                                    -> Result<GraphicsPipeline<Vdef, Pl, Rp>,
-                                              GraphicsPipelineCreationError>
-        where Pl: PipelineLayoutAbstract
+    pub fn with_pipeline_layout<Pl>(
+        mut self,
+        device: Arc<Device>,
+        pipeline_layout: Pl,
+    ) -> Result<GraphicsPipeline<Vdef, Pl, Rp>, GraphicsPipelineCreationError>
+    where
+        Pl: PipelineLayoutAbstract,
     {
         // TODO: return errors instead of panicking if missing param
 
@@ -317,48 +411,37 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
-                                                   self.vertex_shader
-                                                       .as_ref()
-                                                       .unwrap()
-                                                       .0
-                                                       .layout())?;
-        PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
-                                                   self.fragment_shader
-                                                       .as_ref()
-                                                       .unwrap()
-                                                       .0
-                                                       .layout())?;
+        PipelineLayoutSuperset::ensure_superset_of(
+            &pipeline_layout,
+            self.vertex_shader.as_ref().unwrap().0.layout(),
+        )?;
+        PipelineLayoutSuperset::ensure_superset_of(
+            &pipeline_layout,
+            self.fragment_shader.as_ref().unwrap().0.layout(),
+        )?;
         if let Some(ref geometry_shader) = self.geometry_shader {
-            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
-                                                       geometry_shader.0.layout())?;
+            PipelineLayoutSuperset::ensure_superset_of(
+                &pipeline_layout,
+                geometry_shader.0.layout(),
+            )?;
         }
         if let Some(ref tess) = self.tessellation {
-            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
-                                                       tess.tessellation_control_shader
-                                                           .0
-                                                           .layout())?;
-            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout,
-                                                       tess.tessellation_evaluation_shader
-                                                           .0
-                                                           .layout())?;
+            PipelineLayoutSuperset::ensure_superset_of(
+                &pipeline_layout,
+                tess.tessellation_control_shader.0.layout(),
+            )?;
+            PipelineLayoutSuperset::ensure_superset_of(
+                &pipeline_layout,
+                tess.tessellation_evaluation_shader.0.layout(),
+            )?;
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !RenderPassSubpassInterface::is_compatible_with(&self.render_pass
-                                                               .as_ref()
-                                                               .unwrap()
-                                                               .render_pass(),
-                                                           self.render_pass
-                                                               .as_ref()
-                                                               .unwrap()
-                                                               .index(),
-                                                           self.fragment_shader
-                                                               .as_ref()
-                                                               .unwrap()
-                                                               .0
-                                                               .output())
-        {
+        if !RenderPassSubpassInterface::is_compatible_with(
+            &self.render_pass.as_ref().unwrap().render_pass(),
+            self.render_pass.as_ref().unwrap().index(),
+            self.fragment_shader.as_ref().unwrap().0.output(),
+        ) {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
 
@@ -405,11 +488,11 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             let spec_descriptors = Gss::descriptors();
             let constants = &gs.1;
             Some(vk::SpecializationInfo {
-                     mapEntryCount: spec_descriptors.len() as u32,
-                     pMapEntries: spec_descriptors.as_ptr() as *const _,
-                     dataSize: mem::size_of_val(constants),
-                     pData: constants as *const Gss as *const _,
-                 })
+                mapEntryCount: spec_descriptors.len() as u32,
+                pMapEntries: spec_descriptors.as_ptr() as *const _,
+                dataSize: mem::size_of_val(constants),
+                pData: constants as *const Gss as *const _,
+            })
         } else {
             None
         };
@@ -429,44 +512,46 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             let mut stages = SmallVec::<[_; 5]>::new();
 
             match self.vertex_shader.as_ref().unwrap().0.ty() {
-                GraphicsShaderType::Vertex => {},
+                GraphicsShaderType::Vertex => {}
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             };
 
             stages.push(vk::PipelineShaderStageCreateInfo {
-                            sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                            pNext: ptr::null(),
-                            flags: 0, // reserved
-                            stage: vk::SHADER_STAGE_VERTEX_BIT,
-                            module: self.vertex_shader
-                                .as_ref()
-                                .unwrap()
-                                .0
-                                .module()
-                                .internal_object(),
-                            pName: self.vertex_shader.as_ref().unwrap().0.name().as_ptr(),
-                            pSpecializationInfo: &vertex_shader_specialization as *const _,
-                        });
+                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0, // reserved
+                stage: vk::SHADER_STAGE_VERTEX_BIT,
+                module: self
+                    .vertex_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .module()
+                    .internal_object(),
+                pName: self.vertex_shader.as_ref().unwrap().0.name().as_ptr(),
+                pSpecializationInfo: &vertex_shader_specialization as *const _,
+            });
 
             match self.fragment_shader.as_ref().unwrap().0.ty() {
-                GraphicsShaderType::Fragment => {},
+                GraphicsShaderType::Fragment => {}
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             };
 
             stages.push(vk::PipelineShaderStageCreateInfo {
-                            sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                            pNext: ptr::null(),
-                            flags: 0, // reserved
-                            stage: vk::SHADER_STAGE_FRAGMENT_BIT,
-                            module: self.fragment_shader
-                                .as_ref()
-                                .unwrap()
-                                .0
-                                .module()
-                                .internal_object(),
-                            pName: self.fragment_shader.as_ref().unwrap().0.name().as_ptr(),
-                            pSpecializationInfo: &fragment_shader_specialization as *const _,
-                        });
+                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0, // reserved
+                stage: vk::SHADER_STAGE_FRAGMENT_BIT,
+                module: self
+                    .fragment_shader
+                    .as_ref()
+                    .unwrap()
+                    .0
+                    .module()
+                    .internal_object(),
+                pName: self.fragment_shader.as_ref().unwrap().0.name().as_ptr(),
+                pSpecializationInfo: &fragment_shader_specialization as *const _,
+            });
 
             if let Some(ref gs) = self.geometry_shader {
                 if !device.enabled_features().geometry_shader {
@@ -474,17 +559,15 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 }
 
                 stages.push(vk::PipelineShaderStageCreateInfo {
-                                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                                pNext: ptr::null(),
-                                flags: 0, // reserved
-                                stage: vk::SHADER_STAGE_GEOMETRY_BIT,
-                                module: gs.0.module().internal_object(),
-                                pName: gs.0.name().as_ptr(),
-                                pSpecializationInfo: geometry_shader_specialization
-                                    .as_ref()
-                                    .unwrap() as
-                                    *const _,
-                            });
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_GEOMETRY_BIT,
+                    module: gs.0.module().internal_object(),
+                    pName: gs.0.name().as_ptr(),
+                    pSpecializationInfo: geometry_shader_specialization.as_ref().unwrap()
+                        as *const _,
+                });
             }
 
             if let Some(ref tess) = self.tessellation {
@@ -495,48 +578,44 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 }
 
                 match tess.tessellation_control_shader.0.ty() {
-                    GraphicsShaderType::TessellationControl => {},
+                    GraphicsShaderType::TessellationControl => {}
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
                 match tess.tessellation_evaluation_shader.0.ty() {
-                    GraphicsShaderType::TessellationEvaluation => {},
+                    GraphicsShaderType::TessellationEvaluation => {}
                     _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
                 };
 
                 stages.push(vk::PipelineShaderStageCreateInfo {
-                                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                                pNext: ptr::null(),
-                                flags: 0, // reserved
-                                stage: vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT,
-                                module: tess.tessellation_control_shader
-                                    .0
-                                    .module()
-                                    .internal_object(),
-                                pName: tess.tessellation_control_shader.0.name().as_ptr(),
-                                pSpecializationInfo: &tess_shader_specialization
-                                    .as_ref()
-                                    .unwrap()
-                                    .0 as
-                                    *const _,
-                            });
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT,
+                    module: tess
+                        .tessellation_control_shader
+                        .0
+                        .module()
+                        .internal_object(),
+                    pName: tess.tessellation_control_shader.0.name().as_ptr(),
+                    pSpecializationInfo: &tess_shader_specialization.as_ref().unwrap().0
+                        as *const _,
+                });
 
                 stages.push(vk::PipelineShaderStageCreateInfo {
-                                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                                pNext: ptr::null(),
-                                flags: 0, // reserved
-                                stage: vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
-                                module: tess.tessellation_evaluation_shader
-                                    .0
-                                    .module()
-                                    .internal_object(),
-                                pName: tess.tessellation_evaluation_shader.0.name().as_ptr(),
-                                pSpecializationInfo: &tess_shader_specialization
-                                    .as_ref()
-                                    .unwrap()
-                                    .1 as
-                                    *const _,
-                            });
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved
+                    stage: vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT,
+                    module: tess
+                        .tessellation_evaluation_shader
+                        .0
+                        .module()
+                        .internal_object(),
+                    pName: tess.tessellation_evaluation_shader.0.name().as_ptr(),
+                    pSpecializationInfo: &tess_shader_specialization.as_ref().unwrap().1
+                        as *const _,
+                });
             }
 
             stages
@@ -544,94 +623,108 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
         // Vertex bindings.
         let (binding_descriptions, attribute_descriptions) = {
-            let (buffers_iter, attribs_iter) =
-                self.vertex_input
-                    .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
+            let (buffers_iter, attribs_iter) = self
+                .vertex_input
+                .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
 
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
             for (num, stride, rate) in buffers_iter {
-                if stride >
-                    device
+                if stride
+                    > device
                         .physical_device()
                         .limits()
                         .max_vertex_input_binding_stride() as usize
                 {
-                    return Err(GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
-                        binding: num as usize,
-                        max: device.physical_device().limits().max_vertex_input_binding_stride() as usize,
-                        obtained: stride,
-                    });
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
+                            binding: num as usize,
+                            max: device
+                                .physical_device()
+                                .limits()
+                                .max_vertex_input_binding_stride()
+                                as usize,
+                            obtained: stride,
+                        },
+                    );
                 }
 
                 binding_descriptions.push(vk::VertexInputBindingDescription {
-                                              binding: num as u32,
-                                              stride: stride as u32,
-                                              inputRate: rate as u32,
-                                          });
+                    binding: num as u32,
+                    stride: stride as u32,
+                    inputRate: rate as u32,
+                });
             }
 
             let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
             for (loc, binding, info) in attribs_iter {
                 // TODO: check attribute format support
 
-                if info.offset >
-                    device
+                if info.offset
+                    > device
                         .physical_device()
                         .limits()
                         .max_vertex_input_attribute_offset() as usize
                 {
-                    return Err(GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
-                        max: device.physical_device().limits().max_vertex_input_attribute_offset() as usize,
-                        obtained: info.offset,
-                    });
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                            max: device
+                                .physical_device()
+                                .limits()
+                                .max_vertex_input_attribute_offset()
+                                as usize,
+                            obtained: info.offset,
+                        },
+                    );
                 }
 
                 debug_assert!(binding_descriptions
-                                  .iter()
-                                  .find(|b| b.binding == binding)
-                                  .is_some());
+                    .iter()
+                    .find(|b| b.binding == binding)
+                    .is_some());
 
                 attribute_descriptions.push(vk::VertexInputAttributeDescription {
-                                                location: loc as u32,
-                                                binding: binding as u32,
-                                                format: info.format as u32,
-                                                offset: info.offset as u32,
-                                            });
+                    location: loc as u32,
+                    binding: binding as u32,
+                    format: info.format as u32,
+                    offset: info.offset as u32,
+                });
             }
 
             (binding_descriptions, attribute_descriptions)
         };
 
-        if binding_descriptions.len() >
-            device
+        if binding_descriptions.len()
+            > device
                 .physical_device()
                 .limits()
                 .max_vertex_input_bindings() as usize
         {
-            return Err(GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
-                           max: device
-                               .physical_device()
-                               .limits()
-                               .max_vertex_input_bindings() as
-                               usize,
-                           obtained: binding_descriptions.len(),
-                       });
+            return Err(
+                GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                    max: device
+                        .physical_device()
+                        .limits()
+                        .max_vertex_input_bindings() as usize,
+                    obtained: binding_descriptions.len(),
+                },
+            );
         }
 
-        if attribute_descriptions.len() >
-            device
+        if attribute_descriptions.len()
+            > device
                 .physical_device()
                 .limits()
                 .max_vertex_input_attributes() as usize
         {
-            return Err(GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
-                           max: device
-                               .physical_device()
-                               .limits()
-                               .max_vertex_input_attributes() as
-                               usize,
-                           obtained: attribute_descriptions.len(),
-                       });
+            return Err(
+                GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
+                    max: device
+                        .physical_device()
+                        .limits()
+                        .max_vertex_input_attributes() as usize,
+                    obtained: attribute_descriptions.len(),
+                },
+            );
         }
 
         let vertex_input_state = vk::PipelineVertexInputStateCreateInfo {
@@ -644,12 +737,14 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             pVertexAttributeDescriptions: attribute_descriptions.as_ptr(),
         };
 
-        if self.input_assembly.primitiveRestartEnable != vk::FALSE &&
-            !self.input_assembly_topology.supports_primitive_restart()
+        if self.input_assembly.primitiveRestartEnable != vk::FALSE
+            && !self.input_assembly_topology.supports_primitive_restart()
         {
-            return Err(GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
-                           primitive: self.input_assembly_topology,
-                       });
+            return Err(
+                GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
+                    primitive: self.input_assembly_topology,
+                },
+            );
         }
 
         // TODO: should check from the tess eval shader instead of the input assembly
@@ -657,9 +752,11 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             match gs.0.ty() {
                 GraphicsShaderType::Geometry(primitives) => {
                     if !primitives.matches(self.input_assembly_topology) {
-                        return Err(GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader);
+                        return Err(
+                            GraphicsPipelineCreationError::TopologyNotMatchingGeometryShader,
+                        );
                     }
-                },
+                }
                 _ => return Err(GraphicsPipelineCreationError::WrongShaderType),
             }
         }
@@ -669,8 +766,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 if self.tessellation.is_none() {
                     return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
                 }
-                if vertices_per_patch >
-                    device
+                if vertices_per_patch
+                    > device
                         .physical_device()
                         .limits()
                         .max_tessellation_patch_size()
@@ -679,29 +776,31 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 }
 
                 Some(vk::PipelineTessellationStateCreateInfo {
-                         sType: vk::STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
-                         pNext: ptr::null(),
-                         flags: 0, // reserved,
-                         patchControlPoints: vertices_per_patch,
-                     })
-            },
+                    sType: vk::STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO,
+                    pNext: ptr::null(),
+                    flags: 0, // reserved,
+                    patchControlPoints: vertices_per_patch,
+                })
+            }
             _ => {
                 if self.tessellation.is_some() {
                     return Err(GraphicsPipelineCreationError::InvalidPrimitiveTopology);
                 }
 
                 None
-            },
+            }
         };
 
         let (vp_vp, vp_sc, vp_num) = match *self.viewport.as_ref().unwrap() {
-            ViewportsState::Fixed { ref data } => (data.iter()
-                                                       .map(|e| e.0.clone().into_vulkan_viewport())
-                                                       .collect::<SmallVec<[vk::Viewport; 4]>>(),
-                                                   data.iter()
-                                                       .map(|e| e.1.clone().into_vulkan_rect())
-                                                       .collect::<SmallVec<[vk::Rect2D; 4]>>(),
-                                                   data.len() as u32),
+            ViewportsState::Fixed { ref data } => (
+                data.iter()
+                    .map(|e| e.0.clone().into_vulkan_viewport())
+                    .collect::<SmallVec<[vk::Viewport; 4]>>(),
+                data.iter()
+                    .map(|e| e.1.clone().into_vulkan_rect())
+                    .collect::<SmallVec<[vk::Rect2D; 4]>>(),
+                data.len() as u32,
+            ),
             ViewportsState::DynamicViewports { ref scissors } => {
                 let num = scissors.len() as u32;
                 let scissors = scissors
@@ -710,7 +809,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     .collect::<SmallVec<[vk::Rect2D; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                 (SmallVec::new(), scissors, num)
-            },
+            }
             ViewportsState::DynamicScissors { ref viewports } => {
                 let num = viewports.len() as u32;
                 let viewports = viewports
@@ -719,12 +818,12 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     .collect::<SmallVec<[vk::Viewport; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                 (viewports, SmallVec::new(), num)
-            },
+            }
             ViewportsState::Dynamic { num } => {
                 dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                 dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                 (SmallVec::new(), SmallVec::new(), num)
-            },
+            }
         };
 
         if vp_num > 1 && !device.enabled_features().multi_viewport {
@@ -733,22 +832,22 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
         if vp_num > device.physical_device().limits().max_viewports() {
             return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
-                           obtained: vp_num,
-                           max: device.physical_device().limits().max_viewports(),
-                       });
+                obtained: vp_num,
+                max: device.physical_device().limits().max_viewports(),
+            });
         }
 
         for vp in vp_vp.iter() {
-            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32 ||
-                vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32
+            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32
+                || vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32
             {
                 return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
             }
 
-            if vp.x < device.physical_device().limits().viewport_bounds_range()[0] ||
-                vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1] ||
-                vp.y < device.physical_device().limits().viewport_bounds_range()[0] ||
-                vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1]
+            if vp.x < device.physical_device().limits().viewport_bounds_range()[0]
+                || vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1]
+                || vp.y < device.physical_device().limits().viewport_bounds_range()[0]
+                || vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1]
             {
                 return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
             }
@@ -784,25 +883,28 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             DepthBiasControl::Dynamic => {
                 dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BIAS);
                 (vk::TRUE, 0.0, 0.0, 0.0)
-            },
-            DepthBiasControl::Disabled => {
-                (vk::FALSE, 0.0, 0.0, 0.0)
-            },
+            }
+            DepthBiasControl::Disabled => (vk::FALSE, 0.0, 0.0, 0.0),
             DepthBiasControl::Static(bias) => {
                 if bias.clamp != 0.0 && !device.enabled_features().depth_bias_clamp {
                     return Err(GraphicsPipelineCreationError::DepthBiasClampFeatureNotEnabled);
                 }
 
-                (vk::TRUE, bias.constant_factor, bias.clamp, bias.slope_factor)
-            },
+                (
+                    vk::TRUE,
+                    bias.constant_factor,
+                    bias.clamp,
+                    bias.slope_factor,
+                )
+            }
         };
 
         if self.raster.depth_clamp && !device.enabled_features().depth_clamp {
             return Err(GraphicsPipelineCreationError::DepthClampFeatureNotEnabled);
         }
 
-        if self.raster.polygon_mode != PolygonMode::Fill &&
-            !device.enabled_features().fill_mode_non_solid
+        if self.raster.polygon_mode != PolygonMode::Fill
+            && !device.enabled_features().fill_mode_non_solid
         {
             return Err(GraphicsPipelineCreationError::FillModeNonSolidFeatureNotEnabled);
         }
@@ -831,14 +933,17 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             lineWidth: self.raster.line_width.unwrap_or(1.0),
         };
 
-        self.multisample.rasterizationSamples = self.render_pass
+        self.multisample.rasterizationSamples = self
+            .render_pass
             .as_ref()
             .unwrap()
             .num_samples()
             .unwrap_or(1);
         if self.multisample.sampleShadingEnable != vk::FALSE {
-            debug_assert!(self.multisample.minSampleShading >= 0.0 &&
-                              self.multisample.minSampleShading <= 1.0);
+            debug_assert!(
+                self.multisample.minSampleShading >= 0.0
+                    && self.multisample.minSampleShading <= 1.0
+            );
             if !device.enabled_features().sample_rate_shading {
                 return Err(GraphicsPipelineCreationError::SampleRateShadingFeatureNotEnabled);
             }
@@ -858,7 +963,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     }
 
                     (vk::TRUE, range.start, range.end)
-                },
+                }
                 DepthBounds::Dynamic => {
                     if !device.enabled_features().depth_bounds {
                         return Err(GraphicsPipelineCreationError::DepthBoundsFeatureNotEnabled);
@@ -867,51 +972,57 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     dynamic_states.push(vk::DYNAMIC_STATE_DEPTH_BOUNDS);
 
                     (vk::TRUE, 0.0, 1.0)
-                },
+                }
             };
 
-            match (self.depth_stencil.stencil_front.compare_mask,
-                     self.depth_stencil.stencil_back.compare_mask) {
+            match (
+                self.depth_stencil.stencil_front.compare_mask,
+                self.depth_stencil.stencil_back.compare_mask,
+            ) {
                 (Some(_), Some(_)) => (),
                 (None, None) => {
                     dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_COMPARE_MASK);
-                },
+                }
                 _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
             };
 
-            match (self.depth_stencil.stencil_front.write_mask,
-                     self.depth_stencil.stencil_back.write_mask) {
+            match (
+                self.depth_stencil.stencil_front.write_mask,
+                self.depth_stencil.stencil_back.write_mask,
+            ) {
                 (Some(_), Some(_)) => (),
                 (None, None) => {
                     dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_WRITE_MASK);
-                },
+                }
                 _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
             };
 
-            match (self.depth_stencil.stencil_front.reference,
-                     self.depth_stencil.stencil_back.reference) {
+            match (
+                self.depth_stencil.stencil_front.reference,
+                self.depth_stencil.stencil_back.reference,
+            ) {
                 (Some(_), Some(_)) => (),
                 (None, None) => {
                     dynamic_states.push(vk::DYNAMIC_STATE_STENCIL_REFERENCE);
-                },
+                }
                 _ => return Err(GraphicsPipelineCreationError::WrongStencilState),
             };
 
-            if self.depth_stencil.depth_write &&
-                !self.render_pass.as_ref().unwrap().has_writable_depth()
+            if self.depth_stencil.depth_write
+                && !self.render_pass.as_ref().unwrap().has_writable_depth()
             {
                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
             }
 
-            if self.depth_stencil.depth_compare != Compare::Always &&
-                !self.render_pass.as_ref().unwrap().has_depth()
+            if self.depth_stencil.depth_compare != Compare::Always
+                && !self.render_pass.as_ref().unwrap().has_depth()
             {
                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
             }
 
-            if (!self.depth_stencil.stencil_front.always_keep() ||
-                    !self.depth_stencil.stencil_back.always_keep()) &&
-                !self.render_pass.as_ref().unwrap().has_stencil()
+            if (!self.depth_stencil.stencil_front.always_keep()
+                || !self.depth_stencil.stencil_back.always_keep())
+                && !self.render_pass.as_ref().unwrap().has_stencil()
             {
                 return Err(GraphicsPipelineCreationError::NoStencilAttachment);
             }
@@ -922,8 +1033,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 sType: vk::STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0, // reserved
-                depthTestEnable: if !self.depth_stencil.depth_write &&
-                    self.depth_stencil.depth_compare == Compare::Always
+                depthTestEnable: if !self.depth_stencil.depth_write
+                    && self.depth_stencil.depth_compare == Compare::Always
                 {
                     vk::FALSE
                 } else {
@@ -936,8 +1047,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                 },
                 depthCompareOp: self.depth_stencil.depth_compare as u32,
                 depthBoundsTestEnable: db.0,
-                stencilTestEnable: if self.depth_stencil.stencil_front.always_keep() &&
-                    self.depth_stencil.stencil_back.always_keep()
+                stencilTestEnable: if self.depth_stencil.stencil_front.always_keep()
+                    && self.depth_stencil.stencil_back.always_keep()
                 {
                     vk::FALSE
                 } else {
@@ -948,11 +1059,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     passOp: self.depth_stencil.stencil_front.pass_op as u32,
                     depthFailOp: self.depth_stencil.stencil_front.depth_fail_op as u32,
                     compareOp: self.depth_stencil.stencil_front.compare as u32,
-                    compareMask: self.depth_stencil
+                    compareMask: self
+                        .depth_stencil
                         .stencil_front
                         .compare_mask
                         .unwrap_or(u32::MAX),
-                    writeMask: self.depth_stencil
+                    writeMask: self
+                        .depth_stencil
                         .stencil_front
                         .write_mask
                         .unwrap_or(u32::MAX),
@@ -963,11 +1076,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     passOp: self.depth_stencil.stencil_back.pass_op as u32,
                     depthFailOp: self.depth_stencil.stencil_back.depth_fail_op as u32,
                     compareOp: self.depth_stencil.stencil_back.compare as u32,
-                    compareMask: self.depth_stencil
+                    compareMask: self
+                        .depth_stencil
                         .stencil_back
                         .compare_mask
                         .unwrap_or(u32::MAX),
-                    writeMask: self.depth_stencil
+                    writeMask: self
+                        .depth_stencil
                         .stencil_back
                         .write_mask
                         .unwrap_or(u32::MAX),
@@ -982,25 +1097,27 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             let num_atch = self.render_pass.as_ref().unwrap().num_color_attachments();
 
             match self.blend.attachments {
-                AttachmentsBlend::Collective(blend) => {
-                    (0 .. num_atch)
-                        .map(|_| blend.clone().into_vulkan_state())
-                        .collect()
-                },
+                AttachmentsBlend::Collective(blend) => (0..num_atch)
+                    .map(|_| blend.clone().into_vulkan_state())
+                    .collect(),
                 AttachmentsBlend::Individual(blend) => {
                     if blend.len() != num_atch as usize {
-                        return Err(GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount);
+                        return Err(
+                            GraphicsPipelineCreationError::MismatchBlendingAttachmentsCount,
+                        );
                     }
 
                     if !device.enabled_features().independent_blend {
-                        return Err(GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled);
+                        return Err(
+                            GraphicsPipelineCreationError::IndependentBlendFeatureNotEnabled,
+                        );
                     }
 
                     blend
                         .iter()
                         .map(|b| b.clone().into_vulkan_state())
                         .collect()
-                },
+                }
             }
         };
 
@@ -1029,12 +1146,12 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
         let dynamic_states = if !dynamic_states.is_empty() {
             Some(vk::PipelineDynamicStateCreateInfo {
-                     sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
-                     pNext: ptr::null(),
-                     flags: 0, // reserved
-                     dynamicStateCount: dynamic_states.len() as u32,
-                     pDynamicStates: dynamic_states.as_ptr(),
-                 })
+                sType: vk::STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO,
+                pNext: ptr::null(),
+                flags: 0, // reserved
+                dynamicStateCount: dynamic_states.len() as u32,
+                pDynamicStates: dynamic_states.as_ptr(),
+            })
         } else {
             None
         };
@@ -1062,7 +1179,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
                     .map(|s| s as *const _)
                     .unwrap_or(ptr::null()),
                 layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
-                renderPass: self.render_pass
+                renderPass: self
+                    .render_pass
                     .as_ref()
                     .unwrap()
                     .render_pass()
@@ -1074,12 +1192,14 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateGraphicsPipelines(device.internal_object(),
-                                                    0,
-                                                    1,
-                                                    &infos,
-                                                    ptr::null(),
-                                                    output.as_mut_ptr()))?;
+            check_errors(vk.CreateGraphicsPipelines(
+                device.internal_object(),
+                0,
+                1,
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
@@ -1093,43 +1213,45 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         let (render_pass, render_pass_subpass) = self.render_pass.take().unwrap().into();
 
         Ok(GraphicsPipeline {
-               inner: GraphicsPipelineInner {
-                   device: device.clone(),
-                   pipeline: pipeline,
-               },
-               layout: pipeline_layout,
+            inner: GraphicsPipelineInner {
+                device: device.clone(),
+                pipeline: pipeline,
+            },
+            layout: pipeline_layout,
 
-               vertex_definition: self.vertex_input,
+            vertex_definition: self.vertex_input,
 
-               render_pass: render_pass,
-               render_pass_subpass: render_pass_subpass,
+            render_pass: render_pass,
+            render_pass_subpass: render_pass_subpass,
 
-               dynamic_line_width: self.raster.line_width.is_none(),
-               dynamic_viewport: self.viewport.as_ref().unwrap().dynamic_viewports(),
-               dynamic_scissor: self.viewport.as_ref().unwrap().dynamic_scissors(),
-               dynamic_depth_bias: self.raster.depth_bias.is_dynamic(),
-               dynamic_depth_bounds: self.depth_stencil.depth_bounds_test.is_dynamic(),
-               dynamic_stencil_compare_mask: self.depth_stencil.stencil_back.compare_mask.is_none(),
-               dynamic_stencil_write_mask: self.depth_stencil.stencil_back.write_mask.is_none(),
-               dynamic_stencil_reference: self.depth_stencil.stencil_back.reference.is_none(),
-               dynamic_blend_constants: self.blend.blend_constants.is_none(),
+            dynamic_line_width: self.raster.line_width.is_none(),
+            dynamic_viewport: self.viewport.as_ref().unwrap().dynamic_viewports(),
+            dynamic_scissor: self.viewport.as_ref().unwrap().dynamic_scissors(),
+            dynamic_depth_bias: self.raster.depth_bias.is_dynamic(),
+            dynamic_depth_bounds: self.depth_stencil.depth_bounds_test.is_dynamic(),
+            dynamic_stencil_compare_mask: self.depth_stencil.stencil_back.compare_mask.is_none(),
+            dynamic_stencil_write_mask: self.depth_stencil.stencil_back.write_mask.is_none(),
+            dynamic_stencil_reference: self.depth_stencil.stencil_back.reference.is_none(),
+            dynamic_blend_constants: self.blend.blend_constants.is_none(),
 
-               num_viewports: self.viewport.as_ref().unwrap().num_viewports(),
-           })
+            num_viewports: self.viewport.as_ref().unwrap().num_viewports(),
+        })
     }
 
     // TODO: add build_with_cache method
 }
 
 impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
-    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
+    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+{
     // TODO: add pipeline derivate system
 
     /// Sets the vertex input.
     #[inline]
     pub fn vertex_input<T>(
-        self, vertex_input: T)
-        -> GraphicsPipelineBuilder<T, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
+        self,
+        vertex_input: T,
+    ) -> GraphicsPipelineBuilder<T, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
         GraphicsPipelineBuilder {
             vertex_input: vertex_input,
             vertex_shader: self.vertex_shader,
@@ -1152,19 +1274,22 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// You will most likely need to explicitly specify the template parameter to the type of a
     /// vertex.
     #[inline]
-    pub fn vertex_input_single_buffer<V>(self)
-                                         -> GraphicsPipelineBuilder<SingleBufferDefinition<V>,
-                                                                    Vs,
-                                                                    Vss,
-                                                                    Tcs,
-                                                                    Tcss,
-                                                                    Tes,
-                                                                    Tess,
-                                                                    Gs,
-                                                                    Gss,
-                                                                    Fs,
-                                                                    Fss,
-                                                                    Rp> {
+    pub fn vertex_input_single_buffer<V>(
+        self,
+    ) -> GraphicsPipelineBuilder<
+        SingleBufferDefinition<V>,
+        Vs,
+        Vss,
+        Tcs,
+        Tcss,
+        Tes,
+        Tess,
+        Gs,
+        Gss,
+        Fs,
+        Fss,
+        Rp,
+    > {
         self.vertex_input(SingleBufferDefinition::<V>::new())
     }
 
@@ -1172,10 +1297,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     // TODO: correct specialization constants
     #[inline]
     pub fn vertex_shader<Vs2, Vss2>(
-        self, shader: Vs2, specialization_constants: Vss2)
-        -> GraphicsPipelineBuilder<Vdef, Vs2, Vss2, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
-        where Vs2: GraphicsEntryPointAbstract<SpecializationConstants = Vss2>,
-              Vss2: SpecializationConstants
+        self,
+        shader: Vs2,
+        specialization_constants: Vss2,
+    ) -> GraphicsPipelineBuilder<Vdef, Vs2, Vss2, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+    where
+        Vs2: GraphicsEntryPointAbstract<SpecializationConstants = Vss2>,
+        Vss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
@@ -1197,11 +1325,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Sets whether primitive restart if enabled.
     #[inline]
     pub fn primitive_restart(mut self, enabled: bool) -> Self {
-        self.input_assembly.primitiveRestartEnable = if enabled {
-            vk::TRUE
-        } else {
-            vk::FALSE
-        };
+        self.input_assembly.primitiveRestartEnable = if enabled { vk::TRUE } else { vk::FALSE };
 
         self
     }
@@ -1318,14 +1442,17 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     // TODO: correct specialization constants
     #[inline]
     pub fn tessellation_shaders<Tcs2, Tcss2, Tes2, Tess2>(
-        self, tessellation_control_shader: Tcs2,
-        tessellation_control_shader_spec_constants: Tcss2, tessellation_evaluation_shader: Tes2,
-        tessellation_evaluation_shader_spec_constants: Tess2)
-        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs2, Tcss2, Tes2, Tess2, Gs, Gss, Fs, Fss, Rp>
-        where Tcs2: GraphicsEntryPointAbstract<SpecializationConstants = Tcss2>,
-              Tes2: GraphicsEntryPointAbstract<SpecializationConstants = Tess2>,
-              Tcss2: SpecializationConstants,
-              Tess2: SpecializationConstants
+        self,
+        tessellation_control_shader: Tcs2,
+        tessellation_control_shader_spec_constants: Tcss2,
+        tessellation_evaluation_shader: Tes2,
+        tessellation_evaluation_shader_spec_constants: Tess2,
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs2, Tcss2, Tes2, Tess2, Gs, Gss, Fs, Fss, Rp>
+    where
+        Tcs2: GraphicsEntryPointAbstract<SpecializationConstants = Tcss2>,
+        Tes2: GraphicsEntryPointAbstract<SpecializationConstants = Tess2>,
+        Tcss2: SpecializationConstants,
+        Tess2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
@@ -1333,13 +1460,15 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
             tessellation: Some(TessInfo {
-                                   tessellation_control_shader:
-                                       (tessellation_control_shader,
-                                        tessellation_control_shader_spec_constants),
-                                   tessellation_evaluation_shader:
-                                       (tessellation_evaluation_shader,
-                                        tessellation_evaluation_shader_spec_constants),
-                               }),
+                tessellation_control_shader: (
+                    tessellation_control_shader,
+                    tessellation_control_shader_spec_constants,
+                ),
+                tessellation_evaluation_shader: (
+                    tessellation_evaluation_shader,
+                    tessellation_evaluation_shader_spec_constants,
+                ),
+            }),
             geometry_shader: self.geometry_shader,
             viewport: self.viewport,
             raster: self.raster,
@@ -1362,10 +1491,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     // TODO: correct specialization constants
     #[inline]
     pub fn geometry_shader<Gs2, Gss2>(
-        self, shader: Gs2, specialization_constants: Gss2)
-        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs2, Gss2, Fs, Fss, Rp>
-        where Gs2: GraphicsEntryPointAbstract<SpecializationConstants = Gss2>,
-              Gss2: SpecializationConstants
+        self,
+        shader: Gs2,
+        specialization_constants: Gss2,
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs2, Gss2, Fs, Fss, Rp>
+    where
+        Gs2: GraphicsEntryPointAbstract<SpecializationConstants = Gss2>,
+        Gss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
@@ -1395,7 +1527,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// whole viewport.
     #[inline]
     pub fn viewports<I>(self, viewports: I) -> Self
-        where I: IntoIterator<Item = Viewport>
+    where
+        I: IntoIterator<Item = Viewport>,
     {
         self.viewports_scissors(viewports.into_iter().map(|v| (v, Scissor::irrelevant())))
     }
@@ -1403,9 +1536,12 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Sets the characteristics of viewports and scissor boxes in advance.
     #[inline]
     pub fn viewports_scissors<I>(mut self, viewports: I) -> Self
-        where I: IntoIterator<Item = (Viewport, Scissor)>
+    where
+        I: IntoIterator<Item = (Viewport, Scissor)>,
     {
-        self.viewport = Some(ViewportsState::Fixed { data: viewports.into_iter().collect() });
+        self.viewport = Some(ViewportsState::Fixed {
+            data: viewports.into_iter().collect(),
+        });
         self
     }
 
@@ -1413,10 +1549,12 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// need to be set before drawing.
     #[inline]
     pub fn viewports_dynamic_scissors_fixed<I>(mut self, scissors: I) -> Self
-        where I: IntoIterator<Item = Scissor>
+    where
+        I: IntoIterator<Item = Scissor>,
     {
-        self.viewport =
-            Some(ViewportsState::DynamicViewports { scissors: scissors.into_iter().collect() });
+        self.viewport = Some(ViewportsState::DynamicViewports {
+            scissors: scissors.into_iter().collect(),
+        });
         self
     }
 
@@ -1425,8 +1563,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     #[inline]
     pub fn viewports_dynamic_scissors_irrelevant(mut self, num: u32) -> Self {
         self.viewport = Some(ViewportsState::DynamicViewports {
-                                 scissors: (0 .. num).map(|_| Scissor::irrelevant()).collect(),
-                             });
+            scissors: (0..num).map(|_| Scissor::irrelevant()).collect(),
+        });
         self
     }
 
@@ -1434,10 +1572,12 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// need to be set before drawing.
     #[inline]
     pub fn viewports_fixed_scissors_dynamic<I>(mut self, viewports: I) -> Self
-        where I: IntoIterator<Item = Viewport>
+    where
+        I: IntoIterator<Item = Viewport>,
     {
-        self.viewport =
-            Some(ViewportsState::DynamicScissors { viewports: viewports.into_iter().collect() });
+        self.viewport = Some(ViewportsState::DynamicScissors {
+            viewports: viewports.into_iter().collect(),
+        });
         self
     }
 
@@ -1633,10 +1773,13 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     // TODO: correct specialization constants
     #[inline]
     pub fn fragment_shader<Fs2, Fss2>(
-        self, shader: Fs2, specialization_constants: Fss2)
-        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs2, Fss2, Rp>
-        where Fs2: GraphicsEntryPointAbstract<SpecializationConstants = Fss2>,
-              Fss2: SpecializationConstants
+        self,
+        shader: Fs2,
+        specialization_constants: Fss2,
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs2, Fss2, Rp>
+    where
+        Fs2: GraphicsEntryPointAbstract<SpecializationConstants = Fss2>,
+        Fss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
@@ -1691,7 +1834,6 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
     // TODO: missing tons of depth-stencil stuff
 
-
     #[inline]
     pub fn blend_collective(mut self, blend: AttachmentBlend) -> Self {
         self.blend.attachments = AttachmentsBlend::Collective(blend);
@@ -1700,7 +1842,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
     #[inline]
     pub fn blend_individual<I>(mut self, blend: I) -> Self
-        where I: IntoIterator<Item = AttachmentBlend>
+    where
+        I: IntoIterator<Item = AttachmentBlend>,
     {
         self.blend.attachments = AttachmentsBlend::Individual(blend.into_iter().collect());
         self
@@ -1752,8 +1895,9 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// Sets the render pass subpass to use.
     #[inline]
     pub fn render_pass<Rp2>(
-        self, subpass: Subpass<Rp2>)
-        -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp2> {
+        self,
+        subpass: Subpass<Rp2>,
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp2> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
@@ -1774,18 +1918,19 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
 impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> Clone
     for GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
-    where Vdef: Clone,
-          Vs: Clone,
-          Vss: Clone,
-          Tcs: Clone,
-          Tcss: Clone,
-          Tes: Clone,
-          Tess: Clone,
-          Gs: Clone,
-          Gss: Clone,
-          Fs: Clone,
-          Fss: Clone,
-          Rp: Clone
+where
+    Vdef: Clone,
+    Vs: Clone,
+    Vss: Clone,
+    Tcs: Clone,
+    Tcss: Clone,
+    Tes: Clone,
+    Tess: Clone,
+    Gs: Clone,
+    Gss: Clone,
+    Fs: Clone,
+    Fss: Clone,
+    Rp: Clone,
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {

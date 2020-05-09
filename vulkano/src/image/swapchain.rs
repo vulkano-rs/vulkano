@@ -15,15 +15,15 @@ use buffer::BufferAccess;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
-use image::Dimensions;
-use image::ImageInner;
-use image::ImageLayout;
-use image::ViewType;
 use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use image::Dimensions;
+use image::ImageInner;
+use image::ImageLayout;
+use image::ViewType;
 use swapchain::Swapchain;
 use sync::AccessError;
 
@@ -53,16 +53,18 @@ impl<W> SwapchainImage<W> {
     /// Builds a `SwapchainImage` from raw components.
     ///
     /// This is an internal method that you shouldn't call.
-    pub unsafe fn from_raw(swapchain: Arc<Swapchain<W>>, id: usize)
-                           -> Result<Arc<SwapchainImage<W>>, OomError> {
+    pub unsafe fn from_raw(
+        swapchain: Arc<Swapchain<W>>,
+        id: usize,
+    ) -> Result<Arc<SwapchainImage<W>>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = UnsafeImageView::raw(&image.image, ViewType::Dim2d, 0 .. 1, 0 .. 1)?;
+        let view = UnsafeImageView::raw(&image.image, ViewType::Dim2d, 0..1, 0..1)?;
 
         Ok(Arc::new(SwapchainImage {
-                        swapchain: swapchain.clone(),
-                        image_offset: id,
-                        view: view,
-                    }))
+            swapchain: swapchain.clone(),
+            image_offset: id,
+            view: view,
+        }))
     }
 
     /// Returns the dimensions of the image.
@@ -92,7 +94,8 @@ impl<W> SwapchainImage<W> {
 
     #[inline]
     fn is_layout_initialized(&self) -> bool {
-       self.swapchain.is_image_layout_initialized(self.image_offset)
+        self.swapchain
+            .is_image_layout_initialized(self.image_offset)
     }
 }
 
@@ -143,13 +146,12 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn is_layout_initialized(&self) -> bool{
+    fn is_layout_initialized(&self) -> bool {
         self.is_layout_initialized()
     }
 
     #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-    }
+    unsafe fn increase_gpu_lock(&self) {}
 
     #[inline]
     unsafe fn unlock(&self, _: Option<ImageLayout>) {
@@ -164,7 +166,7 @@ unsafe impl<W> ImageClearValue<<Format as FormatDesc>::ClearValue> for Swapchain
     }
 }
 
-unsafe impl<P,W> ImageContent<P> for SwapchainImage<W> {
+unsafe impl<P, W> ImageContent<P> for SwapchainImage<W> {
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:

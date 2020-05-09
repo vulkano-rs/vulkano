@@ -11,13 +11,13 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use OomError;
-use SafeDeref;
-use VulkanObject;
 use check_errors;
 use device::Device;
 use device::DeviceOwned;
 use vk;
+use OomError;
+use SafeDeref;
+use VulkanObject;
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -25,7 +25,8 @@ use vk;
 /// semaphore's status or wait for it to be signaled.
 #[derive(Debug)]
 pub struct Semaphore<D = Arc<Device>>
-    where D: SafeDeref<Target = Device>
+where
+    D: SafeDeref<Target = Device>,
 {
     semaphore: vk::Semaphore,
     device: D,
@@ -33,7 +34,8 @@ pub struct Semaphore<D = Arc<Device>>
 }
 
 impl<D> Semaphore<D>
-    where D: SafeDeref<Target = Device>
+where
+    D: SafeDeref<Target = Device>,
 {
     /// Takes a semaphore from the vulkano-provided semaphore pool.
     /// If the pool is empty, a new semaphore will be allocated.
@@ -44,17 +46,15 @@ impl<D> Semaphore<D>
     pub fn from_pool(device: D) -> Result<Semaphore<D>, OomError> {
         let maybe_raw_sem = device.semaphore_pool().lock().unwrap().pop();
         match maybe_raw_sem {
-            Some(raw_sem) => {
-                Ok(Semaphore {
-                       device: device,
-                       semaphore: raw_sem,
-                       must_put_in_pool: true,
-                   })
-            },
+            Some(raw_sem) => Ok(Semaphore {
+                device: device,
+                semaphore: raw_sem,
+                must_put_in_pool: true,
+            }),
             None => {
                 // Pool is empty, alloc new semaphore
                 Semaphore::alloc_impl(device, true)
-            },
+            }
         }
     }
 
@@ -70,23 +70,25 @@ impl<D> Semaphore<D>
             static mut INFOS: vk::SemaphoreCreateInfo = vk::SemaphoreCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
                 pNext: 0 as *const _, // ptr::null()
-                flags: 0, // reserved
+                flags: 0,             // reserved
             };
 
             let vk = device.pointers();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateSemaphore(device.internal_object(),
-                                            &INFOS,
-                                            ptr::null(),
-                                            output.as_mut_ptr()))?;
+            check_errors(vk.CreateSemaphore(
+                device.internal_object(),
+                &INFOS,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(Semaphore {
-               device: device,
-               semaphore: semaphore,
-               must_put_in_pool: must_put_in_pool,
-           })
+            device: device,
+            semaphore: semaphore,
+            must_put_in_pool: must_put_in_pool,
+        })
     }
 }
 
@@ -98,7 +100,8 @@ unsafe impl DeviceOwned for Semaphore {
 }
 
 unsafe impl<D> VulkanObject for Semaphore<D>
-    where D: SafeDeref<Target = Device>
+where
+    D: SafeDeref<Target = Device>,
 {
     type Object = vk::Semaphore;
 
@@ -111,7 +114,8 @@ unsafe impl<D> VulkanObject for Semaphore<D>
 }
 
 impl<D> Drop for Semaphore<D>
-    where D: SafeDeref<Target = Device>
+where
+    D: SafeDeref<Target = Device>,
 {
     #[inline]
     fn drop(&mut self) {
@@ -129,8 +133,8 @@ impl<D> Drop for Semaphore<D>
 
 #[cfg(test)]
 mod tests {
-    use VulkanObject;
     use sync::Semaphore;
+    use VulkanObject;
 
     #[test]
     fn semaphore_create() {

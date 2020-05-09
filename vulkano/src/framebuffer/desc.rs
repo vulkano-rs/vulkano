@@ -21,8 +21,8 @@ use image::ImageLayout;
 use sync::AccessFlagBits;
 use sync::PipelineStages;
 
-use SafeDeref;
 use vk;
+use SafeDeref;
 
 /// Trait for objects that contain the description of a render pass.
 ///
@@ -54,7 +54,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns an iterator to the list of attachments.
     #[inline]
     fn attachment_descs(&self) -> RenderPassDescAttachments<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         RenderPassDescAttachments {
             render_pass: self,
@@ -73,7 +74,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns an iterator to the list of subpasses.
     #[inline]
     fn subpass_descs(&self) -> RenderPassDescSubpasses<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         RenderPassDescSubpasses {
             render_pass: self,
@@ -92,7 +94,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// Returns an iterator to the list of dependencies.
     #[inline]
     fn dependency_descs(&self) -> RenderPassDescDependencies<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         RenderPassDescDependencies {
             render_pass: self,
@@ -109,8 +112,9 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     /// This function is just a shortcut for the `RenderPassCompatible` trait.
     #[inline]
     fn is_compatible_with<T>(&self, other: &T) -> bool
-        where Self: Sized,
-              T: ?Sized + RenderPassDesc
+    where
+        Self: Sized,
+        T: ?Sized + RenderPassDesc,
     {
         RenderPassCompatible::is_compatible_with(self, other)
     }
@@ -119,9 +123,12 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
     ///
     /// > **Note**: This function is just a shortcut for `RenderPass::new`.
     #[inline]
-    fn build_render_pass(self, device: Arc<Device>)
-                         -> Result<RenderPass<Self>, RenderPassCreationError>
-        where Self: Sized
+    fn build_render_pass(
+        self,
+        device: Arc<Device>,
+    ) -> Result<RenderPass<Self>, RenderPassCreationError>
+    where
+        Self: Sized,
     {
         RenderPass::new(device, self)
     }
@@ -176,7 +183,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                     .next()
                     .unwrap()
                     .format
-                    .ty() {
+                    .ty()
+                {
                     FormatTy::Depth => (true, false),
                     FormatTy::Stencil => (false, true),
                     FormatTy::DepthStencil => (true, true),
@@ -204,7 +212,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                     .next()
                     .unwrap()
                     .format
-                    .ty() {
+                    .ty()
+                {
                     FormatTy::Depth => true,
                     FormatTy::Stencil => false,
                     FormatTy::DepthStencil => true,
@@ -228,7 +237,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                             return false;
                         }
                         d
-                    },
+                    }
                     None => return false,
                 };
 
@@ -238,7 +247,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                     .next()
                     .unwrap()
                     .format
-                    .ty() {
+                    .ty()
+                {
                     FormatTy::Depth => true,
                     FormatTy::Stencil => false,
                     FormatTy::DepthStencil => true,
@@ -266,7 +276,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                     .next()
                     .unwrap()
                     .format
-                    .ty() {
+                    .ty()
+                {
                     FormatTy::Depth => false,
                     FormatTy::Stencil => true,
                     FormatTy::DepthStencil => true,
@@ -290,7 +301,7 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                             return false;
                         }
                         d
-                    },
+                    }
                     None => return false,
                 };
 
@@ -300,7 +311,8 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
                     .next()
                     .unwrap()
                     .format
-                    .ty() {
+                    .ty()
+                {
                     FormatTy::Depth => false,
                     FormatTy::Stencil => true,
                     FormatTy::DepthStencil => true,
@@ -311,8 +323,9 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
 }
 
 unsafe impl<T> RenderPassDesc for T
-    where T: SafeDeref,
-          T::Target: RenderPassDesc
+where
+    T: SafeDeref,
+    T::Target: RenderPassDesc,
 {
     #[inline]
     fn num_attachments(&self) -> usize {
@@ -353,7 +366,8 @@ pub struct RenderPassDescAttachments<'a, R: ?Sized + 'a> {
 }
 
 impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R>
-    where R: RenderPassDesc
+where
+    R: RenderPassDesc,
 {
     type Item = AttachmentDescription;
 
@@ -361,9 +375,11 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescAttachments<'a, R>
         if self.num < self.render_pass.num_attachments() {
             let n = self.num;
             self.num += 1;
-            Some(self.render_pass
-                     .attachment_desc(n)
-                     .expect("Wrong RenderPassDesc implementation"))
+            Some(
+                self.render_pass
+                    .attachment_desc(n)
+                    .expect("Wrong RenderPassDesc implementation"),
+            )
         } else {
             None
         }
@@ -378,7 +394,8 @@ pub struct RenderPassDescSubpasses<'a, R: ?Sized + 'a> {
 }
 
 impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R>
-    where R: RenderPassDesc
+where
+    R: RenderPassDesc,
 {
     type Item = PassDescription;
 
@@ -386,9 +403,11 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescSubpasses<'a, R>
         if self.num < self.render_pass.num_subpasses() {
             let n = self.num;
             self.num += 1;
-            Some(self.render_pass
-                     .subpass_desc(n)
-                     .expect("Wrong RenderPassDesc implementation"))
+            Some(
+                self.render_pass
+                    .subpass_desc(n)
+                    .expect("Wrong RenderPassDesc implementation"),
+            )
         } else {
             None
         }
@@ -403,7 +422,8 @@ pub struct RenderPassDescDependencies<'a, R: ?Sized + 'a> {
 }
 
 impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R>
-    where R: RenderPassDesc
+where
+    R: RenderPassDesc,
 {
     type Item = PassDependencyDescription;
 
@@ -411,9 +431,11 @@ impl<'a, R: ?Sized + 'a> Iterator for RenderPassDescDependencies<'a, R>
         if self.num < self.render_pass.num_dependencies() {
             let n = self.num;
             self.num += 1;
-            Some(self.render_pass
-                     .dependency_desc(n)
-                     .expect("Wrong RenderPassDesc implementation"))
+            Some(
+                self.render_pass
+                    .dependency_desc(n)
+                    .expect("Wrong RenderPassDesc implementation"),
+            )
         } else {
             None
         }
