@@ -19,24 +19,24 @@ use std::sync::Arc;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
+use framebuffer::ensure_image_view_compatible;
+use framebuffer::AttachmentDescription;
 use framebuffer::AttachmentsList;
 use framebuffer::FramebufferAbstract;
 use framebuffer::IncompatibleRenderPassAttachmentError;
-use framebuffer::AttachmentDescription;
 use framebuffer::PassDependencyDescription;
 use framebuffer::PassDescription;
 use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
-use framebuffer::ensure_image_view_compatible;
 use image::ImageViewAccess;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use VulkanObject;
-use check_errors;
-use vk;
 
 /// Contains a render pass and the image views that are attached to it.
 ///
@@ -130,8 +130,9 @@ pub struct FramebufferBuilder<Rp, A> {
 }
 
 impl<Rp, A> fmt::Debug for FramebufferBuilder<Rp, A>
-    where Rp: fmt::Debug,
-          A: fmt::Debug
+where
+    Rp: fmt::Debug,
+    A: fmt::Debug,
 {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -151,21 +152,25 @@ enum FramebufferBuilderDimensions {
 }
 
 impl<Rp, A> FramebufferBuilder<Rp, A>
-    where Rp: RenderPassAbstract,
-          A: AttachmentsList
+where
+    Rp: RenderPassAbstract,
+    A: AttachmentsList,
 {
     /// Appends an attachment to the prototype of the framebuffer.
     ///
     /// Attachments must be added in the same order as the one defined in the render pass.
-    pub fn add<T>(self, attachment: T)
-                  -> Result<FramebufferBuilder<Rp, (A, T)>, FramebufferCreationError>
-        where T: ImageViewAccess
+    pub fn add<T>(
+        self,
+        attachment: T,
+    ) -> Result<FramebufferBuilder<Rp, (A, T)>, FramebufferCreationError>
+    where
+        T: ImageViewAccess,
     {
         if self.raw_ids.len() >= self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                           expected: self.render_pass.num_attachments(),
-                           obtained: self.raw_ids.len() + 1,
-                       });
+                expected: self.render_pass.num_attachments(),
+                obtained: self.raw_ids.len() + 1,
+            });
         }
 
         match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &attachment) {
@@ -180,10 +185,11 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             FramebufferBuilderDimensions::AutoIdentical(None) => {
                 let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
                 FramebufferBuilderDimensions::AutoIdentical(Some(dims))
-            },
+            }
             FramebufferBuilderDimensions::AutoIdentical(Some(current)) => {
-                if img_dims.width() != current[0] || img_dims.height() != current[1] ||
-                    img_dims.array_layers() != current[2]
+                if img_dims.width() != current[0]
+                    || img_dims.height() != current[1]
+                    || img_dims.array_layers() != current[2]
                 {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
@@ -192,11 +198,11 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 }
 
                 FramebufferBuilderDimensions::AutoIdentical(Some(current))
-            },
+            }
             FramebufferBuilderDimensions::AutoSmaller(None) => {
                 let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
                 FramebufferBuilderDimensions::AutoSmaller(Some(dims))
-            },
+            }
             FramebufferBuilderDimensions::AutoSmaller(Some(current)) => {
                 let new_dims = [
                     cmp::min(current[0], img_dims.width()),
@@ -205,10 +211,11 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                 ];
 
                 FramebufferBuilderDimensions::AutoSmaller(Some(new_dims))
-            },
+            }
             FramebufferBuilderDimensions::Specific(current) => {
-                if img_dims.width() < current[0] || img_dims.height() < current[1] ||
-                    img_dims.array_layers() < current[2]
+                if img_dims.width() < current[0]
+                    || img_dims.height() < current[1]
+                    || img_dims.array_layers() < current[2]
                 {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
@@ -216,21 +223,23 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
                     });
                 }
 
-                FramebufferBuilderDimensions::Specific(
-                    [img_dims.width(), img_dims.height(), img_dims.array_layers()],
-                )
-            },
+                FramebufferBuilderDimensions::Specific([
+                    img_dims.width(),
+                    img_dims.height(),
+                    img_dims.array_layers(),
+                ])
+            }
         };
 
         let mut raw_ids = self.raw_ids;
         raw_ids.push(attachment.inner().internal_object());
 
         Ok(FramebufferBuilder {
-               render_pass: self.render_pass,
-               raw_ids: raw_ids,
-               dimensions: dimensions,
-               attachments: (self.attachments, attachment),
-           })
+            render_pass: self.render_pass,
+            raw_ids: raw_ids,
+            dimensions: dimensions,
+            attachments: (self.attachments, attachment),
+        })
     }
 
     /// Turns this builder into a `FramebufferBuilder<Rp, Box<AttachmentsList>>`.
@@ -242,7 +251,8 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
     /// > in most situations.
     #[inline]
     pub fn boxed(self) -> FramebufferBuilder<Rp, Box<dyn AttachmentsList>>
-        where A: 'static
+    where
+        A: 'static,
     {
         FramebufferBuilder {
             render_pass: self.render_pass,
@@ -259,22 +269,20 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
         // Check the number of attachments.
         if self.raw_ids.len() != self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                           expected: self.render_pass.num_attachments(),
-                           obtained: self.raw_ids.len(),
-                       });
+                expected: self.render_pass.num_attachments(),
+                obtained: self.raw_ids.len(),
+            });
         }
 
         // Compute the dimensions.
         let dimensions = match self.dimensions {
-            FramebufferBuilderDimensions::Specific(dims) |
-            FramebufferBuilderDimensions::AutoIdentical(Some(dims)) |
-            FramebufferBuilderDimensions::AutoSmaller(Some(dims)) => {
-                dims
-            },
-            FramebufferBuilderDimensions::AutoIdentical(None) |
-            FramebufferBuilderDimensions::AutoSmaller(None) => {
+            FramebufferBuilderDimensions::Specific(dims)
+            | FramebufferBuilderDimensions::AutoIdentical(Some(dims))
+            | FramebufferBuilderDimensions::AutoSmaller(Some(dims)) => dims,
+            FramebufferBuilderDimensions::AutoIdentical(None)
+            | FramebufferBuilderDimensions::AutoSmaller(None) => {
                 return Err(FramebufferCreationError::CantDetermineDimensions);
-            },
+            }
         };
 
         // Checking the dimensions against the limits.
@@ -306,20 +314,22 @@ impl<Rp, A> FramebufferBuilder<Rp, A>
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateFramebuffer(device.internal_object(),
-                                              &infos,
-                                              ptr::null(),
-                                              output.as_mut_ptr()))?;
+            check_errors(vk.CreateFramebuffer(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(Framebuffer {
-               device: device,
-               render_pass: self.render_pass,
-               framebuffer: framebuffer,
-               dimensions: dimensions,
-               resources: self.attachments,
-           })
+            device: device,
+            render_pass: self.render_pass,
+            framebuffer: framebuffer,
+            dimensions: dimensions,
+            resources: self.attachments,
+        })
     }
 }
 
@@ -362,8 +372,9 @@ impl<Rp, A> Framebuffer<Rp, A> {
 }
 
 unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
-    where Rp: RenderPassAbstract,
-          A: AttachmentsList
+where
+    Rp: RenderPassAbstract,
+    A: AttachmentsList,
 {
     #[inline]
     fn inner(&self) -> FramebufferSys {
@@ -382,7 +393,8 @@ unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
 }
 
 unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
-    where Rp: RenderPassDesc
+where
+    Rp: RenderPassDesc,
 {
     #[inline]
     fn num_attachments(&self) -> usize {
@@ -416,7 +428,8 @@ unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
 }
 
 unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
-    where Rp: RenderPassDescClearValues<C>
+where
+    Rp: RenderPassDescClearValues<C>,
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
@@ -425,7 +438,8 @@ unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
 }
 
 unsafe impl<Rp, A> RenderPassAbstract for Framebuffer<Rp, A>
-    where Rp: RenderPassAbstract
+where
+    Rp: RenderPassAbstract,
 {
     #[inline]
     fn inner(&self) -> RenderPassSys {
@@ -504,20 +518,21 @@ impl error::Error for FramebufferCreationError {
     fn description(&self) -> &str {
         match *self {
             FramebufferCreationError::OomError(_) => "no memory available",
-            FramebufferCreationError::DimensionsTooLarge =>
-                "the dimensions of the framebuffer are too large",
+            FramebufferCreationError::DimensionsTooLarge => {
+                "the dimensions of the framebuffer are too large"
+            }
             FramebufferCreationError::AttachmentDimensionsIncompatible { .. } => {
                 "the attachment has a size that isn't compatible with the framebuffer dimensions"
-            },
+            }
             FramebufferCreationError::AttachmentsCountMismatch { .. } => {
                 "the number of attachments doesn't match the number expected by the render pass"
-            },
+            }
             FramebufferCreationError::IncompatibleAttachment(_) => {
                 "one of the images cannot be used as the requested attachment"
-            },
+            }
             FramebufferCreationError::CantDetermineDimensions => {
                 "the framebuffer has no attachment and no dimension was specified"
-            },
+            }
         }
     }
 
@@ -561,23 +576,24 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
-        let image = AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm)
-            .unwrap();
+        let image =
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap();
         let _ = Framebuffer::start(render_pass)
             .add(image.clone())
             .unwrap()
@@ -605,19 +621,20 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let image = AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap();
@@ -636,19 +653,20 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let img = AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap();
@@ -666,31 +684,32 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                color: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    color: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
+                },
+                pass: {
+                    color: [color],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [color],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let img = AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap();
 
         match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(img) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
-                    expected,
-                    obtained,
-                }) => {
+                expected,
+                obtained,
+            }) => {
                 assert_eq!(expected, [600, 600, 1]);
                 assert_eq!(obtained, [512, 700, 1]);
-            },
+            }
             _ => panic!(),
         }
     }
@@ -701,25 +720,26 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                a: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    a: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    },
+                    b: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
                 },
-                b: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                pass: {
+                    color: [a, b],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [a, b],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let a = AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap();
@@ -727,12 +747,12 @@ mod tests {
 
         match Framebuffer::start(render_pass).add(a).unwrap().add(b) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
-                    expected,
-                    obtained,
-                }) => {
+                expected,
+                obtained,
+            }) => {
                 assert_eq!(expected, [512, 512, 1]);
                 assert_eq!(obtained, [512, 513, 1]);
-            },
+            }
             _ => panic!(),
         }
     }
@@ -743,25 +763,26 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                a: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    a: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    },
+                    b: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
                 },
-                b: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                pass: {
+                    color: [a, b],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [a, b],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
@@ -787,25 +808,26 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                a: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    a: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    },
+                    b: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
                 },
-                b: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                pass: {
+                    color: [a, b],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [a, b],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let img = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
@@ -817,9 +839,9 @@ mod tests {
 
         match res {
             Err(FramebufferCreationError::AttachmentsCountMismatch {
-                    expected: 2,
-                    obtained: 1,
-                }) => (),
+                expected: 2,
+                obtained: 1,
+            }) => (),
             _ => panic!(),
         }
     }
@@ -830,19 +852,20 @@ mod tests {
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
-            attachments: {
-                a: {
-                    load: Clear,
-                    store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
-                    samples: 1,
+                attachments: {
+                    a: {
+                        load: Clear,
+                        store: DontCare,
+                        format: Format::R8G8B8A8Unorm,
+                        samples: 1,
+                    }
+                },
+                pass: {
+                    color: [a],
+                    depth_stencil: {}
                 }
-            },
-            pass: {
-                color: [a],
-                depth_stencil: {}
-            }
-        ).unwrap(),
+            )
+            .unwrap(),
         );
 
         let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
@@ -855,9 +878,9 @@ mod tests {
 
         match res {
             Err(FramebufferCreationError::AttachmentsCountMismatch {
-                    expected: 1,
-                    obtained: 2,
-                }) => (),
+                expected: 1,
+                obtained: 2,
+            }) => (),
             _ => panic!(),
         }
     }

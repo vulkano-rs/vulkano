@@ -29,10 +29,10 @@ use std::sync::Arc;
 
 use device::Device;
 
-use OomError;
-use VulkanObject;
 use check_errors;
 use vk;
+use OomError;
+use VulkanObject;
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -82,8 +82,10 @@ impl PipelineCache {
     /// };
     /// ```
     #[inline]
-    pub unsafe fn with_data(device: Arc<Device>, initial_data: &[u8])
-                            -> Result<Arc<PipelineCache>, OomError> {
+    pub unsafe fn with_data(
+        device: Arc<Device>,
+        initial_data: &[u8],
+    ) -> Result<Arc<PipelineCache>, OomError> {
         PipelineCache::new_impl(device, Some(initial_data))
     }
 
@@ -104,8 +106,10 @@ impl PipelineCache {
     }
 
     // Actual implementation of the constructor.
-    unsafe fn new_impl(device: Arc<Device>, initial_data: Option<&[u8]>)
-                       -> Result<Arc<PipelineCache>, OomError> {
+    unsafe fn new_impl(
+        device: Arc<Device>,
+        initial_data: Option<&[u8]>,
+    ) -> Result<Arc<PipelineCache>, OomError> {
         let vk = device.pointers();
 
         let cache = {
@@ -120,17 +124,19 @@ impl PipelineCache {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreatePipelineCache(device.internal_object(),
-                                                &infos,
-                                                ptr::null(),
-                                                output.as_mut_ptr()))?;
+            check_errors(vk.CreatePipelineCache(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(Arc::new(PipelineCache {
-                        device: device.clone(),
-                        cache: cache,
-                    }))
+            device: device.clone(),
+            cache: cache,
+        }))
     }
 
     /// Merges other pipeline caches into this one.
@@ -144,7 +150,8 @@ impl PipelineCache {
     // FIXME: vkMergePipelineCaches is not thread safe for the destination cache
     // TODO: write example
     pub fn merge<'a, I>(&self, pipelines: I) -> Result<(), OomError>
-        where I: IntoIterator<Item = &'a &'a Arc<PipelineCache>>
+    where
+        I: IntoIterator<Item = &'a &'a Arc<PipelineCache>>,
     {
         unsafe {
             let vk = self.device.pointers();
@@ -152,15 +159,17 @@ impl PipelineCache {
             let pipelines = pipelines
                 .into_iter()
                 .map(|pipeline| {
-                         assert!(&***pipeline as *const _ != &*self as *const _);
-                         pipeline.cache
-                     })
+                    assert!(&***pipeline as *const _ != &*self as *const _);
+                    pipeline.cache
+                })
                 .collect::<Vec<_>>();
 
-            check_errors(vk.MergePipelineCaches(self.device.internal_object(),
-                                                self.cache,
-                                                pipelines.len() as u32,
-                                                pipelines.as_ptr()))?;
+            check_errors(vk.MergePipelineCaches(
+                self.device.internal_object(),
+                self.cache,
+                pipelines.len() as u32,
+                pipelines.as_ptr(),
+            ))?;
 
             Ok(())
         }
@@ -199,16 +208,20 @@ impl PipelineCache {
             let vk = self.device.pointers();
 
             let mut num = 0;
-            check_errors(vk.GetPipelineCacheData(self.device.internal_object(),
-                                                 self.cache,
-                                                 &mut num,
-                                                 ptr::null_mut()))?;
+            check_errors(vk.GetPipelineCacheData(
+                self.device.internal_object(),
+                self.cache,
+                &mut num,
+                ptr::null_mut(),
+            ))?;
 
             let mut data: Vec<u8> = Vec::with_capacity(num as usize);
-            check_errors(vk.GetPipelineCacheData(self.device.internal_object(),
-                                                 self.cache,
-                                                 &mut num,
-                                                 data.as_mut_ptr() as *mut _))?;
+            check_errors(vk.GetPipelineCacheData(
+                self.device.internal_object(),
+                self.cache,
+                &mut num,
+                data.as_mut_ptr() as *mut _,
+            ))?;
             data.set_len(num as usize);
 
             Ok(data)
@@ -246,7 +259,7 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
         let pipeline = PipelineCache::empty(device).unwrap();
         assert_should_panic!({
-                                 pipeline.merge(&[&pipeline]).unwrap();
-                             });
+            pipeline.merge(&[&pipeline]).unwrap();
+        });
     }
 }

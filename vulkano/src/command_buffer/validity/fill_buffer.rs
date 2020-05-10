@@ -10,10 +10,10 @@
 use std::error;
 use std::fmt;
 
-use VulkanObject;
 use buffer::BufferAccess;
 use device::Device;
 use device::DeviceOwned;
+use VulkanObject;
 
 /// Checks whether a fill buffer command is valid.
 ///
@@ -22,10 +22,13 @@ use device::DeviceOwned;
 /// - Panics if the buffer not created with `device`.
 ///
 pub fn check_fill_buffer<B>(device: &Device, buffer: &B) -> Result<(), CheckFillBufferError>
-    where B: ?Sized + BufferAccess
+where
+    B: ?Sized + BufferAccess,
 {
-    assert_eq!(buffer.inner().buffer.device().internal_object(),
-               device.internal_object());
+    assert_eq!(
+        buffer.inner().buffer.device().internal_object(),
+        device.internal_object()
+    );
 
     if !buffer.inner().buffer.usage_transfer_destination() {
         return Err(CheckFillBufferError::BufferMissingUsage);
@@ -53,10 +56,8 @@ impl error::Error for CheckFillBufferError {
         match *self {
             CheckFillBufferError::BufferMissingUsage => {
                 "the transfer destination usage must be enabled on the buffer"
-            },
-            CheckFillBufferError::WrongAlignment => {
-                "the offset or size are not aligned to 4 bytes"
-            },
+            }
+            CheckFillBufferError::WrongAlignment => "the offset or size are not aligned to 4 bytes",
         }
     }
 }
@@ -77,9 +78,13 @@ mod tests {
     #[test]
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer =
-            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::vertex_buffer(), false, 0u32)
-                .unwrap();
+        let buffer = CpuAccessibleBuffer::from_data(
+            device.clone(),
+            BufferUsage::vertex_buffer(),
+            false,
+            0u32,
+        )
+        .unwrap();
 
         match check_fill_buffer(&device, &buffer) {
             Err(CheckFillBufferError::BufferMissingUsage) => (),
@@ -94,7 +99,7 @@ mod tests {
         let buffer = CpuAccessibleBuffer::from_data(dev1, BufferUsage::all(), false, 0u32).unwrap();
 
         assert_should_panic!({
-                                 let _ = check_fill_buffer(&dev2, &buffer);
-                             });
+            let _ = check_fill_buffer(&dev2, &buffer);
+        });
     }
 }

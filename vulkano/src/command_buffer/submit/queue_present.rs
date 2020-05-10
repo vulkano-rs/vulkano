@@ -19,12 +19,12 @@ use swapchain::PresentRegion;
 use swapchain::Swapchain;
 use sync::Semaphore;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use SynchronizedVulkanObject;
 use VulkanObject;
-use check_errors;
-use vk;
 
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here
@@ -89,8 +89,12 @@ impl<'a> SubmitPresentBuilder<'a> {
     /// - The swapchains and semaphores must all belong to the same device.
     ///
     #[inline]
-    pub unsafe fn add_swapchain<W>(&mut self, swapchain: &'a Swapchain<W>, image_num: u32,
-                                   present_region: Option<&'a PresentRegion>) {
+    pub unsafe fn add_swapchain<W>(
+        &mut self,
+        swapchain: &'a Swapchain<W>,
+        image_num: u32,
+        present_region: Option<&'a PresentRegion>,
+    ) {
         debug_assert!(image_num < swapchain.num_images());
 
         if swapchain
@@ -109,12 +113,10 @@ impl<'a> SubmitPresentBuilder<'a> {
                         // Set this to null for now; in submit fill it with self.rect_layers
                         pRectangles: ptr::null(),
                     }
-                },
-                None => {
-                    vk::PresentRegionKHR {
-                        rectangleCount: 0,
-                        pRectangles: ptr::null(),
-                    }
+                }
+                None => vk::PresentRegionKHR {
+                    rectangleCount: 0,
+                    pRectangles: ptr::null(),
                 },
             };
             self.present_regions.push(vk_present_region);
@@ -123,7 +125,6 @@ impl<'a> SubmitPresentBuilder<'a> {
         self.swapchains.push(swapchain.internal_object());
         self.image_indices.push(image_num);
     }
-
 
     /// Submits the command. Calls `vkQueuePresentKHR`.
     ///
@@ -134,8 +135,10 @@ impl<'a> SubmitPresentBuilder<'a> {
     pub fn submit(mut self, queue: &Queue) -> Result<(), SubmitPresentError> {
         unsafe {
             debug_assert_eq!(self.swapchains.len(), self.image_indices.len());
-            assert!(!self.swapchains.is_empty(),
-                    "Tried to submit a present command without any swapchain");
+            assert!(
+                !self.swapchains.is_empty(),
+                "Tried to submit a present command without any swapchain"
+            );
 
             let present_regions = {
                 if !self.present_regions.is_empty() {
@@ -143,15 +146,15 @@ impl<'a> SubmitPresentBuilder<'a> {
                     debug_assert_eq!(self.swapchains.len(), self.present_regions.len());
                     let mut current_index = 0;
                     for present_region in &mut self.present_regions {
-                        present_region.pRectangles = self.rect_layers[current_index ..].as_ptr();
+                        present_region.pRectangles = self.rect_layers[current_index..].as_ptr();
                         current_index += present_region.rectangleCount as usize;
                     }
                     Some(vk::PresentRegionsKHR {
-                             sType: vk::STRUCTURE_TYPE_PRESENT_REGIONS_KHR,
-                             pNext: ptr::null(),
-                             swapchainCount: self.present_regions.len() as u32,
-                             pRegions: self.present_regions.as_ptr(),
-                         })
+                        sType: vk::STRUCTURE_TYPE_PRESENT_REGIONS_KHR,
+                        pNext: ptr::null(),
+                        swapchainCount: self.present_regions.len() as u32,
+                        pRegions: self.present_regions.as_ptr(),
+                    })
                 } else {
                     None
                 }
@@ -227,7 +230,9 @@ impl error::Error for SubmitPresentError {
             SubmitPresentError::DeviceLost => "the connection to the device has been lost",
             SubmitPresentError::SurfaceLost => "the surface of this swapchain is no longer valid",
             SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
-            SubmitPresentError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
+            SubmitPresentError::FullscreenExclusiveLost => {
+                "the swapchain no longer has fullscreen exclusivity"
+            }
         }
     }
 

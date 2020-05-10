@@ -27,31 +27,34 @@
 #[macro_use]
 extern crate vulkano;
 extern crate vulkano_shaders;
-extern crate winit;
 extern crate vulkano_win;
+extern crate winit;
 
 use vulkano::buffer::{BufferUsage, CpuBufferPool};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, DrawIndirectCommand};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState};
+use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::SwapchainImage;
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::instance::{Instance, PhysicalDevice};
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace, FullscreenExclusive};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
 use vulkano::swapchain;
-use vulkano::sync::{GpuFuture, FlushError};
+use vulkano::swapchain::{
+    AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain,
+    SwapchainCreationError,
+};
 use vulkano::sync;
+use vulkano::sync::{FlushError, GpuFuture};
 
 use vulkano_win::VkSurfaceBuild;
-use winit::window::{WindowBuilder, Window};
-use winit::event_loop::{EventLoop, ControlFlow};
 use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
-use std::sync::Arc;
 use std::iter;
+use std::sync::Arc;
 
 // # Vertex Types
 // `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
@@ -65,18 +68,34 @@ fn main() {
     let required_extensions = vulkano_win::required_extensions();
     let instance = Instance::new(None, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    println!("Using device: {} (type: {:?})", physical.name(), physical.ty());
+    println!(
+        "Using device: {} (type: {:?})",
+        physical.name(),
+        physical.ty()
+    );
 
     let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new().build_vk_surface(&event_loop, instance.clone()).unwrap();
+    let surface = WindowBuilder::new()
+        .build_vk_surface(&event_loop, instance.clone())
+        .unwrap();
 
-    let queue_family = physical.queue_families().find(|&q| {
-        q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
-    }).unwrap();
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+        .unwrap();
 
-    let device_ext = DeviceExtensions { khr_swapchain: true, khr_storage_buffer_storage_class: true, .. DeviceExtensions::none() };
-    let (device, mut queues) = Device::new(physical, physical.supported_features(), &device_ext,
-        [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let device_ext = DeviceExtensions {
+        khr_swapchain: true,
+        khr_storage_buffer_storage_class: true,
+        ..DeviceExtensions::none()
+    };
+    let (device, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &device_ext,
+        [(queue_family, 0.5)].iter().cloned(),
+    )
+    .unwrap();
 
     let queue = queues.next().unwrap();
 
@@ -87,13 +106,27 @@ fn main() {
         let format = caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format,
-            dimensions, 1, usage, &queue, SurfaceTransform::Identity, alpha,
-            PresentMode::Fifo, FullscreenExclusive::Default, true, ColorSpace::SrgbNonLinear).unwrap()
+        Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            caps.min_image_count,
+            format,
+            dimensions,
+            1,
+            usage,
+            &queue,
+            SurfaceTransform::Identity,
+            alpha,
+            PresentMode::Fifo,
+            FullscreenExclusive::Default,
+            true,
+            ColorSpace::SrgbNonLinear,
+        )
+        .unwrap()
     };
 
     mod vs {
-        vulkano_shaders::shader!{
+        vulkano_shaders::shader! {
             ty: "vertex",
             src: "
                 #version 450
@@ -109,7 +142,7 @@ fn main() {
     }
 
     mod fs {
-        vulkano_shaders::shader!{
+        vulkano_shaders::shader! {
             ty: "fragment",
             src: "
                 #version 450
@@ -170,135 +203,182 @@ fn main() {
 
     // Each frame we generate a new set of vertices and each frame we need a new DrawIndirectCommand struct to
     // set the number of vertices to draw
-    let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> = CpuBufferPool::new(device.clone(), BufferUsage::all());
-    let vertex_pool : CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
+    let indirect_args_pool: CpuBufferPool<DrawIndirectCommand> =
+        CpuBufferPool::new(device.clone(), BufferUsage::all());
+    let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
 
-    let compute_pipeline = Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &()).unwrap());
+    let compute_pipeline =
+        Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &()).unwrap());
 
-    let render_pass = Arc::new(single_pass_renderpass!(
-        device.clone(),
-        attachments: {
-            color: {
-                load: Clear,
-                store: Store,
-                format: swapchain.format(),
-                samples: 1,
+    let render_pass = Arc::new(
+        single_pass_renderpass!(
+            device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: swapchain.format(),
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
             }
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {}
-        }
-    ).unwrap());
+        )
+        .unwrap(),
+    );
 
-    let render_pipeline = Arc::new(GraphicsPipeline::start()
-        .vertex_input_single_buffer()
-        .vertex_shader(vs.main_entry_point(), ())
-        .triangle_list()
-        .viewports_dynamic_scissors_irrelevant(1)
-        .fragment_shader(fs.main_entry_point(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        .build(device.clone())
-        .unwrap());
+    let render_pipeline = Arc::new(
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer()
+            .vertex_shader(vs.main_entry_point(), ())
+            .triangle_list()
+            .viewports_dynamic_scissors_irrelevant(1)
+            .fragment_shader(fs.main_entry_point(), ())
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(device.clone())
+            .unwrap(),
+    );
 
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut dynamic_state = DynamicState {
+        line_width: None,
+        viewports: None,
+        scissors: None,
+        compare_mask: None,
+        write_mask: None,
+        reference: None,
+    };
+    let mut framebuffers =
+        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
     event_loop.run(move |event, _, control_flow| {
         match event {
-            Event::WindowEvent { event: WindowEvent::CloseRequested, .. } => {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
                 *control_flow = ControlFlow::Exit;
-            },
-            Event::WindowEvent { event: WindowEvent::Resized(_), .. } => {
+            }
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
                 recreate_swapchain = true;
-            },
+            }
             Event::RedrawEventsCleared => {
                 previous_frame_end.as_mut().unwrap().cleanup_finished();
 
                 if recreate_swapchain {
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
-                    let (new_swapchain, new_images) = match swapchain.recreate_with_dimensions(dimensions) {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e)
-                    };
+                    let (new_swapchain, new_images) =
+                        match swapchain.recreate_with_dimensions(dimensions) {
+                            Ok(r) => r,
+                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                        };
 
                     swapchain = new_swapchain;
-                    framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
+                    framebuffers = window_size_dependent_setup(
+                        &new_images,
+                        render_pass.clone(),
+                        &mut dynamic_state,
+                    );
                     recreate_swapchain = false;
                 }
 
-                let (image_num, suboptimal, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
-                    Ok(r) => r,
-                    Err(AcquireError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        return;
-                    },
-                    Err(e) => panic!("Failed to acquire next image: {:?}", e)
-                };
+                let (image_num, suboptimal, acquire_future) =
+                    match swapchain::acquire_next_image(swapchain.clone(), None) {
+                        Ok(r) => r,
+                        Err(AcquireError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        }
+                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                    };
 
                 if suboptimal {
                     recreate_swapchain = true;
                 }
 
-                let clear_values = vec!([0.0, 0.0, 1.0, 1.0].into());
+                let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
                 // Allocate a GPU buffer to hold the arguments for this frames draw call. The compute
                 // shader will only update vertex_count, so set the other parameters correctly here.
-                let indirect_args = indirect_args_pool.chunk(iter::once(
-                    DrawIndirectCommand{
+                let indirect_args = indirect_args_pool
+                    .chunk(iter::once(DrawIndirectCommand {
                         vertex_count: 0,
                         instance_count: 1,
                         first_vertex: 0,
                         first_instance: 0,
-                    })).unwrap();
+                    }))
+                    .unwrap();
 
                 // Allocate a GPU buffer to hold this frames vertices. This needs to be large enough to hold
                 // the worst case number of vertices generated by the compute shader
-                let vertices = vertex_pool.chunk((0..(6 * 16)).map(|_| Vertex{ position: [0.0;2] })).unwrap();
+                let vertices = vertex_pool
+                    .chunk((0..(6 * 16)).map(|_| Vertex { position: [0.0; 2] }))
+                    .unwrap();
 
                 // Pass the two buffers to the compute shader
                 let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
-                let cs_desciptor_set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-                    .add_buffer(vertices.clone()).unwrap()
-                    .add_buffer(indirect_args.clone()).unwrap()
-                    .build().unwrap()
+                let cs_desciptor_set = Arc::new(
+                    PersistentDescriptorSet::start(layout.clone())
+                        .add_buffer(vertices.clone())
+                        .unwrap()
+                        .add_buffer(indirect_args.clone())
+                        .unwrap()
+                        .build()
+                        .unwrap(),
                 );
 
-                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-                    // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
-                    // call arguments
-                    .dispatch([1,1,1], compute_pipeline.clone(), cs_desciptor_set.clone(), ())
-                    .unwrap()
-                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
-                    .unwrap()
-                    // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
-                    // contain the arguments when the draw is executed on the GPU
-                    .draw_indirect(
-                        render_pipeline.clone(),
-                        &dynamic_state,
-                        vertices.clone(),
-                        indirect_args.clone(),
-                        (),
-                        ()
-                    )
-                    .unwrap()
-                    .end_render_pass()
-                    .unwrap()
-                    .build().unwrap();
+                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
+                    device.clone(),
+                    queue.family(),
+                )
+                .unwrap()
+                // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
+                // call arguments
+                .dispatch(
+                    [1, 1, 1],
+                    compute_pipeline.clone(),
+                    cs_desciptor_set.clone(),
+                    (),
+                )
+                .unwrap()
+                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                .unwrap()
+                // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
+                // contain the arguments when the draw is executed on the GPU
+                .draw_indirect(
+                    render_pipeline.clone(),
+                    &dynamic_state,
+                    vertices.clone(),
+                    indirect_args.clone(),
+                    (),
+                    (),
+                )
+                .unwrap()
+                .end_render_pass()
+                .unwrap()
+                .build()
+                .unwrap();
 
-                let future = previous_frame_end.take().unwrap()
+                let future = previous_frame_end
+                    .take()
+                    .unwrap()
                     .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer).unwrap()
+                    .then_execute(queue.clone(), command_buffer)
+                    .unwrap()
                     .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
                     .then_signal_fence_and_flush();
 
                 match future {
                     Ok(future) => {
                         previous_frame_end = Some(Box::new(future) as Box<_>);
-                    },
+                    }
                     Err(FlushError::OutOfDate) => {
                         recreate_swapchain = true;
                         previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
@@ -308,8 +388,8 @@ fn main() {
                         previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
                     }
                 }
-            },
-            _ => ()
+            }
+            _ => (),
         }
     });
 }
@@ -318,22 +398,27 @@ fn main() {
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
+    dynamic_state: &mut DynamicState,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
         dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0 .. 1.0,
+        depth_range: 0.0..1.0,
     };
-    dynamic_state.viewports = Some(vec!(viewport));
+    dynamic_state.viewports = Some(vec![viewport]);
 
-    images.iter().map(|image| {
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(image.clone()).unwrap()
-                .build().unwrap()
-        ) as Arc<dyn FramebufferAbstract + Send + Sync>
-    }).collect::<Vec<_>>()
+    images
+        .iter()
+        .map(|image| {
+            Arc::new(
+                Framebuffer::start(render_pass.clone())
+                    .add(image.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            ) as Arc<dyn FramebufferAbstract + Send + Sync>
+        })
+        .collect::<Vec<_>>()
 }

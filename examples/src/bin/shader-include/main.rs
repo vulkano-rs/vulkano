@@ -18,33 +18,41 @@ use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
-use vulkano::sync::GpuFuture;
 use vulkano::sync;
+use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
 
 fn main() {
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
-    let device_extensions = DeviceExtensions{
-        khr_storage_buffer_storage_class:true,
-        .. DeviceExtensions::none()
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_compute())
+        .unwrap();
+    let device_extensions = DeviceExtensions {
+        khr_storage_buffer_storage_class: true,
+        ..DeviceExtensions::none()
     };
-    let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &device_extensions, [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let (device, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &device_extensions,
+        [(queue_family, 0.5)].iter().cloned(),
+    )
+    .unwrap();
     let queue = queues.next().unwrap();
 
     println!("Device initialized");
 
     let pipeline = Arc::new({
         mod cs {
-            vulkano_shaders::shader!{
-                ty: "compute",
-                // We declare what directories to search for when using the `#include <...>`
-                // syntax. Specified directories have descending priorities based on their order.
-                include: [ "src/bin/shader-include/standard-shaders" ],
-                src: "
+            vulkano_shaders::shader! {
+                 ty: "compute",
+                 // We declare what directories to search for when using the `#include <...>`
+                 // syntax. Specified directories have descending priorities based on their order.
+                 include: [ "src/bin/shader-include/standard-shaders" ],
+                 src: "
                     #version 450
                     // Substitutes this line with the contents of the file `common.glsl` found in one of the standard
                     // `include` directories specified above.
@@ -64,32 +72,42 @@ fn main() {
                        data.data[idx] = multiply_by_12(data.data[idx]);
                     }
                 "
-           }
-       }
-       let shader = cs::Shader::load(device.clone()).unwrap();
-       ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
-   });
+            }
+        }
+        let shader = cs::Shader::load(device.clone()).unwrap();
+        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
+    });
 
     let data_buffer = {
-        let data_iter = (0 .. 65536u32).map(|n| n);
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter).unwrap()
+        let data_iter = (0..65536u32).map(|n| n);
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
+            .unwrap()
     };
     let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
-    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-        .add_buffer(data_buffer.clone()).unwrap()
-        .build().unwrap()
+    let set = Arc::new(
+        PersistentDescriptorSet::start(layout.clone())
+            .add_buffer(data_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap(),
     );
-    let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
-        .build().unwrap();
+    let command_buffer =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+            .unwrap()
+            .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+            .unwrap()
+            .build()
+            .unwrap();
     let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer).unwrap()
-        .then_signal_fence_and_flush().unwrap();
+        .then_execute(queue.clone(), command_buffer)
+        .unwrap()
+        .then_signal_fence_and_flush()
+        .unwrap();
 
-   future.wait(None).unwrap();
+    future.wait(None).unwrap();
 
-   let data_buffer_content = data_buffer.read().unwrap();
-   for n in 0 .. 65536u32 {
-       assert_eq!(data_buffer_content[n as usize], n * 12);
-   }
+    let data_buffer_content = data_buffer.read().unwrap();
+    for n in 0..65536u32 {
+        assert_eq!(data_buffer_content[n as usize], n * 12);
+    }
 }

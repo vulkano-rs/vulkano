@@ -8,8 +8,8 @@
 // according to those terms.
 
 use fnv::FnvHasher;
-use std::collections::HashMap;
 use std::collections::hash_map::Entry;
+use std::collections::HashMap;
 use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -17,9 +17,6 @@ use std::sync::Mutex;
 use device::Device;
 use device::DeviceOwned;
 use instance::MemoryType;
-use memory::DeviceMemory;
-use memory::DeviceMemoryAllocError;
-use memory::MappedDeviceMemory;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
 use memory::pool::MemoryPool;
@@ -28,6 +25,9 @@ use memory::pool::StdHostVisibleMemoryTypePool;
 use memory::pool::StdHostVisibleMemoryTypePoolAlloc;
 use memory::pool::StdNonHostVisibleMemoryTypePool;
 use memory::pool::StdNonHostVisibleMemoryTypePoolAlloc;
+use memory::DeviceMemory;
+use memory::DeviceMemoryAllocError;
+use memory::MappedDeviceMemory;
 
 #[derive(Debug)]
 pub struct StdMemoryPool {
@@ -46,42 +46,45 @@ impl StdMemoryPool {
         let hasher = BuildHasherDefault::<FnvHasher>::default();
 
         Arc::new(StdMemoryPool {
-                     device: device.clone(),
-                     pools: Mutex::new(HashMap::with_capacity_and_hasher(cap, hasher)),
-                 })
+            device: device.clone(),
+            pools: Mutex::new(HashMap::with_capacity_and_hasher(cap, hasher)),
+        })
     }
 }
 
 unsafe impl MemoryPool for Arc<StdMemoryPool> {
     type Alloc = StdMemoryPoolAlloc;
 
-    fn alloc_generic(&self, memory_type: MemoryType, size: usize, alignment: usize,
-                     layout: AllocLayout, map: MappingRequirement)
-                     -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
+    fn alloc_generic(
+        &self,
+        memory_type: MemoryType,
+        size: usize,
+        alignment: usize,
+        layout: AllocLayout,
+        map: MappingRequirement,
+    ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
         let mut pools = self.pools.lock().unwrap();
 
         let memory_type_host_visible = memory_type.is_host_visible();
         assert!(memory_type_host_visible || map == MappingRequirement::DoNotMap);
 
         match pools.entry((memory_type.id(), layout, map)) {
-            Entry::Occupied(entry) => {
-                match entry.get() {
-                    &Pool::HostVisible(ref pool) => {
-                        let alloc = StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
-                        let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc {
-                               inner: inner,
-                               pool: self.clone(),
-                           })
-                    },
-                    &Pool::NonHostVisible(ref pool) => {
-                        let alloc = StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
-                        let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
-                        Ok(StdMemoryPoolAlloc {
-                               inner: inner,
-                               pool: self.clone(),
-                           })
-                    },
+            Entry::Occupied(entry) => match entry.get() {
+                &Pool::HostVisible(ref pool) => {
+                    let alloc = StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
+                    let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
+                    Ok(StdMemoryPoolAlloc {
+                        inner: inner,
+                        pool: self.clone(),
+                    })
+                }
+                &Pool::NonHostVisible(ref pool) => {
+                    let alloc = StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
+                    let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
+                    Ok(StdMemoryPoolAlloc {
+                        inner: inner,
+                        pool: self.clone(),
+                    })
                 }
             },
 
@@ -92,21 +95,21 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
                     let alloc = StdHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
                     let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
                     Ok(StdMemoryPoolAlloc {
-                           inner: inner,
-                           pool: self.clone(),
-                       })
+                        inner: inner,
+                        pool: self.clone(),
+                    })
                 } else {
-                    let pool = StdNonHostVisibleMemoryTypePool::new(self.device.clone(),
-                                                                    memory_type);
+                    let pool =
+                        StdNonHostVisibleMemoryTypePool::new(self.device.clone(), memory_type);
                     entry.insert(Pool::NonHostVisible(pool.clone()));
                     let alloc = StdNonHostVisibleMemoryTypePool::alloc(&pool, size, alignment)?;
                     let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
                     Ok(StdMemoryPoolAlloc {
-                           inner: inner,
-                           pool: self.clone(),
-                       })
+                        inner: inner,
+                        pool: self.clone(),
+                    })
                 }
-            },
+            }
         }
     }
 }

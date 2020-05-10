@@ -35,11 +35,11 @@ use descriptor::pipeline_layout::PipelineLayoutDesc;
 use format::Format;
 use pipeline::input_assembly::PrimitiveTopology;
 
-use OomError;
-use VulkanObject;
 use check_errors;
 use device::Device;
 use vk;
+use OomError;
+use VulkanObject;
 
 /// Contains SPIR-V code with one or more entry points.
 ///
@@ -75,8 +75,10 @@ impl ShaderModule {
     /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
     ///   this function either.
     ///
-    pub unsafe fn from_words(device: Arc<Device>, spirv: &[u32])
-                             -> Result<Arc<ShaderModule>, OomError> {
+    pub unsafe fn from_words(
+        device: Arc<Device>,
+        spirv: &[u32],
+    ) -> Result<Arc<ShaderModule>, OomError> {
         Self::from_ptr(device, spirv.as_ptr(), spirv.len() * mem::size_of::<u32>())
     }
 
@@ -88,8 +90,11 @@ impl ShaderModule {
     /// - The SPIR-V code may require some features that are not enabled. This isn't checked by
     ///   this function either.
     ///
-    unsafe fn from_ptr(device: Arc<Device>, spirv: *const u32, spirv_len: usize)
-                       -> Result<Arc<ShaderModule>, OomError> {
+    unsafe fn from_ptr(
+        device: Arc<Device>,
+        spirv: *const u32,
+        spirv_len: usize,
+    ) -> Result<Arc<ShaderModule>, OomError> {
         let module = {
             let infos = vk::ShaderModuleCreateInfo {
                 sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -101,17 +106,19 @@ impl ShaderModule {
 
             let vk = device.pointers();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateShaderModule(device.internal_object(),
-                                               &infos,
-                                               ptr::null(),
-                                               output.as_mut_ptr()))?;
+            check_errors(vk.CreateShaderModule(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(Arc::new(ShaderModule {
-                        module: module,
-                        device: device,
-                    }))
+            module: module,
+            device: device,
+        }))
     }
 
     /// Gets access to an entry point contained in this module.
@@ -126,10 +133,14 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, S, I, O, L>(&'a self, name: &'a CStr, input: I,
-                                                       output: O, layout: L,
-                                                       ty: GraphicsShaderType)
-                                                       -> GraphicsEntryPoint<'a, S, I, O, L> {
+    pub unsafe fn graphics_entry_point<'a, S, I, O, L>(
+        &'a self,
+        name: &'a CStr,
+        input: I,
+        output: O,
+        layout: L,
+        ty: GraphicsShaderType,
+    ) -> GraphicsEntryPoint<'a, S, I, O, L> {
         GraphicsEntryPoint {
             module: self,
             name: name,
@@ -153,8 +164,11 @@ impl ShaderModule {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_entry_point<'a, S, L>(&'a self, name: &'a CStr, layout: L)
-                                                -> ComputeEntryPoint<'a, S, L> {
+    pub unsafe fn compute_entry_point<'a, S, L>(
+        &'a self,
+        name: &'a CStr,
+        layout: L,
+    ) -> ComputeEntryPoint<'a, S, L> {
         ComputeEntryPoint {
             module: self,
             name: name,
@@ -214,10 +228,11 @@ pub struct GraphicsEntryPoint<'a, S, I, O, L> {
 }
 
 unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
-    where L: PipelineLayoutDesc,
-          I: ShaderInterfaceDef,
-          O: ShaderInterfaceDef,
-          S: SpecializationConstants
+where
+    L: PipelineLayoutDesc,
+    I: ShaderInterfaceDef,
+    O: ShaderInterfaceDef,
+    S: SpecializationConstants,
 {
     type PipelineLayout = L;
     type SpecializationConstants = S;
@@ -239,10 +254,11 @@ unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, 
 }
 
 unsafe impl<'a, S, I, O, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
-    where L: PipelineLayoutDesc,
-          I: ShaderInterfaceDef,
-          O: ShaderInterfaceDef,
-          S: SpecializationConstants
+where
+    L: PipelineLayoutDesc,
+    I: ShaderInterfaceDef,
+    O: ShaderInterfaceDef,
+    S: SpecializationConstants,
 {
     type InputDefinition = I;
     type OutputDefinition = O;
@@ -290,17 +306,25 @@ impl GeometryShaderExecutionMode {
             (GeometryShaderExecutionMode::Points, PrimitiveTopology::PointList) => true,
             (GeometryShaderExecutionMode::Lines, PrimitiveTopology::LineList) => true,
             (GeometryShaderExecutionMode::Lines, PrimitiveTopology::LineStrip) => true,
-            (GeometryShaderExecutionMode::LinesWithAdjacency,
-             PrimitiveTopology::LineListWithAdjacency) => true,
-            (GeometryShaderExecutionMode::LinesWithAdjacency,
-             PrimitiveTopology::LineStripWithAdjacency) => true,
+            (
+                GeometryShaderExecutionMode::LinesWithAdjacency,
+                PrimitiveTopology::LineListWithAdjacency,
+            ) => true,
+            (
+                GeometryShaderExecutionMode::LinesWithAdjacency,
+                PrimitiveTopology::LineStripWithAdjacency,
+            ) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleList) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleStrip) => true,
             (GeometryShaderExecutionMode::Triangles, PrimitiveTopology::TriangleFan) => true,
-            (GeometryShaderExecutionMode::TrianglesWithAdjacency,
-             PrimitiveTopology::TriangleListWithAdjacency) => true,
-            (GeometryShaderExecutionMode::TrianglesWithAdjacency,
-             PrimitiveTopology::TriangleStripWithAdjacency) => true,
+            (
+                GeometryShaderExecutionMode::TrianglesWithAdjacency,
+                PrimitiveTopology::TriangleListWithAdjacency,
+            ) => true,
+            (
+                GeometryShaderExecutionMode::TrianglesWithAdjacency,
+                PrimitiveTopology::TriangleStripWithAdjacency,
+            ) => true,
             _ => false,
         }
     }
@@ -332,8 +356,9 @@ pub struct ComputeEntryPoint<'a, S, L> {
 }
 
 unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
-    where L: PipelineLayoutDesc,
-          S: SpecializationConstants
+where
+    L: PipelineLayoutDesc,
+    S: SpecializationConstants,
 {
     type PipelineLayout = L;
     type SpecializationConstants = S;
@@ -362,8 +387,7 @@ unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
 /// This object is meant to be a replacement to `!` before it is stabilized.
 // TODO: ^
 #[derive(Debug, Copy, Clone)]
-pub enum EmptyEntryPointDummy {
-}
+pub enum EmptyEntryPointDummy {}
 
 unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
     type PipelineLayout = EmptyPipelineDesc;
@@ -448,7 +472,8 @@ unsafe impl ShaderInterfaceDef for EmptyShaderInterfaceDef {
 /// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially
 /// compatible with another one.
 pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef
-    where I: ShaderInterfaceDef
+where
+    I: ShaderInterfaceDef,
 {
     /// Returns `Ok` if the two definitions match.
     fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError>;
@@ -456,8 +481,9 @@ pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef
 
 // TODO: turn this into a default impl that can be specialized
 unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
-    where T: ShaderInterfaceDef,
-          I: ShaderInterfaceDef
+where
+    T: ShaderInterfaceDef,
+    I: ShaderInterfaceDef,
 {
     fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
@@ -471,10 +497,11 @@ unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
             for loc in a.location.clone() {
                 let b = match other
                     .elements()
-                    .find(|e| loc >= e.location.start && loc < e.location.end) {
-                    None => return Err(ShaderInterfaceMismatchError::MissingElement {
-                                           location: loc,
-                                       }),
+                    .find(|e| loc >= e.location.start && loc < e.location.end)
+                {
+                    None => {
+                        return Err(ShaderInterfaceMismatchError::MissingElement { location: loc })
+                    }
                     Some(b) => b,
                 };
 
@@ -525,7 +552,7 @@ pub enum ShaderInterfaceMismatchError {
         /// Format in the first interface.
         self_format: Format,
         /// Format in the second interface.
-        other_format: Format
+        other_format: Format,
     },
 }
 
@@ -535,13 +562,11 @@ impl error::Error for ShaderInterfaceMismatchError {
         match *self {
             ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
                 "the number of elements mismatches"
-            },
-            ShaderInterfaceMismatchError::MissingElement { .. } => {
-                "an element is missing"
-            },
+            }
+            ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
             ShaderInterfaceMismatchError::FormatMismatch { .. } => {
                 "the format of an element does not match"
-            },
+            }
         }
     }
 }

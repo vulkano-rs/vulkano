@@ -156,11 +156,12 @@
 //! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
-
 #![recursion_limit = "1024"]
-#[macro_use] extern crate quote;
-#[macro_use] extern crate syn;
-             extern crate proc_macro;
+#[macro_use]
+extern crate quote;
+#[macro_use]
+extern crate syn;
+extern crate proc_macro;
 
 use std::env;
 use std::fs::File;
@@ -168,7 +169,7 @@ use std::io::{Read, Result as IoResult};
 use std::path::Path;
 
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Ident, LitStr, LitBool};
+use syn::{Ident, LitBool, LitStr};
 
 mod codegen;
 mod descriptor_sets;
@@ -176,8 +177,8 @@ mod entry_point;
 mod enums;
 mod parse;
 mod spec_consts;
-mod structs;
 mod spirv_search;
+mod structs;
 
 use crate::codegen::ShaderKind;
 
@@ -279,7 +280,7 @@ impl Parse for MacroInput {
                     let dump_lit: LitBool = input.parse()?;
                     dump = Some(dump_lit.value);
                 }
-                name => panic!(format!("Unknown field name: {}", name))
+                name => panic!(format!("Unknown field name: {}", name)),
             }
 
             if !input.is_empty() {
@@ -289,7 +290,7 @@ impl Parse for MacroInput {
 
         let shader_kind = match shader_kind {
             Some(shader_kind) => shader_kind,
-            None => panic!("Please provide a shader type e.g. `ty: \"vertex\"`")
+            None => panic!("Please provide a shader type e.g. `ty: \"vertex\"`"),
         };
 
         let source_kind = match source_kind {
@@ -299,14 +300,19 @@ impl Parse for MacroInput {
 
         let dump = dump.unwrap_or(false);
 
-        Ok(MacroInput { shader_kind, source_kind, include_directories, dump, macro_defines })
+        Ok(MacroInput {
+            shader_kind,
+            source_kind,
+            include_directories,
+            dump,
+            macro_defines,
+        })
     }
 }
 
 pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
     let mut buf = String::new();
-    File::open(full_path)
-        .and_then(|mut file| file.read_to_string(&mut buf))?;
+    File::open(full_path).and_then(|mut file| file.read_to_string(&mut buf))?;
     Ok(buf)
 }
 
@@ -327,20 +333,33 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             } else {
                 panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
             }
+        }),
+    };
+
+    let include_paths = input
+        .include_directories
+        .iter()
+        .map(|include_directory| {
+            let include_path = Path::new(include_directory);
+            let mut full_include_path = root_path.to_owned();
+            full_include_path.push(include_path);
+            full_include_path
         })
-    };
+        .collect::<Vec<_>>();
 
-    let include_paths = input.include_directories.iter().map(|include_directory| {
-        let include_path = Path::new(include_directory);
-        let mut full_include_path = root_path.to_owned();
-        full_include_path.push(include_path);
-        full_include_path
-    }).collect::<Vec<_>>();
-
-    let content = match codegen::compile(path, &root_path, &source_code, input.shader_kind, &include_paths, &input.macro_defines) {
+    let content = match codegen::compile(
+        path,
+        &root_path,
+        &source_code,
+        input.shader_kind,
+        &include_paths,
+        &input.macro_defines,
+    ) {
         Ok(ok) => ok,
-        Err(e) => panic!(e.replace("(s): ", "(s):\n"))
+        Err(e) => panic!(e.replace("(s): ", "(s):\n")),
     };
 
-    codegen::reflect("Shader", content.as_binary(), input.dump).unwrap().into()
+    codegen::reflect("Shader", content.as_binary(), input.dump)
+        .unwrap()
+        .into()
 }

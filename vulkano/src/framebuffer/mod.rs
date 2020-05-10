@@ -91,12 +91,12 @@
 //!
 
 pub use self::attachments_list::AttachmentsList;
-pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
 pub use self::compat_atch::ensure_image_view_compatible;
+pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
 pub use self::desc::AttachmentDescription;
+pub use self::desc::LoadOp;
 pub use self::desc::PassDependencyDescription;
 pub use self::desc::PassDescription;
-pub use self::desc::LoadOp;
 pub use self::desc::RenderPassDesc;
 pub use self::desc::RenderPassDescAttachments;
 pub use self::desc::RenderPassDescDependencies;

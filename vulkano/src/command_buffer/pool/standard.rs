@@ -26,10 +26,10 @@ use command_buffer::pool::UnsafeCommandPool;
 use command_buffer::pool::UnsafeCommandPoolAlloc;
 use instance::QueueFamily;
 
-use OomError;
-use VulkanObject;
 use device::Device;
 use device::DeviceOwned;
+use OomError;
+use VulkanObject;
 
 /// Standard implementation of a command pool.
 ///
@@ -50,10 +50,8 @@ pub struct StandardCommandPool {
     per_thread: Mutex<FnvHashMap<thread::ThreadId, Weak<StandardCommandPoolPerThread>>>,
 }
 
-unsafe impl Send for StandardCommandPool {
-}
-unsafe impl Sync for StandardCommandPool {
-}
+unsafe impl Send for StandardCommandPool {}
+unsafe impl Sync for StandardCommandPool {}
 
 struct StandardCommandPoolPerThread {
     // The Vulkan pool of this thread.
@@ -72,8 +70,10 @@ impl StandardCommandPool {
     /// - Panics if the device and the queue family don't belong to the same physical device.
     ///
     pub fn new(device: Arc<Device>, queue_family: QueueFamily) -> StandardCommandPool {
-        assert_eq!(device.physical_device().internal_object(),
-                   queue_family.physical_device().internal_object());
+        assert_eq!(
+            device.physical_device().internal_object(),
+            queue_family.physical_device().internal_object()
+        );
 
         StandardCommandPool {
             device: device,
@@ -99,19 +99,19 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             Entry::Occupied(entry) => {
                 // The `unwrap()` can't fail, since we retained only valid members earlier.
                 entry.get().upgrade().unwrap()
-            },
+            }
             Entry::Vacant(entry) => {
                 let new_pool =
                     UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
                 let pt = Arc::new(StandardCommandPoolPerThread {
-                                      pool: Mutex::new(new_pool),
-                                      available_primary_command_buffers: SegQueue::new(),
-                                      available_secondary_command_buffers: SegQueue::new(),
-                                  });
+                    pool: Mutex::new(new_pool),
+                    available_primary_command_buffers: SegQueue::new(),
+                    available_secondary_command_buffers: SegQueue::new(),
+                });
 
                 entry.insert(Arc::downgrade(&pt));
                 pt
-            },
+            }
         };
 
         // The final output.
@@ -125,18 +125,18 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
                 &per_thread.available_primary_command_buffers
             };
 
-            for _ in 0 .. count as usize {
+            for _ in 0..count as usize {
                 if let Ok(cmd) = existing.pop() {
                     output.push(StandardCommandPoolBuilder {
-                                    inner: StandardCommandPoolAlloc {
-                                        cmd: ManuallyDrop::new(cmd),
-                                        pool: per_thread.clone(),
-                                        pool_parent: self.clone(),
-                                        secondary: secondary,
-                                        device: self.device.clone(),
-                                    },
-                                    dummy_avoid_send_sync: PhantomData,
-                                });
+                        inner: StandardCommandPoolAlloc {
+                            cmd: ManuallyDrop::new(cmd),
+                            pool: per_thread.clone(),
+                            pool_parent: self.clone(),
+                            secondary: secondary,
+                            device: self.device.clone(),
+                        },
+                        dummy_avoid_send_sync: PhantomData,
+                    });
                 } else {
                     break;
                 }
@@ -150,15 +150,15 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
 
             for cmd in pool_lock.alloc_command_buffers(secondary, num_new)? {
                 output.push(StandardCommandPoolBuilder {
-                                inner: StandardCommandPoolAlloc {
-                                    cmd: ManuallyDrop::new(cmd),
-                                    pool: per_thread.clone(),
-                                    pool_parent: self.clone(),
-                                    secondary: secondary,
-                                    device: self.device.clone(),
-                                },
-                                dummy_avoid_send_sync: PhantomData,
-                            });
+                    inner: StandardCommandPoolAlloc {
+                        cmd: ManuallyDrop::new(cmd),
+                        pool: per_thread.clone(),
+                        pool_parent: self.clone(),
+                        secondary: secondary,
+                        device: self.device.clone(),
+                    },
+                    dummy_avoid_send_sync: PhantomData,
+                });
             }
         }
 
@@ -231,10 +231,8 @@ pub struct StandardCommandPoolAlloc {
     device: Arc<Device>,
 }
 
-unsafe impl Send for StandardCommandPoolAlloc {
-}
-unsafe impl Sync for StandardCommandPoolAlloc {
-}
+unsafe impl Send for StandardCommandPoolAlloc {}
+unsafe impl Sync for StandardCommandPoolAlloc {}
 
 unsafe impl CommandPoolAlloc for StandardCommandPoolAlloc {
     #[inline]
@@ -277,12 +275,12 @@ impl Drop for StandardCommandPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use VulkanObject;
     use command_buffer::pool::CommandPool;
     use command_buffer::pool::CommandPoolBuilderAlloc;
     use command_buffer::pool::StandardCommandPool;
     use device::Device;
     use std::sync::Arc;
+    use VulkanObject;
 
     #[test]
     fn reuse_command_buffers() {

@@ -13,13 +13,13 @@ use std::fmt;
 use std::ptr;
 use std::vec::IntoIter;
 
-use Error;
-use OomError;
 use check_errors;
 use instance::loader;
 use instance::loader::LoadingError;
 use version::Version;
 use vk;
+use Error;
+use OomError;
 
 /// Queries the list of layers that are available when creating an instance.
 ///
@@ -49,26 +49,27 @@ pub fn layers_list() -> Result<LayersIterator, LayersListError> {
 }
 
 /// Same as `layers_list()`, but allows specifying a loader.
-pub fn layers_list_from_loader<L>(ptrs: &loader::FunctionPointers<L>)
-                                  -> Result<LayersIterator, LayersListError>
-    where L: loader::Loader
+pub fn layers_list_from_loader<L>(
+    ptrs: &loader::FunctionPointers<L>,
+) -> Result<LayersIterator, LayersListError>
+where
+    L: loader::Loader,
 {
     unsafe {
         let entry_points = ptrs.entry_points();
 
         let mut num = 0;
-        check_errors({
-                         entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut())
-                     })?;
+        check_errors({ entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut()) })?;
 
         let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
         check_errors({
-                         entry_points
-                             .EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
-                     })?;
+            entry_points.EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
+        })?;
         layers.set_len(num as usize);
 
-        Ok(LayersIterator { iter: layers.into_iter() })
+        Ok(LayersIterator {
+            iter: layers.into_iter(),
+        })
     }
 }
 
@@ -240,8 +241,7 @@ impl Iterator for LayersIterator {
     }
 }
 
-impl ExactSizeIterator for LayersIterator {
-}
+impl ExactSizeIterator for LayersIterator {}
 
 #[cfg(test)]
 mod tests {

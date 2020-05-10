@@ -22,11 +22,11 @@ use std::sync::Arc;
 use device::Device;
 use device::DeviceOwned;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use VulkanObject;
-use check_errors;
-use vk;
 
 pub struct UnsafeQueryPool {
     pool: vk::QueryPool,
@@ -36,8 +36,11 @@ pub struct UnsafeQueryPool {
 
 impl UnsafeQueryPool {
     /// Builds a new query pool.
-    pub fn new(device: Arc<Device>, ty: QueryType, num_slots: u32)
-               -> Result<UnsafeQueryPool, QueryPoolCreationError> {
+    pub fn new(
+        device: Arc<Device>,
+        ty: QueryType,
+        num_slots: u32,
+    ) -> Result<UnsafeQueryPool, QueryPoolCreationError> {
         let (vk_ty, statistics) = match ty {
             QueryType::Occlusion => (vk::QUERY_TYPE_OCCLUSION, 0),
             QueryType::Timestamp => (vk::QUERY_TYPE_TIMESTAMP, 0),
@@ -47,7 +50,7 @@ impl UnsafeQueryPool {
                 }
 
                 (vk::QUERY_TYPE_PIPELINE_STATISTICS, flags.into())
-            },
+            }
         };
 
         let pool = unsafe {
@@ -62,18 +65,20 @@ impl UnsafeQueryPool {
 
             let mut output = MaybeUninit::uninit();
             let vk = device.pointers();
-            check_errors(vk.CreateQueryPool(device.internal_object(),
-                                            &infos,
-                                            ptr::null(),
-                                            output.as_mut_ptr()))?;
+            check_errors(vk.CreateQueryPool(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(UnsafeQueryPool {
-               pool: pool,
-               device: device,
-               num_slots: num_slots,
-           })
+            pool: pool,
+            device: device,
+            num_slots: num_slots,
+        })
     }
 
     /// Returns the number of slots of that query pool.
@@ -101,10 +106,10 @@ impl UnsafeQueryPool {
 
         if first_index + count < self.num_slots() {
             Some(UnsafeQueriesRange {
-                     pool: self,
-                     first: first_index,
-                     count,
-                 })
+                pool: self,
+                first: first_index,
+                count,
+            })
         } else {
             None
         }
@@ -277,7 +282,7 @@ impl error::Error for QueryPoolCreationError {
             QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
                 "a pipeline statistics pool was requested but the corresponding feature \
                  wasn't enabled"
-            },
+            }
         }
     }
 
@@ -323,14 +328,14 @@ impl OcclusionQueriesPool {
     /// See the docs of new().
     pub fn raw(device: Arc<Device>, num_slots: u32) -> Result<OcclusionQueriesPool, OomError> {
         Ok(OcclusionQueriesPool {
-               inner: match UnsafeQueryPool::new(device, QueryType::Occlusion, num_slots) {
-                   Ok(q) => q,
-                   Err(QueryPoolCreationError::OomError(err)) => return Err(err),
-                   Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => {
-                       unreachable!()
-                   },
-               },
-           })
+            inner: match UnsafeQueryPool::new(device, QueryType::Occlusion, num_slots) {
+                Ok(q) => q,
+                Err(QueryPoolCreationError::OomError(err)) => return Err(err),
+                Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => {
+                    unreachable!()
+                }
+            },
+        })
     }
 
     /// Builds a new query pool.

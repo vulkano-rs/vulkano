@@ -30,25 +30,32 @@ use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::path::Path;
 
-use SafeDeref;
 use vk;
+use SafeDeref;
 
 /// Implemented on objects that grant access to a Vulkan implementation.
 pub unsafe trait Loader {
     /// Calls the `vkGetInstanceProcAddr` function. The parameters are the same.
     ///
     /// The returned function must stay valid for as long as `self` is alive.
-    fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                              -> extern "system" fn() -> ();
+    fn get_instance_proc_addr(
+        &self,
+        instance: vk::Instance,
+        name: *const c_char,
+    ) -> extern "system" fn() -> ();
 }
 
 unsafe impl<T> Loader for T
-    where T: SafeDeref,
-          T::Target: Loader
+where
+    T: SafeDeref,
+    T::Target: Loader,
 {
     #[inline]
-    fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                              -> extern "system" fn() -> () {
+    fn get_instance_proc_addr(
+        &self,
+        instance: vk::Instance,
+        name: *const c_char,
+    ) -> extern "system" fn() -> () {
         (**self).get_instance_proc_addr(instance, name)
     }
 }
@@ -56,8 +63,10 @@ unsafe impl<T> Loader for T
 /// Implementation of `Loader` that loads Vulkan from a dynamic library.
 pub struct DynamicLibraryLoader {
     vk_lib: shared_library::dynamic_library::DynamicLibrary,
-    get_proc_addr: extern "system" fn(instance: vk::Instance, pName: *const c_char)
-                                      -> extern "system" fn() -> (),
+    get_proc_addr: extern "system" fn(
+        instance: vk::Instance,
+        pName: *const c_char,
+    ) -> extern "system" fn() -> (),
 }
 
 impl DynamicLibraryLoader {
@@ -69,32 +78,33 @@ impl DynamicLibraryLoader {
     /// - The dynamic library must be a valid Vulkan implementation.
     ///
     pub unsafe fn new<P>(path: P) -> Result<DynamicLibraryLoader, LoadingError>
-        where P: AsRef<Path>
+    where
+        P: AsRef<Path>,
     {
         let vk_lib = shared_library::dynamic_library::DynamicLibrary::open(Some(path.as_ref()))
             .map_err(LoadingError::LibraryLoadFailure)?;
 
         let get_proc_addr = {
-            let ptr: *mut c_void =
-                vk_lib
-                    .symbol("vkGetInstanceProcAddr")
-                    .map_err(|_| {
-                                 LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned())
-                             })?;
+            let ptr: *mut c_void = vk_lib
+                .symbol("vkGetInstanceProcAddr")
+                .map_err(|_| LoadingError::MissingEntryPoint("vkGetInstanceProcAddr".to_owned()))?;
             mem::transmute(ptr)
         };
 
         Ok(DynamicLibraryLoader {
-               vk_lib,
-               get_proc_addr,
-           })
+            vk_lib,
+            get_proc_addr,
+        })
     }
 }
 
 unsafe impl Loader for DynamicLibraryLoader {
     #[inline]
-    fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                              -> extern "system" fn() -> () {
+    fn get_instance_proc_addr(
+        &self,
+        instance: vk::Instance,
+        name: *const c_char,
+    ) -> extern "system" fn() -> () {
         (self.get_proc_addr)(instance, name)
     }
 }
@@ -108,9 +118,12 @@ pub struct FunctionPointers<L> {
 impl<L> FunctionPointers<L> {
     /// Loads some global function pointer from the loader.
     pub fn new(loader: L) -> FunctionPointers<L>
-        where L: Loader
+    where
+        L: Loader,
     {
-        let entry_points = vk::EntryPoints::load(|name| unsafe { mem::transmute(loader.get_instance_proc_addr(0, name.as_ptr())) });
+        let entry_points = vk::EntryPoints::load(|name| unsafe {
+            mem::transmute(loader.get_instance_proc_addr(0, name.as_ptr()))
+        });
 
         FunctionPointers {
             loader,
@@ -126,9 +139,13 @@ impl<L> FunctionPointers<L> {
 
     /// Calls `get_instance_proc_addr` on the underlying loader.
     #[inline]
-    pub fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                                  -> extern "system" fn() -> ()
-        where L: Loader
+    pub fn get_instance_proc_addr(
+        &self,
+        instance: vk::Instance,
+        name: *const c_char,
+    ) -> extern "system" fn() -> ()
+    where
+        L: Loader,
     {
         self.loader.get_instance_proc_addr(instance, name)
     }
@@ -145,22 +162,27 @@ impl<L> FunctionPointers<L> {
 // TODO: should this be unsafe?
 #[macro_export]
 macro_rules! statically_linked_vulkan_loader {
-    () => ({
+    () => {{
         extern "C" {
-            fn vkGetInstanceProcAddr(instance: vk::Instance, pName: *const c_char)
-                                    -> vk::PFN_vkVoidFunction;
+            fn vkGetInstanceProcAddr(
+                instance: vk::Instance,
+                pName: *const c_char,
+            ) -> vk::PFN_vkVoidFunction;
         }
 
         struct StaticallyLinkedVulkanLoader;
         unsafe impl Loader for StaticallyLinkedVulkanLoader {
-            fn get_instance_proc_addr(&self, instance: vk::Instance, name: *const c_char)
-                                    -> extern "system" fn() -> () {
+            fn get_instance_proc_addr(
+                &self,
+                instance: vk::Instance,
+                name: *const c_char,
+            ) -> extern "system" fn() -> () {
                 unsafe { vkGetInstanceProcAddr(instance, name) }
             }
         }
 
         StaticallyLinkedVulkanLoader
-    })
+    }};
 }
 
 /// Returns the default `FunctionPointers` for this system.
@@ -168,9 +190,8 @@ macro_rules! statically_linked_vulkan_loader {
 /// This function tries to auto-guess where to find the Vulkan implementation, and loads it in a
 /// `lazy_static!`. The content of the lazy_static is then returned, or an error if we failed to
 /// load Vulkan.
-pub fn auto_loader()
-    -> Result<&'static FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError>
-{
+pub fn auto_loader(
+) -> Result<&'static FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> {
     #[cfg(target_os = "ios")]
     #[allow(non_snake_case)]
     fn def_loader_impl() -> Result<Box<Loader + Send + Sync>, LoadingError> {
@@ -203,9 +224,8 @@ pub fn auto_loader()
     }
 
     lazy_static! {
-        static ref DEFAULT_LOADER: Result<FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> = {
-            def_loader_impl().map(FunctionPointers::new)
-        };
+        static ref DEFAULT_LOADER: Result<FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> =
+            { def_loader_impl().map(FunctionPointers::new) };
     }
 
     match DEFAULT_LOADER.deref() {
@@ -228,13 +248,11 @@ impl error::Error for LoadingError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            LoadingError::LibraryLoadFailure(_) => {
-                "failed to load the Vulkan shared library"
-            },
+            LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
             LoadingError::MissingEntryPoint(_) => {
                 "one of the entry points required to be supported by the Vulkan implementation \
                  is missing"
-            },
+            }
         }
     }
 

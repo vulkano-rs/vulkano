@@ -9,32 +9,35 @@
 
 use std::error;
 use std::fmt;
-use std::mem::MaybeUninit;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ptr;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::Duration;
 
 use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitPresentBuilder;
-use command_buffer::submit::SubmitSemaphoresWaitBuilder;
 use command_buffer::submit::SubmitPresentError;
+use command_buffer::submit::SubmitSemaphoresWaitBuilder;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use format::Format;
 use format::FormatDesc;
+use image::swapchain::SwapchainImage;
+use image::sys::UnsafeImage;
 use image::ImageAccess;
+use image::ImageCreateFlags;
 use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
+use image::ImageTiling;
+use image::ImageType;
 use image::ImageUsage;
-use image::swapchain::SwapchainImage;
-use image::sys::UnsafeImage;
 use swapchain::CapabilitiesError;
 use swapchain::ColorSpace;
 use swapchain::CompositeAlpha;
@@ -53,15 +56,15 @@ use sync::PipelineStages;
 use sync::Semaphore;
 use sync::SharingMode;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use Success;
 use VulkanObject;
-use check_errors;
-use vk;
 
 /// The way fullscreen exclusivity is handled.
-#[derive(Copy,Clone,Debug,PartialEq,Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum FullscreenExclusive {
     /// Indicates that the driver should determine the appropriate full-screen method
     /// by whatever means it deems appropriate.
@@ -103,8 +106,10 @@ impl FullscreenExclusive {
 /// The second field in the tuple in the Ok result is a bool represent if the acquisition was
 /// suboptimal. In this case the acquired image is still usable, but the swapchain should be
 /// recreated as the Surface's properties no longer match the swapchain.
-pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Duration>)
-                          -> Result<(usize, bool, SwapchainAcquireFuture<W>), AcquireError> {
+pub fn acquire_next_image<W>(
+    swapchain: Arc<Swapchain<W>>,
+    timeout: Option<Duration>,
+) -> Result<(usize, bool, SwapchainAcquireFuture<W>), AcquireError> {
     let semaphore = Semaphore::from_pool(swapchain.device.clone())?;
     let fence = Fence::from_pool(swapchain.device.clone())?;
 
@@ -117,23 +122,29 @@ pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Durat
             return Err(AcquireError::OutOfDate);
         }
 
-        let acquire_result = unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
+        let acquire_result =
+            unsafe { acquire_next_image_raw(&swapchain, timeout, Some(&semaphore), Some(&fence)) };
 
         if let &Err(AcquireError::FullscreenExclusiveLost) = &acquire_result {
-            swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+            swapchain
+                .fullscreen_exclusive_held
+                .store(false, Ordering::SeqCst);
         }
 
         acquire_result?
     };
 
-    Ok((id, suboptimal,
+    Ok((
+        id,
+        suboptimal,
         SwapchainAcquireFuture {
             swapchain: swapchain,
             semaphore: Some(semaphore),
             fence: Some(fence),
             image_id: id,
             finished: AtomicBool::new(false),
-        }))
+        },
+    ))
 }
 
 /// Presents an image on the screen.
@@ -143,9 +154,14 @@ pub fn acquire_next_image<W>(swapchain: Arc<Swapchain<W>>, timeout: Option<Durat
 ///
 /// The actual behavior depends on the present mode that you passed when creating the
 /// swapchain.
-pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>, index: usize)
-                  -> PresentFuture<F,W>
-    where F: GpuFuture
+pub fn present<F, W>(
+    swapchain: Arc<Swapchain<W>>,
+    before: F,
+    queue: Arc<Queue>,
+    index: usize,
+) -> PresentFuture<F, W>
+where
+    F: GpuFuture,
 {
     assert!(index < swapchain.images.len());
 
@@ -173,10 +189,15 @@ pub fn present<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
 /// This is just an optimization hint, as the Vulkan driver is free to ignore the given present region.
 ///
 /// If `VK_KHR_incremental_present` is not enabled on the device, the parameter will be ignored.
-pub fn present_incremental<F, W>(swapchain: Arc<Swapchain<W>>, before: F, queue: Arc<Queue>,
-                              index: usize, present_region: PresentRegion)
-                              -> PresentFuture<F, W>
-    where F: GpuFuture
+pub fn present_incremental<F, W>(
+    swapchain: Arc<Swapchain<W>>,
+    before: F,
+    queue: Arc<Queue>,
+    index: usize,
+    present_region: PresentRegion,
+) -> PresentFuture<F, W>
+where
+    F: GpuFuture,
 {
     assert!(index < swapchain.images.len());
 
@@ -240,7 +261,7 @@ struct ImageEntry {
     undefined_layout: AtomicBool,
 }
 
-impl <W> Swapchain<W> {
+impl<W> Swapchain<W> {
     /// Builds a new swapchain. Allocates images who content can be made visible on a surface.
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
@@ -264,109 +285,154 @@ impl <W> Swapchain<W> {
     // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
     pub fn new<F, S>(
-        device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: F,
-        dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
-        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-        fullscreen_exclusive: FullscreenExclusive, clipped: bool, color_space: ColorSpace)
-        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
-        where F: FormatDesc,
-              S: Into<SharingMode>
+        device: Arc<Device>,
+        surface: Arc<Surface<W>>,
+        num_images: u32,
+        format: F,
+        dimensions: [u32; 2],
+        layers: u32,
+        usage: ImageUsage,
+        sharing: S,
+        transform: SurfaceTransform,
+        alpha: CompositeAlpha,
+        mode: PresentMode,
+        fullscreen_exclusive: FullscreenExclusive,
+        clipped: bool,
+        color_space: ColorSpace,
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
+    where
+        F: FormatDesc,
+        S: Into<SharingMode>,
     {
-        Swapchain::new_inner(device,
-                             surface,
-                             num_images,
-                             format.format(),
-                             color_space,
-                             Some(dimensions),
-                             layers,
-                             usage,
-                             sharing.into(),
-                             transform,
-                             alpha,
-                             mode,
-                             fullscreen_exclusive,
-                             clipped,
-                             None)
+        Swapchain::new_inner(
+            device,
+            surface,
+            num_images,
+            format.format(),
+            color_space,
+            Some(dimensions),
+            layers,
+            usage,
+            sharing.into(),
+            transform,
+            alpha,
+            mode,
+            fullscreen_exclusive,
+            clipped,
+            None,
+        )
     }
 
-
-	/// Same as Swapchain::new but requires an old swapchain for the creation
+    /// Same as Swapchain::new but requires an old swapchain for the creation
     #[inline]
     pub fn with_old_swapchain<F, S>(
-        device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: F,
-        dimensions: [u32; 2], layers: u32, usage: ImageUsage, sharing: S,
-        transform: SurfaceTransform, alpha: CompositeAlpha, mode: PresentMode,
-        fullscreen_exclusive: FullscreenExclusive, clipped: bool, color_space: ColorSpace,
-        old_swapchain: Arc<Swapchain<W>>)
-        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
-        where F: FormatDesc,
-              S: Into<SharingMode>
+        device: Arc<Device>,
+        surface: Arc<Surface<W>>,
+        num_images: u32,
+        format: F,
+        dimensions: [u32; 2],
+        layers: u32,
+        usage: ImageUsage,
+        sharing: S,
+        transform: SurfaceTransform,
+        alpha: CompositeAlpha,
+        mode: PresentMode,
+        fullscreen_exclusive: FullscreenExclusive,
+        clipped: bool,
+        color_space: ColorSpace,
+        old_swapchain: Arc<Swapchain<W>>,
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
+    where
+        F: FormatDesc,
+        S: Into<SharingMode>,
     {
-        Swapchain::new_inner(device,
-                             surface,
-                             num_images,
-                             format.format(),
-                             ColorSpace::SrgbNonLinear,
-                             Some(dimensions),
-                             layers,
-                             usage,
-                             sharing.into(),
-                             transform,
-                             alpha,
-                             mode,
-                             fullscreen_exclusive,
-                             clipped,
-                             Some(&*old_swapchain))
+        Swapchain::new_inner(
+            device,
+            surface,
+            num_images,
+            format.format(),
+            ColorSpace::SrgbNonLinear,
+            Some(dimensions),
+            layers,
+            usage,
+            sharing.into(),
+            transform,
+            alpha,
+            mode,
+            fullscreen_exclusive,
+            clipped,
+            Some(&*old_swapchain),
+        )
     }
 
     /// Recreates the swapchain with current dimensions of corresponding surface.
-    pub fn recreate(&self)
-        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
-        Swapchain::new_inner(self.device.clone(),
-                             self.surface.clone(),
-                             self.num_images,
-                             self.format,
-                             self.color_space,
-                             None,
-                             self.layers,
-                             self.usage,
-                             self.sharing.clone(),
-                             self.transform,
-                             self.alpha,
-                             self.mode,
-                             self.fullscreen_exclusive,
-                             self.clipped,
-                             Some(self))
+    pub fn recreate(
+        &self,
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        Swapchain::new_inner(
+            self.device.clone(),
+            self.surface.clone(),
+            self.num_images,
+            self.format,
+            self.color_space,
+            None,
+            self.layers,
+            self.usage,
+            self.sharing.clone(),
+            self.transform,
+            self.alpha,
+            self.mode,
+            self.fullscreen_exclusive,
+            self.clipped,
+            Some(self),
+        )
     }
 
     /// Recreates the swapchain with new dimensions.
     pub fn recreate_with_dimensions(
-        &self, dimensions: [u32; 2])
-        -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
-        Swapchain::new_inner(self.device.clone(),
-                             self.surface.clone(),
-                             self.num_images,
-                             self.format,
-                             self.color_space,
-                             Some(dimensions),
-                             self.layers,
-                             self.usage,
-                             self.sharing.clone(),
-                             self.transform,
-                             self.alpha,
-                             self.mode,
-                             self.fullscreen_exclusive,
-                             self.clipped,
-                             Some(self))
+        &self,
+        dimensions: [u32; 2],
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        Swapchain::new_inner(
+            self.device.clone(),
+            self.surface.clone(),
+            self.num_images,
+            self.format,
+            self.color_space,
+            Some(dimensions),
+            self.layers,
+            self.usage,
+            self.sharing.clone(),
+            self.transform,
+            self.alpha,
+            self.mode,
+            self.fullscreen_exclusive,
+            self.clipped,
+            Some(self),
+        )
     }
 
-    fn new_inner(device: Arc<Device>, surface: Arc<Surface<W>>, num_images: u32, format: Format,
-                 color_space: ColorSpace, dimensions: Option<[u32; 2]>, layers: u32, usage: ImageUsage,
-                 sharing: SharingMode, transform: SurfaceTransform, alpha: CompositeAlpha,
-                 mode: PresentMode, fullscreen_exclusive: FullscreenExclusive, clipped: bool, old_swapchain: Option<&Swapchain<W>>)
-                 -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
-        assert_eq!(device.instance().internal_object(),
-                   surface.instance().internal_object());
+    fn new_inner(
+        device: Arc<Device>,
+        surface: Arc<Surface<W>>,
+        num_images: u32,
+        format: Format,
+        color_space: ColorSpace,
+        dimensions: Option<[u32; 2]>,
+        layers: u32,
+        usage: ImageUsage,
+        sharing: SharingMode,
+        transform: SurfaceTransform,
+        alpha: CompositeAlpha,
+        mode: PresentMode,
+        fullscreen_exclusive: FullscreenExclusive,
+        clipped: bool,
+        old_swapchain: Option<&Swapchain<W>>,
+    ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
+        assert_eq!(
+            device.instance().internal_object(),
+            surface.instance().internal_object()
+        );
 
         // Checking that the requested parameters match the capabilities.
         let capabilities = surface.capabilities(device.physical_device())?;
@@ -405,8 +471,8 @@ impl <W> Swapchain<W> {
         if layers < 1 || layers > capabilities.max_image_array_layers {
             return Err(SwapchainCreationError::UnsupportedArrayLayers);
         }
-        if (usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits()) !=
-            usage.to_usage_bits()
+        if (usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits())
+            != usage.to_usage_bits()
         {
             return Err(SwapchainCreationError::UnsupportedUsageFlags);
         }
@@ -418,6 +484,21 @@ impl <W> Swapchain<W> {
         }
         if !capabilities.present_modes.supports(mode) {
             return Err(SwapchainCreationError::UnsupportedPresentMode);
+        }
+
+        // check that the physical device supports the swapchain image configuration
+        match device.image_format_properties(
+            format,
+            ImageType::Dim2d,
+            ImageTiling::Optimal,
+            usage,
+            ImageCreateFlags::none(),
+        ) {
+            Ok(_) => (),
+            Err(e) => {
+                eprintln!("{}", e);
+                return Err(SwapchainCreationError::UnsupportedImageConfiguration);
+            }
         }
 
         // If we recreate a swapchain, make sure that the surface is the same.
@@ -442,8 +523,14 @@ impl <W> Swapchain<W> {
         let mut surface_full_screen_exclusive_info = None;
 
         if device.loaded_extensions().ext_full_screen_exclusive
-            && surface.instance().loaded_extensions().khr_get_physical_device_properties2
-            && surface.instance().loaded_extensions().khr_get_surface_capabilities2
+            && surface
+                .instance()
+                .loaded_extensions()
+                .khr_get_physical_device_properties2
+            && surface
+                .instance()
+                .loaded_extensions()
+                .khr_get_surface_capabilities2
         {
             surface_full_screen_exclusive_info = Some(vk::SurfaceFullScreenExclusiveInfoEXT {
                 sType: vk::STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
@@ -483,9 +570,9 @@ impl <W> Swapchain<W> {
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing {
                 SharingMode::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
-                SharingMode::Concurrent(ref ids) => (vk::SHARING_MODE_CONCURRENT,
-                                                     ids.len() as u32,
-                                                     ids.as_ptr()),
+                SharingMode::Concurrent(ref ids) => {
+                    (vk::SHARING_MODE_CONCURRENT, ids.len() as u32, ids.as_ptr())
+                }
             };
 
             let infos = vk::SwapchainCreateInfoKHR {
@@ -517,25 +604,31 @@ impl <W> Swapchain<W> {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateSwapchainKHR(device.internal_object(),
-                                               &infos,
-                                               ptr::null(),
-                                               output.as_mut_ptr()))?;
+            check_errors(vk.CreateSwapchainKHR(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         let image_handles = unsafe {
             let mut num = 0;
-            check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
-                                                  swapchain,
-                                                  &mut num,
-                                                  ptr::null_mut()))?;
+            check_errors(vk.GetSwapchainImagesKHR(
+                device.internal_object(),
+                swapchain,
+                &mut num,
+                ptr::null_mut(),
+            ))?;
 
             let mut images = Vec::with_capacity(num as usize);
-            check_errors(vk.GetSwapchainImagesKHR(device.internal_object(),
-                                                  swapchain,
-                                                  &mut num,
-                                                  images.as_mut_ptr()))?;
+            check_errors(vk.GetSwapchainImagesKHR(
+                device.internal_object(),
+                swapchain,
+                &mut num,
+                images.as_mut_ptr(),
+            ))?;
             images.set_len(num as usize);
             images
         };
@@ -550,13 +643,15 @@ impl <W> Swapchain<W> {
                     cubemap_compatible: false,
                 };
 
-                let img = UnsafeImage::from_raw(device.clone(),
-                                                image,
-                                                usage.to_usage_bits(),
-                                                format,
-                                                dims,
-                                                1,
-                                                1);
+                let img = UnsafeImage::from_raw(
+                    device.clone(),
+                    image,
+                    usage.to_usage_bits(),
+                    format,
+                    dims,
+                    1,
+                    1,
+                );
 
                 ImageEntry {
                     image: img,
@@ -571,35 +666,37 @@ impl <W> Swapchain<W> {
                 if old_swapchain.fullscreen_exclusive != FullscreenExclusive::AppControlled {
                     false
                 } else {
-                    old_swapchain.fullscreen_exclusive_held.load(Ordering::SeqCst)
+                    old_swapchain
+                        .fullscreen_exclusive_held
+                        .load(Ordering::SeqCst)
                 }
             })
             .unwrap_or(false);
 
         let swapchain = Arc::new(Swapchain {
-                                     device: device.clone(),
-                                     surface: surface.clone(),
-                                     swapchain: swapchain,
-                                     images: images,
-                                     stale: Mutex::new(false),
-                                     num_images: num_images,
-                                     format: format,
-                                     color_space: color_space,
-                                     dimensions: dimensions,
-                                     layers: layers,
-                                     usage: usage.clone(),
-                                     sharing: sharing,
-                                     transform: transform,
-                                     alpha: alpha,
-                                     mode: mode,
-                                     fullscreen_exclusive,
-                                     fullscreen_exclusive_held: AtomicBool::new(fullscreen_exclusive_held),
-                                     clipped: clipped,
-                                 });
+            device: device.clone(),
+            surface: surface.clone(),
+            swapchain: swapchain,
+            images: images,
+            stale: Mutex::new(false),
+            num_images: num_images,
+            format: format,
+            color_space: color_space,
+            dimensions: dimensions,
+            layers: layers,
+            usage: usage.clone(),
+            sharing: sharing,
+            transform: transform,
+            alpha: alpha,
+            mode: mode,
+            fullscreen_exclusive,
+            fullscreen_exclusive_held: AtomicBool::new(fullscreen_exclusive_held),
+            clipped: clipped,
+        });
 
         let swapchain_images = unsafe {
             let mut swapchain_images = Vec::with_capacity(swapchain.images.len());
-            for n in 0 .. swapchain.images.len() {
+            for n in 0..swapchain.images.len() {
                 swapchain_images.push(SwapchainImage::from_raw(swapchain.clone(), n)?);
             }
             swapchain_images
@@ -608,22 +705,20 @@ impl <W> Swapchain<W> {
         Ok((swapchain, swapchain_images))
     }
 
-	/// Returns the saved Surface, from the Swapchain creation
-	pub fn surface(&self) -> &Arc<Surface<W>>{
-		&self.surface
-	}
+    /// Returns the saved Surface, from the Swapchain creation
+    pub fn surface(&self) -> &Arc<Surface<W>> {
+        &self.surface
+    }
 
     /// Returns of the images that belong to this swapchain.
     #[inline]
     pub fn raw_image(&self, offset: usize) -> Option<ImageInner> {
-        self.images.get(offset).map(|i| {
-            ImageInner {
-                image: &i.image,
-                first_layer: 0,
-                num_layers: self.layers as usize,
-                first_mipmap_level: 0,
-                num_mipmap_levels: 1,
-            }
+        self.images.get(offset).map(|i| ImageInner {
+            image: &i.image,
+            first_layer: 0,
+            num_layers: self.layers as usize,
+            first_mipmap_level: 0,
+            num_mipmap_levels: 1,
         })
     }
 
@@ -713,10 +808,12 @@ impl <W> Swapchain<W> {
         }
 
         unsafe {
-            check_errors(self.device.pointers().AcquireFullScreenExclusiveModeEXT(
-                self.device.internal_object(),
-                self.swapchain
-            ))?;
+            check_errors(
+                self.device.pointers().AcquireFullScreenExclusiveModeEXT(
+                    self.device.internal_object(),
+                    self.swapchain,
+                ),
+            )?;
         }
 
         Ok(())
@@ -734,10 +831,12 @@ impl <W> Swapchain<W> {
         }
 
         unsafe {
-            check_errors(self.device.pointers().ReleaseFullScreenExclusiveModeEXT(
-                self.device.internal_object(),
-                self.swapchain
-            ))?;
+            check_errors(
+                self.device.pointers().ReleaseFullScreenExclusiveModeEXT(
+                    self.device.internal_object(),
+                    self.swapchain,
+                ),
+            )?;
         }
 
         Ok(())
@@ -770,7 +869,9 @@ impl <W> Swapchain<W> {
         let image_entry = self.images.get(image_offset);
         if let Some(ref image_entry) = image_entry {
             !image_entry.undefined_layout.load(Ordering::SeqCst)
-        } else { false }
+        } else {
+            false
+        }
     }
 }
 
@@ -848,66 +949,65 @@ pub enum SwapchainCreationError {
     UnsupportedCompositeAlpha,
     /// The requested present mode is not supported by the surface.
     UnsupportedPresentMode,
+    /// The image configuration is not supported by the physical device.
+    UnsupportedImageConfiguration,
 }
 
 impl error::Error for SwapchainCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            SwapchainCreationError::OomError(_) => {
-                "not enough memory available"
-            },
-            SwapchainCreationError::DeviceLost => {
-                "the device was lost"
-            },
-            SwapchainCreationError::SurfaceLost => {
-                "the surface was lost"
-            },
+            SwapchainCreationError::OomError(_) => "not enough memory available",
+            SwapchainCreationError::DeviceLost => "the device was lost",
+            SwapchainCreationError::SurfaceLost => "the surface was lost",
             SwapchainCreationError::SurfaceInUse => {
                 "the surface is already used by another swapchain"
-            },
+            }
             SwapchainCreationError::NativeWindowInUse => {
                 "the window is already in use by another API"
-            },
+            }
             SwapchainCreationError::MissingExtensionKHRSwapchain => {
                 "the `VK_KHR_swapchain` extension was not enabled"
-            },
+            }
             SwapchainCreationError::MissingExtensionExtFullScreenExclusive => {
                 "the `VK_EXT_full_screen_exclusive` extension was not enabled"
-            },
+            }
             SwapchainCreationError::OldSwapchainSurfaceMismatch => {
                 "surface mismatch between old and new swapchain"
-            },
+            }
             SwapchainCreationError::OldSwapchainAlreadyUsed => {
                 "old swapchain has already been used to recreate a new one"
-            },
+            }
             SwapchainCreationError::UnsupportedMinImagesCount => {
                 "the requested number of swapchain images is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedMaxImagesCount => {
                 "the requested number of swapchain images is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedFormat => {
                 "the requested image format is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedDimensions => {
                 "the requested dimensions are not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedArrayLayers => {
                 "the requested array layers count is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedUsageFlags => {
                 "the requested image usage is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedSurfaceTransform => {
                 "the requested surface transform is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedCompositeAlpha => {
                 "the requested composite alpha is not supported by the surface"
-            },
+            }
             SwapchainCreationError::UnsupportedPresentMode => {
                 "the requested present mode is not supported by the surface"
-            },
+            }
+            SwapchainCreationError::UnsupportedImageConfiguration => {
+                "the requested image configuration is not supported by the physical device"
+            }
         }
     }
 
@@ -931,21 +1031,11 @@ impl From<Error> for SwapchainCreationError {
     #[inline]
     fn from(err: Error) -> SwapchainCreationError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                SwapchainCreationError::OomError(OomError::from(err))
-            },
-            err @ Error::OutOfDeviceMemory => {
-                SwapchainCreationError::OomError(OomError::from(err))
-            },
-            Error::DeviceLost => {
-                SwapchainCreationError::DeviceLost
-            },
-            Error::SurfaceLost => {
-                SwapchainCreationError::SurfaceLost
-            },
-            Error::NativeWindowInUse => {
-                SwapchainCreationError::NativeWindowInUse
-            },
+            err @ Error::OutOfHostMemory => SwapchainCreationError::OomError(OomError::from(err)),
+            err @ Error::OutOfDeviceMemory => SwapchainCreationError::OomError(OomError::from(err)),
+            Error::DeviceLost => SwapchainCreationError::DeviceLost,
+            Error::SurfaceLost => SwapchainCreationError::SurfaceLost,
+            Error::NativeWindowInUse => SwapchainCreationError::NativeWindowInUse,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -998,8 +1088,7 @@ impl<W> SwapchainAcquireFuture<W> {
 
 unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
     #[inline]
-    fn cleanup_finished(&mut self) {
-    }
+    fn cleanup_finished(&mut self) {}
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
@@ -1034,14 +1123,22 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
 
     #[inline]
     fn check_buffer_access(
-        &self, _: &dyn BufferAccess, _: bool, _: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        _: &dyn BufferAccess,
+        _: bool,
+        _: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, _: bool, _: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        _: bool,
+        _: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
             return Err(AccessCheckError::Unknown);
@@ -1049,18 +1146,21 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
 
         if self.swapchain.images[self.image_id]
             .undefined_layout
-            .load(Ordering::Relaxed) && layout != ImageLayout::Undefined
+            .load(Ordering::Relaxed)
+            && layout != ImageLayout::Undefined
         {
             return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
-                                                    requested: layout,
-                                                }));
+                requested: layout,
+            }));
         }
 
         if layout != ImageLayout::Undefined && layout != ImageLayout::PresentSrc {
-            return Err(AccessCheckError::Denied(AccessError::UnexpectedImageLayout {
-                                                    allowed: ImageLayout::PresentSrc,
-                                                    requested: layout,
-                                                }));
+            return Err(AccessCheckError::Denied(
+                AccessError::UnexpectedImageLayout {
+                    allowed: ImageLayout::PresentSrc,
+                    requested: layout,
+                },
+            ));
         }
 
         Ok(None)
@@ -1076,10 +1176,10 @@ unsafe impl<W> DeviceOwned for SwapchainAcquireFuture<W> {
 
 impl<W> Drop for SwapchainAcquireFuture<W> {
     fn drop(&mut self) {
-            if let Some(ref fence) = self.fence {
-                fence.wait(None).unwrap(); // TODO: handle error?
-                self.semaphore = None;
-            }
+        if let Some(ref fence) = self.fence {
+            fence.wait(None).unwrap(); // TODO: handle error?
+            self.semaphore = None;
+        }
 
         // TODO: if this future is destroyed without being presented, then eventually acquiring
         // a new image will block forever ; difficulty: hard
@@ -1120,18 +1220,12 @@ impl From<Error> for FullscreenExclusiveError {
     #[inline]
     fn from(err: Error) -> FullscreenExclusiveError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                FullscreenExclusiveError::OomError(OomError::from(err))
-            },
+            err @ Error::OutOfHostMemory => FullscreenExclusiveError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => {
                 FullscreenExclusiveError::OomError(OomError::from(err))
-            },
-            Error::SurfaceLost => {
-                FullscreenExclusiveError::SurfaceLost
-            },
-            Error::InitializationFailed => {
-                FullscreenExclusiveError::InitializationFailed
-            },
+            }
+            Error::SurfaceLost => FullscreenExclusiveError::SurfaceLost,
+            Error::InitializationFailed => FullscreenExclusiveError::InitializationFailed,
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -1149,11 +1243,17 @@ impl error::Error for FullscreenExclusiveError {
     fn description(&self) -> &str {
         match *self {
             FullscreenExclusiveError::OomError(_) => "not enough memory",
-            FullscreenExclusiveError::SurfaceLost => "the surface of this swapchain is no longer valid",
-            FullscreenExclusiveError::InitializationFailed => "operation could not be completed for driver specific reasons",
+            FullscreenExclusiveError::SurfaceLost => {
+                "the surface of this swapchain is no longer valid"
+            }
+            FullscreenExclusiveError::InitializationFailed => {
+                "operation could not be completed for driver specific reasons"
+            }
             FullscreenExclusiveError::DoubleAcquire => "fullscreen exclusivity is already acquired",
             FullscreenExclusiveError::DoubleRelease => "fullscreen exclusivity is not acquired",
-            FullscreenExclusiveError::NotAppControlled => "swapchain is not in fullscreen exclusive app controlled mode"
+            FullscreenExclusiveError::NotAppControlled => {
+                "swapchain is not in fullscreen exclusive app controlled mode"
+            }
         }
     }
 
@@ -1200,7 +1300,9 @@ impl error::Error for AcquireError {
             AcquireError::Timeout => "no image is available for acquiring yet",
             AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
             AcquireError::OutOfDate => "the swapchain needs to be recreated",
-            AcquireError::FullscreenExclusiveLost => "the swapchain no longer has fullscreen exclusivity",
+            AcquireError::FullscreenExclusiveLost => {
+                "the swapchain no longer has fullscreen exclusivity"
+            }
         }
     }
 
@@ -1245,7 +1347,8 @@ impl From<Error> for AcquireError {
 /// Represents a swapchain image being presented on the screen.
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished processing the submission"]
 pub struct PresentFuture<P, W>
-    where P: GpuFuture
+where
+    P: GpuFuture,
 {
     previous: P,
     queue: Arc<Queue>,
@@ -1261,7 +1364,8 @@ pub struct PresentFuture<P, W>
 }
 
 impl<P, W> PresentFuture<P, W>
-    where P: GpuFuture
+where
+    P: GpuFuture,
 {
     /// Returns the index of the image in the list of images returned when creating the swapchain.
     #[inline]
@@ -1277,7 +1381,8 @@ impl<P, W> PresentFuture<P, W>
 }
 
 unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
-    where P: GpuFuture
+where
+    P: GpuFuture,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -1296,50 +1401,58 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
         // buffer
 
         Ok(match self.previous.build_submission()? {
-               SubmitAnyBuilder::Empty => {
-                   let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain,
-                                         self.image_id as u32,
-                                         self.present_region.as_ref());
-                   SubmitAnyBuilder::QueuePresent(builder)
-               },
-               SubmitAnyBuilder::SemaphoresWait(sem) => {
-                   let mut builder: SubmitPresentBuilder = sem.into();
-                   builder.add_swapchain(&self.swapchain,
-                                         self.image_id as u32,
-                                         self.present_region.as_ref());
-                   SubmitAnyBuilder::QueuePresent(builder)
-               },
-               SubmitAnyBuilder::CommandBuffer(cb) => {
-                   // submit the command buffer by flushing previous.
-                   // Since the implementation should remember being flushed it's safe to call build_submission multiple times
-                   self.previous.flush()?;
-
-                   let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain,
-                                         self.image_id as u32,
-                                         self.present_region.as_ref());
-                   SubmitAnyBuilder::QueuePresent(builder)
-               },
-               SubmitAnyBuilder::BindSparse(cb) => {
-                   // submit the command buffer by flushing previous.
-                   // Since the implementation should remember being flushed it's safe to call build_submission multiple times
-                   self.previous.flush()?;
-
-                   let mut builder = SubmitPresentBuilder::new();
-                   builder.add_swapchain(&self.swapchain,
-                                         self.image_id as u32,
-                                         self.present_region.as_ref());
-                   SubmitAnyBuilder::QueuePresent(builder)
-               },
-               SubmitAnyBuilder::QueuePresent(present) => {
-                   unimplemented!() // TODO:
-                /*present.submit();
+            SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitPresentBuilder::new();
-                builder.add_swapchain(self.command_buffer.inner(), self.image_id);
-                SubmitAnyBuilder::CommandBuffer(builder)*/
-               },
-           })
+                builder.add_swapchain(
+                    &self.swapchain,
+                    self.image_id as u32,
+                    self.present_region.as_ref(),
+                );
+                SubmitAnyBuilder::QueuePresent(builder)
+            }
+            SubmitAnyBuilder::SemaphoresWait(sem) => {
+                let mut builder: SubmitPresentBuilder = sem.into();
+                builder.add_swapchain(
+                    &self.swapchain,
+                    self.image_id as u32,
+                    self.present_region.as_ref(),
+                );
+                SubmitAnyBuilder::QueuePresent(builder)
+            }
+            SubmitAnyBuilder::CommandBuffer(cb) => {
+                // submit the command buffer by flushing previous.
+                // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+                self.previous.flush()?;
+
+                let mut builder = SubmitPresentBuilder::new();
+                builder.add_swapchain(
+                    &self.swapchain,
+                    self.image_id as u32,
+                    self.present_region.as_ref(),
+                );
+                SubmitAnyBuilder::QueuePresent(builder)
+            }
+            SubmitAnyBuilder::BindSparse(cb) => {
+                // submit the command buffer by flushing previous.
+                // Since the implementation should remember being flushed it's safe to call build_submission multiple times
+                self.previous.flush()?;
+
+                let mut builder = SubmitPresentBuilder::new();
+                builder.add_swapchain(
+                    &self.swapchain,
+                    self.image_id as u32,
+                    self.present_region.as_ref(),
+                );
+                SubmitAnyBuilder::QueuePresent(builder)
+            }
+            SubmitAnyBuilder::QueuePresent(present) => {
+                unimplemented!() // TODO:
+                                 /*present.submit();
+                                 let mut builder = SubmitPresentBuilder::new();
+                                 builder.add_swapchain(self.command_buffer.inner(), self.image_id);
+                                 SubmitAnyBuilder::CommandBuffer(builder)*/
+            }
+        })
     }
 
     #[inline]
@@ -1350,20 +1463,24 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
             let build_submission_result = self.build_submission();
 
             if let &Err(FlushError::FullscreenExclusiveLost) = &build_submission_result {
-                self.swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+                self.swapchain
+                    .fullscreen_exclusive_held
+                    .store(false, Ordering::SeqCst);
             }
 
             match build_submission_result? {
-                SubmitAnyBuilder::Empty => {},
+                SubmitAnyBuilder::Empty => {}
                 SubmitAnyBuilder::QueuePresent(present) => {
                     let present_result = present.submit(&self.queue);
 
                     if let &Err(SubmitPresentError::FullscreenExclusiveLost) = &present_result {
-                        self.swapchain.fullscreen_exclusive_held.store(false, Ordering::SeqCst);
+                        self.swapchain
+                            .fullscreen_exclusive_held
+                            .store(false, Ordering::SeqCst);
                     }
 
                     present_result?;
-                },
+                }
                 _ => unreachable!(),
             }
 
@@ -1387,24 +1504,31 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
     #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         debug_assert!(match self.previous.queue() {
-                          None => true,
-                          Some(q) => q.is_same(&self.queue),
-                      });
+            None => true,
+            Some(q) => q.is_same(&self.queue),
+        });
 
         Some(self.queue.clone())
     }
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() == image.inner().image.internal_object() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt
@@ -1420,7 +1544,8 @@ unsafe impl<P, W> GpuFuture for PresentFuture<P, W>
 }
 
 unsafe impl<P, W> DeviceOwned for PresentFuture<P, W>
-    where P: GpuFuture
+where
+    P: GpuFuture,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -1429,7 +1554,8 @@ unsafe impl<P, W> DeviceOwned for PresentFuture<P, W>
 }
 
 impl<P, W> Drop for PresentFuture<P, W>
-    where P: GpuFuture
+where
+    P: GpuFuture,
 {
     fn drop(&mut self) {
         unsafe {
@@ -1439,11 +1565,11 @@ impl<P, W> Drop for PresentFuture<P, W>
                         // Block until the queue finished.
                         self.queue().unwrap().wait().unwrap();
                         self.previous.signal_finished();
-                    },
+                    }
                     Err(_) => {
                         // In case of error we simply do nothing, as there's nothing to do
                         // anyway.
-                    },
+                    }
                 }
             }
         }
@@ -1462,9 +1588,12 @@ pub struct AcquiredImage {
 /// - The semaphore and/or the fence must be kept alive until it is signaled.
 /// - The swapchain must not have been replaced by being passed as the old swapchain when creating
 ///   a new one.
-pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Option<Duration>,
-                                     semaphore: Option<&Semaphore>, fence: Option<&Fence>)
-                                              -> Result<AcquiredImage, AcquireError> {
+pub unsafe fn acquire_next_image_raw<W>(
+    swapchain: &Swapchain<W>,
+    timeout: Option<Duration>,
+    semaphore: Option<&Semaphore>,
+    fence: Option<&Fence>,
+) -> Result<AcquiredImage, AcquireError> {
     let vk = swapchain.device.pointers();
 
     let timeout_ns = if let Some(timeout) = timeout {
@@ -1477,13 +1606,14 @@ pub unsafe fn acquire_next_image_raw<W>(swapchain: &Swapchain<W>, timeout: Optio
     };
 
     let mut out = MaybeUninit::uninit();
-    let r =
-        check_errors(vk.AcquireNextImageKHR(swapchain.device.internal_object(),
-                                            swapchain.swapchain,
-                                            timeout_ns,
-                                            semaphore.map(|s| s.internal_object()).unwrap_or(0),
-                                            fence.map(|f| f.internal_object()).unwrap_or(0),
-                                            out.as_mut_ptr()))?;
+    let r = check_errors(vk.AcquireNextImageKHR(
+        swapchain.device.internal_object(),
+        swapchain.swapchain,
+        timeout_ns,
+        semaphore.map(|s| s.internal_object()).unwrap_or(0),
+        fence.map(|f| f.internal_object()).unwrap_or(0),
+        out.as_mut_ptr(),
+    ))?;
 
     let out = out.assume_init();
     let (id, suboptimal) = match r {

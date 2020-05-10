@@ -102,8 +102,8 @@
 //! // TODO: storage formats
 //!
 
-use std::{error, fmt, mem};
 use std::vec::IntoIter as VecIntoIter;
+use std::{error, fmt, mem};
 
 use half::f16;
 
@@ -927,7 +927,6 @@ impl From<(f32, u32)> for ClearValue {
         ClearValue::DepthStencil(val)
     }
 }
-
 
 // TODO: remove once no longer needed
 pub unsafe trait ClearValuesTuple {

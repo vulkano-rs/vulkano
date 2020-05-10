@@ -82,7 +82,6 @@ pub enum PresentMode {
     ///
     /// This is the equivalent of OpenGL's `SwapInterval` with a value of -1.
     Relaxed = vk::PRESENT_MODE_FIFO_RELAXED_KHR,
-
     // TODO: These can't be enabled yet because they have to be used with shared present surfaces
     // which vulkano doesnt support yet.
     //SharedDemand = vk::PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR,
@@ -101,7 +100,8 @@ pub struct SupportedPresentModes {
 }
 
 pub fn supported_present_modes_from_list<I>(elem: I) -> SupportedPresentModes
-    where I: Iterator<Item = vk::PresentModeKHR>
+where
+    I: Iterator<Item = vk::PresentModeKHR>,
 {
     let mut result = SupportedPresentModes::none();
     for e in elem {
@@ -112,7 +112,7 @@ pub fn supported_present_modes_from_list<I>(elem: I) -> SupportedPresentModes
             vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
             vk::PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR => result.shared_demand = true,
             vk::PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR => result.shared_continuous = true,
-            _ => { }
+            _ => {}
         }
     }
     result
@@ -325,47 +325,66 @@ pub struct SupportedSurfaceTransforms {
     pub inherit: bool,
 }
 
-pub fn surface_transforms_from_bits(val: vk::SurfaceTransformFlagsKHR)
-                                    -> SupportedSurfaceTransforms {
+pub fn surface_transforms_from_bits(
+    val: vk::SurfaceTransformFlagsKHR,
+) -> SupportedSurfaceTransforms {
     macro_rules! v {
-        ($val:expr, $out:ident, $e:expr, $f:ident) => (
-            if ($val & $e) != 0 { $out.$f = true; }
-        );
+        ($val:expr, $out:ident, $e:expr, $f:ident) => {
+            if ($val & $e) != 0 {
+                $out.$f = true;
+            }
+        };
     }
 
     let mut result = SupportedSurfaceTransforms::none();
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-       identity);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
-       rotate90);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
-       rotate180);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
-       rotate270);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
-       horizontal_mirror);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-       horizontal_mirror_rotate90);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-       horizontal_mirror_rotate180);
-    v!(val,
-       result,
-       vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-       horizontal_mirror_rotate270);
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+        identity
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+        rotate90
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
+        rotate180
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
+        rotate270
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
+        horizontal_mirror
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
+        horizontal_mirror_rotate90
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
+        horizontal_mirror_rotate180
+    );
+    v!(
+        val,
+        result,
+        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
+        horizontal_mirror_rotate270
+    );
     v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
     result
 }

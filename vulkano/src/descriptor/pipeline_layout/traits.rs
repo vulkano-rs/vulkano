@@ -12,19 +12,19 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use SafeDeref;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::DescriptorDescSupersetError;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use descriptor::pipeline_layout::limits_check;
 use descriptor::pipeline_layout::PipelineLayout;
 use descriptor::pipeline_layout::PipelineLayoutCreationError;
 use descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use descriptor::pipeline_layout::PipelineLayoutSys;
-use descriptor::pipeline_layout::limits_check;
 use device::Device;
 use device::DeviceOwned;
+use SafeDeref;
 
 /// Trait for objects that describe the layout of the descriptors and push constants of a pipeline.
 pub unsafe trait PipelineLayoutAbstract: PipelineLayoutDesc + DeviceOwned {
@@ -42,8 +42,9 @@ pub unsafe trait PipelineLayoutAbstract: PipelineLayoutDesc + DeviceOwned {
 }
 
 unsafe impl<T> PipelineLayoutAbstract for T
-    where T: SafeDeref,
-          T::Target: PipelineLayoutAbstract
+where
+    T: SafeDeref,
+    T::Target: PipelineLayoutAbstract,
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
@@ -96,15 +97,18 @@ pub unsafe trait PipelineLayoutDesc {
     /// Builds the union of this layout and another.
     #[inline]
     fn union<T>(self, other: T) -> PipelineLayoutDescUnion<Self, T>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         PipelineLayoutDescUnion::new(self, other)
     }
 
     /// Checks whether this description fulfills the device limits requirements.
     #[inline]
-    fn check_against_limits(&self, device: &Device)
-                            -> Result<(), limits_check::PipelineLayoutLimitsError> {
+    fn check_against_limits(
+        &self,
+        device: &Device,
+    ) -> Result<(), limits_check::PipelineLayoutLimitsError> {
         limits_check::check_desc_against_limits(self, device.physical_device().limits())
     }
 
@@ -113,7 +117,8 @@ pub unsafe trait PipelineLayoutDesc {
     /// > **Note**: This is just a shortcut for `PipelineLayout::new`.
     #[inline]
     fn build(self, device: Arc<Device>) -> Result<PipelineLayout<Self>, PipelineLayoutCreationError>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         PipelineLayout::new(device, self)
     }
@@ -133,8 +138,9 @@ pub struct PipelineLayoutDescPcRange {
 }
 
 unsafe impl<T> PipelineLayoutDesc for T
-    where T: SafeDeref,
-          T::Target: PipelineLayoutDesc
+where
+    T: SafeDeref,
+    T::Target: PipelineLayoutDesc,
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -167,45 +173,51 @@ unsafe impl<T> PipelineLayoutDesc for T
 /// This trait is automatically implemented on all types that implement `PipelineLayoutAbstract`.
 /// TODO: once specialization lands, we can add implementations that don't perform deep comparisons
 pub unsafe trait PipelineLayoutSuperset<Other: ?Sized>: PipelineLayoutDesc
-    where Other: PipelineLayoutDesc
+where
+    Other: PipelineLayoutDesc,
 {
     /// Makes sure that `self` is a superset of `Other`. Returns an `Err` if this is not the case.
     fn ensure_superset_of(&self, &Other) -> Result<(), PipelineLayoutNotSupersetError>;
 }
 
 unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSuperset<U> for T
-    where T: PipelineLayoutDesc,
-          U: PipelineLayoutDesc
+where
+    T: PipelineLayoutDesc,
+    U: PipelineLayoutDesc,
 {
     fn ensure_superset_of(&self, other: &U) -> Result<(), PipelineLayoutNotSupersetError> {
-        for set_num in 0 .. cmp::max(self.num_sets(), other.num_sets()) {
+        for set_num in 0..cmp::max(self.num_sets(), other.num_sets()) {
             let other_num_bindings = other.num_bindings_in_set(set_num).unwrap_or(0);
             let self_num_bindings = self.num_bindings_in_set(set_num).unwrap_or(0);
 
             if self_num_bindings < other_num_bindings {
                 return Err(PipelineLayoutNotSupersetError::DescriptorsCountMismatch {
-                               set_num: set_num as u32,
-                               self_num_descriptors: self_num_bindings as u32,
-                               other_num_descriptors: other_num_bindings as u32,
-                           });
+                    set_num: set_num as u32,
+                    self_num_descriptors: self_num_bindings as u32,
+                    other_num_descriptors: other_num_bindings as u32,
+                });
             }
 
-            for desc_num in 0 .. other_num_bindings {
-                match (self.descriptor(set_num, desc_num), other.descriptor(set_num, desc_num)) {
+            for desc_num in 0..other_num_bindings {
+                match (
+                    self.descriptor(set_num, desc_num),
+                    other.descriptor(set_num, desc_num),
+                ) {
                     (Some(mine), Some(other)) => {
                         if let Err(err) = mine.is_superset_of(&other) {
                             return Err(PipelineLayoutNotSupersetError::IncompatibleDescriptors {
-                                           error: err,
-                                           set_num: set_num as u32,
-                                           descriptor: desc_num as u32,
-                                       });
+                                error: err,
+                                set_num: set_num as u32,
+                                descriptor: desc_num as u32,
+                            });
                         }
-                    },
-                    (None, Some(_)) =>
+                    }
+                    (None, Some(_)) => {
                         return Err(PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor {
-                                       set_num: set_num as u32,
-                                       descriptor: desc_num as u32,
-                                   }),
+                            set_num: set_num as u32,
+                            descriptor: desc_num as u32,
+                        })
+                    }
                     _ => (),
                 }
             }
@@ -244,13 +256,13 @@ impl error::Error for PipelineLayoutNotSupersetError {
         match *self {
             PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
                 "there are more descriptors in the child than in the parent layout"
-            },
+            }
             PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
                 "expected an empty descriptor, but got something instead"
-            },
+            }
             PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
                 "two descriptors are incompatible"
-            },
+            }
         }
     }
 
@@ -259,7 +271,7 @@ impl error::Error for PipelineLayoutNotSupersetError {
         match *self {
             PipelineLayoutNotSupersetError::IncompatibleDescriptors { ref error, .. } => {
                 Some(error)
-            },
+            }
             _ => None,
         }
     }
@@ -274,15 +286,17 @@ impl fmt::Display for PipelineLayoutNotSupersetError {
 
 /// Traits that allow determining whether
 pub unsafe trait PipelineLayoutSetsCompatible<Other: ?Sized>: PipelineLayoutDesc
-    where Other: DescriptorSetsCollection
+where
+    Other: DescriptorSetsCollection,
 {
     /// Returns true if `Other` can be used with a pipeline that uses `self` as layout.
     fn is_compatible(&self, &Other) -> bool;
 }
 
 unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSetsCompatible<U> for T
-    where T: PipelineLayoutDesc,
-          U: DescriptorSetsCollection
+where
+    T: PipelineLayoutDesc,
+    U: DescriptorSetsCollection,
 {
     fn is_compatible(&self, sets: &U) -> bool {
         /*let mut other_descriptor_sets = DescriptorSetsCollection::description(sets);
@@ -312,14 +326,16 @@ unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutSetsCompatible<U> for T
 
 /// Traits that allow determining whether
 // TODO: require a trait on Pc
-pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc: ?Sized>
-    : PipelineLayoutDesc {
+pub unsafe trait PipelineLayoutPushConstantsCompatible<Pc: ?Sized>:
+    PipelineLayoutDesc
+{
     /// Returns true if `Pc` can be used with a pipeline that uses `self` as layout.
     fn is_compatible(&self, &Pc) -> bool;
 }
 
 unsafe impl<T: ?Sized, U: ?Sized> PipelineLayoutPushConstantsCompatible<U> for T
-    where T: PipelineLayoutDesc
+where
+    T: PipelineLayoutDesc,
 {
     fn is_compatible(&self, _: &U) -> bool {
         // FIXME:

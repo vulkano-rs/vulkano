@@ -28,11 +28,14 @@ use VulkanObject;
 // TODO: handle errors
 #[inline]
 pub fn join<F, S>(first: F, second: S) -> JoinFuture<F, S>
-    where F: GpuFuture,
-          S: GpuFuture
+where
+    F: GpuFuture,
+    S: GpuFuture,
 {
-    assert_eq!(first.device().internal_object(),
-               second.device().internal_object());
+    assert_eq!(
+        first.device().internal_object(),
+        second.device().internal_object()
+    );
 
     if !first.queue_change_allowed() && !second.queue_change_allowed() {
         assert!(first.queue().unwrap().is_same(&second.queue().unwrap()));
@@ -52,21 +55,25 @@ pub struct JoinFuture<A, B> {
 }
 
 unsafe impl<A, B> DeviceOwned for JoinFuture<A, B>
-    where A: DeviceOwned,
-          B: DeviceOwned
+where
+    A: DeviceOwned,
+    B: DeviceOwned,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         let device = self.first.device();
-        debug_assert_eq!(self.second.device().internal_object(),
-                         device.internal_object());
+        debug_assert_eq!(
+            self.second.device().internal_object(),
+            device.internal_object()
+        );
         device
     }
 }
 
 unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
-    where A: GpuFuture,
-          B: GpuFuture
+where
+    A: GpuFuture,
+    B: GpuFuture,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -92,75 +99,75 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
         // In some cases below we have to submit previous command buffers already, this s done by flushing previous.
         // Since the implementation should remember being flushed it's safe to call build_submission multiple times
         Ok(match (first, second) {
-               (SubmitAnyBuilder::Empty, b) => b,
-               (a, SubmitAnyBuilder::Empty) => a,
-               (SubmitAnyBuilder::SemaphoresWait(mut a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   a.merge(b);
-                   SubmitAnyBuilder::SemaphoresWait(a)
-               },
-               (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(b)) => {
-                   self.second.flush()?;
-                   SubmitAnyBuilder::SemaphoresWait(a)
-               },
-               (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   self.first.flush()?;
-                   SubmitAnyBuilder::SemaphoresWait(b)
-               },
-               (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::QueuePresent(b)) => {
-                   self.second.flush()?;
-                   SubmitAnyBuilder::SemaphoresWait(a)
-               },
-               (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   self.first.flush()?;
-                   SubmitAnyBuilder::SemaphoresWait(b)
-               },
-               (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(b)) => {
-                   self.second.flush()?;
-                   SubmitAnyBuilder::SemaphoresWait(a)
-               },
-               (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
-                   self.first.flush()?;
-                   SubmitAnyBuilder::SemaphoresWait(b)
-               },
-               (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::CommandBuffer(b)) => {
-                   // TODO: we may want to add debug asserts here
-                   let new = a.merge(b);
-                   SubmitAnyBuilder::CommandBuffer(new)
-               },
-               (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::QueuePresent(b)) => {
-                   self.first.flush()?;
-                   self.second.flush()?;
-                   SubmitAnyBuilder::Empty
-               },
-               (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::QueuePresent(b)) => {
-                   unimplemented!()
-               },
-               (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::CommandBuffer(b)) => {
-                   unimplemented!()
-               },
-               (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::QueuePresent(b)) => {
-                   unimplemented!()
-               },
-               (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::BindSparse(b)) => {
-                   unimplemented!()
-               },
-               (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::CommandBuffer(b)) => {
-                   unimplemented!()
-               },
-               (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::BindSparse(b)) => {
-                   unimplemented!()
-               },
-               (SubmitAnyBuilder::BindSparse(mut a), SubmitAnyBuilder::BindSparse(b)) => {
-                   match a.merge(b) {
-                       Ok(()) => SubmitAnyBuilder::BindSparse(a),
-                       Err(_) => {
-                           // TODO: this happens if both bind sparse have been given a fence already
-                           //       annoying, but not impossible, to handle
-                           unimplemented!()
-                       },
-                   }
-               },
-           })
+            (SubmitAnyBuilder::Empty, b) => b,
+            (a, SubmitAnyBuilder::Empty) => a,
+            (SubmitAnyBuilder::SemaphoresWait(mut a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                a.merge(b);
+                SubmitAnyBuilder::SemaphoresWait(a)
+            }
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                self.second.flush()?;
+                SubmitAnyBuilder::SemaphoresWait(a)
+            }
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                self.first.flush()?;
+                SubmitAnyBuilder::SemaphoresWait(b)
+            }
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                self.second.flush()?;
+                SubmitAnyBuilder::SemaphoresWait(a)
+            }
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                self.first.flush()?;
+                SubmitAnyBuilder::SemaphoresWait(b)
+            }
+            (SubmitAnyBuilder::SemaphoresWait(a), SubmitAnyBuilder::BindSparse(b)) => {
+                self.second.flush()?;
+                SubmitAnyBuilder::SemaphoresWait(a)
+            }
+            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::SemaphoresWait(b)) => {
+                self.first.flush()?;
+                SubmitAnyBuilder::SemaphoresWait(b)
+            }
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                // TODO: we may want to add debug asserts here
+                let new = a.merge(b);
+                SubmitAnyBuilder::CommandBuffer(new)
+            }
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                self.first.flush()?;
+                self.second.flush()?;
+                SubmitAnyBuilder::Empty
+            }
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                unimplemented!()
+            }
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                unimplemented!()
+            }
+            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::QueuePresent(b)) => {
+                unimplemented!()
+            }
+            (SubmitAnyBuilder::QueuePresent(a), SubmitAnyBuilder::BindSparse(b)) => {
+                unimplemented!()
+            }
+            (SubmitAnyBuilder::BindSparse(a), SubmitAnyBuilder::CommandBuffer(b)) => {
+                unimplemented!()
+            }
+            (SubmitAnyBuilder::CommandBuffer(a), SubmitAnyBuilder::BindSparse(b)) => {
+                unimplemented!()
+            }
+            (SubmitAnyBuilder::BindSparse(mut a), SubmitAnyBuilder::BindSparse(b)) => {
+                match a.merge(b) {
+                    Ok(()) => SubmitAnyBuilder::BindSparse(a),
+                    Err(_) => {
+                        // TODO: this happens if both bind sparse have been given a fence already
+                        //       annoying, but not impossible, to handle
+                        unimplemented!()
+                    }
+                }
+            }
+        })
     }
 
     #[inline]
@@ -177,15 +184,17 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
     #[inline]
     fn queue(&self) -> Option<Arc<Queue>> {
         match (self.first.queue(), self.second.queue()) {
-            (Some(q1), Some(q2)) => if q1.is_same(&q2) {
-                Some(q1)
-            } else if self.first.queue_change_allowed() {
-                Some(q2)
-            } else if self.second.queue_change_allowed() {
-                Some(q1)
-            } else {
-                None
-            },
+            (Some(q1), Some(q2)) => {
+                if q1.is_same(&q2) {
+                    Some(q1)
+                } else if self.first.queue_change_allowed() {
+                    Some(q2)
+                } else if self.second.queue_change_allowed() {
+                    Some(q1)
+                } else {
+                    None
+                }
+            }
             (Some(q), None) => Some(q),
             (None, Some(q)) => Some(q),
             (None, None) => None,
@@ -194,53 +203,66 @@ unsafe impl<A, B> GpuFuture for JoinFuture<A, B>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         let first = self.first.check_buffer_access(buffer, exclusive, queue);
         let second = self.second.check_buffer_access(buffer, exclusive, queue);
-        debug_assert!(!exclusive || !(first.is_ok() && second.is_ok()),
-                      "Two futures gave exclusive access to the same resource");
+        debug_assert!(
+            !exclusive || !(first.is_ok() && second.is_ok()),
+            "Two futures gave exclusive access to the same resource"
+        );
         match (first, second) {
             (v, Err(AccessCheckError::Unknown)) => v,
             (Err(AccessCheckError::Unknown), v) => v,
-            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) =>
-                Err(AccessCheckError::Denied(e1)),        // TODO: which one?
-            (Ok(_), Err(AccessCheckError::Denied(_))) |
-            (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!("Contradictory information \
-                                                                 between two futures"),
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) => {
+                Err(AccessCheckError::Denied(e1))
+            } // TODO: which one?
+            (Ok(_), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!(
+                "Contradictory information \
+                                                                 between two futures"
+            ),
             (Ok(None), Ok(None)) => Ok(None),
-            (Ok(Some(a)), Ok(None)) |
-            (Ok(None), Ok(Some(a))) => Ok(Some(a)),
-            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => {
-                Ok(Some((a1 | b1, a2 | b2)))
-            },
+            (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
+            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => Ok(Some((a1 | b1, a2 | b2))),
         }
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
-        let first = self.first
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        let first = self
+            .first
             .check_image_access(image, layout, exclusive, queue);
-        let second = self.second
+        let second = self
+            .second
             .check_image_access(image, layout, exclusive, queue);
-        debug_assert!(!exclusive || !(first.is_ok() && second.is_ok()),
-                      "Two futures gave exclusive access to the same resource");
+        debug_assert!(
+            !exclusive || !(first.is_ok() && second.is_ok()),
+            "Two futures gave exclusive access to the same resource"
+        );
         match (first, second) {
             (v, Err(AccessCheckError::Unknown)) => v,
             (Err(AccessCheckError::Unknown), v) => v,
-            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) =>
-                Err(AccessCheckError::Denied(e1)),        // TODO: which one?
-            (Ok(_), Err(AccessCheckError::Denied(_))) |
-            (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!("Contradictory information \
-                                                                 between two futures"),
+            (Err(AccessCheckError::Denied(e1)), Err(AccessCheckError::Denied(e2))) => {
+                Err(AccessCheckError::Denied(e1))
+            } // TODO: which one?
+            (Ok(_), Err(AccessCheckError::Denied(_)))
+            | (Err(AccessCheckError::Denied(_)), Ok(_)) => panic!(
+                "Contradictory information \
+                                                                 between two futures"
+            ),
             (Ok(None), Ok(None)) => Ok(None),
-            (Ok(Some(a)), Ok(None)) |
-            (Ok(None), Ok(Some(a))) => Ok(Some(a)),
-            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => {
-                Ok(Some((a1 | b1, a2 | b2)))
-            },
+            (Ok(Some(a)), Ok(None)) | (Ok(None), Ok(Some(a))) => Ok(Some(a)),
+            (Ok(Some((a1, a2))), Ok(Some((b1, b2)))) => Ok(Some((a1 | b1, a2 | b2))),
         }
     }
 }

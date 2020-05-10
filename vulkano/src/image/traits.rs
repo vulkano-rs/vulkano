@@ -13,18 +13,18 @@ use std::hash::Hasher;
 use buffer::BufferAccess;
 use format::ClearValue;
 use format::Format;
+use format::PossibleCompressedFormatDesc;
 use format::PossibleDepthFormatDesc;
 use format::PossibleDepthStencilFormatDesc;
 use format::PossibleFloatFormatDesc;
 use format::PossibleSintFormatDesc;
 use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
-use format::PossibleCompressedFormatDesc;
+use image::sys::UnsafeImage;
+use image::sys::UnsafeImageView;
 use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageLayout;
-use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use sampler::Sampler;
 use sync::AccessError;
 
@@ -111,7 +111,9 @@ pub unsafe trait ImageAccess {
     /// of the method.
     unsafe fn layout_initialized(&self) {}
 
-    fn is_layout_initialized(&self) -> bool {false}
+    fn is_layout_initialized(&self) -> bool {
+        false
+    }
 
     unsafe fn preinitialized_layout(&self) -> bool {
         self.inner().image.preinitialized_layout()
@@ -140,9 +142,12 @@ pub unsafe trait ImageAccess {
     /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
     /// layout requirement is either `Undefined` or `Preinitialized`.
     #[inline]
-    unsafe fn forced_undefined_initial_layout(self, preinitialized: bool)
-                                              -> ImageAccessFromUndefinedLayout<Self>
-        where Self: Sized
+    unsafe fn forced_undefined_initial_layout(
+        self,
+        preinitialized: bool,
+    ) -> ImageAccessFromUndefinedLayout<Self>
+    where
+        Self: Sized,
     {
         ImageAccessFromUndefinedLayout {
             image: self,
@@ -199,8 +204,11 @@ pub unsafe trait ImageAccess {
     /// If you call this function, you should call `unlock()` once the resource is no longer in use
     /// by the GPU. The implementation is not expected to automatically perform any unlocking and
     /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
-                    -> Result<(), AccessError>;
+    fn try_gpu_lock(
+        &self,
+        exclusive_access: bool,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -254,8 +262,9 @@ pub struct ImageInner<'a> {
 }
 
 unsafe impl<T> ImageAccess for T
-    where T: SafeDeref,
-          T::Target: ImageAccess
+where
+    T: SafeDeref,
+    T::Target: ImageAccess,
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -288,8 +297,11 @@ unsafe impl<T> ImageAccess for T
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
-                    -> Result<(), AccessError> {
+    fn try_gpu_lock(
+        &self,
+        exclusive_access: bool,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
         (**self).try_gpu_lock(exclusive_access, expected_layout)
     }
 
@@ -339,7 +351,8 @@ pub struct ImageAccessFromUndefinedLayout<I> {
 }
 
 unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
-    where I: ImageAccess
+where
+    I: ImageAccess,
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -376,8 +389,11 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
     }
 
     #[inline]
-    fn try_gpu_lock(&self, exclusive_access: bool, expected_layout: ImageLayout)
-                    -> Result<(), AccessError> {
+    fn try_gpu_lock(
+        &self,
+        exclusive_access: bool,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
         self.image.try_gpu_lock(exclusive_access, expected_layout)
     }
 
@@ -393,7 +409,8 @@ unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
 }
 
 impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
-    where I: ImageAccess
+where
+    I: ImageAccess,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -401,12 +418,11 @@ impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
     }
 }
 
-impl<I> Eq for ImageAccessFromUndefinedLayout<I>
-    where I: ImageAccess
-{}
+impl<I> Eq for ImageAccessFromUndefinedLayout<I> where I: ImageAccess {}
 
 impl<I> Hash for ImageAccessFromUndefinedLayout<I>
-    where I: ImageAccess
+where
+    I: ImageAccess,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -476,8 +492,9 @@ pub unsafe trait ImageViewAccess {
 }
 
 unsafe impl<T> ImageViewAccess for T
-    where T: SafeDeref,
-          T::Target: ImageViewAccess
+where
+    T: SafeDeref,
+    T::Target: ImageViewAccess,
 {
     #[inline]
     fn parent(&self) -> &dyn ImageAccess {

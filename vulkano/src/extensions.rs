@@ -11,9 +11,9 @@ use std::error;
 use std::fmt;
 use std::str;
 
+use instance::loader::LoadingError;
 use Error;
 use OomError;
-use instance::loader::LoadingError;
 
 macro_rules! extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
@@ -226,12 +226,10 @@ impl From<Error> for SupportedExtensionsError {
     #[inline]
     fn from(err: Error) -> SupportedExtensionsError {
         match err {
-            err @ Error::OutOfHostMemory => {
-                SupportedExtensionsError::OomError(OomError::from(err))
-            },
+            err @ Error::OutOfHostMemory => SupportedExtensionsError::OomError(OomError::from(err)),
             err @ Error::OutOfDeviceMemory => {
                 SupportedExtensionsError::OomError(OomError::from(err))
-            },
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }

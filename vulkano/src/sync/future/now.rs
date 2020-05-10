@@ -35,8 +35,7 @@ pub struct NowFuture {
 
 unsafe impl GpuFuture for NowFuture {
     #[inline]
-    fn cleanup_finished(&mut self) {
-    }
+    fn cleanup_finished(&mut self) {}
 
     #[inline]
     unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
@@ -49,8 +48,7 @@ unsafe impl GpuFuture for NowFuture {
     }
 
     #[inline]
-    unsafe fn signal_finished(&self) {
-    }
+    unsafe fn signal_finished(&self) {}
 
     #[inline]
     fn queue_change_allowed(&self) -> bool {
@@ -64,14 +62,22 @@ unsafe impl GpuFuture for NowFuture {
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, _: bool, _: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        _: bool,
+        _: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
     #[inline]
-    fn check_image_access(&self, _: &dyn ImageAccess, _: ImageLayout, _: bool, _: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        _: &dyn ImageAccess,
+        _: ImageLayout,
+        _: bool,
+        _: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 }

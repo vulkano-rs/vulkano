@@ -69,14 +69,18 @@ impl Into<vk::PrimitiveTopology> for PrimitiveTopology {
             PrimitiveTopology::TriangleList => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
             PrimitiveTopology::TriangleStrip => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
             PrimitiveTopology::TriangleFan => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
-            PrimitiveTopology::LineListWithAdjacency =>
-                vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY,
-            PrimitiveTopology::LineStripWithAdjacency =>
-                vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY,
-            PrimitiveTopology::TriangleListWithAdjacency =>
-                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY,
-            PrimitiveTopology::TriangleStripWithAdjacency =>
-                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY,
+            PrimitiveTopology::LineListWithAdjacency => {
+                vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY
+            }
+            PrimitiveTopology::LineStripWithAdjacency => {
+                vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY
+            }
+            PrimitiveTopology::TriangleListWithAdjacency => {
+                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY
+            }
+            PrimitiveTopology::TriangleStripWithAdjacency => {
+                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY
+            }
             PrimitiveTopology::PatchList { .. } => vk::PRIMITIVE_TOPOLOGY_PATCH_LIST,
         }
     }

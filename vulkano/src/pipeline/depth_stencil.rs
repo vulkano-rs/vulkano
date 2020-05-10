@@ -134,11 +134,15 @@ impl Stencil {
     #[inline]
     pub fn always_keep(&self) -> bool {
         match self.compare {
-            Compare::Always => self.pass_op == StencilOp::Keep &&
-                self.depth_fail_op == StencilOp::Keep,
+            Compare::Always => {
+                self.pass_op == StencilOp::Keep && self.depth_fail_op == StencilOp::Keep
+            }
             Compare::Never => self.fail_op == StencilOp::Keep,
-            _ => self.pass_op == StencilOp::Keep && self.fail_op == StencilOp::Keep &&
-                self.depth_fail_op == StencilOp::Keep,
+            _ => {
+                self.pass_op == StencilOp::Keep
+                    && self.fail_op == StencilOp::Keep
+                    && self.depth_fail_op == StencilOp::Keep
+            }
         }
     }
 }

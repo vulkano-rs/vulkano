@@ -10,7 +10,6 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use OomError;
 use descriptor::descriptor_set::DescriptorPool;
 use descriptor::descriptor_set::DescriptorPoolAlloc;
 use descriptor::descriptor_set::DescriptorPoolAllocError;
@@ -20,6 +19,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
+use OomError;
 
 /// Standard implementation of a descriptor pool.
 ///
@@ -65,8 +65,10 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
     // TODO: eventually use a lock-free algorithm?
-    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout)
-             -> Result<StdDescriptorPoolAlloc, OomError> {
+    fn alloc(
+        &mut self,
+        layout: &UnsafeDescriptorSetLayout,
+    ) -> Result<StdDescriptorPoolAlloc, OomError> {
         let mut pools = self.pools.lock().unwrap();
 
         // Try find an existing pool with some free space.
@@ -98,11 +100,11 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
             };
 
             return Ok(StdDescriptorPoolAlloc {
-                          pool: pool_arc.clone(),
-                          set: Some(alloc),
-                          descriptors: *layout.descriptors_count(),
-                          pool_parent: self.clone(),
-                      });
+                pool: pool_arc.clone(),
+                set: Some(alloc),
+                descriptors: *layout.descriptors_count(),
+                pool_parent: self.clone(),
+            });
         }
 
         // No existing pool can be used. Create a new one.
@@ -117,10 +119,10 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
                 Ok(mut sets) => sets.next().unwrap(),
                 Err(DescriptorPoolAllocError::OutOfHostMemory) => {
                     return Err(OomError::OutOfHostMemory);
-                },
+                }
                 Err(DescriptorPoolAllocError::OutOfDeviceMemory) => {
                     return Err(OomError::OutOfDeviceMemory);
-                },
+                }
                 // A fragmented pool error can't happen at the first ever allocation.
                 Err(DescriptorPoolAllocError::FragmentedPool) => unreachable!(),
                 // Out of pool memory cannot happen at the first ever allocation.
@@ -129,20 +131,19 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
         };
 
         let pool_obj = Arc::new(Mutex::new(Pool {
-                                               pool: new_pool,
-                                               remaining_capacity: count -
-                                                   *layout.descriptors_count(),
-                                               remaining_sets_count: 40 - 1,
-                                           }));
+            pool: new_pool,
+            remaining_capacity: count - *layout.descriptors_count(),
+            remaining_sets_count: 40 - 1,
+        }));
 
         pools.push(pool_obj.clone());
 
         Ok(StdDescriptorPoolAlloc {
-               pool: pool_obj,
-               set: Some(alloc),
-               descriptors: *layout.descriptors_count(),
-               pool_parent: self.clone(),
-           })
+            pool: pool_obj,
+            set: Some(alloc),
+            descriptors: *layout.descriptors_count(),
+            pool_parent: self.clone(),
+        })
     }
 }
 
@@ -200,8 +201,8 @@ mod tests {
             stages: ShaderStages::all(),
             readonly: false,
         };
-        let layout = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc)))
-            .unwrap();
+        let layout =
+            UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc))).unwrap();
 
         let mut pool = Arc::new(StdDescriptorPool::new(device));
         let pool_weak = Arc::downgrade(&pool);

@@ -11,13 +11,13 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use OomError;
-use Success;
-use VulkanObject;
 use check_errors;
 use device::Device;
 use device::DeviceOwned;
 use vk;
+use OomError;
+use Success;
+use VulkanObject;
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -51,15 +51,15 @@ impl Event {
                     check_errors(vk.ResetEvent(device.internal_object(), raw_event))?;
                 }
                 Ok(Event {
-                       event: raw_event,
-                       device: device,
-                       must_put_in_pool: true,
-                   })
-            },
+                    event: raw_event,
+                    device: device,
+                    must_put_in_pool: true,
+                })
+            }
             None => {
                 // Pool is empty, alloc new event
                 Event::alloc_impl(device, true)
-            },
+            }
         }
     }
 
@@ -75,23 +75,25 @@ impl Event {
             static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
                 sType: vk::STRUCTURE_TYPE_EVENT_CREATE_INFO,
                 pNext: 0 as *const _, //ptr::null(),
-                flags: 0, // reserved
+                flags: 0,             // reserved
             };
 
             let mut output = MaybeUninit::uninit();
             let vk = device.pointers();
-            check_errors(vk.CreateEvent(device.internal_object(),
-                                        &INFOS,
-                                        ptr::null(),
-                                        output.as_mut_ptr()))?;
+            check_errors(vk.CreateEvent(
+                device.internal_object(),
+                &INFOS,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(Event {
-               device: device,
-               event: event,
-               must_put_in_pool: must_put_in_pool,
-           })
+            device: device,
+            event: event,
+            must_put_in_pool: must_put_in_pool,
+        })
     }
 
     /// Returns true if the event is signaled.
@@ -99,8 +101,8 @@ impl Event {
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
             let vk = self.device.pointers();
-            let result = check_errors(vk.GetEventStatus(self.device.internal_object(),
-                                                        self.event))?;
+            let result =
+                check_errors(vk.GetEventStatus(self.device.internal_object(), self.event))?;
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
@@ -189,8 +191,8 @@ impl Drop for Event {
 
 #[cfg(test)]
 mod tests {
-    use VulkanObject;
     use sync::Event;
+    use VulkanObject;
 
     #[test]
     fn event_create() {

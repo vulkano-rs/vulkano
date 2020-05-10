@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::parse::{Instruction, Spirv};
 use crate::enums::Decoration;
+use crate::parse::{Instruction, Spirv};
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///
@@ -36,7 +36,7 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
                     _ => panic!(),
                 };
                 return (format.to_string(), 1);
-            },
+            }
             &Instruction::TypeFloat { result_id, width } if result_id == searched => {
                 assert!(!ignore_first_array);
                 let format = match width {
@@ -57,13 +57,13 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
                 assert_eq!(sz, 1);
                 let format = match count {
                     1 => format,
-                    2 => format!("R32G32{}", &format[3 ..]),
-                    3 => format!("R32G32B32{}", &format[3 ..]),
-                    4 => format!("R32G32B32A32{}", &format[3 ..]),
-                    _ => panic!("Found vector type with more than 4 elements")
+                    2 => format!("R32G32{}", &format[3..]),
+                    3 => format!("R32G32B32{}", &format[3..]),
+                    4 => format!("R32G32B32A32{}", &format[3..]),
+                    _ => panic!("Found vector type with more than 4 elements"),
                 };
                 return (format, sz);
-            },
+            }
             &Instruction::TypeMatrix {
                 result_id,
                 column_type_id,
@@ -72,7 +72,7 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
                 assert!(!ignore_first_array);
                 let (format, sz) = format_from_id(doc, column_type_id, false);
                 return (format, sz * column_count as usize);
-            },
+            }
             &Instruction::TypeArray {
                 result_id,
                 type_id,
@@ -83,22 +83,27 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
                 }
 
                 let (format, sz) = format_from_id(doc, type_id, false);
-                let len = doc.instructions
+                let len = doc
+                    .instructions
                     .iter()
                     .filter_map(|e| match e {
-                        &Instruction::Constant { result_id, ref data, .. }
-                            if result_id == length_id => Some(data.clone()),
+                        &Instruction::Constant {
+                            result_id,
+                            ref data,
+                            ..
+                        } if result_id == length_id => Some(data.clone()),
                         _ => None,
                     })
                     .next()
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
                 return (format, sz * len as usize);
-            },
-            &Instruction::TypePointer { result_id, type_id, .. }
-                if result_id == searched => {
+            }
+            &Instruction::TypePointer {
+                result_id, type_id, ..
+            } if result_id == searched => {
                 return format_from_id(doc, type_id, ignore_first_array);
-            },
+            }
             _ => (),
         }
     }
@@ -108,9 +113,13 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
 
 pub fn name_from_id(doc: &Spirv, searched: u32) -> String {
     for instruction in &doc.instructions {
-        if let &Instruction::Name { target_id, ref name } = instruction {
+        if let &Instruction::Name {
+            target_id,
+            ref name,
+        } = instruction
+        {
             if target_id == searched {
-                return name.clone()
+                return name.clone();
             }
         }
     }
@@ -120,9 +129,14 @@ pub fn name_from_id(doc: &Spirv, searched: u32) -> String {
 
 pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> String {
     for instruction in &doc.instructions {
-        if let &Instruction::MemberName { target_id, member, ref name } = instruction {
+        if let &Instruction::MemberName {
+            target_id,
+            member,
+            ref name,
+        } = instruction
+        {
             if target_id == searched && member == searched_member {
-                return name.clone()
+                return name.clone();
             }
         }
     }
@@ -132,11 +146,14 @@ pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> 
 
 /// Returns true if a `BuiltIn` decorator is applied on an id.
 pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
-    if doc.get_decoration_params(id, Decoration::DecorationBuiltIn).is_some() {
-        return true
+    if doc
+        .get_decoration_params(id, Decoration::DecorationBuiltIn)
+        .is_some()
+    {
+        return true;
     }
     if doc.get_member_decoration_builtin_params(id).is_some() {
-        return true
+        return true;
     }
 
     for instruction in &doc.instructions {
@@ -148,7 +165,9 @@ pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
             } if result_id == id => {
                 return is_builtin(doc, result_type_id);
             }
-            Instruction::TypeArray { result_id, type_id, .. } if result_id == id => {
+            Instruction::TypeArray {
+                result_id, type_id, ..
+            } if result_id == id => {
                 return is_builtin(doc, type_id);
             }
             Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
@@ -164,10 +183,12 @@ pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
                     }
                 }
             }
-            Instruction::TypePointer { result_id, type_id, .. } if result_id == id => {
+            Instruction::TypePointer {
+                result_id, type_id, ..
+            } if result_id == id => {
                 return is_builtin(doc, type_id);
             }
-            _ => ()
+            _ => (),
         }
     }
 

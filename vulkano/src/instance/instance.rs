@@ -16,15 +16,12 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::mem;
+use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
-use std::mem::MaybeUninit;
 
-use Error;
-use OomError;
-use VulkanObject;
 use check_errors;
 use instance::limits::Limits;
 use instance::loader;
@@ -32,10 +29,13 @@ use instance::loader::FunctionPointers;
 use instance::loader::Loader;
 use instance::loader::LoadingError;
 use vk;
+use Error;
+use OomError;
+use VulkanObject;
 
+use features::Features;
 use instance::{InstanceExtensions, RawInstanceExtensions};
 use version::Version;
-use features::Features;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -103,10 +103,8 @@ pub struct Instance {
 }
 
 // TODO: fix the underlying cause instead
-impl ::std::panic::UnwindSafe for Instance {
-}
-impl ::std::panic::RefUnwindSafe for Instance {
-}
+impl ::std::panic::UnwindSafe for Instance {}
+impl ::std::panic::RefUnwindSafe for Instance {}
 
 impl Instance {
     /// Initializes a new instance of Vulkan.
@@ -134,44 +132,58 @@ impl Instance {
     // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L, Ext>(app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
-                           -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a str>,
-              Ext: Into<RawInstanceExtensions>
+    pub fn new<'a, L, Ext>(
+        app_infos: Option<&ApplicationInfo>,
+        extensions: Ext,
+        layers: L,
+    ) -> Result<Arc<Instance>, InstanceCreationError>
+    where
+        L: IntoIterator<Item = &'a str>,
+        Ext: Into<RawInstanceExtensions>,
     {
         let layers = layers
             .into_iter()
             .map(|layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos,
-                            extensions.into(),
-                            layers,
-                            OwnedOrRef::Ref(loader::auto_loader()?))
+        Instance::new_inner(
+            app_infos,
+            extensions.into(),
+            layers,
+            OwnedOrRef::Ref(loader::auto_loader()?),
+        )
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.
-    pub fn with_loader<'a, L, Ext>(loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
-                                   app_infos: Option<&ApplicationInfo>, extensions: Ext, layers: L)
-                                   -> Result<Arc<Instance>, InstanceCreationError>
-        where L: IntoIterator<Item = &'a str>,
-              Ext: Into<RawInstanceExtensions>
+    pub fn with_loader<'a, L, Ext>(
+        loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
+        app_infos: Option<&ApplicationInfo>,
+        extensions: Ext,
+        layers: L,
+    ) -> Result<Arc<Instance>, InstanceCreationError>
+    where
+        L: IntoIterator<Item = &'a str>,
+        Ext: Into<RawInstanceExtensions>,
     {
         let layers = layers
             .into_iter()
             .map(|layer| CString::new(layer).unwrap())
             .collect::<SmallVec<[_; 16]>>();
 
-        Instance::new_inner(app_infos,
-                            extensions.into(),
-                            layers,
-                            OwnedOrRef::Owned(loader))
+        Instance::new_inner(
+            app_infos,
+            extensions.into(),
+            layers,
+            OwnedOrRef::Owned(loader),
+        )
     }
 
-    fn new_inner(app_infos: Option<&ApplicationInfo>, extensions: RawInstanceExtensions,
-                 layers: SmallVec<[CString; 16]>,
-                 function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>)
-                 -> Result<Arc<Instance>, InstanceCreationError> {
+    fn new_inner(
+        app_infos: Option<&ApplicationInfo>,
+        extensions: RawInstanceExtensions,
+        layers: SmallVec<[CString; 16]>,
+        function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
+    ) -> Result<Arc<Instance>, InstanceCreationError> {
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
         let def = Default::default();
@@ -183,14 +195,16 @@ impl Instance {
         // Building the CStrings from the `str`s within `app_infos`.
         // They need to be created ahead of time, since we pass pointers to them.
         let app_infos_strings = if let Some(app_infos) = app_infos {
-            Some((app_infos
-                      .application_name
-                      .clone()
-                      .map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
-                  app_infos
-                      .engine_name
-                      .clone()
-                      .map(|n| CString::new(n.as_bytes().to_owned()).unwrap())))
+            Some((
+                app_infos
+                    .application_name
+                    .clone()
+                    .map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
+                app_infos
+                    .engine_name
+                    .clone()
+                    .map(|n| CString::new(n.as_bytes().to_owned()).unwrap()),
+            ))
         } else {
             None
         };
@@ -226,9 +240,9 @@ impl Instance {
                     major: 1,
                     minor: 1,
                     patch: 0,
-                }.into_vulkan_version(), // TODO:
+                }
+                .into_vulkan_version(), // TODO:
             })
-
         } else {
             None
         };
@@ -285,30 +299,36 @@ impl Instance {
             devices
         };
 
-        let vk_khr_get_physical_device_properties2 = CString::new(b"VK_KHR_get_physical_device_properties2".to_vec()).unwrap();
+        let vk_khr_get_physical_device_properties2 =
+            CString::new(b"VK_KHR_get_physical_device_properties2".to_vec()).unwrap();
 
         // Getting the properties of all physical devices.
         // If possible, we use VK_KHR_get_physical_device_properties2.
-        let physical_devices = if extensions.iter().any(|v| *v == vk_khr_get_physical_device_properties2) {
+        let physical_devices = if extensions
+            .iter()
+            .any(|v| *v == vk_khr_get_physical_device_properties2)
+        {
             Instance::init_physical_devices2(&vk, physical_devices, &extensions)
         } else {
             Instance::init_physical_devices(&vk, physical_devices)
         };
 
         Ok(Arc::new(Instance {
-                        instance: instance,
-                        //alloc: None,
-                        physical_devices: physical_devices,
-                        vk: vk,
-                        extensions: extensions,
-                        layers: layers,
-                        function_pointers: function_pointers,
-                    }))
+            instance: instance,
+            //alloc: None,
+            physical_devices: physical_devices,
+            vk: vk,
+            extensions: extensions,
+            layers: layers,
+            function_pointers: function_pointers,
+        }))
     }
 
     /// Initialize all physical devices
-    fn init_physical_devices(vk: &vk::InstancePointers, physical_devices: Vec<vk::PhysicalDevice>)
-                             -> Vec<PhysicalDeviceInfos> {
+    fn init_physical_devices(
+        vk: &vk::InstancePointers,
+        physical_devices: Vec<vk::PhysicalDevice>,
+    ) -> Vec<PhysicalDeviceInfos> {
         let mut output = Vec::with_capacity(physical_devices.len());
 
         for device in physical_devices.into_iter() {
@@ -341,23 +361,24 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                            device,
-                            properties,
-                            extended_properties: PhysicalDeviceExtendedProperties::empty(),
-                            memory,
-                            queue_families,
-                            available_features: Features::from_vulkan_features(available_features),
-                        });
+                device,
+                properties,
+                extended_properties: PhysicalDeviceExtendedProperties::empty(),
+                memory,
+                queue_families,
+                available_features: Features::from_vulkan_features(available_features),
+            });
         }
         output
     }
 
     /// Initialize all physical devices, but use VK_KHR_get_physical_device_properties2
     /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
-    fn init_physical_devices2(vk: &vk::InstancePointers,
-                              physical_devices: Vec<vk::PhysicalDevice>,
-                              extensions: &RawInstanceExtensions)
-                              -> Vec<PhysicalDeviceInfos> {
+    fn init_physical_devices2(
+        vk: &vk::InstancePointers,
+        physical_devices: Vec<vk::PhysicalDevice>,
+        extensions: &RawInstanceExtensions,
+    ) -> Vec<PhysicalDeviceInfos> {
         let mut output = Vec::with_capacity(physical_devices.len());
 
         for device in physical_devices.into_iter() {
@@ -394,19 +415,19 @@ impl Instance {
                 let mut num = 0;
                 vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device, &mut num, ptr::null_mut());
 
-                let mut families = (0 .. num)
-                    .map(|_| {
-                             vk::QueueFamilyProperties2KHR {
-                                 sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
-                                 pNext: ptr::null_mut(),
-                                 queueFamilyProperties: mem::zeroed(),
-                             }
-                         })
+                let mut families = (0..num)
+                    .map(|_| vk::QueueFamilyProperties2KHR {
+                        sType: vk::STRUCTURE_TYPE_QUEUE_FAMILY_PROPERTIES_2_KHR,
+                        pNext: ptr::null_mut(),
+                        queueFamilyProperties: mem::zeroed(),
+                    })
                     .collect::<Vec<_>>();
 
-                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(device,
-                                                              &mut num,
-                                                              families.as_mut_ptr());
+                vk.GetPhysicalDeviceQueueFamilyProperties2KHR(
+                    device,
+                    &mut num,
+                    families.as_mut_ptr(),
+                );
                 families
                     .into_iter()
                     .map(|family| family.queueFamilyProperties)
@@ -434,13 +455,13 @@ impl Instance {
             };
 
             output.push(PhysicalDeviceInfos {
-                            device,
-                            properties,
-                            extended_properties,
-                            memory,
-                            queue_families,
-                            available_features: Features::from_vulkan_features(available_features),
-                        });
+                device,
+                properties,
+                extended_properties,
+                memory,
+                queue_families,
+                available_features: Features::from_vulkan_features(available_features),
+            });
         }
         output
     }
@@ -478,7 +499,7 @@ impl Instance {
         InstanceExtensions::from(&self.extensions)
     }
 
-     #[inline]
+    #[inline]
     pub fn raw_loaded_extensions(&self) -> &RawInstanceExtensions {
         &self.extensions
     }
@@ -616,7 +637,7 @@ macro_rules! app_info_from_cargo_toml {
             engine_name: None,
             engine_version: None,
         }
-    }}
+    }};
 }
 
 impl<'a> Default for ApplicationInfo<'a> {
@@ -810,9 +831,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
         if instance.physical_devices.len() > index {
             Some(PhysicalDevice {
-                     instance: instance,
-                     device: index,
-                 })
+                instance: instance,
+                device: index,
+            })
         } else {
             None
         }
@@ -876,7 +897,8 @@ impl<'a> PhysicalDevice<'a> {
     pub fn ty(&self) -> PhysicalDeviceType {
         match self.instance.physical_devices[self.device]
             .properties
-            .deviceType {
+            .deviceType
+        {
             vk::PHYSICAL_DEVICE_TYPE_OTHER => PhysicalDeviceType::Other,
             vk::PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU => PhysicalDeviceType::IntegratedGpu,
             vk::PHYSICAL_DEVICE_TYPE_DISCRETE_GPU => PhysicalDeviceType::DiscreteGpu,
@@ -913,10 +935,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn queue_family_by_id(&self, id: u32) -> Option<QueueFamily<'a>> {
         if (id as usize) < self.infos().queue_families.len() {
             Some(QueueFamily {
-                     physical_device: *self,
-                     id: id,
-                 })
-
+                physical_device: *self,
+                id: id,
+            })
         } else {
             None
         }
@@ -936,10 +957,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn memory_type_by_id(&self, id: u32) -> Option<MemoryType<'a>> {
         if id < self.infos().memory.memoryTypeCount {
             Some(MemoryType {
-                     physical_device: *self,
-                     id: id,
-                 })
-
+                physical_device: *self,
+                id: id,
+            })
         } else {
             None
         }
@@ -959,10 +979,9 @@ impl<'a> PhysicalDevice<'a> {
     pub fn memory_heap_by_id(&self, id: u32) -> Option<MemoryHeap<'a>> {
         if id < self.infos().memory.memoryHeapCount {
             Some(MemoryHeap {
-                     physical_device: *self,
-                     id: id,
-                 })
-
+                physical_device: *self,
+                id: id,
+            })
         } else {
             None
         }
@@ -1063,8 +1082,7 @@ impl<'a> Iterator for PhysicalDevicesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for PhysicalDevicesIter<'a> {
-}
+impl<'a> ExactSizeIterator for PhysicalDevicesIter<'a> {}
 
 /// Type of a physical device.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -1118,7 +1136,8 @@ impl<'a> QueueFamily<'a> {
     /// If timestamps are not supported, returns None.
     #[inline]
     pub fn timestamp_valid_bits(&self) -> Option<u32> {
-        let value = self.physical_device.infos().queue_families[self.id as usize].timestampValidBits;
+        let value =
+            self.physical_device.infos().queue_families[self.id as usize].timestampValidBits;
         if value == 0 {
             None
         } else {
@@ -1172,11 +1191,12 @@ impl<'a> QueueFamily<'a> {
 
 impl<'a> PartialEq for QueueFamily<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.physical_device.internal_object() == other.physical_device.internal_object()
+        self.id == other.id
+            && self.physical_device.internal_object() == other.physical_device.internal_object()
     }
 }
 
-impl<'a> Eq for QueueFamily<'a> { }
+impl<'a> Eq for QueueFamily<'a> {}
 
 /// Iterator for all the queue families available on a physical device.
 #[derive(Debug, Clone)]
@@ -1211,8 +1231,7 @@ impl<'a> Iterator for QueueFamiliesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for QueueFamiliesIter<'a> {
-}
+impl<'a> ExactSizeIterator for QueueFamiliesIter<'a> {}
 
 /// Represents a memory type in a physical device.
 #[derive(Debug, Copy, Clone)]
@@ -1326,8 +1345,7 @@ impl<'a> Iterator for MemoryTypesIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for MemoryTypesIter<'a> {
-}
+impl<'a> ExactSizeIterator for MemoryTypesIter<'a> {}
 
 /// Represents a memory heap in a physical device.
 #[derive(Debug, Copy, Clone)]
@@ -1396,8 +1414,7 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
     }
 }
 
-impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {
-}
+impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
 
 #[cfg(test)]
 mod tests {

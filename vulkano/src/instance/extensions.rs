@@ -15,9 +15,9 @@ use std::ptr;
 use std::str;
 
 use check_errors;
+use extensions::SupportedExtensionsError;
 use instance::loader;
 use instance::loader::LoadingError;
-use extensions::SupportedExtensionsError;
 use vk;
 
 macro_rules! instance_extensions {

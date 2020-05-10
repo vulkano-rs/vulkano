@@ -19,9 +19,12 @@ use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use instance::Limits;
 
 /// Checks whether the pipeline layout description fulfills the device limits requirements.
-pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
-                                    -> Result<(), PipelineLayoutLimitsError>
-    where D: ?Sized + PipelineLayoutDesc
+pub fn check_desc_against_limits<D>(
+    desc: &D,
+    limits: Limits,
+) -> Result<(), PipelineLayoutLimitsError>
+where
+    D: ?Sized + PipelineLayoutDesc,
 {
     let mut num_resources = Counter::default();
     let mut num_samplers = Counter::default();
@@ -33,13 +36,13 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
     let mut num_storage_images = Counter::default();
     let mut num_input_attachments = Counter::default();
 
-    for set in 0 .. desc.num_sets() {
+    for set in 0..desc.num_sets() {
         let num_bindings_in_set = match desc.num_bindings_in_set(set) {
             None => continue,
             Some(n) => n,
         };
 
-        for binding in 0 .. num_bindings_in_set {
+        for binding in 0..num_bindings_in_set {
             let descriptor = match desc.descriptor(set, binding) {
                 None => continue,
                 Some(n) => n,
@@ -47,144 +50,173 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
 
             num_resources.increment(descriptor.array_count, &descriptor.stages);
 
-            match descriptor.ty.ty().expect("Not implemented yet") {        // TODO:
+            match descriptor.ty.ty().expect("Not implemented yet") {
+                // TODO:
                 DescriptorType::Sampler => {
                     num_samplers.increment(descriptor.array_count, &descriptor.stages);
-                },
+                }
                 DescriptorType::CombinedImageSampler => {
                     num_samplers.increment(descriptor.array_count, &descriptor.stages);
                     num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
-                },
-                DescriptorType::SampledImage |
-                DescriptorType::UniformTexelBuffer => {
+                }
+                DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
                     num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
-                },
-                DescriptorType::StorageImage |
-                DescriptorType::StorageTexelBuffer => {
+                }
+                DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
                     num_storage_images.increment(descriptor.array_count, &descriptor.stages);
-                },
+                }
                 DescriptorType::UniformBuffer => {
                     num_uniform_buffers.increment(descriptor.array_count, &descriptor.stages);
-                },
+                }
                 DescriptorType::UniformBufferDynamic => {
                     num_uniform_buffers.increment(descriptor.array_count, &descriptor.stages);
                     num_uniform_buffers_dynamic += 1;
-                },
+                }
                 DescriptorType::StorageBuffer => {
                     num_storage_buffers.increment(descriptor.array_count, &descriptor.stages);
-                },
+                }
                 DescriptorType::StorageBufferDynamic => {
                     num_storage_buffers.increment(descriptor.array_count, &descriptor.stages);
                     num_storage_buffers_dynamic += 1;
-                },
+                }
                 DescriptorType::InputAttachment => {
                     num_input_attachments.increment(descriptor.array_count, &descriptor.stages);
-                },
+                }
             }
         }
     }
 
     if desc.num_sets() > limits.max_bound_descriptor_sets() as usize {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
-                       limit: limits.max_bound_descriptor_sets() as usize,
-                       requested: desc.num_sets(),
-                   });
+            limit: limits.max_bound_descriptor_sets() as usize,
+            requested: desc.num_sets(),
+        });
     }
 
     if num_resources.max_per_stage() > limits.max_per_stage_resources() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded {
-                       limit: limits.max_per_stage_resources(),
-                       requested: num_resources.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded {
+                limit: limits.max_per_stage_resources(),
+                requested: num_resources.max_per_stage(),
+            },
+        );
     }
 
     if num_samplers.max_per_stage() > limits.max_per_stage_descriptor_samplers() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
-                       limit: limits.max_per_stage_descriptor_samplers(),
-                       requested: num_samplers.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
+                limit: limits.max_per_stage_descriptor_samplers(),
+                requested: num_samplers.max_per_stage(),
+            },
+        );
     }
     if num_uniform_buffers.max_per_stage() > limits.max_per_stage_descriptor_uniform_buffers() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
-                       limit: limits.max_per_stage_descriptor_uniform_buffers(),
-                       requested: num_uniform_buffers.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
+                limit: limits.max_per_stage_descriptor_uniform_buffers(),
+                requested: num_uniform_buffers.max_per_stage(),
+            },
+        );
     }
     if num_storage_buffers.max_per_stage() > limits.max_per_stage_descriptor_storage_buffers() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
-                       limit: limits.max_per_stage_descriptor_storage_buffers(),
-                       requested: num_storage_buffers.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
+                limit: limits.max_per_stage_descriptor_storage_buffers(),
+                requested: num_storage_buffers.max_per_stage(),
+            },
+        );
     }
     if num_sampled_images.max_per_stage() > limits.max_per_stage_descriptor_sampled_images() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
-                       limit: limits.max_per_stage_descriptor_sampled_images(),
-                       requested: num_sampled_images.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
+                limit: limits.max_per_stage_descriptor_sampled_images(),
+                requested: num_sampled_images.max_per_stage(),
+            },
+        );
     }
     if num_storage_images.max_per_stage() > limits.max_per_stage_descriptor_storage_images() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
-                       limit: limits.max_per_stage_descriptor_storage_images(),
-                       requested: num_storage_images.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
+                limit: limits.max_per_stage_descriptor_storage_images(),
+                requested: num_storage_images.max_per_stage(),
+            },
+        );
     }
     if num_input_attachments.max_per_stage() > limits.max_per_stage_descriptor_input_attachments() {
-        return Err(PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-                       limit: limits.max_per_stage_descriptor_input_attachments(),
-                       requested: num_input_attachments.max_per_stage(),
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
+                limit: limits.max_per_stage_descriptor_input_attachments(),
+                requested: num_input_attachments.max_per_stage(),
+            },
+        );
     }
 
     if num_samplers.total > limits.max_descriptor_set_samplers() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded {
-                       limit: limits.max_descriptor_set_samplers(),
-                       requested: num_samplers.total,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded {
+                limit: limits.max_descriptor_set_samplers(),
+                requested: num_samplers.total,
+            },
+        );
     }
     if num_uniform_buffers.total > limits.max_descriptor_set_uniform_buffers() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
-                       limit: limits.max_descriptor_set_uniform_buffers(),
-                       requested: num_uniform_buffers.total,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
+                limit: limits.max_descriptor_set_uniform_buffers(),
+                requested: num_uniform_buffers.total,
+            },
+        );
     }
     if num_uniform_buffers_dynamic > limits.max_descriptor_set_uniform_buffers_dynamic() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-                       limit: limits.max_descriptor_set_uniform_buffers_dynamic(),
-                       requested: num_uniform_buffers_dynamic,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
+                limit: limits.max_descriptor_set_uniform_buffers_dynamic(),
+                requested: num_uniform_buffers_dynamic,
+            },
+        );
     }
     if num_storage_buffers.total > limits.max_descriptor_set_storage_buffers() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
-                       limit: limits.max_descriptor_set_storage_buffers(),
-                       requested: num_storage_buffers.total,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
+                limit: limits.max_descriptor_set_storage_buffers(),
+                requested: num_storage_buffers.total,
+            },
+        );
     }
     if num_storage_buffers_dynamic > limits.max_descriptor_set_storage_buffers_dynamic() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-                       limit: limits.max_descriptor_set_storage_buffers_dynamic(),
-                       requested: num_storage_buffers_dynamic,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
+                limit: limits.max_descriptor_set_storage_buffers_dynamic(),
+                requested: num_storage_buffers_dynamic,
+            },
+        );
     }
     if num_sampled_images.total > limits.max_descriptor_set_sampled_images() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
-                       limit: limits.max_descriptor_set_sampled_images(),
-                       requested: num_sampled_images.total,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
+                limit: limits.max_descriptor_set_sampled_images(),
+                requested: num_sampled_images.total,
+            },
+        );
     }
     if num_storage_images.total > limits.max_descriptor_set_storage_images() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
-                       limit: limits.max_descriptor_set_storage_images(),
-                       requested: num_storage_images.total,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
+                limit: limits.max_descriptor_set_storage_images(),
+                requested: num_storage_images.total,
+            },
+        );
     }
     if num_input_attachments.total > limits.max_descriptor_set_input_attachments() {
-        return Err(PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
-                       limit: limits.max_descriptor_set_input_attachments(),
-                       requested: num_input_attachments.total,
-                   });
+        return Err(
+            PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
+                limit: limits.max_descriptor_set_input_attachments(),
+                requested: num_input_attachments.total,
+            },
+        );
     }
 
-    for pc_id in 0 .. desc.num_push_constants_ranges() {
+    for pc_id in 0..desc.num_push_constants_ranges() {
         let PipelineLayoutDescPcRange { offset, size, .. } = {
             match desc.push_constants_range(pc_id) {
                 Some(o) => o,
@@ -194,9 +226,9 @@ pub fn check_desc_against_limits<D>(desc: &D, limits: Limits)
 
         if offset + size > limits.max_push_constants_size() as usize {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
-                           limit: limits.max_push_constants_size() as usize,
-                           requested: offset + size,
-                       });
+                limit: limits.max_push_constants_size() as usize,
+                requested: offset + size,
+            });
         }
     }
 
@@ -349,69 +381,55 @@ impl error::Error for PipelineLayoutLimitsError {
         match *self {
             PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded { .. } => {
                 "the maximum number of descriptor sets has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded { .. } => {
                 "the maximum size of push constants has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded { .. } => {
                 "the `max_per_stage_resources()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded { .. } => {
                 "the `max_per_stage_descriptor_samplers()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
                 ..
-            } => {
-                "the `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded"
-            },
+            } => "the `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
                 ..
-            } => {
-                "the `max_per_stage_descriptor_storage_buffers()` limit has been exceeded"
-            },
+            } => "the `max_per_stage_descriptor_storage_buffers()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
                 ..
-            } => {
-                "the `max_per_stage_descriptor_sampled_images()` limit has been exceeded"
-            },
+            } => "the `max_per_stage_descriptor_sampled_images()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
                 ..
-            } => {
-                "the `max_per_stage_descriptor_storage_images()` limit has been exceeded"
-            },
+            } => "the `max_per_stage_descriptor_storage_images()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
                 ..
-            } => {
-                "the `max_per_stage_descriptor_input_attachments()` limit has been exceeded"
-            },
+            } => "the `max_per_stage_descriptor_input_attachments()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded { .. } => {
                 "the `max_descriptor_set_samplers()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded { .. } => {
                 "the `max_descriptor_set_uniform_buffers()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
                 ..
-            } => {
-                "the `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded"
-            },
+            } => "the `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded { .. } => {
                 "the `max_descriptor_set_storage_buffers()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
                 ..
-            } => {
-                "the `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded"
-            },
+            } => "the `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded",
             PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded { .. } => {
                 "the `max_descriptor_set_sampled_images()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded { .. } => {
                 "the `max_descriptor_set_storage_images()` limit has been exceeded"
-            },
+            }
             PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded { .. } => {
                 "the `max_descriptor_set_input_attachments()` limit has been exceeded"
-            },
+            }
         }
     }
 }

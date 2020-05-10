@@ -20,12 +20,12 @@ use memory::DeviceMemory;
 use sync::Fence;
 use sync::Semaphore;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use SynchronizedVulkanObject;
 use VulkanObject;
-use check_errors;
-use vk;
 
 // TODO: correctly implement Debug on all the structs of this module
 
@@ -126,8 +126,10 @@ impl<'a> SubmitBindSparseBuilder<'a> {
     /// If both builders have a fence already set, then this function will return `other` as an
     /// error.
     #[inline]
-    pub fn merge(&mut self, other: SubmitBindSparseBuilder<'a>)
-                 -> Result<(), SubmitBindSparseBuilder<'a>> {
+    pub fn merge(
+        &mut self,
+        other: SubmitBindSparseBuilder<'a>,
+    ) -> Result<(), SubmitBindSparseBuilder<'a>> {
         if self.fence != 0 && other.fence != 0 {
             return Err(other);
         }
@@ -146,42 +148,39 @@ impl<'a> SubmitBindSparseBuilder<'a> {
 
             // We start by storing all the `VkSparseBufferMemoryBindInfo`s of the whole command
             // in the same collection.
-            let buffer_binds_storage: SmallVec<[_; 4]> = self.infos
+            let buffer_binds_storage: SmallVec<[_; 4]> = self
+                .infos
                 .iter()
                 .flat_map(|infos| infos.buffer_binds.iter())
-                .map(|buf_bind| {
-                         vk::SparseBufferMemoryBindInfo {
-                             buffer: buf_bind.buffer,
-                             bindCount: buf_bind.binds.len() as u32,
-                             pBinds: buf_bind.binds.as_ptr(),
-                         }
-                     })
+                .map(|buf_bind| vk::SparseBufferMemoryBindInfo {
+                    buffer: buf_bind.buffer,
+                    bindCount: buf_bind.binds.len() as u32,
+                    pBinds: buf_bind.binds.as_ptr(),
+                })
                 .collect();
 
             // Same for all the `VkSparseImageOpaqueMemoryBindInfo`s.
-            let image_opaque_binds_storage: SmallVec<[_; 4]> = self.infos
+            let image_opaque_binds_storage: SmallVec<[_; 4]> = self
+                .infos
                 .iter()
                 .flat_map(|infos| infos.image_opaque_binds.iter())
-                .map(|img_bind| {
-                         vk::SparseImageOpaqueMemoryBindInfo {
-                             image: img_bind.image,
-                             bindCount: img_bind.binds.len() as u32,
-                             pBinds: img_bind.binds.as_ptr(),
-                         }
-                     })
+                .map(|img_bind| vk::SparseImageOpaqueMemoryBindInfo {
+                    image: img_bind.image,
+                    bindCount: img_bind.binds.len() as u32,
+                    pBinds: img_bind.binds.as_ptr(),
+                })
                 .collect();
 
             // And finally the `VkSparseImageMemoryBindInfo`s.
-            let image_binds_storage: SmallVec<[_; 4]> = self.infos
+            let image_binds_storage: SmallVec<[_; 4]> = self
+                .infos
                 .iter()
                 .flat_map(|infos| infos.image_binds.iter())
-                .map(|img_bind| {
-                         vk::SparseImageMemoryBindInfo {
-                             image: img_bind.image,
-                             bindCount: img_bind.binds.len() as u32,
-                             pBinds: img_bind.binds.as_ptr(),
-                         }
-                     })
+                .map(|img_bind| vk::SparseImageMemoryBindInfo {
+                    image: img_bind.image,
+                    bindCount: img_bind.binds.len() as u32,
+                    pBinds: img_bind.binds.as_ptr(),
+                })
                 .collect();
 
             // Now building the collection of `VkBindSparseInfo`s.
@@ -210,7 +209,9 @@ impl<'a> SubmitBindSparseBuilder<'a> {
                         imageOpaqueBindCount: builder.image_opaque_binds.len() as u32,
                         pImageOpaqueBinds: if next_image_opaque_bind != 0 {
                             // We need that `if` because `.as_ptr().offset(0)` is technically UB.
-                            image_opaque_binds_storage.as_ptr().offset(next_image_opaque_bind)
+                            image_opaque_binds_storage
+                                .as_ptr()
+                                .offset(next_image_opaque_bind)
                         } else {
                             image_opaque_binds_storage.as_ptr()
                         },
@@ -223,7 +224,6 @@ impl<'a> SubmitBindSparseBuilder<'a> {
                         },
                         signalSemaphoreCount: builder.signal_semaphores.len() as u32,
                         pSignalSemaphores: builder.signal_semaphores.as_ptr(),
-
                     });
 
                     next_buffer_bind += builder.buffer_binds.len() as isize;
@@ -233,18 +233,22 @@ impl<'a> SubmitBindSparseBuilder<'a> {
 
                 // If these assertions fail, then there's something wrong in the code above.
                 debug_assert_eq!(next_buffer_bind as usize, buffer_binds_storage.len());
-                debug_assert_eq!(next_image_opaque_bind as usize,
-                                 image_opaque_binds_storage.len());
+                debug_assert_eq!(
+                    next_image_opaque_bind as usize,
+                    image_opaque_binds_storage.len()
+                );
                 debug_assert_eq!(next_image_bind as usize, image_binds_storage.len());
 
                 bs_infos
             };
 
             // Finally executing the command.
-            check_errors(vk.QueueBindSparse(*queue,
-                                            bs_infos.len() as u32,
-                                            bs_infos.as_ptr(),
-                                            self.fence))?;
+            check_errors(vk.QueueBindSparse(
+                *queue,
+                bs_infos.len() as u32,
+                bs_infos.as_ptr(),
+                self.fence,
+            ))?;
             Ok(())
         }
     }
@@ -363,25 +367,30 @@ impl<'a> SubmitBindSparseBufferBindBuilder<'a> {
         }
     }
 
-    pub unsafe fn add_bind(&mut self, offset: usize, size: usize, memory: &DeviceMemory,
-                           memory_offset: usize) {
+    pub unsafe fn add_bind(
+        &mut self,
+        offset: usize,
+        size: usize,
+        memory: &DeviceMemory,
+        memory_offset: usize,
+    ) {
         self.binds.push(vk::SparseMemoryBind {
-                            resourceOffset: offset as vk::DeviceSize,
-                            size: size as vk::DeviceSize,
-                            memory: memory.internal_object(),
-                            memoryOffset: memory_offset as vk::DeviceSize,
-                            flags: 0, // Flags are only relevant for images.
-                        });
+            resourceOffset: offset as vk::DeviceSize,
+            size: size as vk::DeviceSize,
+            memory: memory.internal_object(),
+            memoryOffset: memory_offset as vk::DeviceSize,
+            flags: 0, // Flags are only relevant for images.
+        });
     }
 
     pub unsafe fn add_unbind(&mut self, offset: usize, size: usize) {
         self.binds.push(vk::SparseMemoryBind {
-                            resourceOffset: offset as vk::DeviceSize,
-                            size: size as vk::DeviceSize,
-                            memory: 0,
-                            memoryOffset: 0,
-                            flags: 0,
-                        });
+            resourceOffset: offset as vk::DeviceSize,
+            size: size as vk::DeviceSize,
+            memory: 0,
+            memoryOffset: 0,
+            flags: 0,
+        });
     }
 }
 
@@ -404,29 +413,35 @@ impl<'a> SubmitBindSparseImageOpaqueBindBuilder<'a> {
         }
     }
 
-    pub unsafe fn add_bind(&mut self, offset: usize, size: usize, memory: &DeviceMemory,
-                           memory_offset: usize, bind_metadata: bool) {
+    pub unsafe fn add_bind(
+        &mut self,
+        offset: usize,
+        size: usize,
+        memory: &DeviceMemory,
+        memory_offset: usize,
+        bind_metadata: bool,
+    ) {
         self.binds.push(vk::SparseMemoryBind {
-                            resourceOffset: offset as vk::DeviceSize,
-                            size: size as vk::DeviceSize,
-                            memory: memory.internal_object(),
-                            memoryOffset: memory_offset as vk::DeviceSize,
-                            flags: if bind_metadata {
-                                vk::SPARSE_MEMORY_BIND_METADATA_BIT
-                            } else {
-                                0
-                            },
-                        });
+            resourceOffset: offset as vk::DeviceSize,
+            size: size as vk::DeviceSize,
+            memory: memory.internal_object(),
+            memoryOffset: memory_offset as vk::DeviceSize,
+            flags: if bind_metadata {
+                vk::SPARSE_MEMORY_BIND_METADATA_BIT
+            } else {
+                0
+            },
+        });
     }
 
     pub unsafe fn add_unbind(&mut self, offset: usize, size: usize) {
         self.binds.push(vk::SparseMemoryBind {
-                            resourceOffset: offset as vk::DeviceSize,
-                            size: size as vk::DeviceSize,
-                            memory: 0,
-                            memoryOffset: 0,
-                            flags: 0, // TODO: is that relevant?
-                        });
+            resourceOffset: offset as vk::DeviceSize,
+            size: size as vk::DeviceSize,
+            memory: 0,
+            memoryOffset: 0,
+            flags: 0, // TODO: is that relevant?
+        });
     }
 }
 
