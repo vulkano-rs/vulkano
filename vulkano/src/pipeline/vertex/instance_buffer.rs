@@ -85,7 +85,8 @@ where
                 }
             }
             attribs
-        }.into_iter(); // TODO: meh
+        }
+        .into_iter(); // TODO: meh
 
         let buffers = Some((0, mem::size_of::<T>(), InputRate::Instance)).into_iter();
         Ok((buffers, attrib))

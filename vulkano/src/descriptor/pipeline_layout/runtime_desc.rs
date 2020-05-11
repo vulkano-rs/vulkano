@@ -26,11 +26,13 @@ pub struct RuntimePipelineDesc {
 impl RuntimePipelineDesc {
     /// Builds a new `RuntimePipelineDesc` from the descriptors and push constants descriptions.
     pub fn new<TSetsIter, TPushConstsIter, TDescriptorsIter>(
-        desc: TSetsIter, push_constants: TPushConstsIter)
-        -> Result<RuntimePipelineDesc, RuntimePipelineDescError>
-        where TSetsIter: IntoIterator<Item = TDescriptorsIter>,
-              TDescriptorsIter: IntoIterator<Item = Option<DescriptorDesc>>,
-              TPushConstsIter: IntoIterator<Item = PipelineLayoutDescPcRange>
+        desc: TSetsIter,
+        push_constants: TPushConstsIter,
+    ) -> Result<RuntimePipelineDesc, RuntimePipelineDescError>
+    where
+        TSetsIter: IntoIterator<Item = TDescriptorsIter>,
+        TDescriptorsIter: IntoIterator<Item = Option<DescriptorDesc>>,
+        TPushConstsIter: IntoIterator<Item = PipelineLayoutDescPcRange>,
     {
         let descriptors = desc.into_iter().map(|s| s.into_iter().collect()).collect();
         let push_constants: SmallVec<[PipelineLayoutDescPcRange; 6]> =
@@ -40,26 +42,26 @@ impl RuntimePipelineDesc {
             for b in push_constants.iter().skip(a_id + 1) {
                 if a.offset <= b.offset && a.offset + a.size > b.offset {
                     return Err(RuntimePipelineDescError::PushConstantsConflict {
-                                   first_offset: a.offset,
-                                   first_size: a.size,
-                                   second_offset: b.offset,
-                               });
+                        first_offset: a.offset,
+                        first_size: a.size,
+                        second_offset: b.offset,
+                    });
                 }
 
                 if b.offset <= a.offset && b.offset + b.size > a.offset {
                     return Err(RuntimePipelineDescError::PushConstantsConflict {
-                                   first_offset: b.offset,
-                                   first_size: b.size,
-                                   second_offset: a.offset,
-                               });
+                        first_offset: b.offset,
+                        first_size: b.size,
+                        second_offset: a.offset,
+                    });
                 }
             }
         }
 
         Ok(RuntimePipelineDesc {
-               descriptors,
-               push_constants,
-           })
+            descriptors,
+            push_constants,
+        })
     }
 }
 
@@ -109,7 +111,7 @@ impl error::Error for RuntimePipelineDescError {
         match *self {
             RuntimePipelineDescError::PushConstantsConflict { .. } => {
                 "conflict between different push constants ranges"
-            },
+            }
         }
     }
 }
@@ -144,16 +146,18 @@ mod tests {
             stages: ShaderStages::all(),
         };
 
-        let r = RuntimePipelineDesc::new::<_, _, iter::Empty<Option<DescriptorDesc>>>
-                                    (iter::empty(), iter::once(range1).chain(iter::once(range2)));
+        let r = RuntimePipelineDesc::new::<_, _, iter::Empty<Option<DescriptorDesc>>>(
+            iter::empty(),
+            iter::once(range1).chain(iter::once(range2)),
+        );
 
         match r {
             Err(RuntimePipelineDescError::PushConstantsConflict {
-                    first_offset: 0,
-                    first_size: 8,
-                    second_offset: 4,
-                }) => (),
-            _ => panic!(),   // test failed
+                first_offset: 0,
+                first_size: 8,
+                second_offset: 4,
+            }) => (),
+            _ => panic!(), // test failed
         }
     }
 }

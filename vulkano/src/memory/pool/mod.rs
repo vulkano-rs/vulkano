@@ -52,9 +52,14 @@ pub unsafe trait MemoryPool: DeviceOwned {
     /// - Panics if `size` is 0.
     /// - Panics if `alignment` is 0.
     ///
-    fn alloc_generic(&self, ty: MemoryType, size: usize, alignment: usize, layout: AllocLayout,
-                     map: MappingRequirement)
-                     -> Result<Self::Alloc, DeviceMemoryAllocError>;
+    fn alloc_generic(
+        &self,
+        ty: MemoryType,
+        size: usize,
+        alignment: usize,
+        layout: AllocLayout,
+        map: MappingRequirement,
+    ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
 
     /// Chooses a memory type and allocates memory from it.
     ///
@@ -86,10 +91,15 @@ pub unsafe trait MemoryPool: DeviceOwned {
     /// - Panics if `alignment` is 0.
     ///
     fn alloc_from_requirements<F>(
-        &self, requirements: &MemoryRequirements, layout: AllocLayout, map: MappingRequirement,
-        dedicated: DedicatedAlloc, mut filter: F)
-        -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
-        where F: FnMut(MemoryType) -> AllocFromRequirementsFilter
+        &self,
+        requirements: &MemoryRequirements,
+        layout: AllocLayout,
+        map: MappingRequirement,
+        dedicated: DedicatedAlloc,
+        mut filter: F,
+    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
+    where
+        F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
     {
         // Choose a suitable memory type.
         let mem_ty = {
@@ -99,11 +109,13 @@ pub unsafe trait MemoryPool: DeviceOwned {
                 }
                 filter(ty)
             };
-            let first_loop = self.device()
+            let first_loop = self
+                .device()
                 .physical_device()
                 .memory_types()
                 .map(|t| (t, AllocFromRequirementsFilter::Preferred));
-            let second_loop = self.device()
+            let second_loop = self
+                .device()
                 .physical_device()
                 .memory_types()
                 .map(|t| (t, AllocFromRequirementsFilter::Allowed));
@@ -117,41 +129,49 @@ pub unsafe trait MemoryPool: DeviceOwned {
         };
 
         // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
-        if !requirements.prefer_dedicated ||
-            !self.device().loaded_extensions().khr_dedicated_allocation
+        if !requirements.prefer_dedicated
+            || !self.device().loaded_extensions().khr_dedicated_allocation
         {
-            let alloc = self.alloc_generic(mem_ty,
-                                           requirements.size,
-                                           requirements.alignment,
-                                           layout,
-                                           map)?;
+            let alloc = self.alloc_generic(
+                mem_ty,
+                requirements.size,
+                requirements.alignment,
+                layout,
+                map,
+            )?;
             return Ok(alloc.into());
         }
         if let DedicatedAlloc::None = dedicated {
-            let alloc = self.alloc_generic(mem_ty,
-                                           requirements.size,
-                                           requirements.alignment,
-                                           layout,
-                                           map)?;
+            let alloc = self.alloc_generic(
+                mem_ty,
+                requirements.size,
+                requirements.alignment,
+                layout,
+                map,
+            )?;
             return Ok(alloc.into());
         }
 
         // If we reach here, then we perform a dedicated alloc.
         match map {
             MappingRequirement::Map => {
-                let mem = DeviceMemory::dedicated_alloc_and_map(self.device().clone(),
-                                                                mem_ty,
-                                                                requirements.size,
-                                                                dedicated)?;
+                let mem = DeviceMemory::dedicated_alloc_and_map(
+                    self.device().clone(),
+                    mem_ty,
+                    requirements.size,
+                    dedicated,
+                )?;
                 Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
-            },
+            }
             MappingRequirement::DoNotMap => {
-                let mem = DeviceMemory::dedicated_alloc(self.device().clone(),
-                                                        mem_ty,
-                                                        requirements.size,
-                                                        dedicated)?;
+                let mem = DeviceMemory::dedicated_alloc(
+                    self.device().clone(),
+                    mem_ty,
+                    requirements.size,
+                    dedicated,
+                )?;
                 Ok(PotentialDedicatedAllocation::Dedicated(mem))
-            },
+            }
         }
     }
 }
@@ -205,7 +225,8 @@ pub enum PotentialDedicatedAllocation<A> {
 }
 
 unsafe impl<A> MemoryPoolAlloc for PotentialDedicatedAllocation<A>
-    where A: MemoryPoolAlloc
+where
+    A: MemoryPoolAlloc,
 {
     #[inline]
     fn mapped_memory(&self) -> Option<&MappedDeviceMemory> {

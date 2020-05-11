@@ -66,10 +66,10 @@ extern crate crossbeam;
 extern crate fnv;
 #[macro_use]
 extern crate lazy_static;
+pub extern crate half;
 extern crate shared_library;
 extern crate smallvec;
 extern crate vk_sys as vk;
-pub extern crate half;
 
 #[macro_use]
 mod tests;
@@ -103,12 +103,9 @@ use std::sync::MutexGuard;
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
-unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {
-}
-unsafe impl<T: ?Sized> SafeDeref for Arc<T> {
-}
-unsafe impl<T: ?Sized> SafeDeref for Box<T> {
-}
+unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
+unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
+unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 
 pub trait VulkanHandle {
     fn value(&self) -> u64;
@@ -116,11 +113,15 @@ pub trait VulkanHandle {
 
 impl VulkanHandle for usize {
     #[inline]
-    fn value(&self) -> u64 { *self as u64 }
+    fn value(&self) -> u64 {
+        *self as u64
+    }
 }
 impl VulkanHandle for u64 {
     #[inline]
-    fn value(&self) -> u64 { *self }
+    fn value(&self) -> u64 {
+        *self
+    }
 }
 
 /// Gives access to the internal identifier of an object.
@@ -220,6 +221,7 @@ pub(crate) enum Error {
     IncompatibleDisplay = vk::ERROR_INCOMPATIBLE_DISPLAY_KHR,
     ValidationFailed = vk::ERROR_VALIDATION_FAILED_EXT,
     OutOfPoolMemory = vk::ERROR_OUT_OF_POOL_MEMORY_KHR,
+    FullscreenExclusiveLost = vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
 }
 
 /// Checks whether the result returned correctly.
@@ -249,8 +251,11 @@ fn check_errors(result: vk::Result) -> Result<Success, Error> {
         vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
         vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
         vk::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
-        vk::ERROR_INVALID_SHADER_NV => panic!("Vulkan function returned \
-                                               VK_ERROR_INVALID_SHADER_NV"),
+        vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => Err(Error::FullscreenExclusiveLost),
+        vk::ERROR_INVALID_SHADER_NV => panic!(
+            "Vulkan function returned \
+                                               VK_ERROR_INVALID_SHADER_NV"
+        ),
         c => unreachable!("Unexpected error code returned by Vulkan: {}", c),
     }
 }

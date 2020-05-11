@@ -27,7 +27,9 @@ impl<'a> SubmitSemaphoresWaitBuilder<'a> {
     /// Builds a new empty `SubmitSemaphoresWaitBuilder`.
     #[inline]
     pub fn new() -> SubmitSemaphoresWaitBuilder<'a> {
-        SubmitSemaphoresWaitBuilder { semaphores: SmallVec::new() }
+        SubmitSemaphoresWaitBuilder {
+            semaphores: SmallVec::new(),
+        }
     }
 
     /// Adds an operation that waits on a semaphore.
@@ -41,7 +43,7 @@ impl<'a> SubmitSemaphoresWaitBuilder<'a> {
     /// Merges this builder with another builder.
     #[inline]
     pub fn merge(&mut self, mut other: SubmitSemaphoresWaitBuilder<'a>) {
-        self.semaphores.extend(other.semaphores.drain());
+        self.semaphores.extend(other.semaphores.drain(..));
     }
 }
 
@@ -50,13 +52,15 @@ impl<'a> Into<SubmitCommandBufferBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a
     fn into(mut self) -> SubmitCommandBufferBuilder<'a> {
         unsafe {
             let mut builder = SubmitCommandBufferBuilder::new();
-            for sem in self.semaphores.drain() {
-                builder.add_wait_semaphore(sem,
-                                           PipelineStages {
-                                               // TODO: correct stages ; hard
-                                               all_commands: true,
-                                               ..PipelineStages::none()
-                                           });
+            for sem in self.semaphores.drain(..) {
+                builder.add_wait_semaphore(
+                    sem,
+                    PipelineStages {
+                        // TODO: correct stages ; hard
+                        all_commands: true,
+                        ..PipelineStages::none()
+                    },
+                );
             }
             builder
         }
@@ -68,7 +72,7 @@ impl<'a> Into<SubmitPresentBuilder<'a>> for SubmitSemaphoresWaitBuilder<'a> {
     fn into(mut self) -> SubmitPresentBuilder<'a> {
         unsafe {
             let mut builder = SubmitPresentBuilder::new();
-            for sem in self.semaphores.drain() {
+            for sem in self.semaphores.drain(..) {
                 builder.add_wait_semaphore(sem);
             }
             builder

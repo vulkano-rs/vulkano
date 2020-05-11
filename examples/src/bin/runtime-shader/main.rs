@@ -20,8 +20,8 @@
 // Vulkano uses glslangValidator to build your shaders internally.
 
 use vulkano as vk;
-use vulkano::buffer::BufferUsage;
 use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
+use vulkano::buffer::BufferUsage;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
 use vulkano::descriptor::descriptor::DescriptorDesc;
@@ -31,20 +31,27 @@ use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, Subpass, RenderPassAbstract};
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::SwapchainImage;
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::shader::{GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule};
+use vulkano::instance::Instance;
+use vulkano::pipeline::shader::{
+    GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule,
+};
 use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::swapchain::{AcquireError, PresentMode, SurfaceTransform, Swapchain, SwapchainCreationError, ColorSpace};
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::swapchain;
-use vulkano::sync::GpuFuture;
+use vulkano::swapchain::{
+    AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain,
+    SwapchainCreationError,
+};
 use vulkano::sync;
+use vulkano::sync::{FlushError, GpuFuture};
 
 use vulkano_win::VkSurfaceBuild;
-
-use winit::Window;
+use winit::event::{Event, WindowEvent};
+use winit::event_loop::{ControlFlow, EventLoop};
+use winit::window::{Window, WindowBuilder};
 
 use std::borrow::Cow;
 use std::ffi::CStr;
@@ -61,55 +68,80 @@ pub struct Vertex {
 vulkano::impl_vertex!(Vertex, position, color);
 
 fn main() {
-    let instance = vk::instance::Instance::new(None, &vulkano_win::required_extensions(), None).unwrap();
-    let physical = vk::instance::PhysicalDevice::enumerate(&instance).next().unwrap();
+    let required_extensions = vulkano_win::required_extensions();
+    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let physical = vk::instance::PhysicalDevice::enumerate(&instance)
+        .next()
+        .unwrap();
 
-    let mut events_loop = winit::EventsLoop::new();
-    let surface = winit::WindowBuilder::new().build_vk_surface(&events_loop, instance.clone()).unwrap();
-    let window = surface.window();
+    let event_loop = EventLoop::new();
+    let surface = WindowBuilder::new()
+        .build_vk_surface(&event_loop, instance.clone())
+        .unwrap();
 
-    let queue_family = physical.queue_families().find(|&q| {
-        q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
-    }).unwrap();
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+        .unwrap();
     let (device, mut queues) = {
-        let device_ext = DeviceExtensions { khr_swapchain: true, .. DeviceExtensions::none() };
-        Device::new(physical, physical.supported_features(), &device_ext,
-            [(queue_family, 0.5)].iter().cloned()).unwrap()
+        let device_ext = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::none()
+        };
+        Device::new(
+            physical,
+            physical.supported_features(),
+            &device_ext,
+            [(queue_family, 0.5)].iter().cloned(),
+        )
+        .unwrap()
     };
     let queue = queues.next().unwrap();
-
-    let initial_dimensions = if let Some(dimensions) = window.get_inner_size() {
-        let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-        [dimensions.0, dimensions.1]
-    } else {
-        return;
-    };
 
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).unwrap();
         let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
+        let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-        Swapchain::new(device.clone(), surface.clone(), caps.min_image_count, format, initial_dimensions,
-            1, usage, &queue, SurfaceTransform::Identity, alpha, PresentMode::Fifo, true, ColorSpace::SrgbNonLinear).unwrap()
+        Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            caps.min_image_count,
+            format,
+            dimensions,
+            1,
+            usage,
+            &queue,
+            SurfaceTransform::Identity,
+            alpha,
+            PresentMode::Fifo,
+            FullscreenExclusive::Default,
+            true,
+            ColorSpace::SrgbNonLinear,
+        )
+        .unwrap()
     };
 
-    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
-        device.clone(),
-        attachments: {
-            color: {
-                load: Clear,
-                store: Store,
-                format: swapchain.format(),
-                samples: 1,
+    let render_pass = Arc::new(
+        vulkano::single_pass_renderpass!(
+            device.clone(),
+            attachments: {
+                color: {
+                    load: Clear,
+                    store: Store,
+                    format: swapchain.format(),
+                    samples: 1,
+                }
+            },
+            pass: {
+                color: [color],
+                depth_stencil: {}
             }
-        },
-        pass: {
-            color: [color],
-            depth_stencil: {}
-        }
-    ).unwrap());
+        )
+        .unwrap(),
+    );
 
     let vs = {
         let mut f = File::open("src/bin/runtime-shader/vert.spv")
@@ -159,16 +191,16 @@ fn main() {
                 return Some(ShaderInterfaceDefEntry {
                     location: 1..2,
                     format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("color"))
-                })
+                    name: Some(Cow::Borrowed("color")),
+                });
             }
             if self.0 == 1 {
                 self.0 += 1;
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
                     format: Format::R32G32Sfloat,
-                    name: Some(Cow::Borrowed("position"))
-                })
+                    name: Some(Cow::Borrowed("position")),
+                });
             }
             None
         }
@@ -181,7 +213,7 @@ fn main() {
         }
     }
 
-    impl ExactSizeIterator for VertInputIter { }
+    impl ExactSizeIterator for VertInputIter {}
 
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
     struct VertOutput;
@@ -209,8 +241,8 @@ fn main() {
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
                     format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("v_color"))
-                })
+                    name: Some(Cow::Borrowed("v_color")),
+                });
             }
             None
         }
@@ -222,22 +254,32 @@ fn main() {
         }
     }
 
-    impl ExactSizeIterator for VertOutputIter { }
+    impl ExactSizeIterator for VertOutputIter {}
 
     // This structure describes layout of this stage.
     #[derive(Debug, Copy, Clone)]
     struct VertLayout(ShaderStages);
     unsafe impl PipelineLayoutDesc for VertLayout {
         // Number of descriptor sets it takes.
-        fn num_sets(&self) -> usize { 0 }
+        fn num_sets(&self) -> usize {
+            0
+        }
         // Number of entries (bindings) in each set.
-        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> { None }
+        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> {
+            None
+        }
         // Descriptor descriptions.
-        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> { None }
+        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> {
+            None
+        }
         // Number of push constants ranges (think: number of push constants).
-        fn num_push_constants_ranges(&self) -> usize { 0 }
+        fn num_push_constants_ranges(&self) -> usize {
+            0
+        }
         // Each push constant range in memory.
-        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> { None }
+        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> {
+            None
+        }
     }
 
     // Same as with our vertex shader, but for fragment one instead.
@@ -263,8 +305,8 @@ fn main() {
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
                     format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("v_color"))
-                })
+                    name: Some(Cow::Borrowed("v_color")),
+                });
             }
             None
         }
@@ -276,7 +318,7 @@ fn main() {
         }
     }
 
-    impl ExactSizeIterator for FragInputIter { }
+    impl ExactSizeIterator for FragInputIter {}
 
     #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
     struct FragOutput;
@@ -303,8 +345,8 @@ fn main() {
                 return Some(ShaderInterfaceDefEntry {
                     location: 0..1,
                     format: Format::R32G32B32A32Sfloat,
-                    name: Some(Cow::Borrowed("f_color"))
-                })
+                    name: Some(Cow::Borrowed("f_color")),
+                });
             }
             None
         }
@@ -315,17 +357,27 @@ fn main() {
         }
     }
 
-    impl ExactSizeIterator for FragOutputIter { }
+    impl ExactSizeIterator for FragOutputIter {}
 
     // Layout same as with vertex shader.
     #[derive(Debug, Copy, Clone)]
     struct FragLayout(ShaderStages);
     unsafe impl PipelineLayoutDesc for FragLayout {
-        fn num_sets(&self) -> usize { 0 }
-        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> { None }
-        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> { None }
-        fn num_push_constants_ranges(&self) -> usize { 0 }
-        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> { None }
+        fn num_sets(&self) -> usize {
+            0
+        }
+        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> {
+            None
+        }
+        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> {
+            None
+        }
+        fn num_push_constants_ranges(&self) -> usize {
+            0
+        }
+        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> {
+            None
+        }
     }
 
     // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
@@ -335,21 +387,31 @@ fn main() {
     // You must be extra careful to specify correct entry point, or program will
     // crash at runtime outside of rust and you will get NO meaningful error
     // information!
-    let vert_main = unsafe { vs.graphics_entry_point(
-        CStr::from_bytes_with_nul_unchecked(b"main\0"),
-        VertInput,
-        VertOutput,
-        VertLayout(ShaderStages { vertex: true, ..ShaderStages::none() }),
-        GraphicsShaderType::Vertex
-    ) };
+    let vert_main = unsafe {
+        vs.graphics_entry_point(
+            CStr::from_bytes_with_nul_unchecked(b"main\0"),
+            VertInput,
+            VertOutput,
+            VertLayout(ShaderStages {
+                vertex: true,
+                ..ShaderStages::none()
+            }),
+            GraphicsShaderType::Vertex,
+        )
+    };
 
-    let frag_main = unsafe { fs.graphics_entry_point(
-        CStr::from_bytes_with_nul_unchecked(b"main\0"),
-        FragInput,
-        FragOutput,
-        FragLayout(ShaderStages { fragment: true, ..ShaderStages::none() }),
-        GraphicsShaderType::Fragment
-    ) };
+    let frag_main = unsafe {
+        fs.graphics_entry_point(
+            CStr::from_bytes_with_nul_unchecked(b"main\0"),
+            FragInput,
+            FragOutput,
+            FragLayout(ShaderStages {
+                fragment: true,
+                ..ShaderStages::none()
+            }),
+            GraphicsShaderType::Fragment,
+        )
+    };
 
     let graphics_pipeline = Arc::new(
         GraphicsPipeline::start()
@@ -371,115 +433,160 @@ fn main() {
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
         BufferUsage::all(),
+        false,
         [
-            Vertex { position: [-1.0,  1.0], color: [1.0, 0.0, 0.0] },
-            Vertex { position: [ 0.0, -1.0], color: [0.0, 1.0, 0.0] },
-            Vertex { position: [ 1.0,  1.0], color: [0.0, 0.0, 1.0] },
-        ].iter().cloned()
-    ).unwrap();
+            Vertex {
+                position: [-1.0, 1.0],
+                color: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [0.0, -1.0],
+                color: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [1.0, 1.0],
+                color: [0.0, 0.0, 1.0],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
 
     // NOTE: We don't create any descriptor sets in this example, but you should
     // note that passing wrong types, providing sets at wrong indexes will cause
     // descriptor set builder to return Err!
 
-    let mut dynamic_state = DynamicState { line_width: None, viewports: None, scissors: None, compare_mask: None, write_mask: None, reference: None };
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
-    let mut previous_frame_end = Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>;
+    let mut dynamic_state = DynamicState {
+        line_width: None,
+        viewports: None,
+        scissors: None,
+        compare_mask: None,
+        write_mask: None,
+        reference: None,
+    };
+    let mut framebuffers =
+        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
 
-    loop {
-        previous_frame_end.cleanup_finished();
-
-        if recreate_swapchain {
-            // Get the new dimensions for the viewport/framebuffers.
-            let dimensions = if let Some(dimensions) = window.get_inner_size() {
-                let dimensions: (u32, u32) = dimensions.to_physical(window.get_hidpi_factor()).into();
-                [dimensions.0, dimensions.1]
-            } else {
-                return;
-            };
-
-            let (new_swapchain, new_images) = match swapchain.recreate_with_dimension(dimensions) {
-                Ok(r) => r,
-                Err(SwapchainCreationError::UnsupportedDimensions) => continue,
-                Err(err) => panic!("{:?}", err)
-            };
-
-            swapchain = new_swapchain;
-            framebuffers = window_size_dependent_setup(&new_images, render_pass.clone(), &mut dynamic_state);
-
-            recreate_swapchain = false;
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            event: WindowEvent::CloseRequested,
+            ..
+        } => {
+            *control_flow = ControlFlow::Exit;
         }
+        Event::WindowEvent {
+            event: WindowEvent::Resized(_),
+            ..
+        } => {
+            recreate_swapchain = true;
+        }
+        Event::RedrawEventsCleared => {
+            previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-        let (image_num, acquire_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
-            Ok(r) => r,
-            Err(AcquireError::OutOfDate) => {
-                recreate_swapchain = true;
-                continue;
-            },
-            Err(err) => panic!("{:?}", err)
-        };
+            if recreate_swapchain {
+                let dimensions: [u32; 2] = surface.window().inner_size().into();
+                let (new_swapchain, new_images) =
+                    match swapchain.recreate_with_dimensions(dimensions) {
+                        Ok(r) => r,
+                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                    };
 
-
-        let clear_values = vec!([0.0, 0.0, 0.0, 1.0].into());
-        let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
-            .begin_render_pass(framebuffers[image_num].clone(), false, clear_values).unwrap()
-            .draw(graphics_pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ()).unwrap()
-            .end_render_pass().unwrap()
-            .build().unwrap();
-
-        let future = previous_frame_end.join(acquire_future)
-            .then_execute(queue.clone(), command_buffer).unwrap()
-            .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-            .then_signal_fence_and_flush();
-
-        match future {
-            Ok(future) => {
-                // This wait is required when using NVIDIA or running on macOS. See https://github.com/vulkano-rs/vulkano/issues/1247
-                future.wait(None).unwrap();
-                previous_frame_end = Box::new(future) as Box<_>;
+                swapchain = new_swapchain;
+                framebuffers = window_size_dependent_setup(
+                    &new_images,
+                    render_pass.clone(),
+                    &mut dynamic_state,
+                );
+                recreate_swapchain = false;
             }
-            Err(vulkano::sync::FlushError::OutOfDate) => {
+
+            let (image_num, suboptimal, acquire_future) =
+                match swapchain::acquire_next_image(swapchain.clone(), None) {
+                    Ok(r) => r,
+                    Err(AcquireError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        return;
+                    }
+                    Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                };
+
+            if suboptimal {
                 recreate_swapchain = true;
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
             }
-            Err(e) => {
-                println!("{:?}", e);
-                previous_frame_end = Box::new(vulkano::sync::now(device.clone())) as Box<_>;
+
+            let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
+            let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family())
+                .unwrap()
+                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                .unwrap()
+                .draw(
+                    graphics_pipeline.clone(),
+                    &dynamic_state,
+                    vertex_buffer.clone(),
+                    (),
+                    (),
+                )
+                .unwrap()
+                .end_render_pass()
+                .unwrap()
+                .build()
+                .unwrap();
+
+            let future = previous_frame_end
+                .take()
+                .unwrap()
+                .join(acquire_future)
+                .then_execute(queue.clone(), command_buffer)
+                .unwrap()
+                .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                .then_signal_fence_and_flush();
+
+            match future {
+                Ok(future) => {
+                    previous_frame_end = Some(Box::new(future) as Box<_>);
+                }
+                Err(FlushError::OutOfDate) => {
+                    recreate_swapchain = true;
+                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                }
+                Err(e) => {
+                    println!("Failed to flush future: {:?}", e);
+                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                }
             }
         }
-
-        let mut done = false;
-        events_loop.poll_events(|ev| {
-            match ev {
-                winit::Event::WindowEvent { event: winit::WindowEvent::CloseRequested, .. } => done = true,
-                winit::Event::WindowEvent { event: winit::WindowEvent::Resized(_), .. } => recreate_swapchain = true,
-                _ => ()
-            }
-        });
-        if done { return; }
-    }
+        _ => (),
+    });
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
-    dynamic_state: &mut DynamicState
+    dynamic_state: &mut DynamicState,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
 
     let viewport = Viewport {
         origin: [0.0, 0.0],
         dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0 .. 1.0,
+        depth_range: 0.0..1.0,
     };
-    dynamic_state.viewports = Some(vec!(viewport));
+    dynamic_state.viewports = Some(vec![viewport]);
 
-    images.iter().map(|image| {
-        Arc::new(
-            Framebuffer::start(render_pass.clone())
-                .add(image.clone()).unwrap()
-                .build().unwrap()
-        ) as Arc<dyn FramebufferAbstract + Send + Sync>
-    }).collect::<Vec<_>>()
+    images
+        .iter()
+        .map(|image| {
+            Arc::new(
+                Framebuffer::start(render_pass.clone())
+                    .add(image.clone())
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            ) as Arc<dyn FramebufferAbstract + Send + Sync>
+        })
+        .collect::<Vec<_>>()
 }

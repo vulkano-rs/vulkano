@@ -15,9 +15,9 @@ use vulkano::command_buffer::DynamicState;
 use vulkano::device::Queue;
 use vulkano::framebuffer::RenderPassAbstract;
 use vulkano::framebuffer::Subpass;
+use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
-use vulkano::pipeline::viewport::Viewport;
 
 use std::sync::Arc;
 
@@ -30,14 +30,29 @@ pub struct TriangleDrawSystem {
 impl TriangleDrawSystem {
     /// Initializes a triangle drawing system.
     pub fn new<R>(gfx_queue: Arc<Queue>, subpass: Subpass<R>) -> TriangleDrawSystem
-        where R: RenderPassAbstract + Send + Sync + 'static
+    where
+        R: RenderPassAbstract + Send + Sync + 'static,
     {
         let vertex_buffer = {
-            CpuAccessibleBuffer::from_iter(gfx_queue.device().clone(), BufferUsage::all(), [
-                Vertex { position: [-0.5, -0.25] },
-                Vertex { position: [0.0, 0.5] },
-                Vertex { position: [0.25, -0.1] }
-            ].iter().cloned()).expect("failed to create buffer")
+            CpuAccessibleBuffer::from_iter(
+                gfx_queue.device().clone(),
+                BufferUsage::all(),
+                false,
+                [
+                    Vertex {
+                        position: [-0.5, -0.25],
+                    },
+                    Vertex {
+                        position: [0.0, 0.5],
+                    },
+                    Vertex {
+                        position: [0.25, -0.1],
+                    },
+                ]
+                .iter()
+                .cloned(),
+            )
+            .expect("failed to create buffer")
         };
 
         let pipeline = {
@@ -46,16 +61,18 @@ impl TriangleDrawSystem {
             let fs = fs::Shader::load(gfx_queue.device().clone())
                 .expect("failed to create shader module");
 
-            Arc::new(GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .depth_stencil_simple_depth()
-                .render_pass(subpass)
-                .build(gfx_queue.device().clone())
-                .unwrap()) as Arc<_>
+            Arc::new(
+                GraphicsPipeline::start()
+                    .vertex_input_single_buffer::<Vertex>()
+                    .vertex_shader(vs.main_entry_point(), ())
+                    .triangle_list()
+                    .viewports_dynamic_scissors_irrelevant(1)
+                    .fragment_shader(fs.main_entry_point(), ())
+                    .depth_stencil_simple_depth()
+                    .render_pass(subpass)
+                    .build(gfx_queue.device().clone())
+                    .unwrap(),
+            ) as Arc<_>
         };
 
         TriangleDrawSystem {
@@ -67,35 +84,40 @@ impl TriangleDrawSystem {
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> AutoCommandBuffer {
-        AutoCommandBufferBuilder::secondary_graphics(self.gfx_queue.device().clone(),
-                                                     self.gfx_queue.family(),
-                                                     self.pipeline.clone().subpass())
-            .unwrap()
-            .draw(self.pipeline.clone(),
-                  &DynamicState {
-                      viewports: Some(vec![Viewport {
-                          origin: [0.0, 0.0],
-                          dimensions: [viewport_dimensions[0] as f32,
-                                       viewport_dimensions[1] as f32],
-                          depth_range: 0.0 .. 1.0,
-                      }]),
-                      .. DynamicState::none()
-                  },
-                  vec![self.vertex_buffer.clone()], (), ())
-            .unwrap()
-            .build()
-            .unwrap()
+        AutoCommandBufferBuilder::secondary_graphics(
+            self.gfx_queue.device().clone(),
+            self.gfx_queue.family(),
+            self.pipeline.clone().subpass(),
+        )
+        .unwrap()
+        .draw(
+            self.pipeline.clone(),
+            &DynamicState {
+                viewports: Some(vec![Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+                    depth_range: 0.0..1.0,
+                }]),
+                ..DynamicState::none()
+            },
+            vec![self.vertex_buffer.clone()],
+            (),
+            (),
+        )
+        .unwrap()
+        .build()
+        .unwrap()
     }
 }
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
-    position: [f32; 2]
+    position: [f32; 2],
 }
 vulkano::impl_vertex!(Vertex, position);
 
 mod vs {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
         src: "
 #version 450
@@ -109,7 +131,7 @@ void main() {
 }
 
 mod fs {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
         src: "
 #version 450

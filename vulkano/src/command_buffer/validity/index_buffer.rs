@@ -10,12 +10,12 @@
 use std::error;
 use std::fmt;
 
-use VulkanObject;
 use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
 use pipeline::input_assembly::Index;
+use VulkanObject;
 
 /// Checks whether an index buffer can be bound.
 ///
@@ -23,13 +23,18 @@ use pipeline::input_assembly::Index;
 ///
 /// - Panics if the buffer was not created with `device`.
 ///
-pub fn check_index_buffer<B, I>(device: &Device, buffer: &B)
-                                -> Result<CheckIndexBuffer, CheckIndexBufferError>
-    where B: ?Sized + BufferAccess + TypedBufferAccess<Content = [I]>,
-          I: Index
+pub fn check_index_buffer<B, I>(
+    device: &Device,
+    buffer: &B,
+) -> Result<CheckIndexBuffer, CheckIndexBufferError>
+where
+    B: ?Sized + BufferAccess + TypedBufferAccess<Content = [I]>,
+    I: Index,
 {
-    assert_eq!(buffer.inner().buffer.device().internal_object(),
-               device.internal_object());
+    assert_eq!(
+        buffer.inner().buffer.device().internal_object(),
+        device.internal_object()
+    );
 
     if !buffer.inner().buffer.usage_index_buffer() {
         return Err(CheckIndexBufferError::BufferMissingUsage);
@@ -40,7 +45,9 @@ pub fn check_index_buffer<B, I>(device: &Device, buffer: &B)
 
     // TODO: fullDrawIndexUint32 feature
 
-    Ok(CheckIndexBuffer { num_indices: buffer.len() })
+    Ok(CheckIndexBuffer {
+        num_indices: buffer.len(),
+    })
 }
 
 /// Information returned if `check_index_buffer` succeeds.
@@ -66,14 +73,14 @@ impl error::Error for CheckIndexBufferError {
         match *self {
             CheckIndexBufferError::BufferMissingUsage => {
                 "the index buffer usage must be enabled on the index buffer"
-            },
+            }
             CheckIndexBufferError::WrongAlignment => {
                 "the sum of offset and the address of the range of VkDeviceMemory object that is \
                  backing buffer, must be a multiple of the type indicated by indexType"
-            },
+            }
             CheckIndexBufferError::UnsupportIndexType => {
                 "the type of the indices is not supported by the device"
-            },
+            }
         }
     }
 }
@@ -94,15 +101,18 @@ mod tests {
     #[test]
     fn num_indices() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
-                                                    BufferUsage::index_buffer(),
-                                                    0 .. 500u32)
-            .unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::index_buffer(),
+            false,
+            0..500u32,
+        )
+        .unwrap();
 
         match check_index_buffer(&device, &buffer) {
             Ok(CheckIndexBuffer { num_indices }) => {
                 assert_eq!(num_indices, 500);
-            },
+            }
             _ => panic!(),
         }
     }
@@ -110,10 +120,13 @@ mod tests {
     #[test]
     fn missing_usage() {
         let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(device.clone(),
-                                                    BufferUsage::vertex_buffer(),
-                                                    0 .. 500u32)
-            .unwrap();
+        let buffer = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::vertex_buffer(),
+            false,
+            0..500u32,
+        )
+        .unwrap();
 
         match check_index_buffer(&device, &buffer) {
             Err(CheckIndexBufferError::BufferMissingUsage) => (),
@@ -126,10 +139,11 @@ mod tests {
         let (dev1, queue) = gfx_dev_and_queue!();
         let (dev2, _) = gfx_dev_and_queue!();
 
-        let buffer = CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(), 0 .. 500u32).unwrap();
+        let buffer =
+            CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(), false, 0..500u32).unwrap();
 
         assert_should_panic!({
-                                 let _ = check_index_buffer(&dev2, &buffer);
-                             });
+            let _ = check_index_buffer(&dev2, &buffer);
+        });
     }
 }

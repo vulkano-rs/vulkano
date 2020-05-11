@@ -10,10 +10,10 @@
 use std::error;
 use std::fmt;
 
-use VulkanObject;
 use buffer::BufferAccess;
 use device::DeviceOwned;
 use pipeline::vertex::VertexSource;
+use VulkanObject;
 
 /// Checks whether vertex buffers can be bound.
 ///
@@ -21,15 +21,20 @@ use pipeline::vertex::VertexSource;
 ///
 /// - Panics if one of the vertex buffers was not created with the same device as `pipeline`.
 ///
-pub fn check_vertex_buffers<P, V>(pipeline: &P, vertex_buffers: V)
-                                  -> Result<CheckVertexBuffer, CheckVertexBufferError>
-    where P: DeviceOwned + VertexSource<V>
+pub fn check_vertex_buffers<P, V>(
+    pipeline: &P,
+    vertex_buffers: V,
+) -> Result<CheckVertexBuffer, CheckVertexBufferError>
+where
+    P: DeviceOwned + VertexSource<V>,
 {
     let (vertex_buffers, vertex_count, instance_count) = pipeline.decode(vertex_buffers);
 
     for (num, buf) in vertex_buffers.iter().enumerate() {
-        assert_eq!(buf.inner().buffer.device().internal_object(),
-                   pipeline.device().internal_object());
+        assert_eq!(
+            buf.inner().buffer.device().internal_object(),
+            pipeline.device().internal_object()
+        );
 
         if !buf.inner().buffer.usage_vertex_buffer() {
             return Err(CheckVertexBufferError::BufferMissingUsage { num_buffer: num });
@@ -37,10 +42,10 @@ pub fn check_vertex_buffers<P, V>(pipeline: &P, vertex_buffers: V)
     }
 
     Ok(CheckVertexBuffer {
-           vertex_buffers,
-           vertex_count: vertex_count as u32,
-           instance_count: instance_count as u32,
-       })
+        vertex_buffers,
+        vertex_count: vertex_count as u32,
+        instance_count: instance_count as u32,
+    })
 }
 
 /// Information returned if `check_vertex_buffer` succeeds.
@@ -69,7 +74,7 @@ impl error::Error for CheckVertexBufferError {
         match *self {
             CheckVertexBufferError::BufferMissingUsage { .. } => {
                 "the vertex buffer usage is missing on a vertex buffer"
-            },
+            }
         }
     }
 }

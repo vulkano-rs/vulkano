@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use cgmath::Vector3;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::AutoCommandBuffer;
@@ -20,10 +21,9 @@ use vulkano::image::ImageViewAccess;
 use vulkano::pipeline::blend::AttachmentBlend;
 use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
+use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
-use vulkano::pipeline::viewport::Viewport;
-use cgmath::Vector3;
 
 use std::sync::Arc;
 
@@ -37,16 +37,31 @@ pub struct DirectionalLightingSystem {
 impl DirectionalLightingSystem {
     /// Initializes the directional lighting system.
     pub fn new<R>(gfx_queue: Arc<Queue>, subpass: Subpass<R>) -> DirectionalLightingSystem
-        where R: RenderPassAbstract + Send + Sync + 'static
+    where
+        R: RenderPassAbstract + Send + Sync + 'static,
     {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertex_buffer = {
-            CpuAccessibleBuffer::from_iter(gfx_queue.device().clone(), BufferUsage::all(), [
-                Vertex { position: [-1.0, -1.0] },
-                Vertex { position: [-1.0, 3.0] },
-                Vertex { position: [3.0, -1.0] }
-            ].iter().cloned()).expect("failed to create buffer")
+            CpuAccessibleBuffer::from_iter(
+                gfx_queue.device().clone(),
+                BufferUsage::all(),
+                false,
+                [
+                    Vertex {
+                        position: [-1.0, -1.0],
+                    },
+                    Vertex {
+                        position: [-1.0, 3.0],
+                    },
+                    Vertex {
+                        position: [3.0, -1.0],
+                    },
+                ]
+                .iter()
+                .cloned(),
+            )
+            .expect("failed to create buffer")
         };
 
         let pipeline = {
@@ -55,28 +70,30 @@ impl DirectionalLightingSystem {
             let fs = fs::Shader::load(gfx_queue.device().clone())
                 .expect("failed to create shader module");
 
-            Arc::new(GraphicsPipeline::start()
-                .vertex_input_single_buffer::<Vertex>()
-                .vertex_shader(vs.main_entry_point(), ())
-                .triangle_list()
-                .viewports_dynamic_scissors_irrelevant(1)
-                .fragment_shader(fs.main_entry_point(), ())
-                .blend_collective(AttachmentBlend {
-                    enabled: true,
-                    color_op: BlendOp::Add,
-                    color_source: BlendFactor::One,
-                    color_destination: BlendFactor::One,
-                    alpha_op: BlendOp::Max,
-                    alpha_source: BlendFactor::One,
-                    alpha_destination: BlendFactor::One,
-                    mask_red: true,
-                    mask_green: true,
-                    mask_blue: true,
-                    mask_alpha: true,
-                })
-                .render_pass(subpass)
-                .build(gfx_queue.device().clone())
-                .unwrap()) as Arc<_>
+            Arc::new(
+                GraphicsPipeline::start()
+                    .vertex_input_single_buffer::<Vertex>()
+                    .vertex_shader(vs.main_entry_point(), ())
+                    .triangle_list()
+                    .viewports_dynamic_scissors_irrelevant(1)
+                    .fragment_shader(fs.main_entry_point(), ())
+                    .blend_collective(AttachmentBlend {
+                        enabled: true,
+                        color_op: BlendOp::Add,
+                        color_source: BlendFactor::One,
+                        color_destination: BlendFactor::One,
+                        alpha_op: BlendOp::Max,
+                        alpha_source: BlendFactor::One,
+                        alpha_destination: BlendFactor::One,
+                        mask_red: true,
+                        mask_green: true,
+                        mask_blue: true,
+                        mask_alpha: true,
+                    })
+                    .render_pass(subpass)
+                    .build(gfx_queue.device().clone())
+                    .unwrap(),
+            ) as Arc<_>
         };
 
         DirectionalLightingSystem {
@@ -105,10 +122,17 @@ impl DirectionalLightingSystem {
     /// - `direction` is the direction of the light in world coordinates.
     /// - `color` is the color to apply.
     ///
-    pub fn draw<C, N>(&self, viewport_dimensions: [u32; 2], color_input: C, normals_input: N,
-                      direction: Vector3<f32>, color: [f32; 3]) -> AutoCommandBuffer
-        where C: ImageViewAccess + Send + Sync + 'static,
-              N: ImageViewAccess + Send + Sync + 'static,
+    pub fn draw<C, N>(
+        &self,
+        viewport_dimensions: [u32; 2],
+        color_input: C,
+        normals_input: N,
+        direction: Vector3<f32>,
+        color: [f32; 3],
+    ) -> AutoCommandBuffer
+    where
+        C: ImageViewAccess + Send + Sync + 'static,
+        N: ImageViewAccess + Send + Sync + 'static,
     {
         let push_constants = fs::ty::PushConstants {
             color: [color[0], color[1], color[2], 1.0],
@@ -127,36 +151,39 @@ impl DirectionalLightingSystem {
         let dynamic_state = DynamicState {
             viewports: Some(vec![Viewport {
                 origin: [0.0, 0.0],
-                dimensions: [viewport_dimensions[0] as f32,
-                            viewport_dimensions[1] as f32],
-                depth_range: 0.0 .. 1.0,
+                dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+                depth_range: 0.0..1.0,
             }]),
-            .. DynamicState::none()
+            ..DynamicState::none()
         };
 
-        AutoCommandBufferBuilder::secondary_graphics(self.gfx_queue.device().clone(),
-                                                     self.gfx_queue.family(),
-                                                     self.pipeline.clone().subpass())
-            .unwrap()
-            .draw(self.pipeline.clone(),
-                  &dynamic_state,
-                  vec![self.vertex_buffer.clone()],
-                  descriptor_set,
-                  push_constants)
-            .unwrap()
-            .build()
-            .unwrap()
+        AutoCommandBufferBuilder::secondary_graphics(
+            self.gfx_queue.device().clone(),
+            self.gfx_queue.family(),
+            self.pipeline.clone().subpass(),
+        )
+        .unwrap()
+        .draw(
+            self.pipeline.clone(),
+            &dynamic_state,
+            vec![self.vertex_buffer.clone()],
+            descriptor_set,
+            push_constants,
+        )
+        .unwrap()
+        .build()
+        .unwrap()
     }
 }
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
-    position: [f32; 2]
+    position: [f32; 2],
 }
 vulkano::impl_vertex!(Vertex, position);
 
 mod vs {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "vertex",
         src: "
 #version 450
@@ -170,7 +197,7 @@ void main() {
 }
 
 mod fs {
-    vulkano_shaders::shader!{
+    vulkano_shaders::shader! {
         ty: "fragment",
         src: "
 #version 450

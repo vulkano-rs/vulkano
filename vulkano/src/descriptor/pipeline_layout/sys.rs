@@ -14,11 +14,11 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
+use check_errors;
+use vk;
 use Error;
 use OomError;
 use VulkanObject;
-use check_errors;
-use vk;
 
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor::ShaderStages;
@@ -40,7 +40,8 @@ pub struct PipelineLayout<L> {
 }
 
 impl<L> PipelineLayout<L>
-    where L: PipelineLayoutDesc
+where
+    L: PipelineLayoutDesc,
 {
     /// Creates a new `PipelineLayout`.
     ///
@@ -49,8 +50,10 @@ impl<L> PipelineLayout<L>
     /// - Panics if one of the layout returned by `provided_set_layout()` belongs to a different
     ///   device than the one passed as parameter.
     #[inline]
-    pub fn new(device: Arc<Device>, desc: L)
-               -> Result<PipelineLayout<L>, PipelineLayoutCreationError> {
+    pub fn new(
+        device: Arc<Device>,
+        desc: L,
+    ) -> Result<PipelineLayout<L>, PipelineLayoutCreationError> {
         let vk = device.pointers();
 
         desc.check_against_limits(&device)?;
@@ -58,21 +61,18 @@ impl<L> PipelineLayout<L>
         // Building the list of `UnsafeDescriptorSetLayout` objects.
         let layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
-            for num in 0 .. desc.num_sets() {
+            for num in 0..desc.num_sets() {
                 layouts.push(match desc.provided_set_layout(num) {
-                                 Some(l) => {
-                                     assert_eq!(l.device().internal_object(),
-                                                device.internal_object());
-                                     l
-                                 },
-                                 None => {
-                                     let sets_iter = 0 ..
-                                         desc.num_bindings_in_set(num).unwrap_or(0);
-                                     let desc_iter = sets_iter.map(|d| desc.descriptor(num, d));
-                                     Arc::new(UnsafeDescriptorSetLayout::new(device.clone(),
-                                                                             desc_iter)?)
-                                 },
-                             });
+                    Some(l) => {
+                        assert_eq!(l.device().internal_object(), device.internal_object());
+                        l
+                    }
+                    None => {
+                        let sets_iter = 0..desc.num_bindings_in_set(num).unwrap_or(0);
+                        let desc_iter = sets_iter.map(|d| desc.descriptor(num, d));
+                        Arc::new(UnsafeDescriptorSetLayout::new(device.clone(), desc_iter)?)
+                    }
+                });
             }
             layouts
         };
@@ -87,7 +87,7 @@ impl<L> PipelineLayout<L>
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
-            for pc_id in 0 .. desc.num_push_constants_ranges() {
+            for pc_id in 0..desc.num_push_constants_ranges() {
                 let PipelineLayoutDescPcRange {
                     offset,
                     size,
@@ -104,10 +104,10 @@ impl<L> PipelineLayout<L>
                 }
 
                 out.push(vk::PushConstantRange {
-                             stageFlags: stages.into_vulkan_bits(),
-                             offset: offset as u32,
-                             size: size as u32,
-                         });
+                    stageFlags: stages.into_vulkan_bits(),
+                    offset: offset as u32,
+                    size: size as u32,
+                });
             }
 
             out
@@ -117,17 +117,17 @@ impl<L> PipelineLayout<L>
         // We check that with a debug_assert because it's supposed to be enforced by the
         // `PipelineLayoutDesc`.
         debug_assert!({
-                          let mut stages = 0;
-                          let mut outcome = true;
-                          for pc in push_constants.iter() {
-                              if (stages & pc.stageFlags) != 0 {
-                                  outcome = false;
-                                  break;
-                              }
-                              stages &= pc.stageFlags;
-                          }
-                          outcome
-                      });
+            let mut stages = 0;
+            let mut outcome = true;
+            for pc in push_constants.iter() {
+                if (stages & pc.stageFlags) != 0 {
+                    outcome = false;
+                    break;
+                }
+                stages &= pc.stageFlags;
+            }
+            outcome
+        });
 
         // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device doesn't
         //        have tess shaders enabled
@@ -145,24 +145,27 @@ impl<L> PipelineLayout<L>
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreatePipelineLayout(device.internal_object(),
-                                                 &infos,
-                                                 ptr::null(),
-                                                 output.as_mut_ptr()))?;
+            check_errors(vk.CreatePipelineLayout(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(PipelineLayout {
-               device: device.clone(),
-               layout: layout,
-               layouts: layouts,
-               desc: desc,
-           })
+            device: device.clone(),
+            layout: layout,
+            layouts: layouts,
+            desc: desc,
+        })
     }
 }
 
 impl<L> PipelineLayout<L>
-    where L: PipelineLayoutDesc
+where
+    L: PipelineLayoutDesc,
 {
     /// Returns the description of the pipeline layout.
     #[inline]
@@ -172,7 +175,8 @@ impl<L> PipelineLayout<L>
 }
 
 unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D>
-    where D: PipelineLayoutDesc
+where
+    D: PipelineLayoutDesc,
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
@@ -186,7 +190,8 @@ unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D>
 }
 
 unsafe impl<D> PipelineLayoutDesc for PipelineLayout<D>
-    where D: PipelineLayoutDesc
+where
+    D: PipelineLayoutDesc,
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -222,7 +227,8 @@ unsafe impl<D> DeviceOwned for PipelineLayout<D> {
 }
 
 impl<D> fmt::Debug for PipelineLayout<D>
-    where D: fmt::Debug
+where
+    D: fmt::Debug,
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("PipelineLayout")
@@ -277,15 +283,13 @@ impl error::Error for PipelineLayoutCreationError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            PipelineLayoutCreationError::OomError(_) => {
-                "not enough memory available"
-            },
+            PipelineLayoutCreationError::OomError(_) => "not enough memory available",
             PipelineLayoutCreationError::LimitsError(_) => {
                 "the pipeline layout description doesn't fulfill the limit requirements"
-            },
+            }
             PipelineLayoutCreationError::InvalidPushConstant => {
                 "one of the push constants range didn't obey the rules"
-            },
+            }
         }
     }
 
@@ -326,10 +330,10 @@ impl From<Error> for PipelineLayoutCreationError {
         match err {
             err @ Error::OutOfHostMemory => {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
-            },
+            }
             err @ Error::OutOfDeviceMemory => {
                 PipelineLayoutCreationError::OomError(OomError::from(err))
-            },
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }

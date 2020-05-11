@@ -8,20 +8,20 @@
 // according to those terms.
 
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
 use std::u32;
 
-use SafeDeref;
-use VulkanObject;
 use buffer::BufferAccess;
-use descriptor::PipelineLayoutAbstract;
 use descriptor::descriptor::DescriptorDesc;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use descriptor::pipeline_layout::PipelineLayoutDesc;
 use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use descriptor::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
 use format::ClearValue;
@@ -39,6 +39,8 @@ use pipeline::vertex::IncompatibleVertexDefinitionError;
 use pipeline::vertex::VertexDefinition;
 use pipeline::vertex::VertexSource;
 use vk;
+use SafeDeref;
+use VulkanObject;
 
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
@@ -74,6 +76,7 @@ pub struct GraphicsPipeline<VertexDefinition, Layout, RenderP> {
     num_viewports: u32,
 }
 
+#[derive(PartialEq, Eq, Hash)]
 struct Inner {
     pipeline: vk::Pipeline,
     device: Arc<Device>,
@@ -82,20 +85,20 @@ struct Inner {
 impl GraphicsPipeline<(), (), ()> {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
-    pub fn start<'a>()
-        -> GraphicsPipelineBuilder<BufferlessDefinition,
-                                   EmptyEntryPointDummy,
-                                   (),
-                                   EmptyEntryPointDummy,
-                                   (),
-                                   EmptyEntryPointDummy,
-                                   (),
-                                   EmptyEntryPointDummy,
-                                   (),
-                                   EmptyEntryPointDummy,
-                                   (),
-                                   ()>
-    {
+    pub fn start<'a>() -> GraphicsPipelineBuilder<
+        BufferlessDefinition,
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        EmptyEntryPointDummy,
+        (),
+        (),
+    > {
         GraphicsPipelineBuilder::new()
     }
 }
@@ -115,7 +118,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract
+where
+    L: PipelineLayoutAbstract,
 {
     /// Returns the pipeline layout used in the constructor.
     #[inline]
@@ -125,7 +129,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
 }
 
 impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassDesc
+where
+    Rp: RenderPassDesc,
 {
     /// Returns the pass used in the constructor.
     #[inline]
@@ -191,7 +196,8 @@ impl<Mv, L, Rp> GraphicsPipeline<Mv, L, Rp> {
 }
 
 unsafe impl<Mv, L, Rp> PipelineLayoutAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract
+where
+    L: PipelineLayoutAbstract,
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
@@ -205,7 +211,8 @@ unsafe impl<Mv, L, Rp> PipelineLayoutAbstract for GraphicsPipeline<Mv, L, Rp>
 }
 
 unsafe impl<Mv, L, Rp> PipelineLayoutDesc for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutDesc
+where
+    L: PipelineLayoutDesc,
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -248,7 +255,8 @@ impl<Mv, L, Rp> fmt::Debug for GraphicsPipeline<Mv, L, Rp> {
 }
 
 unsafe impl<Mv, L, Rp> RenderPassAbstract for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassAbstract
+where
+    Rp: RenderPassAbstract,
 {
     #[inline]
     fn inner(&self) -> RenderPassSys {
@@ -257,7 +265,8 @@ unsafe impl<Mv, L, Rp> RenderPassAbstract for GraphicsPipeline<Mv, L, Rp>
 }
 
 unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassDesc
+where
+    Rp: RenderPassDesc,
 {
     #[inline]
     fn num_attachments(&self) -> usize {
@@ -291,7 +300,8 @@ unsafe impl<Mv, L, Rp> RenderPassDesc for GraphicsPipeline<Mv, L, Rp>
 }
 
 unsafe impl<C, Mv, L, Rp> RenderPassDescClearValues<C> for GraphicsPipeline<Mv, L, Rp>
-    where Rp: RenderPassDescClearValues<C>
+where
+    Rp: RenderPassDescClearValues<C>,
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
@@ -324,7 +334,12 @@ impl Drop for Inner {
 /// object.
 /// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
 /// wrapped in a `vec!()`.
-pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> {
+pub unsafe trait GraphicsPipelineAbstract:
+    PipelineLayoutAbstract
+    + RenderPassAbstract
+    + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+    + DeviceOwned
+{
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
@@ -333,9 +348,13 @@ pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAb
 
     /// Returns the subpass this graphics pipeline is rendering to.
     #[inline]
-    fn subpass(self) -> Subpass<Self> where Self: Sized {
+    fn subpass(self) -> Subpass<Self>
+    where
+        Self: Sized,
+    {
         let index = self.subpass_index();
-        Subpass::from(self, index).expect("Wrong subpass index in GraphicsPipelineAbstract::subpass")
+        Subpass::from(self, index)
+            .expect("Wrong subpass index in GraphicsPipelineAbstract::subpass")
     }
 
     /// Returns true if the line width used by this pipeline is dynamic.
@@ -364,9 +383,10 @@ pub unsafe trait GraphicsPipelineAbstract: PipelineLayoutAbstract + RenderPassAb
 }
 
 unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
-    where L: PipelineLayoutAbstract,
-          Rp: RenderPassAbstract,
-          Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+where
+    L: PipelineLayoutAbstract,
+    Rp: RenderPassAbstract,
+    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
@@ -420,8 +440,9 @@ unsafe impl<Mv, L, Rp> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L, Rp>
 }
 
 unsafe impl<T> GraphicsPipelineAbstract for T
-    where T: SafeDeref,
-          T::Target: GraphicsPipelineAbstract
+where
+    T: SafeDeref,
+    T::Target: GraphicsPipelineAbstract,
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
@@ -474,6 +495,56 @@ unsafe impl<T> GraphicsPipelineAbstract for T
     }
 }
 
+impl<Mv, L, Rp> PartialEq for GraphicsPipeline<Mv, L, Rp>
+where
+    L: PipelineLayoutAbstract,
+    Rp: RenderPassAbstract,
+    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner == other.inner
+    }
+}
+
+impl<Mv, L, Rp> Eq for GraphicsPipeline<Mv, L, Rp>
+where
+    L: PipelineLayoutAbstract,
+    Rp: RenderPassAbstract,
+    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
+{
+}
+
+impl<Mv, L, Rp> Hash for GraphicsPipeline<Mv, L, Rp>
+where
+    L: PipelineLayoutAbstract,
+    Rp: RenderPassAbstract,
+    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+impl PartialEq for dyn GraphicsPipelineAbstract + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        GraphicsPipelineAbstract::inner(self).0 == GraphicsPipelineAbstract::inner(other).0
+            && DeviceOwned::device(self) == DeviceOwned::device(other)
+    }
+}
+
+impl Eq for dyn GraphicsPipelineAbstract + Send + Sync {}
+
+impl Hash for dyn GraphicsPipelineAbstract + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        GraphicsPipelineAbstract::inner(self).0.hash(state);
+        DeviceOwned::device(self).hash(state);
+    }
+}
+
 /// Opaque object that represents the inside of the graphics pipeline.
 #[derive(Debug, Copy, Clone)]
 pub struct GraphicsPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
@@ -490,21 +561,24 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
 }
 
 unsafe impl<Mv, L, Rp, I> VertexDefinition<I> for GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexDefinition<I>
+where
+    Mv: VertexDefinition<I>,
 {
     type BuffersIter = <Mv as VertexDefinition<I>>::BuffersIter;
     type AttribsIter = <Mv as VertexDefinition<I>>::AttribsIter;
 
     #[inline]
     fn definition(
-        &self, interface: &I)
-        -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
+        &self,
+        interface: &I,
+    ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         self.vertex_definition.definition(interface)
     }
 }
 
 unsafe impl<Mv, L, Rp, S> VertexSource<S> for GraphicsPipeline<Mv, L, Rp>
-    where Mv: VertexSource<S>
+where
+    Mv: VertexSource<S>,
 {
     #[inline]
     fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {

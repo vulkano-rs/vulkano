@@ -165,19 +165,20 @@
 //! # use vulkano::image::ImageUsage;
 //! # use vulkano::sync::SharingMode;
 //! # use vulkano::format::Format;
-//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace};
+//! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullscreenExclusive};
 //! # fn create_swapchain(
 //! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
-//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha, present_mode: PresentMode
-//! # ) -> Result<(), Box<std::error::Error>> {
+//! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
+//! #     present_mode: PresentMode, fullscreen_exclusive: FullscreenExclusive
+//! # ) -> Result<(), Box<dyn std::error::Error>> {
 //! // The created swapchain will be used as a color attachment for rendering.
 //! let usage = ImageUsage {
 //!     color_attachment: true,
 //!     .. ImageUsage::none()
 //! };
 //!
-//! let sharing_mode = SharingMode::Exclusive(present_queue.family().id());
+//! let sharing_mode = SharingMode::Exclusive;
 //!
 //! // Create the swapchain and its buffers.
 //! let (swapchain, buffers) = Swapchain::new(
@@ -203,6 +204,8 @@
 //!     composite_alpha,
 //!     // How to present images.
 //!     present_mode,
+//!     // How to handle fullscreen exclusivity
+//!     fullscreen_exclusive,
 //!     // Clip the parts of the buffer which aren't visible.
 //!     true,
 //!     // No previous swapchain.
@@ -239,7 +242,7 @@
 //! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
 //!     # let mut command_buffer: ::vulkano::command_buffer::AutoCommandBuffer<()> = return;
-//!     let (image_num, acquire_future)
+//!     let (image_num, suboptimal, acquire_future)
 //!         = swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 //!
 //!     // The command_buffer contains the draw commands that modify the framebuffer
@@ -262,7 +265,6 @@
 //! rendering, you will need to *recreate* the swapchain by creating a new swapchain and passing
 //! as last parameter the old swapchain.
 //!
-//! TODO: suboptimal stuff
 //!
 //! ```
 //! use vulkano::swapchain;
@@ -276,13 +278,13 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate_with_dimension([1024, 768]).unwrap();
+//!         swapchain = swapchain.0.recreate_with_dimensions([1024, 768]).unwrap();
 //!         recreate_swapchain = false;
 //!     }
 //!
 //!     let (ref swapchain, ref _images) = swapchain;
 //!
-//!     let (index, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
+//!     let (index, suboptimal, acq_future) = match swapchain::acquire_next_image(swapchain.clone(), None) {
 //!         Ok(r) => r,
 //!         Err(AcquireError::OutOfDate) => { recreate_swapchain = true; continue; },
 //!         Err(err) => panic!("{:?}", err)
@@ -294,6 +296,10 @@
 //!         // .then_execute(...)
 //!         .then_swapchain_present(queue.clone(), swapchain.clone(), index)
 //!         .then_signal_fence_and_flush().unwrap(); // TODO: PresentError?
+//!
+//!     if suboptimal {
+//!         recreate_swapchain = true;
+//!     }
 //! }
 //! ```
 //!
@@ -316,16 +322,18 @@ pub use self::present_region::RectangleLayer;
 pub use self::surface::CapabilitiesError;
 pub use self::surface::Surface;
 pub use self::surface::SurfaceCreationError;
-pub use self::swapchain::AcquireError;
-pub use self::swapchain::AcquiredImage;
-pub use self::swapchain::PresentFuture;
-pub use self::swapchain::Swapchain;
-pub use self::swapchain::SwapchainAcquireFuture;
-pub use self::swapchain::SwapchainCreationError;
 pub use self::swapchain::acquire_next_image;
 pub use self::swapchain::acquire_next_image_raw;
 pub use self::swapchain::present;
 pub use self::swapchain::present_incremental;
+pub use self::swapchain::AcquireError;
+pub use self::swapchain::AcquiredImage;
+pub use self::swapchain::FullscreenExclusive;
+pub use self::swapchain::FullscreenExclusiveError;
+pub use self::swapchain::PresentFuture;
+pub use self::swapchain::Swapchain;
+pub use self::swapchain::SwapchainAcquireFuture;
+pub use self::swapchain::SwapchainCreationError;
 
 mod capabilities;
 pub mod display;

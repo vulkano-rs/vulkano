@@ -10,12 +10,12 @@
 use std::error;
 use std::fmt;
 
-use VulkanObject;
 use device::Device;
 use format::FormatTy;
 use image::ImageAccess;
 use image::ImageDimensions;
 use sampler::Filter;
+use VulkanObject;
 
 /// Checks whether a blit image command is valid.
 ///
@@ -25,23 +25,36 @@ use sampler::Filter;
 ///
 /// - Panics if the source or the destination was not created with `device`.
 ///
-pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32; 3],
-                              source_bottom_right: [i32; 3], source_base_array_layer: u32,
-                              source_mip_level: u32, destination: &D,
-                              destination_top_left: [i32; 3], destination_bottom_right: [i32; 3],
-                              destination_base_array_layer: u32, destination_mip_level: u32,
-                              layer_count: u32, filter: Filter)
-                              -> Result<(), CheckBlitImageError>
-    where S: ?Sized + ImageAccess,
-          D: ?Sized + ImageAccess
+pub fn check_blit_image<S, D>(
+    device: &Device,
+    source: &S,
+    source_top_left: [i32; 3],
+    source_bottom_right: [i32; 3],
+    source_base_array_layer: u32,
+    source_mip_level: u32,
+    destination: &D,
+    destination_top_left: [i32; 3],
+    destination_bottom_right: [i32; 3],
+    destination_base_array_layer: u32,
+    destination_mip_level: u32,
+    layer_count: u32,
+    filter: Filter,
+) -> Result<(), CheckBlitImageError>
+where
+    S: ?Sized + ImageAccess,
+    D: ?Sized + ImageAccess,
 {
     let source_inner = source.inner();
     let destination_inner = destination.inner();
 
-    assert_eq!(source_inner.image.device().internal_object(),
-               device.internal_object());
-    assert_eq!(destination_inner.image.device().internal_object(),
-               device.internal_object());
+    assert_eq!(
+        source_inner.image.device().internal_object(),
+        device.internal_object()
+    );
+    assert_eq!(
+        destination_inner.image.device().internal_object(),
+        device.internal_object()
+    );
 
     if !source_inner.image.usage_transfer_source() {
         return Err(CheckBlitImageError::MissingTransferSourceUsage);
@@ -76,14 +89,15 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         }
     }
 
-    let types_should_be_same =
-        source_format_ty == FormatTy::Uint || destination_format_ty == FormatTy::Uint ||
-            source_format_ty == FormatTy::Sint || destination_format_ty == FormatTy::Sint;
+    let types_should_be_same = source_format_ty == FormatTy::Uint
+        || destination_format_ty == FormatTy::Uint
+        || source_format_ty == FormatTy::Sint
+        || destination_format_ty == FormatTy::Sint;
     if types_should_be_same && (source_format_ty != destination_format_ty) {
         return Err(CheckBlitImageError::IncompatibleFormatsTypes {
-                       source_format_ty: source.format().ty(),
-                       destination_format_ty: destination.format().ty(),
-                   });
+            source_format_ty: source.format().ty(),
+            destination_format_ty: destination.format().ty(),
+        });
     }
 
     let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
@@ -93,7 +107,8 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
 
     let destination_dimensions = match destination
         .dimensions()
-        .mipmap_dimensions(destination_mip_level) {
+        .mipmap_dimensions(destination_mip_level)
+    {
         Some(d) => d,
         None => return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange),
     };
@@ -130,38 +145,38 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
         return Err(CheckBlitImageError::SourceCoordinatesOutOfRange);
     }
 
-    if destination_top_left[0] < 0 ||
-        destination_top_left[0] > destination_dimensions.width() as i32
+    if destination_top_left[0] < 0
+        || destination_top_left[0] > destination_dimensions.width() as i32
     {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_top_left[1] < 0 ||
-        destination_top_left[1] > destination_dimensions.height() as i32
+    if destination_top_left[1] < 0
+        || destination_top_left[1] > destination_dimensions.height() as i32
     {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_top_left[2] < 0 ||
-        destination_top_left[2] > destination_dimensions.depth() as i32
+    if destination_top_left[2] < 0
+        || destination_top_left[2] > destination_dimensions.depth() as i32
     {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_bottom_right[0] < 0 ||
-        destination_bottom_right[0] > destination_dimensions.width() as i32
+    if destination_bottom_right[0] < 0
+        || destination_bottom_right[0] > destination_dimensions.width() as i32
     {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_bottom_right[1] < 0 ||
-        destination_bottom_right[1] > destination_dimensions.height() as i32
+    if destination_bottom_right[1] < 0
+        || destination_bottom_right[1] > destination_dimensions.height() as i32
     {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
 
-    if destination_bottom_right[2] < 0 ||
-        destination_bottom_right[2] > destination_dimensions.depth() as i32
+    if destination_bottom_right[2] < 0
+        || destination_bottom_right[2] > destination_dimensions.depth() as i32
     {
         return Err(CheckBlitImageError::DestinationCoordinatesOutOfRange);
     }
@@ -174,13 +189,13 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
             if source_top_left[2] != 0 || source_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-        },
+        }
         ImageDimensions::Dim2d { .. } => {
             if source_top_left[2] != 0 || source_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-        },
-        ImageDimensions::Dim3d { .. } => {},
+        }
+        ImageDimensions::Dim3d { .. } => {}
     }
 
     match destination_dimensions {
@@ -191,13 +206,13 @@ pub fn check_blit_image<S, D>(device: &Device, source: &S, source_top_left: [i32
             if destination_top_left[2] != 0 || destination_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-        },
+        }
         ImageDimensions::Dim2d { .. } => {
             if destination_top_left[2] != 0 || destination_bottom_right[2] != 1 {
                 return Err(CheckBlitImageError::IncompatibleRangeForImageType);
             }
-        },
-        ImageDimensions::Dim3d { .. } => {},
+        }
+        ImageDimensions::Dim3d { .. } => {}
     }
 
     Ok(())
@@ -239,40 +254,40 @@ impl error::Error for CheckBlitImageError {
         match *self {
             CheckBlitImageError::MissingTransferSourceUsage => {
                 "the source is missing the transfer source usage"
-            },
+            }
             CheckBlitImageError::MissingTransferDestinationUsage => {
                 "the destination is missing the transfer destination usage"
-            },
+            }
             CheckBlitImageError::SourceFormatNotSupported => {
                 "the format of the source image doesn't support blit operations"
-            },
+            }
             CheckBlitImageError::DestinationFormatNotSupported => {
                 "the format of the destination image doesn't support blit operations"
-            },
+            }
             CheckBlitImageError::DepthStencilNearestMandatory => {
                 "you must use the nearest filter when blitting depth/stencil images"
-            },
+            }
             CheckBlitImageError::DepthStencilFormatMismatch => {
                 "the format of the source and destination must be equal when blitting \
                  depth/stencil images"
-            },
+            }
             CheckBlitImageError::IncompatibleFormatsTypes { .. } => {
                 "the types of the source format and the destination format aren't compatible"
-            },
+            }
             CheckBlitImageError::UnexpectedMultisampled => {
                 "blitting between multisampled images is forbidden"
-            },
+            }
             CheckBlitImageError::SourceCoordinatesOutOfRange => {
                 "the offsets, array layers and/or mipmap levels are out of range in the source \
                  image"
-            },
+            }
             CheckBlitImageError::DestinationCoordinatesOutOfRange => {
                 "the offsets, array layers and/or mipmap levels are out of range in the \
                  destination image"
-            },
+            }
             CheckBlitImageError::IncompatibleRangeForImageType => {
                 "the top-left and/or bottom-right coordinates are incompatible with the image type"
-            },
+            }
         }
     }
 }

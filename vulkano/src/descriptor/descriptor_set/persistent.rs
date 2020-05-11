@@ -9,10 +9,10 @@
 
 use std::error;
 use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
-use OomError;
-use VulkanObject;
 use buffer::BufferAccess;
 use buffer::BufferViewRef;
 use descriptor::descriptor::DescriptorDesc;
@@ -34,6 +34,8 @@ use device::DeviceOwned;
 use format::Format;
 use image::ImageViewAccess;
 use sampler::Sampler;
+use OomError;
+use VulkanObject;
 
 /// An immutable descriptor set that is expected to be long-lived.
 ///
@@ -66,8 +68,7 @@ impl PersistentDescriptorSet<()> {
     ///
     /// - Panics if the set id is out of range.
     ///
-    pub fn start(layout: Arc<UnsafeDescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()>
-    {
+    pub fn start(layout: Arc<UnsafeDescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()> {
         let cap = layout.num_bindings();
 
         PersistentDescriptorSetBuilder {
@@ -80,8 +81,9 @@ impl PersistentDescriptorSet<()> {
 }
 
 unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P>
-    where P: DescriptorPoolAlloc,
-          R: PersistentDescriptorSetResources
+where
+    P: DescriptorPoolAlloc,
+    R: PersistentDescriptorSetResources,
 {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
@@ -109,8 +111,7 @@ unsafe impl<R, P> DescriptorSet for PersistentDescriptorSet<R, P>
     }
 }
 
-unsafe impl<R, P> DescriptorSetDesc for PersistentDescriptorSet<R, P>
-{
+unsafe impl<R, P> DescriptorSetDesc for PersistentDescriptorSet<R, P> {
     #[inline]
     fn num_bindings(&self) -> usize {
         self.layout.num_bindings()
@@ -122,11 +123,41 @@ unsafe impl<R, P> DescriptorSetDesc for PersistentDescriptorSet<R, P>
     }
 }
 
-unsafe impl<R, P> DeviceOwned for PersistentDescriptorSet<R, P>
-{
+unsafe impl<R, P> DeviceOwned for PersistentDescriptorSet<R, P> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.layout.device()
+    }
+}
+
+impl<R, P> PartialEq for PersistentDescriptorSet<R, P>
+where
+    P: DescriptorPoolAlloc,
+    R: PersistentDescriptorSetResources,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner().internal_object() == other.inner().internal_object()
+            && self.device() == other.device()
+    }
+}
+
+impl<R, P> Eq for PersistentDescriptorSet<R, P>
+where
+    P: DescriptorPoolAlloc,
+    R: PersistentDescriptorSetResources,
+{
+}
+
+impl<R, P> Hash for PersistentDescriptorSet<R, P>
+where
+    P: DescriptorPoolAlloc,
+    R: PersistentDescriptorSetResources,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().internal_object().hash(state);
+        self.device().hash(state);
     }
 }
 
@@ -149,13 +180,13 @@ pub struct PersistentDescriptorSetBuilder<R> {
 // TODO: lots of checks are still missing, see the docs of
 //       VkDescriptorImageInfo and VkWriteDescriptorSet
 
-impl<R> PersistentDescriptorSetBuilder<R>
-{
+impl<R> PersistentDescriptorSetBuilder<R> {
     /// Builds a `PersistentDescriptorSet` from the builder.
     #[inline]
-    pub fn build(self)
-                 -> Result<PersistentDescriptorSet<R, StdDescriptorPoolAlloc>,
-                           PersistentDescriptorSetBuildError> {
+    pub fn build(
+        self,
+    ) -> Result<PersistentDescriptorSet<R, StdDescriptorPoolAlloc>, PersistentDescriptorSetBuildError>
+    {
         let mut pool = Device::standard_descriptor_pool(self.layout.device());
         self.build_with_pool(&mut pool)
     }
@@ -167,20 +198,24 @@ impl<R> PersistentDescriptorSetBuilder<R>
     /// Panics if the pool doesn't have the same device as the descriptor set layout.
     ///
     pub fn build_with_pool<P>(
-        self, pool: &mut P)
-        -> Result<PersistentDescriptorSet<R, P::Alloc>, PersistentDescriptorSetBuildError>
-        where P: ?Sized + DescriptorPool
+        self,
+        pool: &mut P,
+    ) -> Result<PersistentDescriptorSet<R, P::Alloc>, PersistentDescriptorSetBuildError>
+    where
+        P: ?Sized + DescriptorPool,
     {
-        assert_eq!(self.layout.device().internal_object(),
-                   pool.device().internal_object());
+        assert_eq!(
+            self.layout.device().internal_object(),
+            pool.device().internal_object()
+        );
 
         let expected_desc = self.layout.num_bindings();
 
         if expected_desc > self.binding_id {
             return Err(PersistentDescriptorSetBuildError::MissingDescriptors {
-                           expected: expected_desc as u32,
-                           obtained: self.binding_id as u32,
-                       });
+                expected: expected_desc as u32,
+                obtained: self.binding_id as u32,
+            });
         }
 
         debug_assert_eq!(expected_desc, self.binding_id);
@@ -193,10 +228,10 @@ impl<R> PersistentDescriptorSetBuilder<R>
         };
 
         Ok(PersistentDescriptorSet {
-               inner: set,
-               resources: self.resources,
-               layout: self.layout,
-           })
+            inner: set,
+            resources: self.resources,
+            layout: self.layout,
+        })
     }
 
     /// Call this function if the next element of the set is an array in order to set the value of
@@ -208,30 +243,32 @@ impl<R> PersistentDescriptorSetBuilder<R>
     /// the "array", add one element, then leave.
     #[inline]
     pub fn enter_array(
-        self)
-        -> Result<PersistentDescriptorSetBuilderArray<R>, PersistentDescriptorSetError> {
+        self,
+    ) -> Result<PersistentDescriptorSetBuilderArray<R>, PersistentDescriptorSetError> {
         let desc = match self.layout.descriptor(self.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
 
         Ok(PersistentDescriptorSetBuilderArray {
-               builder: self,
-               desc,
-               array_element: 0,
-           })
+            builder: self,
+            desc,
+            array_element: 0,
+        })
     }
 
     /// Skips the current descriptor if it is empty.
     #[inline]
     pub fn add_empty(
-        mut self)
-        -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
+        mut self,
+    ) -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
         match self.layout.descriptor(self.binding_id) {
             None => (),
-            Some(desc) => return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                                         expected: desc.ty.ty().unwrap(),
-                                     }),
+            Some(desc) => {
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
+                    expected: desc.ty.ty().unwrap(),
+                })
+            }
         }
 
         self.binding_id += 1;
@@ -247,11 +284,15 @@ impl<R> PersistentDescriptorSetBuilder<R>
     /// Panics if the buffer doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
-    pub fn add_buffer<T>(self, buffer: T)
-                         -> Result<PersistentDescriptorSetBuilder<(R,
-                                                                   PersistentDescriptorSetBuf<T>)>,
-                                   PersistentDescriptorSetError>
-        where T: BufferAccess
+    pub fn add_buffer<T>(
+        self,
+        buffer: T,
+    ) -> Result<
+        PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetBuf<T>)>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: BufferAccess,
     {
         self.enter_array()?.add_buffer(buffer)?.leave_array()
     }
@@ -264,9 +305,15 @@ impl<R> PersistentDescriptorSetBuilder<R>
     ///
     /// Panics if the buffer view doesn't have the same device as the descriptor set layout.
     ///
-    pub fn add_buffer_view<T>(self, view: T)
-        -> Result<PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
-        where T: BufferViewRef
+    pub fn add_buffer_view<T>(
+        self,
+        view: T,
+    ) -> Result<
+        PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetBufView<T>)>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: BufferViewRef,
     {
         self.enter_array()?.add_buffer_view(view)?.leave_array()
     }
@@ -280,11 +327,15 @@ impl<R> PersistentDescriptorSetBuilder<R>
     /// Panics if the image view doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
-    pub fn add_image<T>(self, image_view: T)
-                        -> Result<PersistentDescriptorSetBuilder<(R,
-                                                                  PersistentDescriptorSetImg<T>)>,
-                                  PersistentDescriptorSetError>
-        where T: ImageViewAccess
+    pub fn add_image<T>(
+        self,
+        image_view: T,
+    ) -> Result<
+        PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetImg<T>)>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: ImageViewAccess,
     {
         self.enter_array()?.add_image(image_view)?.leave_array()
     }
@@ -299,9 +350,19 @@ impl<R> PersistentDescriptorSetBuilder<R>
     /// layout.
     ///
     #[inline]
-    pub fn add_sampled_image<T>(self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilder<((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
-        where T: ImageViewAccess
+    pub fn add_sampled_image<T>(
+        self,
+        image_view: T,
+        sampler: Arc<Sampler>,
+    ) -> Result<
+        PersistentDescriptorSetBuilder<(
+            (R, PersistentDescriptorSetImg<T>),
+            PersistentDescriptorSetSampler,
+        )>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: ImageViewAccess,
     {
         self.enter_array()?
             .add_sampled_image(image_view, sampler)?
@@ -317,10 +378,13 @@ impl<R> PersistentDescriptorSetBuilder<R>
     /// Panics if the sampler doesn't have the same device as the descriptor set layout.
     ///
     #[inline]
-    pub fn add_sampler(self, sampler: Arc<Sampler>)
-                       -> Result<PersistentDescriptorSetBuilder<(R,
-                                                                 PersistentDescriptorSetSampler)>,
-                                 PersistentDescriptorSetError> {
+    pub fn add_sampler(
+        self,
+        sampler: Arc<Sampler>,
+    ) -> Result<
+        PersistentDescriptorSetBuilder<(R, PersistentDescriptorSetSampler)>,
+        PersistentDescriptorSetError,
+    > {
         self.enter_array()?.add_sampler(sampler)?.leave_array()
     }
 }
@@ -335,17 +399,16 @@ pub struct PersistentDescriptorSetBuilderArray<R> {
     desc: DescriptorDesc,
 }
 
-impl<R> PersistentDescriptorSetBuilderArray<R>
-{
+impl<R> PersistentDescriptorSetBuilderArray<R> {
     /// Leaves the array. Call this once you added all the elements of the array.
     pub fn leave_array(
-        mut self)
-        -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
+        mut self,
+    ) -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
         if self.desc.array_count > self.array_element as u32 {
             return Err(PersistentDescriptorSetError::MissingArrayElements {
-                           expected: self.desc.array_count,
-                           obtained: self.array_element as u32,
-                       });
+                expected: self.desc.array_count,
+                obtained: self.array_element as u32,
+            });
         }
 
         debug_assert_eq!(self.desc.array_count, self.array_element as u32);
@@ -362,12 +425,20 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
     ///
     /// Panics if the buffer doesn't have the same device as the descriptor set layout.
     ///
-    pub fn add_buffer<T>(mut self, buffer: T)
-        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetBuf<T>)>, PersistentDescriptorSetError>
-        where T: BufferAccess
+    pub fn add_buffer<T>(
+        mut self,
+        buffer: T,
+    ) -> Result<
+        PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetBuf<T>)>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: BufferAccess,
     {
-        assert_eq!(self.builder.layout.device().internal_object(),
-                   buffer.inner().buffer.device().internal_object());
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            buffer.inner().buffer.device().internal_object()
+        );
 
         if self.array_element as u32 >= self.desc.array_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
@@ -384,57 +455,67 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
                 // TODO: eventually shouldn't be an assert ; for now robust_buffer_access is always
                 //       enabled so this assert should never fail in practice, but we put it anyway
                 //       in case we forget to adjust this code
-                assert!(self.builder
-                            .layout
-                            .device()
-                            .enabled_features()
-                            .robust_buffer_access);
+                assert!(
+                    self.builder
+                        .layout
+                        .device()
+                        .enabled_features()
+                        .robust_buffer_access
+                );
 
                 if buffer_desc.storage {
                     if !buffer.inner().buffer.usage_storage_buffer() {
                         return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                                   MissingBufferUsage::StorageBuffer));
+                            MissingBufferUsage::StorageBuffer,
+                        ));
                     }
 
                     unsafe {
-                        DescriptorWrite::storage_buffer(self.builder.binding_id as u32,
-                                                        self.array_element as u32,
-                                                        &buffer)
+                        DescriptorWrite::storage_buffer(
+                            self.builder.binding_id as u32,
+                            self.array_element as u32,
+                            &buffer,
+                        )
                     }
                 } else {
                     if !buffer.inner().buffer.usage_uniform_buffer() {
                         return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                                   MissingBufferUsage::UniformBuffer));
+                            MissingBufferUsage::UniformBuffer,
+                        ));
                     }
 
                     unsafe {
-                        DescriptorWrite::uniform_buffer(self.builder.binding_id as u32,
-                                                        self.array_element as u32,
-                                                        &buffer)
+                        DescriptorWrite::uniform_buffer(
+                            self.builder.binding_id as u32,
+                            self.array_element as u32,
+                            &buffer,
+                        )
                     }
                 }
-            },
+            }
             ref d => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                               expected: d.ty().unwrap(),
-                           });
-            },
+                    expected: d.ty().unwrap(),
+                });
+            }
         });
 
         Ok(PersistentDescriptorSetBuilderArray {
-               builder: PersistentDescriptorSetBuilder {
-                   layout: self.builder.layout,
-                   binding_id: self.builder.binding_id,
-                   writes: self.builder.writes,
-                   resources: (self.builder.resources,
-                               PersistentDescriptorSetBuf {
-                                   buffer: buffer,
-                                   descriptor_num: self.builder.binding_id as u32,
-                               }),
-               },
-               desc: self.desc,
-               array_element: self.array_element + 1,
-           })
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (
+                    self.builder.resources,
+                    PersistentDescriptorSetBuf {
+                        buffer: buffer,
+                        descriptor_num: self.builder.binding_id as u32,
+                    },
+                ),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
     }
 
     /// Binds a buffer view as the next element in the array.
@@ -445,12 +526,20 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
     ///
     /// Panics if the buffer view doesn't have the same device as the descriptor set layout.
     ///
-    pub fn add_buffer_view<T>(mut self, view: T)
-        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetBufView<T>)>, PersistentDescriptorSetError>
-        where T: BufferViewRef
+    pub fn add_buffer_view<T>(
+        mut self,
+        view: T,
+    ) -> Result<
+        PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetBufView<T>)>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: BufferViewRef,
     {
-        assert_eq!(self.builder.layout.device().internal_object(),
-                   view.view().device().internal_object());
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            view.view().device().internal_object()
+        );
 
         if self.array_element as u32 >= self.desc.array_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
@@ -463,44 +552,52 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
 
                     if !view.view().storage_texel_buffer() {
                         return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                                   MissingBufferUsage::StorageTexelBuffer));
+                            MissingBufferUsage::StorageTexelBuffer,
+                        ));
                     }
 
-                    DescriptorWrite::storage_texel_buffer(self.builder.binding_id as u32,
-                                                          self.array_element as u32,
-                                                          view.view())
+                    DescriptorWrite::storage_texel_buffer(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        view.view(),
+                    )
                 } else {
                     if !view.view().uniform_texel_buffer() {
                         return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                                   MissingBufferUsage::UniformTexelBuffer));
+                            MissingBufferUsage::UniformTexelBuffer,
+                        ));
                     }
 
-                    DescriptorWrite::uniform_texel_buffer(self.builder.binding_id as u32,
-                                                          self.array_element as u32,
-                                                          view.view())
+                    DescriptorWrite::uniform_texel_buffer(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        view.view(),
+                    )
                 }
-            },
+            }
             ref d => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                               expected: d.ty().unwrap(),
-                           });
-            },
+                    expected: d.ty().unwrap(),
+                });
+            }
         });
 
         Ok(PersistentDescriptorSetBuilderArray {
-               builder: PersistentDescriptorSetBuilder {
-                   layout: self.builder.layout,
-                   binding_id: self.builder.binding_id,
-                   writes: self.builder.writes,
-                   resources: (self.builder.resources,
-                               PersistentDescriptorSetBufView {
-                                   view: view,
-                                   descriptor_num: self.builder.binding_id as u32,
-                               }),
-               },
-               desc: self.desc,
-               array_element: self.array_element + 1,
-           })
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (
+                    self.builder.resources,
+                    PersistentDescriptorSetBufView {
+                        view: view,
+                        descriptor_num: self.builder.binding_id as u32,
+                    },
+                ),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
     }
 
     /// Binds an image view as the next element in the array.
@@ -511,20 +608,26 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
     ///
     /// Panics if the image view doesn't have the same device as the descriptor set layout.
     ///
-    pub fn add_image<T>(mut self, image_view: T)
-        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetImg<T>)>, PersistentDescriptorSetError>
-        where T: ImageViewAccess
+    pub fn add_image<T>(
+        mut self,
+        image_view: T,
+    ) -> Result<
+        PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetImg<T>)>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: ImageViewAccess,
     {
-        assert_eq!(self.builder.layout.device().internal_object(),
-                   image_view.parent().inner().image.device().internal_object());
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            image_view.parent().inner().image.device().internal_object()
+        );
 
         if self.array_element as u32 >= self.desc.array_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
-        let desc = match self.builder
-            .layout
-            .descriptor(self.builder.binding_id) {
+        let desc = match self.builder.layout.descriptor(self.builder.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
@@ -534,22 +637,27 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
                 image_match_desc(&image_view, &desc)?;
 
                 if desc.sampled {
-                    DescriptorWrite::sampled_image(self.builder.binding_id as u32,
-                                                   self.array_element as u32,
-                                                   &image_view)
+                    DescriptorWrite::sampled_image(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        &image_view,
+                    )
                 } else {
-                    DescriptorWrite::storage_image(self.builder.binding_id as u32,
-                                                   self.array_element as u32,
-                                                   &image_view)
+                    DescriptorWrite::storage_image(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        &image_view,
+                    )
                 }
-            },
+            }
             DescriptorDescTy::InputAttachment {
                 multisampled,
                 array_layers,
             } => {
                 if !image_view.parent().inner().image.usage_input_attachment() {
                     return Err(PersistentDescriptorSetError::MissingImageUsage(
-                                   MissingImageUsage::InputAttachment));
+                        MissingImageUsage::InputAttachment,
+                    ));
                 }
 
                 if multisampled && image_view.samples() == 1 {
@@ -564,48 +672,54 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
                     DescriptorImageDescArray::NonArrayed => {
                         if image_layers != 1 {
                             return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                                           expected: 1,
-                                           obtained: image_layers,
-                                       });
+                                expected: 1,
+                                obtained: image_layers,
+                            });
                         }
-                    },
-                    DescriptorImageDescArray::Arrayed { max_layers: Some(max_layers) } => {
+                    }
+                    DescriptorImageDescArray::Arrayed {
+                        max_layers: Some(max_layers),
+                    } => {
                         if image_layers > max_layers {
                             // TODO: is this correct? "max" layers? or is it in fact min layers?
                             return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                                           expected: max_layers,
-                                           obtained: image_layers,
-                                       });
+                                expected: max_layers,
+                                obtained: image_layers,
+                            });
                         }
-                    },
-                    DescriptorImageDescArray::Arrayed { max_layers: None } => {},
+                    }
+                    DescriptorImageDescArray::Arrayed { max_layers: None } => {}
                 };
 
-                DescriptorWrite::input_attachment(self.builder.binding_id as u32,
-                                                  self.array_element as u32,
-                                                  &image_view)
-            },
+                DescriptorWrite::input_attachment(
+                    self.builder.binding_id as u32,
+                    self.array_element as u32,
+                    &image_view,
+                )
+            }
             ty => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                               expected: ty.ty().unwrap(),
-                           });
-            },
+                    expected: ty.ty().unwrap(),
+                });
+            }
         });
 
         Ok(PersistentDescriptorSetBuilderArray {
-               builder: PersistentDescriptorSetBuilder {
-                   layout: self.builder.layout,
-                   binding_id: self.builder.binding_id,
-                   writes: self.builder.writes,
-                   resources: (self.builder.resources,
-                               PersistentDescriptorSetImg {
-                                   image: image_view,
-                                   descriptor_num: self.builder.binding_id as u32,
-                               }),
-               },
-               desc: self.desc,
-               array_element: self.array_element + 1,
-           })
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (
+                    self.builder.resources,
+                    PersistentDescriptorSetImg {
+                        image: image_view,
+                        descriptor_num: self.builder.binding_id as u32,
+                    },
+                ),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
     }
 
     /// Binds an image view with a sampler as the next element in the array.
@@ -616,22 +730,34 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
     ///
     /// Panics if the image or the sampler doesn't have the same device as the descriptor set layout.
     ///
-    pub fn add_sampled_image<T>(mut self, image_view: T, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilderArray<((R, PersistentDescriptorSetImg<T>), PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
-        where T: ImageViewAccess
+    pub fn add_sampled_image<T>(
+        mut self,
+        image_view: T,
+        sampler: Arc<Sampler>,
+    ) -> Result<
+        PersistentDescriptorSetBuilderArray<(
+            (R, PersistentDescriptorSetImg<T>),
+            PersistentDescriptorSetSampler,
+        )>,
+        PersistentDescriptorSetError,
+    >
+    where
+        T: ImageViewAccess,
     {
-        assert_eq!(self.builder.layout.device().internal_object(),
-                   image_view.parent().inner().image.device().internal_object());
-        assert_eq!(self.builder.layout.device().internal_object(),
-                   sampler.device().internal_object());
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            image_view.parent().inner().image.device().internal_object()
+        );
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            sampler.device().internal_object()
+        );
 
         if self.array_element as u32 >= self.desc.array_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
-        let desc = match self.builder
-            .layout
-            .descriptor(self.builder.binding_id) {
+        let desc = match self.builder.layout.descriptor(self.builder.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
@@ -643,33 +769,39 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
         self.builder.writes.push(match desc.ty {
             DescriptorDescTy::CombinedImageSampler(ref desc) => {
                 image_match_desc(&image_view, &desc)?;
-                DescriptorWrite::combined_image_sampler(self.builder.binding_id as u32,
-                                                        self.array_element as u32,
-                                                        &sampler,
-                                                        &image_view)
-            },
+                DescriptorWrite::combined_image_sampler(
+                    self.builder.binding_id as u32,
+                    self.array_element as u32,
+                    &sampler,
+                    &image_view,
+                )
+            }
             ty => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                               expected: ty.ty().unwrap(),
-                           });
-            },
+                    expected: ty.ty().unwrap(),
+                });
+            }
         });
 
         Ok(PersistentDescriptorSetBuilderArray {
-               builder: PersistentDescriptorSetBuilder {
-                   layout: self.builder.layout,
-                   binding_id: self.builder.binding_id,
-                   writes: self.builder.writes,
-                   resources: ((self.builder.resources,
-                                PersistentDescriptorSetImg {
-                                    image: image_view,
-                                    descriptor_num: self.builder.binding_id as u32,
-                                }),
-                               PersistentDescriptorSetSampler { sampler: sampler }),
-               },
-               desc: self.desc,
-               array_element: self.array_element + 1,
-           })
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (
+                    (
+                        self.builder.resources,
+                        PersistentDescriptorSetImg {
+                            image: image_view,
+                            descriptor_num: self.builder.binding_id as u32,
+                        },
+                    ),
+                    PersistentDescriptorSetSampler { sampler: sampler },
+                ),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
     }
 
     /// Binds a sampler as the next element in the array.
@@ -680,77 +812,88 @@ impl<R> PersistentDescriptorSetBuilderArray<R>
     ///
     /// Panics if the sampler doesn't have the same device as the descriptor set layout.
     ///
-    pub fn add_sampler(mut self, sampler: Arc<Sampler>)
-        -> Result<PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetSampler)>, PersistentDescriptorSetError>
-    {
-        assert_eq!(self.builder.layout.device().internal_object(),
-                   sampler.device().internal_object());
+    pub fn add_sampler(
+        mut self,
+        sampler: Arc<Sampler>,
+    ) -> Result<
+        PersistentDescriptorSetBuilderArray<(R, PersistentDescriptorSetSampler)>,
+        PersistentDescriptorSetError,
+    > {
+        assert_eq!(
+            self.builder.layout.device().internal_object(),
+            sampler.device().internal_object()
+        );
 
         if self.array_element as u32 >= self.desc.array_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
-        let desc = match self.builder
-            .layout
-            .descriptor(self.builder.binding_id) {
+        let desc = match self.builder.layout.descriptor(self.builder.binding_id) {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
 
         self.builder.writes.push(match desc.ty {
-            DescriptorDescTy::Sampler => {
-                DescriptorWrite::sampler(self.builder.binding_id as u32,
-                                         self.array_element as u32,
-                                         &sampler)
-            },
+            DescriptorDescTy::Sampler => DescriptorWrite::sampler(
+                self.builder.binding_id as u32,
+                self.array_element as u32,
+                &sampler,
+            ),
             ty => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                               expected: ty.ty().unwrap(),
-                           });
-            },
+                    expected: ty.ty().unwrap(),
+                });
+            }
         });
 
         Ok(PersistentDescriptorSetBuilderArray {
-               builder: PersistentDescriptorSetBuilder {
-                   layout: self.builder.layout,
-                   binding_id: self.builder.binding_id,
-                   writes: self.builder.writes,
-                   resources: (self.builder.resources,
-                               PersistentDescriptorSetSampler { sampler: sampler }),
-               },
-               desc: self.desc,
-               array_element: self.array_element + 1,
-           })
+            builder: PersistentDescriptorSetBuilder {
+                layout: self.builder.layout,
+                binding_id: self.builder.binding_id,
+                writes: self.builder.writes,
+                resources: (
+                    self.builder.resources,
+                    PersistentDescriptorSetSampler { sampler: sampler },
+                ),
+            },
+            desc: self.desc,
+            array_element: self.array_element + 1,
+        })
     }
 }
 
 // Checks whether an image view matches the descriptor.
-fn image_match_desc<I>(image_view: &I, desc: &DescriptorImageDesc)
-                       -> Result<(), PersistentDescriptorSetError>
-    where I: ?Sized + ImageViewAccess
+fn image_match_desc<I>(
+    image_view: &I,
+    desc: &DescriptorImageDesc,
+) -> Result<(), PersistentDescriptorSetError>
+where
+    I: ?Sized + ImageViewAccess,
 {
     if desc.sampled && !image_view.parent().inner().image.usage_sampled() {
         return Err(PersistentDescriptorSetError::MissingImageUsage(
-                       MissingImageUsage::Sampled));
+            MissingImageUsage::Sampled,
+        ));
     } else if !desc.sampled && !image_view.parent().inner().image.usage_storage() {
         return Err(PersistentDescriptorSetError::MissingImageUsage(
-                       MissingImageUsage::Storage));
+            MissingImageUsage::Storage,
+        ));
     }
 
     let image_view_ty = DescriptorImageDescDimensions::from_dimensions(image_view.dimensions());
     if image_view_ty != desc.dimensions {
         return Err(PersistentDescriptorSetError::ImageViewTypeMismatch {
-                       expected: desc.dimensions,
-                       obtained: image_view_ty,
-                   });
+            expected: desc.dimensions,
+            obtained: image_view_ty,
+        });
     }
 
     if let Some(format) = desc.format {
         if image_view.format() != format {
             return Err(PersistentDescriptorSetError::ImageViewFormatMismatch {
-                           expected: format,
-                           obtained: image_view.format(),
-                       });
+                expected: format,
+                obtained: image_view.format(),
+            });
         }
     }
 
@@ -768,21 +911,23 @@ fn image_match_desc<I>(image_view: &I, desc: &DescriptorImageDesc)
             // array with one layer? need to check
             if image_layers != 1 {
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                               expected: 1,
-                               obtained: image_layers,
-                           });
+                    expected: 1,
+                    obtained: image_layers,
+                });
             }
-        },
-        DescriptorImageDescArray::Arrayed { max_layers: Some(max_layers) } => {
+        }
+        DescriptorImageDescArray::Arrayed {
+            max_layers: Some(max_layers),
+        } => {
             if image_layers > max_layers {
                 // TODO: is this correct? "max" layers? or is it in fact min layers?
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                               expected: max_layers,
-                               obtained: image_layers,
-                           });
+                    expected: max_layers,
+                    obtained: image_layers,
+                });
             }
-        },
-        DescriptorImageDescArray::Arrayed { max_layers: None } => {},
+        }
+        DescriptorImageDescArray::Arrayed { max_layers: None } => {}
     };
 
     Ok(())
@@ -824,8 +969,9 @@ pub struct PersistentDescriptorSetBuf<B> {
 }
 
 unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorSetBuf<B>)
-    where R: PersistentDescriptorSetResources,
-          B: BufferAccess
+where
+    R: PersistentDescriptorSetResources,
+    B: BufferAccess,
 {
     #[inline]
     fn num_buffers(&self) -> usize {
@@ -856,15 +1002,17 @@ unsafe impl<R, B> PersistentDescriptorSetResources for (R, PersistentDescriptorS
 
 /// Internal object related to the `PersistentDescriptorSet` system.
 pub struct PersistentDescriptorSetBufView<V>
-    where V: BufferViewRef
+where
+    V: BufferViewRef,
 {
     view: V,
     descriptor_num: u32,
 }
 
 unsafe impl<R, V> PersistentDescriptorSetResources for (R, PersistentDescriptorSetBufView<V>)
-    where R: PersistentDescriptorSetResources,
-          V: BufferViewRef
+where
+    R: PersistentDescriptorSetResources,
+    V: BufferViewRef,
 {
     #[inline]
     fn num_buffers(&self) -> usize {
@@ -900,8 +1048,9 @@ pub struct PersistentDescriptorSetImg<I> {
 }
 
 unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorSetImg<I>)
-    where R: PersistentDescriptorSetResources,
-          I: ImageViewAccess
+where
+    R: PersistentDescriptorSetResources,
+    I: ImageViewAccess,
 {
     #[inline]
     fn num_buffers(&self) -> usize {
@@ -936,7 +1085,8 @@ pub struct PersistentDescriptorSetSampler {
 }
 
 unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetSampler)
-    where R: PersistentDescriptorSetResources
+where
+    R: PersistentDescriptorSetResources,
 {
     #[inline]
     fn num_buffers(&self) -> usize {
@@ -963,14 +1113,19 @@ unsafe impl<R> PersistentDescriptorSetResources for (R, PersistentDescriptorSetS
 // of missing usage on a buffer.
 #[derive(Debug, Clone)]
 pub enum MissingBufferUsage {
-    StorageBuffer, UniformBuffer, StorageTexelBuffer, UniformTexelBuffer
+    StorageBuffer,
+    UniformBuffer,
+    StorageTexelBuffer,
+    UniformTexelBuffer,
 }
 
 // Part of the PersistentDescriptorSetError for the case
 // of missing usage on an image.
 #[derive(Debug, Clone)]
 pub enum MissingImageUsage {
-    InputAttachment, Sampled, Storage
+    InputAttachment,
+    Sampled,
+    Storage,
 }
 
 /// Error related to the persistent descriptor set.
@@ -1042,40 +1197,40 @@ impl error::Error for PersistentDescriptorSetError {
         match *self {
             PersistentDescriptorSetError::WrongDescriptorTy { .. } => {
                 "expected one type of resource but got another"
-            },
+            }
             PersistentDescriptorSetError::EmptyExpected => {
                 "expected an empty descriptor but got something"
-            },
+            }
             PersistentDescriptorSetError::ArrayOutOfBounds => {
                 "tried to add too many elements to an array"
-            },
+            }
             PersistentDescriptorSetError::MissingArrayElements { .. } => {
                 "didn't fill all the elements of an array before leaving"
-            },
+            }
             PersistentDescriptorSetError::IncompatibleImageViewSampler => {
                 "the image view isn't compatible with the sampler"
-            },
+            }
             PersistentDescriptorSetError::MissingBufferUsage { .. } => {
                 "the buffer is missing the correct usage"
-            },
+            }
             PersistentDescriptorSetError::MissingImageUsage { .. } => {
                 "the image is missing the correct usage"
-            },
+            }
             PersistentDescriptorSetError::ExpectedMultisampled => {
                 "expected a multisampled image, but got a single-sampled image"
-            },
+            }
             PersistentDescriptorSetError::UnexpectedMultisampled => {
                 "expected a single-sampled image, but got a multisampled image"
-            },
+            }
             PersistentDescriptorSetError::ArrayLayersMismatch { .. } => {
                 "the number of array layers of an image doesn't match what was expected"
-            },
+            }
             PersistentDescriptorSetError::ImageViewFormatMismatch { .. } => {
                 "the format of an image view doesn't match what was expected"
-            },
+            }
             PersistentDescriptorSetError::ImageViewTypeMismatch { .. } => {
                 "the type of an image view doesn't match what was expected"
-            },
+            }
         }
     }
 }
@@ -1108,10 +1263,8 @@ impl error::Error for PersistentDescriptorSetBuildError {
         match *self {
             PersistentDescriptorSetBuildError::MissingDescriptors { .. } => {
                 "didn't fill all the descriptors before building"
-            },
-            PersistentDescriptorSetBuildError::OomError(_) => {
-                "not enough memory available"
-            },
+            }
+            PersistentDescriptorSetBuildError::OomError(_) => "not enough memory available",
         }
     }
 }

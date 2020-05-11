@@ -7,17 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use syn::Ident;
 use proc_macro2::{Span, TokenStream};
+use syn::Ident;
 
-use crate::enums::{StorageClass, ExecutionModel, ExecutionMode, Decoration};
+use crate::enums::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::spirv_search;
 
 pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream, TokenStream) {
     let (execution, id, ep_name, interface) = match instruction {
-        &Instruction::EntryPoint { ref execution, id, ref name, ref interface, .. } =>
-            (execution, id, name, interface),
+        &Instruction::EntryPoint {
+            ref execution,
+            id,
+            ref name,
+            ref interface,
+            ..
+        } => (execution, id, name, interface),
         _ => unreachable!(),
     };
 
@@ -44,49 +49,65 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
         &capitalized_ep_name,
         interface,
         ignore_first_array_in,
-        ignore_first_array_out
+        ignore_first_array_out,
     );
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
-        quote!{ SpecializationConstants }
+        quote! { SpecializationConstants }
     } else {
-        quote!{ () }
+        quote! { () }
     };
 
     let (ty, f_call) = {
         if let ExecutionModel::ExecutionModelGLCompute = *execution {
             (
-                quote!{ ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, Layout> },
-                quote!{ compute_entry_point(
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, Layout> },
+                quote! { compute_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
                     Layout(ShaderStages { compute: true, .. ShaderStages::none() })
-                )}
+                )},
             )
         } else {
             let entry_ty = match *execution {
-                ExecutionModel::ExecutionModelVertex =>
-                    quote!{ ::vulkano::pipeline::shader::GraphicsShaderType::Vertex },
+                ExecutionModel::ExecutionModelVertex => {
+                    quote! { ::vulkano::pipeline::shader::GraphicsShaderType::Vertex }
+                }
 
-                ExecutionModel::ExecutionModelTessellationControl =>
-                    quote!{ ::vulkano::pipeline::shader::GraphicsShaderType::TessellationControl },
+                ExecutionModel::ExecutionModelTessellationControl => {
+                    quote! { ::vulkano::pipeline::shader::GraphicsShaderType::TessellationControl }
+                }
 
-                ExecutionModel::ExecutionModelTessellationEvaluation =>
-                    quote!{ ::vulkano::pipeline::shader::GraphicsShaderType::TessellationEvaluation },
+                ExecutionModel::ExecutionModelTessellationEvaluation => {
+                    quote! { ::vulkano::pipeline::shader::GraphicsShaderType::TessellationEvaluation }
+                }
 
                 ExecutionModel::ExecutionModelGeometry => {
                     let mut execution_mode = None;
 
                     for instruction in doc.instructions.iter() {
-                        if let &Instruction::ExecutionMode { target_id, ref mode, .. } = instruction {
+                        if let &Instruction::ExecutionMode {
+                            target_id,
+                            ref mode,
+                            ..
+                        } = instruction
+                        {
                             if target_id == id {
                                 execution_mode = match mode {
-                                    &ExecutionMode::ExecutionModeInputPoints => Some(quote!{ Points }),
-                                    &ExecutionMode::ExecutionModeInputLines => Some(quote!{ Lines }),
-                                    &ExecutionMode::ExecutionModeInputLinesAdjacency =>
-                                        Some(quote!{ LinesWithAdjacency }),
-                                    &ExecutionMode::ExecutionModeTriangles => Some(quote!{ Triangles }),
-                                    &ExecutionMode::ExecutionModeInputTrianglesAdjacency =>
-                                        Some(quote!{ TrianglesWithAdjacency }),
+                                    &ExecutionMode::ExecutionModeInputPoints => {
+                                        Some(quote! { Points })
+                                    }
+                                    &ExecutionMode::ExecutionModeInputLines => {
+                                        Some(quote! { Lines })
+                                    }
+                                    &ExecutionMode::ExecutionModeInputLinesAdjacency => {
+                                        Some(quote! { LinesWithAdjacency })
+                                    }
+                                    &ExecutionMode::ExecutionModeTriangles => {
+                                        Some(quote! { Triangles })
+                                    }
+                                    &ExecutionMode::ExecutionModeInputTrianglesAdjacency => {
+                                        Some(quote! { TrianglesWithAdjacency })
+                                    }
                                     _ => continue,
                                 };
                                 break;
@@ -94,15 +115,16 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
                         }
                     }
 
-                    quote!{
+                    quote! {
                         ::vulkano::pipeline::shader::GraphicsShaderType::Geometry(
                             ::vulkano::pipeline::shader::GeometryShaderExecutionMode::#execution_mode
                         )
                     }
                 }
 
-                ExecutionModel::ExecutionModelFragment =>
-                    quote!{ ::vulkano::pipeline::shader::GraphicsShaderType::Fragment },
+                ExecutionModel::ExecutionModelFragment => {
+                    quote! { ::vulkano::pipeline::shader::GraphicsShaderType::Fragment }
+                }
 
                 ExecutionModel::ExecutionModelGLCompute => unreachable!(),
 
@@ -110,20 +132,25 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
             };
 
             let stage = match *execution {
-                ExecutionModel::ExecutionModelVertex =>
-                    quote!{ ShaderStages { vertex: true, .. ShaderStages::none() } },
+                ExecutionModel::ExecutionModelVertex => {
+                    quote! { ShaderStages { vertex: true, .. ShaderStages::none() } }
+                }
 
-                ExecutionModel::ExecutionModelTessellationControl =>
-                    quote!{ ShaderStages { tessellation_control: true, .. ShaderStages::none() } },
+                ExecutionModel::ExecutionModelTessellationControl => {
+                    quote! { ShaderStages { tessellation_control: true, .. ShaderStages::none() } }
+                }
 
-                ExecutionModel::ExecutionModelTessellationEvaluation =>
-                    quote!{ ShaderStages { tessellation_evaluation: true, .. ShaderStages::none() } },
+                ExecutionModel::ExecutionModelTessellationEvaluation => {
+                    quote! { ShaderStages { tessellation_evaluation: true, .. ShaderStages::none() } }
+                }
 
-                ExecutionModel::ExecutionModelGeometry =>
-                    quote!{ ShaderStages { geometry: true, .. ShaderStages::none() } },
+                ExecutionModel::ExecutionModelGeometry => {
+                    quote! { ShaderStages { geometry: true, .. ShaderStages::none() } }
+                }
 
-                ExecutionModel::ExecutionModelFragment =>
-                    quote!{ ShaderStages { fragment: true, .. ShaderStages::none() } },
+                ExecutionModel::ExecutionModelFragment => {
+                    quote! { ShaderStages { fragment: true, .. ShaderStages::none() } }
+                }
 
                 ExecutionModel::ExecutionModelGLCompute => unreachable!(),
                 ExecutionModel::ExecutionModelKernel => unreachable!(),
@@ -131,20 +158,22 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
 
             let mut capitalized_ep_name_input = capitalized_ep_name.clone();
             capitalized_ep_name_input.push_str("Input");
-            let capitalized_ep_name_input = Ident::new(&capitalized_ep_name_input, Span::call_site());
+            let capitalized_ep_name_input =
+                Ident::new(&capitalized_ep_name_input, Span::call_site());
 
             let mut capitalized_ep_name_output = capitalized_ep_name.clone();
             capitalized_ep_name_output.push_str("Output");
-            let capitalized_ep_name_output = Ident::new(&capitalized_ep_name_output, Span::call_site());
+            let capitalized_ep_name_output =
+                Ident::new(&capitalized_ep_name_output, Span::call_site());
 
-            let ty = quote!{
+            let ty = quote! {
                 ::vulkano::pipeline::shader::GraphicsEntryPoint<
                     #spec_consts_struct,
                     #capitalized_ep_name_input,
                     #capitalized_ep_name_output,
                     Layout>
             };
-            let f_call = quote!{
+            let f_call = quote! {
                 graphics_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
                     #capitalized_ep_name_input,
@@ -165,7 +194,7 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
     let ep_name_lenp1 = ep_name.chars().count() + 1;
     let encoded_ep_name = ep_name.chars().map(|c| (c as u8)).collect::<Vec<_>>();
 
-    let entry_point = quote!{
+    let entry_point = quote! {
         /// Returns a logical struct describing the entry point named `{ep_name}`.
         #[inline]
         #[allow(unsafe_code)]
@@ -188,11 +217,15 @@ struct Element {
     location_len: usize,
 }
 
-fn write_interface_structs(doc: &Spirv, capitalized_ep_name: &str, interface: &[u32],
-                           ignore_first_array_in: bool, ignore_first_array_out: bool)
-                           -> TokenStream {
-    let mut input_elements = vec!();
-    let mut output_elements = vec!();
+fn write_interface_structs(
+    doc: &Spirv,
+    capitalized_ep_name: &str,
+    interface: &[u32],
+    ignore_first_array_in: bool,
+    ignore_first_array_out: bool,
+) -> TokenStream {
+    let mut input_elements = vec![];
+    let mut output_elements = vec![];
 
     // Filling `input_elements` and `output_elements`.
     for interface in interface.iter() {
@@ -209,10 +242,12 @@ fn write_interface_structs(doc: &Spirv, capitalized_ep_name: &str, interface: &[
                     }
 
                     let (to_write, ignore_first_array) = match storage_class {
-                        &StorageClass::StorageClassInput =>
-                            (&mut input_elements, ignore_first_array_in),
-                        &StorageClass::StorageClassOutput =>
-                            (&mut output_elements, ignore_first_array_out),
+                        &StorageClass::StorageClassInput => {
+                            (&mut input_elements, ignore_first_array_in)
+                        }
+                        &StorageClass::StorageClassOutput => {
+                            (&mut output_elements, ignore_first_array_out)
+                        }
                         _ => continue,
                     };
 
@@ -221,40 +256,57 @@ fn write_interface_structs(doc: &Spirv, capitalized_ep_name: &str, interface: &[
                         continue;
                     } // FIXME: hack
 
-                    let location = match doc.get_decoration_params(result_id, Decoration::DecorationLocation) {
+                    let location = match doc
+                        .get_decoration_params(result_id, Decoration::DecorationLocation)
+                    {
                         Some(l) => l[0],
-                        None => panic!("Attribute `{}` (id {}) is missing a location", name, result_id),
+                        None => panic!(
+                            "Attribute `{}` (id {}) is missing a location",
+                            name, result_id
+                        ),
                     };
 
-                    let (format, location_len) = spirv_search::format_from_id(doc, result_type_id, ignore_first_array);
-                    to_write.push(Element { location, name, format, location_len });
-                },
+                    let (format, location_len) =
+                        spirv_search::format_from_id(doc, result_type_id, ignore_first_array);
+                    to_write.push(Element {
+                        location,
+                        name,
+                        format,
+                        location_len,
+                    });
+                }
                 _ => (),
             }
         }
     }
 
-    let input: TokenStream = write_interface_struct(&format!("{}Input", capitalized_ep_name), &input_elements);
-    let output: TokenStream = write_interface_struct(&format!("{}Output", capitalized_ep_name), &output_elements);
-    quote!{ #input #output }
+    let input: TokenStream =
+        write_interface_struct(&format!("{}Input", capitalized_ep_name), &input_elements);
+    let output: TokenStream =
+        write_interface_struct(&format!("{}Output", capitalized_ep_name), &output_elements);
+    quote! { #input #output }
 }
 
 fn write_interface_struct(struct_name_str: &str, attributes: &[Element]) -> TokenStream {
     // Checking for overlapping elements.
     for (offset, element1) in attributes.iter().enumerate() {
         for element2 in attributes.iter().skip(offset + 1) {
-            if element1.location == element2.location ||
-                (element1.location < element2.location && element1.location + element1.location_len as u32 > element2.location) ||
-                (element2.location < element1.location && element2.location + element2.location_len as u32 > element1.location)
+            if element1.location == element2.location
+                || (element1.location < element2.location
+                    && element1.location + element1.location_len as u32 > element2.location)
+                || (element2.location < element1.location
+                    && element2.location + element2.location_len as u32 > element1.location)
             {
-                panic!("The locations of attributes `{}` (start={}, size={}) \
+                panic!(
+                    "The locations of attributes `{}` (start={}, size={}) \
                     and `{}` (start={}, size={}) overlap",
                     element1.name,
                     element1.location,
                     element1.location_len,
                     element2.name,
                     element2.location,
-                    element2.location_len);
+                    element2.location_len
+                );
             }
         }
     }
@@ -270,7 +322,7 @@ fn write_interface_struct(struct_name_str: &str, attributes: &[Element]) -> Toke
             let name = &element.name;
             let num = num as u16;
 
-            quote!{
+            quote! {
                 if self.num == #num {
                     self.num += 1;
 
@@ -292,7 +344,7 @@ fn write_interface_struct(struct_name_str: &str, attributes: &[Element]) -> Toke
 
     let len = attributes.len();
 
-    quote!{
+    quote! {
         #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
         pub struct #struct_name;
 

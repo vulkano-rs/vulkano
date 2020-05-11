@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
@@ -53,7 +55,8 @@ pub struct BufferSlice<T: ?Sized, B> {
 
 // We need to implement `Clone` manually, otherwise the derive adds a `T: Clone` requirement.
 impl<T: ?Sized, B> Clone for BufferSlice<T, B>
-    where B: Clone
+where
+    B: Clone,
 {
     #[inline]
     fn clone(&self) -> Self {
@@ -69,7 +72,8 @@ impl<T: ?Sized, B> Clone for BufferSlice<T, B>
 impl<T: ?Sized, B> BufferSlice<T, B> {
     #[inline]
     pub fn from_typed_buffer_access(r: B) -> BufferSlice<T, B>
-        where B: TypedBufferAccess<Content = T>
+    where
+        B: TypedBufferAccess<Content = T>,
     {
         let size = r.size();
 
@@ -116,7 +120,8 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// panic.
     #[inline]
     pub unsafe fn slice_custom<F, R: ?Sized>(self, f: F) -> BufferSlice<R, B>
-        where F: for<'r> FnOnce(&'r T) -> &'r R // TODO: bounds on R
+    where
+        F: for<'r> FnOnce(&'r T) -> &'r R, // TODO: bounds on R
     {
         let data: MaybeUninit<&T> = MaybeUninit::zeroed();
         let result = f(data.assume_init());
@@ -156,8 +161,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     /// Correct `offset` and `size` must be ensured before using this `BufferSlice` on the device.
     /// See `BufferSlice::slice` for adjusting these properties.
     #[inline]
-    pub unsafe fn reinterpret<R: ?Sized>(self) -> BufferSlice<R, B>
-    {
+    pub unsafe fn reinterpret<R: ?Sized>(self) -> BufferSlice<R, B> {
         BufferSlice {
             marker: PhantomData,
             resource: self.resource,
@@ -185,11 +189,11 @@ impl<T, B> BufferSlice<[T], B> {
         }
 
         Some(BufferSlice {
-                 marker: PhantomData,
-                 resource: self.resource,
-                 offset: self.offset + index * mem::size_of::<T>(),
-                 size: mem::size_of::<T>(),
-             })
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + index * mem::size_of::<T>(),
+            size: mem::size_of::<T>(),
+        })
     }
 
     /// Reduces the slice to just a range of the array.
@@ -202,16 +206,17 @@ impl<T, B> BufferSlice<[T], B> {
         }
 
         Some(BufferSlice {
-                 marker: PhantomData,
-                 resource: self.resource,
-                 offset: self.offset + range.start * mem::size_of::<T>(),
-                 size: (range.end - range.start) * mem::size_of::<T>(),
-             })
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + range.start * mem::size_of::<T>(),
+            size: (range.end - range.start) * mem::size_of::<T>(),
+        })
     }
 }
 
 unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
-    where B: BufferAccess
+where
+    B: BufferAccess,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -259,13 +264,15 @@ unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
 }
 
 unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B>
-    where B: BufferAccess
+where
+    B: BufferAccess,
 {
     type Content = T;
 }
 
 unsafe impl<T: ?Sized, B> DeviceOwned for BufferSlice<T, B>
-    where B: DeviceOwned
+where
+    B: DeviceOwned,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -285,12 +292,35 @@ impl<T, B> From<BufferSlice<T, B>> for BufferSlice<[T], B> {
     }
 }
 
+impl<T: ?Sized, B> PartialEq for BufferSlice<T, B>
+where
+    B: BufferAccess,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, B> Eq for BufferSlice<T, B> where B: BufferAccess {}
+
+impl<T: ?Sized, B> Hash for BufferSlice<T, B>
+where
+    B: BufferAccess,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
+}
+
 /// Takes a `BufferSlice` that points to a struct, and returns a `BufferSlice` that points to
 /// a specific field of that struct.
 #[macro_export]
 macro_rules! buffer_slice_field {
-    ($slice:expr, $field:ident) => (
+    ($slice:expr, $field:ident) => {
         // TODO: add #[allow(unsafe_code)] when that's allowed
         unsafe { $slice.slice_custom(|s| &s.$field) }
-    )
+    };
 }

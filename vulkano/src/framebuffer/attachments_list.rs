@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use SafeDeref;
 use image::ImageViewAccess;
 use std::sync::Arc;
+use SafeDeref;
 //use sync::AccessFlagBits;
 //use sync::PipelineStages;
 
@@ -22,8 +22,9 @@ pub unsafe trait AttachmentsList {
 }
 
 unsafe impl<T> AttachmentsList for T
-    where T: SafeDeref,
-          T::Target: AttachmentsList
+where
+    T: SafeDeref,
+    T::Target: AttachmentsList,
 {
     #[inline]
     fn num_attachments(&self) -> usize {
@@ -61,8 +62,9 @@ unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAccess + Send + Sync>> {
 }
 
 unsafe impl<A, B> AttachmentsList for (A, B)
-    where A: AttachmentsList,
-          B: ImageViewAccess
+where
+    A: AttachmentsList,
+    B: ImageViewAccess,
 {
     #[inline]
     fn num_attachments(&self) -> usize {

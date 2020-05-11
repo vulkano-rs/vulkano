@@ -18,8 +18,8 @@
 
 use instance::QueueFamily;
 
-use OomError;
 use device::DeviceOwned;
+use OomError;
 
 pub use self::standard::StandardCommandPool;
 pub use self::sys::CommandPoolTrimError;

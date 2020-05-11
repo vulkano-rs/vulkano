@@ -28,14 +28,14 @@ use descriptor::pipeline_layout::PipelineLayoutSys;
 use pipeline::shader::EntryPointAbstract;
 use pipeline::shader::SpecializationConstants;
 
-use Error;
-use OomError;
-use SafeDeref;
-use VulkanObject;
 use check_errors;
 use device::Device;
 use device::DeviceOwned;
 use vk;
+use Error;
+use OomError;
+use SafeDeref;
+use VulkanObject;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -57,17 +57,22 @@ struct Inner {
 impl ComputePipeline<()> {
     /// Builds a new `ComputePipeline`.
     pub fn new<Cs>(
-        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants)
-        -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
-        where Cs::PipelineLayout: Clone,
-              Cs: EntryPointAbstract
+        device: Arc<Device>,
+        shader: &Cs,
+        specialization: &Cs::SpecializationConstants,
+    ) -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
+    where
+        Cs::PipelineLayout: Clone,
+        Cs: EntryPointAbstract,
     {
         unsafe {
             let pipeline_layout = shader.layout().clone().build(device.clone())?;
-            ComputePipeline::with_unchecked_pipeline_layout(device,
-                                                            shader,
-                                                            specialization,
-                                                            pipeline_layout)
+            ComputePipeline::with_unchecked_pipeline_layout(
+                device,
+                shader,
+                specialization,
+                pipeline_layout,
+            )
         }
     }
 }
@@ -77,32 +82,40 @@ impl<Pl> ComputePipeline<Pl> {
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
     /// uses.
-    pub fn with_pipeline_layout<Cs>(device: Arc<Device>, shader: &Cs,
-                                    specialization: &Cs::SpecializationConstants,
-                                    pipeline_layout: Pl)
-                                    -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
-        where Cs::PipelineLayout: Clone,
-              Cs: EntryPointAbstract,
-              Pl: PipelineLayoutAbstract
+    pub fn with_pipeline_layout<Cs>(
+        device: Arc<Device>,
+        shader: &Cs,
+        specialization: &Cs::SpecializationConstants,
+        pipeline_layout: Pl,
+    ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+    where
+        Cs::PipelineLayout: Clone,
+        Cs: EntryPointAbstract,
+        Pl: PipelineLayoutAbstract,
     {
         unsafe {
             PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout, shader.layout())?;
-            ComputePipeline::with_unchecked_pipeline_layout(device,
-                                                            shader,
-                                                            specialization,
-                                                            pipeline_layout)
+            ComputePipeline::with_unchecked_pipeline_layout(
+                device,
+                shader,
+                specialization,
+                pipeline_layout,
+            )
         }
     }
 
     /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
     /// superset of what the shader expects.
     pub unsafe fn with_unchecked_pipeline_layout<Cs>(
-        device: Arc<Device>, shader: &Cs, specialization: &Cs::SpecializationConstants,
-        pipeline_layout: Pl)
-        -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
-        where Cs::PipelineLayout: Clone,
-              Cs: EntryPointAbstract,
-              Pl: PipelineLayoutAbstract
+        device: Arc<Device>,
+        shader: &Cs,
+        specialization: &Cs::SpecializationConstants,
+        pipeline_layout: Pl,
+    ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+    where
+        Cs::PipelineLayout: Clone,
+        Cs: EntryPointAbstract,
+        Pl: PipelineLayoutAbstract,
     {
         let vk = device.pointers();
 
@@ -140,22 +153,24 @@ impl<Pl> ComputePipeline<Pl> {
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateComputePipelines(device.internal_object(),
-                                                   0,
-                                                   1,
-                                                   &infos,
-                                                   ptr::null(),
-                                                   output.as_mut_ptr()))?;
+            check_errors(vk.CreateComputePipelines(
+                device.internal_object(),
+                0,
+                1,
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(ComputePipeline {
-               inner: Inner {
-                   device: device.clone(),
-                   pipeline: pipeline,
-               },
-               pipeline_layout: pipeline_layout,
-           })
+            inner: Inner {
+                device: device.clone(),
+                pipeline: pipeline,
+            },
+            pipeline_layout: pipeline_layout,
+        })
     }
 }
 
@@ -187,7 +202,8 @@ pub unsafe trait ComputePipelineAbstract: PipelineLayoutAbstract {
 }
 
 unsafe impl<Pl> ComputePipelineAbstract for ComputePipeline<Pl>
-    where Pl: PipelineLayoutAbstract
+where
+    Pl: PipelineLayoutAbstract,
 {
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
@@ -196,8 +212,9 @@ unsafe impl<Pl> ComputePipelineAbstract for ComputePipeline<Pl>
 }
 
 unsafe impl<T> ComputePipelineAbstract for T
-    where T: SafeDeref,
-          T::Target: ComputePipelineAbstract
+where
+    T: SafeDeref,
+    T::Target: ComputePipelineAbstract,
 {
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
@@ -222,7 +239,8 @@ unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
 }
 
 unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl>
-    where Pl: PipelineLayoutAbstract
+where
+    Pl: PipelineLayoutAbstract,
 {
     #[inline]
     fn sys(&self) -> PipelineLayoutSys {
@@ -236,7 +254,8 @@ unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl>
 }
 
 unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl>
-    where Pl: PipelineLayoutDesc
+where
+    Pl: PipelineLayoutDesc,
 {
     #[inline]
     fn num_sets(&self) -> usize {
@@ -309,10 +328,12 @@ impl error::Error for ComputePipelineCreationError {
     fn description(&self) -> &str {
         match *self {
             ComputePipelineCreationError::OomError(_) => "not enough memory available",
-            ComputePipelineCreationError::PipelineLayoutCreationError(_) =>
-                "error while creating the pipeline layout object",
-            ComputePipelineCreationError::IncompatiblePipelineLayout(_) =>
-                "the pipeline layout is not compatible with what the shader expects",
+            ComputePipelineCreationError::PipelineLayoutCreationError(_) => {
+                "error while creating the pipeline layout object"
+            }
+            ComputePipelineCreationError::IncompatiblePipelineLayout(_) => {
+                "the pipeline layout is not compatible with what the shader expects"
+            }
         }
     }
 
@@ -360,10 +381,10 @@ impl From<Error> for ComputePipelineCreationError {
         match err {
             err @ Error::OutOfHostMemory => {
                 ComputePipelineCreationError::OomError(OomError::from(err))
-            },
+            }
             err @ Error::OutOfDeviceMemory => {
                 ComputePipelineCreationError::OomError(OomError::from(err))
-            },
+            }
             _ => panic!("unexpected error: {:?}", err),
         }
     }
@@ -382,14 +403,14 @@ mod tests {
     use descriptor::pipeline_layout::PipelineLayoutAbstract;
     use descriptor::pipeline_layout::PipelineLayoutDesc;
     use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-    use pipeline::ComputePipeline;
     use pipeline::shader::ShaderModule;
     use pipeline::shader::SpecializationConstants;
     use pipeline::shader::SpecializationMapEntry;
+    use pipeline::ComputePipeline;
     use std::ffi::CStr;
     use std::sync::Arc;
-    use sync::GpuFuture;
     use sync::now;
+    use sync::GpuFuture;
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error
@@ -419,486 +440,25 @@ mod tests {
             }
             */
             const MODULE: [u8; 480] = [
-                3,
-                2,
-                35,
-                7,
-                0,
-                0,
-                1,
-                0,
-                1,
-                0,
-                8,
-                0,
-                14,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                17,
-                0,
-                2,
-                0,
-                1,
-                0,
-                0,
-                0,
-                11,
-                0,
-                6,
-                0,
-                1,
-                0,
-                0,
-                0,
-                71,
-                76,
-                83,
-                76,
-                46,
-                115,
-                116,
-                100,
-                46,
-                52,
-                53,
-                48,
-                0,
-                0,
-                0,
-                0,
-                14,
-                0,
-                3,
-                0,
-                0,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                15,
-                0,
-                5,
-                0,
-                5,
-                0,
-                0,
-                0,
-                4,
-                0,
-                0,
-                0,
-                109,
-                97,
-                105,
-                110,
-                0,
-                0,
-                0,
-                0,
-                16,
-                0,
-                6,
-                0,
-                4,
-                0,
-                0,
-                0,
-                17,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                3,
-                0,
-                3,
-                0,
-                2,
-                0,
-                0,
-                0,
-                194,
-                1,
-                0,
-                0,
-                5,
-                0,
-                4,
-                0,
-                4,
-                0,
-                0,
-                0,
-                109,
-                97,
-                105,
-                110,
-                0,
-                0,
-                0,
-                0,
-                5,
-                0,
-                4,
-                0,
-                7,
-                0,
-                0,
-                0,
-                79,
-                117,
-                116,
-                112,
-                117,
-                116,
-                0,
-                0,
-                6,
-                0,
-                5,
-                0,
-                7,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                119,
-                114,
-                105,
-                116,
-                101,
-                0,
-                0,
-                0,
-                5,
-                0,
-                4,
-                0,
-                9,
-                0,
-                0,
-                0,
-                119,
-                114,
-                105,
-                116,
-                101,
-                0,
-                0,
-                0,
-                5,
-                0,
-                4,
-                0,
-                11,
-                0,
-                0,
-                0,
-                86,
-                65,
-                76,
-                85,
-                69,
-                0,
-                0,
-                0,
-                72,
-                0,
-                5,
-                0,
-                7,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                35,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                71,
-                0,
-                3,
-                0,
-                7,
-                0,
-                0,
-                0,
-                3,
-                0,
-                0,
-                0,
-                71,
-                0,
-                4,
-                0,
-                9,
-                0,
-                0,
-                0,
-                34,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                71,
-                0,
-                4,
-                0,
-                9,
-                0,
-                0,
-                0,
-                33,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                71,
-                0,
-                4,
-                0,
-                11,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                83,
-                0,
-                0,
-                0,
-                19,
-                0,
-                2,
-                0,
-                2,
-                0,
-                0,
-                0,
-                33,
-                0,
-                3,
-                0,
-                3,
-                0,
-                0,
-                0,
-                2,
-                0,
-                0,
-                0,
-                21,
-                0,
-                4,
-                0,
-                6,
-                0,
-                0,
-                0,
-                32,
-                0,
-                0,
-                0,
-                1,
-                0,
-                0,
-                0,
-                30,
-                0,
-                3,
-                0,
-                7,
-                0,
-                0,
-                0,
-                6,
-                0,
-                0,
-                0,
-                32,
-                0,
-                4,
-                0,
-                8,
-                0,
-                0,
-                0,
-                2,
-                0,
-                0,
-                0,
-                7,
-                0,
-                0,
-                0,
-                59,
-                0,
-                4,
-                0,
-                8,
-                0,
-                0,
-                0,
-                9,
-                0,
-                0,
-                0,
-                2,
-                0,
-                0,
-                0,
-                43,
-                0,
-                4,
-                0,
-                6,
-                0,
-                0,
-                0,
-                10,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                50,
-                0,
-                4,
-                0,
-                6,
-                0,
-                0,
-                0,
-                11,
-                0,
-                0,
-                0,
-                239,
-                190,
-                173,
-                222,
-                32,
-                0,
-                4,
-                0,
-                12,
-                0,
-                0,
-                0,
-                2,
-                0,
-                0,
-                0,
-                6,
-                0,
-                0,
-                0,
-                54,
-                0,
-                5,
-                0,
-                2,
-                0,
-                0,
-                0,
-                4,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                3,
-                0,
-                0,
-                0,
-                248,
-                0,
-                2,
-                0,
-                5,
-                0,
-                0,
-                0,
-                65,
-                0,
-                5,
-                0,
-                12,
-                0,
-                0,
-                0,
-                13,
-                0,
-                0,
-                0,
-                9,
-                0,
-                0,
-                0,
-                10,
-                0,
-                0,
-                0,
-                62,
-                0,
-                3,
-                0,
-                13,
-                0,
-                0,
-                0,
-                11,
-                0,
-                0,
-                0,
-                253,
-                0,
-                1,
-                0,
-                56,
-                0,
-                1,
-                0,
+                3, 2, 35, 7, 0, 0, 1, 0, 1, 0, 8, 0, 14, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0, 0,
+                0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48, 0,
+                0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1,
+                0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 5, 0, 4, 0, 7, 0, 0, 0, 79, 117, 116, 112, 117, 116,
+                0, 0, 6, 0, 5, 0, 7, 0, 0, 0, 0, 0, 0, 0, 119, 114, 105, 116, 101, 0, 0, 0, 5, 0,
+                4, 0, 9, 0, 0, 0, 119, 114, 105, 116, 101, 0, 0, 0, 5, 0, 4, 0, 11, 0, 0, 0, 86,
+                65, 76, 85, 69, 0, 0, 0, 72, 0, 5, 0, 7, 0, 0, 0, 0, 0, 0, 0, 35, 0, 0, 0, 0, 0, 0,
+                0, 71, 0, 3, 0, 7, 0, 0, 0, 3, 0, 0, 0, 71, 0, 4, 0, 9, 0, 0, 0, 34, 0, 0, 0, 0, 0,
+                0, 0, 71, 0, 4, 0, 9, 0, 0, 0, 33, 0, 0, 0, 0, 0, 0, 0, 71, 0, 4, 0, 11, 0, 0, 0,
+                1, 0, 0, 0, 83, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2, 0, 0,
+                0, 21, 0, 4, 0, 6, 0, 0, 0, 32, 0, 0, 0, 1, 0, 0, 0, 30, 0, 3, 0, 7, 0, 0, 0, 6, 0,
+                0, 0, 32, 0, 4, 0, 8, 0, 0, 0, 2, 0, 0, 0, 7, 0, 0, 0, 59, 0, 4, 0, 8, 0, 0, 0, 9,
+                0, 0, 0, 2, 0, 0, 0, 43, 0, 4, 0, 6, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 50, 0, 4, 0,
+                6, 0, 0, 0, 11, 0, 0, 0, 239, 190, 173, 222, 32, 0, 4, 0, 12, 0, 0, 0, 2, 0, 0, 0,
+                6, 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2,
+                0, 5, 0, 0, 0, 65, 0, 5, 0, 12, 0, 0, 0, 13, 0, 0, 0, 9, 0, 0, 0, 10, 0, 0, 0, 62,
+                0, 3, 0, 13, 0, 0, 0, 11, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
             ];
             ShaderModule::new(device.clone(), &MODULE).unwrap()
         };
@@ -919,17 +479,17 @@ mod tests {
                 fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
                     match (set, binding) {
                         (0, 0) => Some(DescriptorDesc {
-                                           ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                                                                            dynamic: Some(false),
-                                                                            storage: true,
-                                                                        }),
-                                           array_count: 1,
-                                           stages: ShaderStages {
-                                               compute: true,
-                                               ..ShaderStages::none()
-                                           },
-                                           readonly: true,
-                                       }),
+                            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                                dynamic: Some(false),
+                                storage: true,
+                            }),
+                            array_count: 1,
+                            stages: ShaderStages {
+                                compute: true,
+                                ..ShaderStages::none()
+                            },
+                            readonly: true,
+                        }),
                         _ => None,
                     }
                 }
@@ -953,24 +513,22 @@ mod tests {
         }
         unsafe impl SpecializationConstants for SpecConsts {
             fn descriptors() -> &'static [SpecializationMapEntry] {
-                static DESCRIPTORS: [SpecializationMapEntry; 1] = [
-                    SpecializationMapEntry {
-                        constant_id: 83,
-                        offset: 0,
-                        size: 4,
-                    },
-                ];
+                static DESCRIPTORS: [SpecializationMapEntry; 1] = [SpecializationMapEntry {
+                    constant_id: 83,
+                    offset: 0,
+                    size: 4,
+                }];
                 &DESCRIPTORS
             }
         }
 
-        let pipeline = Arc::new(ComputePipeline::new(device.clone(),
-                                                     &shader,
-                                                     &SpecConsts { VALUE: 0x12345678 })
-                                    .unwrap());
+        let pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &shader, &SpecConsts { VALUE: 0x12345678 })
+                .unwrap(),
+        );
 
-        let data_buffer = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), 0)
-            .unwrap();
+        let data_buffer =
+            CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
         let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
         let set = PersistentDescriptorSet::start(layout.clone())
             .add_buffer(data_buffer.clone())
@@ -978,13 +536,13 @@ mod tests {
             .build()
             .unwrap();
 
-        let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(),
-                                                                               queue.family())
-            .unwrap()
-            .dispatch([1, 1, 1], pipeline.clone(), set, ())
-            .unwrap()
-            .build()
-            .unwrap();
+        let command_buffer =
+            AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+                .unwrap()
+                .dispatch([1, 1, 1], pipeline.clone(), set, ())
+                .unwrap()
+                .build()
+                .unwrap();
 
         let future = now(device.clone())
             .then_execute(queue.clone(), command_buffer)

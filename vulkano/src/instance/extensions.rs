@@ -15,9 +15,9 @@ use std::ptr;
 use std::str;
 
 use check_errors;
+use extensions::SupportedExtensionsError;
 use instance::loader;
 use instance::loader::LoadingError;
-use extensions::SupportedExtensionsError;
 use vk;
 
 macro_rules! instance_extensions {
@@ -159,6 +159,7 @@ instance_extensions! {
     nn_vi_surface => b"VK_NN_vi_surface",
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
     khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
+    khr_get_surface_capabilities2 => b"VK_KHR_get_surface_capabilities2",
 }
 
 /// This helper type can only be instantiated inside this module.

@@ -11,15 +11,14 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use OomError;
 use buffer::BufferAccess;
-use command_buffer::CommandBuffer;
-use command_buffer::CommandBufferExecError;
-use command_buffer::CommandBufferExecFuture;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitBindSparseError;
 use command_buffer::submit::SubmitCommandBufferError;
 use command_buffer::submit::SubmitPresentError;
+use command_buffer::CommandBuffer;
+use command_buffer::CommandBufferExecError;
+use command_buffer::CommandBufferExecFuture;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
@@ -31,15 +30,16 @@ use swapchain::Swapchain;
 use sync::AccessFlagBits;
 use sync::FenceWaitError;
 use sync::PipelineStages;
+use OomError;
 
 pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
 pub use self::join::JoinFuture;
-pub use self::now::{NowFuture, now};
+pub use self::now::{now, NowFuture};
 pub use self::semaphore_signal::SemaphoreSignalFuture;
 
-mod now;
 mod fence_signal;
 mod join;
+mod now;
 mod semaphore_signal;
 
 /// Represents an event that will happen on the GPU in the future.
@@ -115,8 +115,12 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
     /// > "don't know". Therefore returning `Err` is never unsafe.
-    fn check_buffer_access(&self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-                           -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+    fn check_buffer_access(
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
@@ -132,15 +136,20 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: Keep in mind that changing the layout of an image also requires exclusive
     /// > access.
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
     fn join<F>(self, other: F) -> JoinFuture<Self, F>
-        where Self: Sized,
-              F: GpuFuture
+    where
+        Self: Sized,
+        F: GpuFuture,
     {
         join::join(self, other)
     }
@@ -150,10 +159,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > **Note**: This is just a shortcut function. The actual implementation is in the
     /// > `CommandBuffer` trait.
     #[inline]
-    fn then_execute<Cb>(self, queue: Arc<Queue>, command_buffer: Cb)
-                        -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
-        where Self: Sized,
-              Cb: CommandBuffer + 'static
+    fn then_execute<Cb>(
+        self,
+        queue: Arc<Queue>,
+        command_buffer: Cb,
+    ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+    where
+        Self: Sized,
+        Cb: CommandBuffer + 'static,
     {
         command_buffer.execute_after(self, queue)
     }
@@ -164,10 +177,12 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > `CommandBuffer` trait.
     #[inline]
     fn then_execute_same_queue<Cb>(
-        self, command_buffer: Cb)
-        -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
-        where Self: Sized,
-              Cb: CommandBuffer + 'static
+        self,
+        command_buffer: Cb,
+    ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
+    where
+        Self: Sized,
+        Cb: CommandBuffer + 'static,
     {
         let queue = self.queue().unwrap().clone();
         command_buffer.execute_after(self, queue)
@@ -179,7 +194,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// result on another queue.
     #[inline]
     fn then_signal_semaphore(self) -> SemaphoreSignalFuture<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         semaphore_signal::then_signal_semaphore(self)
     }
@@ -199,7 +215,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// advantageous to submit A as soon as possible.
     #[inline]
     fn then_signal_semaphore_and_flush(self) -> Result<SemaphoreSignalFuture<Self>, FlushError>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         let f = self.then_signal_semaphore();
         f.flush()?;
@@ -212,7 +229,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// > function. If so, consider using `then_signal_fence_and_flush`.
     #[inline]
     fn then_signal_fence(self) -> FenceSignalFuture<Self>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         fence_signal::then_signal_fence(self, FenceSignalFutureBehavior::Continue)
     }
@@ -222,7 +240,8 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// This is a just a shortcut for `then_signal_fence()` followed with `flush()`.
     #[inline]
     fn then_signal_fence_and_flush(self) -> Result<FenceSignalFuture<Self>, FlushError>
-        where Self: Sized
+    where
+        Self: Sized,
     {
         let f = self.then_signal_fence();
         f.flush()?;
@@ -236,10 +255,14 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut for the `Swapchain::present()` function.
     #[inline]
-    fn then_swapchain_present<W>(self, queue: Arc<Queue>, swapchain: Arc<Swapchain<W>>,
-                              image_index: usize)
-                              -> PresentFuture<Self,W>
-        where Self: Sized
+    fn then_swapchain_present<W>(
+        self,
+        queue: Arc<Queue>,
+        swapchain: Arc<Swapchain<W>>,
+        image_index: usize,
+    ) -> PresentFuture<Self, W>
+    where
+        Self: Sized,
     {
         swapchain::present(swapchain, self, queue, image_index)
     }
@@ -248,17 +271,23 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ///
     /// > **Note**: This is just a shortcut for the `Swapchain::present_incremental()` function.
     #[inline]
-    fn then_swapchain_present_incremental<W>(self, queue: Arc<Queue>, swapchain: Arc<Swapchain<W>>,
-                                          image_index: usize, present_region: PresentRegion)
-                                          -> PresentFuture<Self,W>
-        where Self: Sized
+    fn then_swapchain_present_incremental<W>(
+        self,
+        queue: Arc<Queue>,
+        swapchain: Arc<Swapchain<W>>,
+        image_index: usize,
+        present_region: PresentRegion,
+    ) -> PresentFuture<Self, W>
+    where
+        Self: Sized,
     {
         swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
     }
 }
 
 unsafe impl<F: ?Sized> GpuFuture for Box<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -292,15 +321,22 @@ unsafe impl<F: ?Sized> GpuFuture for Box<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
 }
@@ -337,26 +373,24 @@ impl error::Error for AccessError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            AccessError::ExclusiveDenied => {
-                "only shared access is allowed for this resource"
-            },
+            AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
             AccessError::AlreadyInUse => {
                 "the resource is already in use, and there is no tracking of concurrent usages"
-            },
+            }
             AccessError::UnexpectedImageLayout { .. } => {
                 unimplemented!() // TODO: find a description
-            },
+            }
             AccessError::ImageNotInitialized { .. } => {
                 "trying to use an image without transitioning it from the undefined or \
                  preinitialized layouts first"
-            },
+            }
             AccessError::BufferNotInitialized => {
                 "trying to use a buffer that still contains garbage data"
-            },
+            }
             AccessError::SwapchainImageAcquireOnly => {
                 "trying to use a swapchain image without depending on a corresponding acquire \
                  image future"
-            },
+            }
         }
     }
 }
@@ -381,12 +415,8 @@ impl error::Error for AccessCheckError {
     #[inline]
     fn description(&self) -> &str {
         match *self {
-            AccessCheckError::Denied(_) => {
-                "access to the resource has been denied"
-            },
-            AccessCheckError::Unknown => {
-                "the resource is unknown"
-            },
+            AccessCheckError::Denied(_) => "access to the resource has been denied",
+            AccessCheckError::Unknown => "the resource is unknown",
         }
     }
 }
@@ -424,6 +454,10 @@ pub enum FlushError {
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
 
+    /// The swapchain has lost or doesn't have fullscreen exclusivity possibly for
+    /// implementation-specific reasons outside of the application’s control.
+    FullscreenExclusiveLost,
+
     /// The flush operation needed to block, but the timeout has elapsed.
     Timeout,
 }
@@ -437,8 +471,13 @@ impl error::Error for FlushError {
             FlushError::DeviceLost => "the connection to the device has been lost",
             FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
             FlushError::OutOfDate => "the swapchain needs to be recreated",
-            FlushError::Timeout => "the flush operation needed to block, but the timeout has \
-                                    elapsed",
+            FlushError::FullscreenExclusiveLost => {
+                "the swapchain no longer has fullscreen exclusivity"
+            }
+            FlushError::Timeout => {
+                "the flush operation needed to block, but the timeout has \
+                                    elapsed"
+            }
         }
     }
 
@@ -474,6 +513,7 @@ impl From<SubmitPresentError> for FlushError {
             SubmitPresentError::DeviceLost => FlushError::DeviceLost,
             SubmitPresentError::SurfaceLost => FlushError::SurfaceLost,
             SubmitPresentError::OutOfDate => FlushError::OutOfDate,
+            SubmitPresentError::FullscreenExclusiveLost => FlushError::FullscreenExclusiveLost,
         }
     }
 }

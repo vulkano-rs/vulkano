@@ -7,16 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-// Some relevant documentation:
-// *    Tessellation overview           https://www.khronos.org/opengl/wiki/Tessellation
-// *    Tessellation Control Shader     https://www.khronos.org/opengl/wiki/Tessellation_Control_Shader
-// *    Tessellation Evaluation Shader  https://www.khronos.org/opengl/wiki/Tessellation_Evaluation_Shader
-// *    Tessellation real-world usage 1 http://ogldev.atspace.co.uk/www/tutorial30/tutorial30.html
-// *    Tessellation real-world usage 2 http://prideout.net/blog/?p=48
-
-// Notable elements of this example:
-// *    tessellation control shader and a tessellation evaluation shader
-// *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
+// Welcome to the triangle example!
+//
+// This is the only example that is entirely detailed. All the other examples avoid code
+// duplication by using helper functions.
+//
+// This example assumes that you are already more or less familiar with graphics programming
+// and that you want to learn Vulkan. This means that for example it won't go into details about
+// what a vertex or a shader is.
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
@@ -27,6 +25,7 @@ use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::swapchain;
+use vulkano::swapchain::Surface;
 use vulkano::swapchain::{
     AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain,
     SwapchainCreationError,
@@ -35,152 +34,82 @@ use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
 
 use vulkano_win::VkSurfaceBuild;
+use winit::event::ElementState;
+use winit::event::KeyboardInput;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
-mod vs {
-    vulkano_shaders::shader! {
-        ty: "vertex",
-        src: "
-            #version 450
-
-            layout(location = 0) in vec2 position;
-
-            void main() {
-                gl_Position = vec4(position, 0.0, 1.0);
-            }
-        "
-    }
-}
-
-mod tcs {
-    vulkano_shaders::shader! {
-        ty: "tess_ctrl",
-        src: "
-            #version 450
-
-            layout (vertices = 3) out; // a value of 3 means a patch consists of a single triangle
-
-            void main(void)
-            {
-                // save the position of the patch, so the tes can access it
-                // We could define our own output variables for this,
-                // but gl_out is handily provided.
-                gl_out[gl_InvocationID].gl_Position = gl_in[gl_InvocationID].gl_Position;
-
-                gl_TessLevelInner[0] = 10; // many triangles are generated in the center
-                gl_TessLevelOuter[0] = 1;  // no triangles are generated for this edge
-                gl_TessLevelOuter[1] = 10; // many triangles are generated for this edge
-                gl_TessLevelOuter[2] = 10; // many triangles are generated for this edge
-                // gl_TessLevelInner[1] = only used when tes uses layout(quads)
-                // gl_TessLevelOuter[3] = only used when tes uses layout(quads)
-            }
-        "
-    }
-}
-
-// PG
-// There is a stage in between tcs and tes called Primitive Generation (PG)
-// Shaders cannot be defined for it.
-// It takes gl_TessLevelInner and gl_TessLevelOuter and uses them to generate positions within
-// the patch and pass them to tes via gl_TessCoord.
-//
-// When tes uses layout(triangles) then gl_TessCoord is in barrycentric coordinates.
-// if layout(quads) is used then gl_TessCoord is in cartesian coordinates.
-// Barrycentric coordinates are of the form (x, y, z) where x + y + z = 1
-// and the values x, y and z represent the distance from a vertex of the triangle.
-// http://mathworld.wolfram.com/BarycentricCoordinates.html
-
-mod tes {
-    vulkano_shaders::shader! {
-        ty: "tess_eval",
-        src: "
-            #version 450
-
-            layout(triangles, equal_spacing, cw) in;
-
-            void main(void)
-            {
-                // retrieve the vertex positions set by the tcs
-                vec4 vert_x = gl_in[0].gl_Position;
-                vec4 vert_y = gl_in[1].gl_Position;
-                vec4 vert_z = gl_in[2].gl_Position;
-
-                // convert gl_TessCoord from barycentric coordinates to cartesian coordinates
-                gl_Position = vec4(
-                    gl_TessCoord.x * vert_x.x + gl_TessCoord.y * vert_y.x + gl_TessCoord.z * vert_z.x,
-                    gl_TessCoord.x * vert_x.y + gl_TessCoord.y * vert_y.y + gl_TessCoord.z * vert_z.y,
-                    gl_TessCoord.x * vert_x.z + gl_TessCoord.y * vert_y.z + gl_TessCoord.z * vert_z.z,
-                    1.0
-                );
-            }
-        "
-    }
-}
-
-mod fs {
-    vulkano_shaders::shader! {
-        ty: "fragment",
-        src: "
-            #version 450
-
-            layout(location = 0) out vec4 f_color;
-
-            void main() {
-                f_color = vec4(1.0, 1.0, 1.0, 1.0);
-            }
-        "
-    }
+// A struct to contain resources related to a window
+struct WindowSurface {
+    surface: Arc<Surface<Window>>,
+    swapchain: Arc<Swapchain<Window>>,
+    framebuffers: Vec<Arc<(dyn FramebufferAbstract + Send + Sync + 'static)>>,
+    recreate_swapchain: bool,
+    previous_frame_end: Option<Box<dyn GpuFuture>>,
 }
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
     let instance = Instance::new(None, &required_extensions, None).unwrap();
-
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    println!(
-        "Using device: {} (type: {:?})",
-        physical.name(),
-        physical.ty()
-    );
-
     let event_loop = EventLoop::new();
+
+    // A hashmap that contains all of our created windows and their resources
+    let mut window_surfaces = HashMap::new();
+
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
+    // Use the window's id as a means to access it from the hashmap
+    let window_id = surface.window().id();
 
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+    // Find the device and a queue.
+    // TODO: it is assumed the device, queue, and surface caps are the same for all windows
+
+    let (device, queue, surface_caps) = {
+        let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+        let queue_family = physical
+            .queue_families()
+            .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+            .unwrap();
+
+        let device_ext = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::none()
+        };
+        let (device, mut queues) = Device::new(
+            physical,
+            physical.supported_features(),
+            &device_ext,
+            [(queue_family, 0.5)].iter().cloned(),
+        )
         .unwrap();
-
-    let device_ext = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::none()
+        (
+            device,
+            queues.next().unwrap(),
+            surface.capabilities(physical).unwrap(),
+        )
     };
-    let (device, mut queues) = Device::new(
-        physical,
-        physical.supported_features(),
-        &device_ext,
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .unwrap();
-    let queue = queues.next().unwrap();
 
-    let (mut swapchain, images) = {
-        let caps = surface.capabilities(physical).unwrap();
-        let usage = caps.supported_usage_flags;
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-        let format = caps.supported_formats[0].0;
+    // The swapchain and framebuffer images for this perticular window
+
+    let (swapchain, images) = {
+        let usage = surface_caps.supported_usage_flags;
+        let alpha = surface_caps
+            .supported_composite_alpha
+            .iter()
+            .next()
+            .unwrap();
+        let format = surface_caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
         Swapchain::new(
             device.clone(),
             surface.clone(),
-            caps.min_image_count,
+            surface_caps.min_image_count,
             format,
             dimensions,
             1,
@@ -217,24 +146,6 @@ fn main() {
                 Vertex {
                     position: [0.25, -0.1],
                 },
-                Vertex {
-                    position: [0.9, 0.9],
-                },
-                Vertex {
-                    position: [0.9, 0.8],
-                },
-                Vertex {
-                    position: [0.8, 0.8],
-                },
-                Vertex {
-                    position: [-0.9, 0.9],
-                },
-                Vertex {
-                    position: [-0.7, 0.6],
-                },
-                Vertex {
-                    position: [-0.5, 0.9],
-                },
             ]
             .iter()
             .cloned(),
@@ -242,9 +153,37 @@ fn main() {
         .unwrap()
     };
 
+    mod vs {
+        vulkano_shaders::shader! {
+            ty: "vertex",
+            src: "
+                #version 450
+
+                layout(location = 0) in vec2 position;
+
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }
+            "
+        }
+    }
+
+    mod fs {
+        vulkano_shaders::shader! {
+            ty: "fragment",
+            src: "
+                #version 450
+
+                layout(location = 0) out vec4 f_color;
+
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            "
+        }
+    }
+
     let vs = vs::Shader::load(device.clone()).unwrap();
-    let tcs = tcs::Shader::load(device.clone()).unwrap();
-    let tes = tes::Shader::load(device.clone()).unwrap();
     let fs = fs::Shader::load(device.clone()).unwrap();
 
     let render_pass = Arc::new(
@@ -270,14 +209,7 @@ fn main() {
         GraphicsPipeline::start()
             .vertex_input_single_buffer()
             .vertex_shader(vs.main_entry_point(), ())
-            // Actually use the tessellation shaders.
-            .tessellation_shaders(tcs.main_entry_point(), (), tes.main_entry_point(), ())
-            // use PrimitiveTopology::PathList(3)
-            // Use a vertices_per_patch of 3, because we want to convert one triangle into lots of
-            // little ones. A value of 4 would convert a rectangle into lots of little triangles.
-            .patch_list(3)
-            // Enable line mode so we can see the generated vertices.
-            .polygon_mode_line()
+            .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
@@ -285,8 +217,6 @@ fn main() {
             .unwrap(),
     );
 
-    let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
     let mut dynamic_state = DynamicState {
         line_width: None,
         viewports: None,
@@ -295,10 +225,23 @@ fn main() {
         write_mask: None,
         reference: None,
     };
-    let mut framebuffers =
-        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
 
-    event_loop.run(move |event, _, control_flow| match event {
+    window_surfaces.insert(
+        window_id,
+        WindowSurface {
+            surface,
+            swapchain,
+            recreate_swapchain: false,
+            framebuffers: window_size_dependent_setup(
+                &images,
+                render_pass.clone(),
+                &mut dynamic_state,
+            ),
+            previous_frame_end: Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>),
+        },
+    );
+
+    event_loop.run(move |event, event_loop, control_flow| match event {
         Event::WindowEvent {
             event: WindowEvent::CloseRequested,
             ..
@@ -306,15 +249,94 @@ fn main() {
             *control_flow = ControlFlow::Exit;
         }
         Event::WindowEvent {
+            window_id,
             event: WindowEvent::Resized(_),
             ..
         } => {
-            recreate_swapchain = true;
+            window_surfaces
+                .get_mut(&window_id)
+                .unwrap()
+                .recreate_swapchain = true;
+        }
+        Event::WindowEvent {
+            event:
+                WindowEvent::KeyboardInput {
+                    input:
+                        KeyboardInput {
+                            state: ElementState::Pressed,
+                            ..
+                        },
+                    ..
+                },
+            ..
+        } => {
+            let surface = WindowBuilder::new()
+                .build_vk_surface(&event_loop, instance.clone())
+                .unwrap();
+            let window_id = surface.window().id();
+            let (swapchain, images) = {
+                let usage = surface_caps.supported_usage_flags;
+                let alpha = surface_caps
+                    .supported_composite_alpha
+                    .iter()
+                    .next()
+                    .unwrap();
+                let format = surface_caps.supported_formats[0].0;
+                let dimensions: [u32; 2] = surface.window().inner_size().into();
+
+                Swapchain::new(
+                    device.clone(),
+                    surface.clone(),
+                    surface_caps.min_image_count,
+                    format,
+                    dimensions,
+                    1,
+                    usage,
+                    &queue,
+                    SurfaceTransform::Identity,
+                    alpha,
+                    PresentMode::Fifo,
+                    FullscreenExclusive::Default,
+                    true,
+                    ColorSpace::SrgbNonLinear,
+                )
+                .unwrap()
+            };
+
+            window_surfaces.insert(
+                window_id,
+                WindowSurface {
+                    surface,
+                    swapchain,
+                    recreate_swapchain: false,
+                    framebuffers: window_size_dependent_setup(
+                        &images,
+                        render_pass.clone(),
+                        &mut dynamic_state,
+                    ),
+                    previous_frame_end: Some(
+                        Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>
+                    ),
+                },
+            );
         }
         Event::RedrawEventsCleared => {
+            window_surfaces
+                .values()
+                .for_each(|s| s.surface.window().request_redraw());
+        }
+        Event::RedrawRequested(window_id) => {
+            let WindowSurface {
+                ref surface,
+                ref mut swapchain,
+                ref mut recreate_swapchain,
+                ref mut framebuffers,
+                ref mut previous_frame_end,
+            } = window_surfaces.get_mut(&window_id).unwrap();
+
             previous_frame_end.as_mut().unwrap().cleanup_finished();
 
-            if recreate_swapchain {
+            if *recreate_swapchain {
                 let dimensions: [u32; 2] = surface.window().inner_size().into();
                 let (new_swapchain, new_images) =
                     match swapchain.recreate_with_dimensions(dimensions) {
@@ -323,37 +345,35 @@ fn main() {
                         Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                     };
 
-                swapchain = new_swapchain;
-                framebuffers = window_size_dependent_setup(
+                *swapchain = new_swapchain;
+                *framebuffers = window_size_dependent_setup(
                     &new_images,
                     render_pass.clone(),
                     &mut dynamic_state,
                 );
-                recreate_swapchain = false;
+                *recreate_swapchain = false;
             }
 
             let (image_num, suboptimal, acquire_future) =
                 match swapchain::acquire_next_image(swapchain.clone(), None) {
                     Ok(r) => r,
                     Err(AcquireError::OutOfDate) => {
-                        recreate_swapchain = true;
+                        *recreate_swapchain = true;
                         return;
                     }
                     Err(e) => panic!("Failed to acquire next image: {:?}", e),
                 };
 
             if suboptimal {
-                recreate_swapchain = true;
+                *recreate_swapchain = true;
             }
+
+            let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
             let command_buffer =
                 AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
                     .unwrap()
-                    .begin_render_pass(
-                        framebuffers[image_num].clone(),
-                        false,
-                        vec![[0.0, 0.0, 0.0, 1.0].into()],
-                    )
+                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
                     .unwrap()
                     .draw(
                         pipeline.clone(),
@@ -379,15 +399,15 @@ fn main() {
 
             match future {
                 Ok(future) => {
-                    previous_frame_end = Some(Box::new(future) as Box<_>);
+                    *previous_frame_end = Some(Box::new(future) as Box<_>);
                 }
                 Err(FlushError::OutOfDate) => {
-                    recreate_swapchain = true;
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    *recreate_swapchain = true;
+                    *previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
                 }
                 Err(e) => {
                     println!("Failed to flush future: {:?}", e);
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    *previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
                 }
             }
         }
@@ -395,7 +415,6 @@ fn main() {
     });
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,

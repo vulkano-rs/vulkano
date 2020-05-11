@@ -13,14 +13,14 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use OomError;
-use VulkanObject;
 use check_errors;
 use vk;
+use OomError;
+use VulkanObject;
 
 use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor_set::DescriptorsCount;
 use descriptor::descriptor_set::DescriptorSetDesc;
+use descriptor::descriptor_set::DescriptorsCount;
 use device::Device;
 use device::DeviceOwned;
 
@@ -46,9 +46,12 @@ impl UnsafeDescriptorSetLayout {
     /// The descriptors must be passed in the order of the bindings. In order words, descriptor
     /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
     /// empty, you can make the iterator yield `None` for an element.
-    pub fn new<I>(device: Arc<Device>, descriptors: I)
-                  -> Result<UnsafeDescriptorSetLayout, OomError>
-        where I: IntoIterator<Item = Option<DescriptorDesc>>
+    pub fn new<I>(
+        device: Arc<Device>,
+        descriptors: I,
+    ) -> Result<UnsafeDescriptorSetLayout, OomError>
+    where
+        I: IntoIterator<Item = Option<DescriptorDesc>>,
     {
         let descriptors = descriptors.into_iter().collect::<SmallVec<[_; 32]>>();
         let mut descriptors_count = DescriptorsCount::zero();
@@ -69,12 +72,12 @@ impl UnsafeDescriptorSetLayout {
                 descriptors_count.add_one(ty);
 
                 Some(vk::DescriptorSetLayoutBinding {
-                         binding: binding as u32,
-                         descriptorType: ty as u32,
-                         descriptorCount: desc.array_count,
-                         stageFlags: desc.stages.into_vulkan_bits(),
-                         pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
-                     })
+                    binding: binding as u32,
+                    descriptorType: ty as u32,
+                    descriptorCount: desc.array_count,
+                    stageFlags: desc.stages.into_vulkan_bits(),
+                    pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
+                })
             })
             .collect::<SmallVec<[_; 32]>>();
 
@@ -91,19 +94,21 @@ impl UnsafeDescriptorSetLayout {
 
             let mut output = MaybeUninit::uninit();
             let vk = device.pointers();
-            check_errors(vk.CreateDescriptorSetLayout(device.internal_object(),
-                                                      &infos,
-                                                      ptr::null(),
-                                                      output.as_mut_ptr()))?;
+            check_errors(vk.CreateDescriptorSetLayout(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
             output.assume_init()
         };
 
         Ok(UnsafeDescriptorSetLayout {
-               layout: layout,
-               device: device,
-               descriptors: descriptors,
-               descriptors_count: descriptors_count,
-           })
+            layout: layout,
+            device: device,
+            descriptors: descriptors,
+            descriptors_count: descriptors_count,
+        })
     }
 
     /// Returns the number of descriptors of each type.
@@ -183,9 +188,9 @@ mod tests {
 
         let layout = DescriptorDesc {
             ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                                             dynamic: Some(false),
-                                             storage: false,
-                                         }),
+                dynamic: Some(false),
+                storage: false,
+            }),
             array_count: 1,
             stages: ShaderStages::all_graphics(),
             readonly: true,
@@ -193,10 +198,12 @@ mod tests {
 
         let sl = UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
 
-        assert_eq!(sl.descriptors_count(),
-                   &DescriptorsCount {
-                       uniform_buffer: 1,
-                       ..DescriptorsCount::zero()
-                   });
+        assert_eq!(
+            sl.descriptors_count(),
+            &DescriptorsCount {
+                uniform_buffer: 1,
+                ..DescriptorsCount::zero()
+            }
+        );
     }
 }

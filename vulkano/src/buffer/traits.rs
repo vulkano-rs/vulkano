@@ -7,10 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::ops::Range;
 
-use buffer::BufferSlice;
 use buffer::sys::UnsafeBuffer;
+use buffer::BufferSlice;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
@@ -33,7 +35,8 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
     fn as_buffer_slice(&self) -> BufferSlice<Self::Content, &Self>
-        where Self: Sized + TypedBufferAccess
+    where
+        Self: Sized + TypedBufferAccess,
     {
         BufferSlice::from_typed_buffer_access(self)
     }
@@ -48,7 +51,8 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns `None` if out of range.
     #[inline]
     fn slice<T>(&self, range: Range<usize>) -> Option<BufferSlice<[T], &Self>>
-        where Self: Sized + TypedBufferAccess<Content = [T]>
+    where
+        Self: Sized + TypedBufferAccess<Content = [T]>,
     {
         BufferSlice::slice(self.as_buffer_slice(), range)
     }
@@ -56,7 +60,8 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Builds a `BufferSlice` object holding the buffer by value.
     #[inline]
     fn into_buffer_slice(self) -> BufferSlice<Self::Content, Self>
-        where Self: Sized + TypedBufferAccess
+    where
+        Self: Sized + TypedBufferAccess,
     {
         BufferSlice::from_typed_buffer_access(self)
     }
@@ -71,9 +76,10 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Returns `None` if out of range.
     #[inline]
     fn index<T>(&self, index: usize) -> Option<BufferSlice<[T], &Self>>
-        where Self: Sized + TypedBufferAccess<Content = [T]>
+    where
+        Self: Sized + TypedBufferAccess<Content = [T]>,
     {
-        self.slice(index .. (index + 1))
+        self.slice(index..(index + 1))
     }
 
     /// Returns true if an access to `self` potentially overlaps the same memory as an access to
@@ -139,7 +145,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
 }
 
 /// Inner information about a buffer.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BufferInner<'a> {
     /// The underlying buffer object.
     pub buffer: &'a UnsafeBuffer,
@@ -149,8 +155,9 @@ pub struct BufferInner<'a> {
 }
 
 unsafe impl<T> BufferAccess for T
-    where T: SafeDeref,
-          T::Target: BufferAccess
+where
+    T: SafeDeref,
+    T::Target: BufferAccess,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -202,14 +209,35 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> usize where Self::Content: Content {
+    fn len(&self) -> usize
+    where
+        Self::Content: Content,
+    {
         self.size() / <Self::Content as Content>::indiv_size()
     }
 }
 
 unsafe impl<T> TypedBufferAccess for T
-    where T: SafeDeref,
-          T::Target: TypedBufferAccess
+where
+    T: SafeDeref,
+    T::Target: TypedBufferAccess,
 {
     type Content = <T::Target as TypedBufferAccess>::Content;
+}
+
+impl PartialEq for dyn BufferAccess + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl Eq for dyn BufferAccess + Send + Sync {}
+
+impl Hash for dyn BufferAccess + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
 }

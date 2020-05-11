@@ -8,19 +8,17 @@
 // according to those terms.
 
 use smallvec::SmallVec;
-use std::sync::Arc;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use buffer::BufferAccess;
 use device::Device;
 use format::ClearValue;
 use format::FormatDesc;
 use format::FormatTy;
-use image::Dimensions;
-use image::ImageInner;
-use image::ImageLayout;
-use image::ImageUsage;
 use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -28,8 +26,11 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use image::Dimensions;
+use image::ImageInner;
+use image::ImageLayout;
+use image::ImageUsage;
 use instance::QueueFamily;
-use memory::DedicatedAlloc;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
@@ -37,6 +38,7 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPool;
+use memory::DedicatedAlloc;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -44,7 +46,8 @@ use sync::Sharing;
 /// specialized image.
 #[derive(Debug)]
 pub struct StorageImage<F, A = Arc<StdMemoryPool>>
-    where A: MemoryPool
+where
+    A: MemoryPool,
 {
     // Inner implementation.
     image: UnsafeImage,
@@ -71,10 +74,15 @@ pub struct StorageImage<F, A = Arc<StdMemoryPool>>
 impl<F> StorageImage<F> {
     /// Creates a new image with the given dimensions and format.
     #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F, queue_families: I)
-                      -> Result<Arc<StorageImage<F>>, ImageCreationError>
-        where F: FormatDesc,
-              I: IntoIterator<Item = QueueFamily<'a>>
+    pub fn new<'a, I>(
+        device: Arc<Device>,
+        dimensions: Dimensions,
+        format: F,
+        queue_families: I,
+    ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
+        I: IntoIterator<Item = QueueFamily<'a>>,
     {
         let is_depth = match format.format().ty() {
             FormatTy::Depth => true,
@@ -99,11 +107,16 @@ impl<F> StorageImage<F> {
     }
 
     /// Same as `new`, but allows specifying the usage.
-    pub fn with_usage<'a, I>(device: Arc<Device>, dimensions: Dimensions, format: F,
-                             usage: ImageUsage, queue_families: I)
-                             -> Result<Arc<StorageImage<F>>, ImageCreationError>
-        where F: FormatDesc,
-              I: IntoIterator<Item = QueueFamily<'a>>
+    pub fn with_usage<'a, I>(
+        device: Arc<Device>,
+        dimensions: Dimensions,
+        format: F,
+        usage: ImageUsage,
+        queue_families: I,
+    ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
+        I: IntoIterator<Item = QueueFamily<'a>>,
     {
         let queue_families = queue_families
             .into_iter()
@@ -117,53 +130,62 @@ impl<F> StorageImage<F> {
                 Sharing::Exclusive
             };
 
-            UnsafeImage::new(device.clone(),
-                             usage,
-                             format.format(),
-                             dimensions.to_image_dimensions(),
-                             1,
-                             1,
-                             sharing,
-                             false,
-                             false)?
+            UnsafeImage::new(
+                device.clone(),
+                usage,
+                format.format(),
+                dimensions.to_image_dimensions(),
+                1,
+                1,
+                sharing,
+                false,
+                false,
+            )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
-                                    &mem_reqs,
-                                    AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap,
-                                    DedicatedAlloc::Image(&image),
-                                    |t| if t.is_device_local() {
-                                        AllocFromRequirementsFilter::Preferred
-                                    } else {
-                                        AllocFromRequirementsFilter::Allowed
-                                    })?;
+        let mem = MemoryPool::alloc_from_requirements(
+            &Device::standard_pool(&device),
+            &mem_reqs,
+            AllocLayout::Optimal,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Image(&image),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
         }
 
         let view = unsafe {
-            UnsafeImageView::raw(&image,
-                                 dimensions.to_view_type(),
-                                 0 .. image.mipmap_levels(),
-                                 0 .. image.dimensions().array_layers())?
+            UnsafeImageView::raw(
+                &image,
+                dimensions.to_view_type(),
+                0..image.mipmap_levels(),
+                0..image.dimensions().array_layers(),
+            )?
         };
 
         Ok(Arc::new(StorageImage {
-                        image: image,
-                        view: view,
-                        memory: mem,
-                        dimensions: dimensions,
-                        format: format,
-                        queue_families: queue_families,
-                        gpu_lock: AtomicUsize::new(0),
-                    }))
+            image: image,
+            view: view,
+            memory: mem,
+            dimensions: dimensions,
+            format: format,
+            queue_families: queue_families,
+            gpu_lock: AtomicUsize::new(0),
+        }))
     }
 }
 
 impl<F, A> StorageImage<F, A>
-    where A: MemoryPool
+where
+    A: MemoryPool,
 {
     /// Returns the dimensions of the image.
     #[inline]
@@ -173,8 +195,9 @@ impl<F, A> StorageImage<F, A>
 }
 
 unsafe impl<F, A> ImageAccess for StorageImage<F, A>
-    where F: 'static + Send + Sync,
-          A: MemoryPool
+where
+    F: 'static + Send + Sync,
+    A: MemoryPool,
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -217,9 +240,9 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
         // TODO: handle initial layout transition
         if expected_layout != ImageLayout::General && expected_layout != ImageLayout::Undefined {
             return Err(AccessError::UnexpectedImageLayout {
-                           requested: expected_layout,
-                           allowed: ImageLayout::General,
-                       });
+                requested: expected_layout,
+                allowed: ImageLayout::General,
+            });
         }
 
         let val = self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst);
@@ -244,8 +267,9 @@ unsafe impl<F, A> ImageAccess for StorageImage<F, A>
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>
-    where F: FormatDesc + 'static + Send + Sync,
-          A: MemoryPool
+where
+    F: FormatDesc + 'static + Send + Sync,
+    A: MemoryPool,
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
@@ -254,8 +278,9 @@ unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>
 }
 
 unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
-    where F: 'static + Send + Sync,
-          A: MemoryPool
+where
+    F: 'static + Send + Sync,
+    A: MemoryPool,
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -264,8 +289,9 @@ unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
 }
 
 unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
-    where F: 'static + Send + Sync,
-          A: MemoryPool
+where
+    F: 'static + Send + Sync,
+    A: MemoryPool,
 {
     #[inline]
     fn parent(&self) -> &dyn ImageAccess {
@@ -308,6 +334,35 @@ unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
     }
 }
 
+impl<F, A> PartialEq for StorageImage<F, A>
+where
+    F: 'static + Send + Sync,
+    A: MemoryPool,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<F, A> Eq for StorageImage<F, A>
+where
+    F: 'static + Send + Sync,
+    A: MemoryPool,
+{
+}
+
+impl<F, A> Hash for StorageImage<F, A>
+where
+    F: 'static + Send + Sync,
+    A: MemoryPool,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::StorageImage;
@@ -317,13 +372,15 @@ mod tests {
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
-        let _img = StorageImage::new(device,
-                                     Dimensions::Dim2d {
-                                         width: 32,
-                                         height: 32,
-                                     },
-                                     Format::R8G8B8A8Unorm,
-                                     Some(queue.family()))
-            .unwrap();
+        let _img = StorageImage::new(
+            device,
+            Dimensions::Dim2d {
+                width: 32,
+                height: 32,
+            },
+            Format::R8G8B8A8Unorm,
+            Some(queue.family()),
+        )
+        .unwrap();
     }
 }

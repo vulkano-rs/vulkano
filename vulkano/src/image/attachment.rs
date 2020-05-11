@@ -7,11 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::iter::Empty;
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use buffer::BufferAccess;
 use device::Device;
@@ -19,12 +21,6 @@ use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
 use format::FormatTy;
-use image::Dimensions;
-use image::ImageDimensions;
-use image::ImageInner;
-use image::ImageLayout;
-use image::ImageUsage;
-use image::ViewType;
 use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
@@ -32,7 +28,12 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use memory::DedicatedAlloc;
+use image::Dimensions;
+use image::ImageDimensions;
+use image::ImageInner;
+use image::ImageLayout;
+use image::ImageUsage;
+use image::ViewType;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
@@ -40,6 +41,7 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
+use memory::DedicatedAlloc;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -104,9 +106,13 @@ impl<F> AttachmentImage<F> {
     /// Returns an error if the dimensions are too large or if the backend doesn't support this
     /// format as a framebuffer attachment.
     #[inline]
-    pub fn new(device: Arc<Device>, dimensions: [u32; 2], format: F)
-               -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn new(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), 1)
     }
@@ -115,9 +121,13 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
-    pub fn input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                            -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn input_attachment(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             input_attachment: true,
@@ -132,9 +142,14 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
     /// > want a regular image.
     #[inline]
-    pub fn multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
-                        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn multisampled(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), samples)
     }
@@ -143,10 +158,14 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn multisampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
-                                         format: F)
-                                         -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn multisampled_input_attachment(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             input_attachment: true,
@@ -162,9 +181,14 @@ impl<F> AttachmentImage<F> {
     /// on the format of the usage. Therefore the `usage` parameter allows you specify usages in
     /// addition to these two.
     #[inline]
-    pub fn with_usage(device: Arc<Device>, dimensions: [u32; 2], format: F, usage: ImageUsage)
-                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn with_usage(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+        usage: ImageUsage,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         AttachmentImage::new_impl(device, dimensions, format, usage, 1)
     }
@@ -176,10 +200,15 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn multisampled_with_usage(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
-                                   format: F, usage: ImageUsage)
-                                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn multisampled_with_usage(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+        usage: ImageUsage,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         AttachmentImage::new_impl(device, dimensions, format, usage, samples)
     }
@@ -188,9 +217,13 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
-    pub fn sampled(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                   -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn sampled(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             sampled: true,
@@ -204,9 +237,13 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
-    pub fn sampled_input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                                    -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn sampled_input_attachment(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             sampled: true,
@@ -224,9 +261,14 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn sampled_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
-                                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn sampled_multisampled(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             sampled: true,
@@ -242,9 +284,13 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn sampled_multisampled_input_attachment(
-        device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
-        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             sampled: true,
@@ -262,9 +308,13 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
-    pub fn transient(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                     -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn transient(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
@@ -278,9 +328,13 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
-    pub fn transient_input_attachment(device: Arc<Device>, dimensions: [u32; 2], format: F)
-                                      -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn transient_input_attachment(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
@@ -298,10 +352,14 @@ impl<F> AttachmentImage<F> {
     ///
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
-    pub fn transient_multisampled(device: Arc<Device>, dimensions: [u32; 2], samples: u32,
-                                  format: F)
-                                  -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    pub fn transient_multisampled(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
@@ -317,9 +375,13 @@ impl<F> AttachmentImage<F> {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn transient_multisampled_input_attachment(
-        device: Arc<Device>, dimensions: [u32; 2], samples: u32, format: F)
-        -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        samples: u32,
+        format: F,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         let base_usage = ImageUsage {
             transient_attachment: true,
@@ -331,10 +393,15 @@ impl<F> AttachmentImage<F> {
     }
 
     // All constructors dispatch to this one.
-    fn new_impl(device: Arc<Device>, dimensions: [u32; 2], format: F, base_usage: ImageUsage,
-                samples: u32)
-                -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
-        where F: FormatDesc
+    fn new_impl(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        format: F,
+        base_usage: ImageUsage,
+        samples: u32,
+    ) -> Result<Arc<AttachmentImage<F>>, ImageCreationError>
+    where
+        F: FormatDesc,
     {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
 
@@ -360,47 +427,53 @@ impl<F> AttachmentImage<F> {
                 cubemap_compatible: false,
             };
 
-            UnsafeImage::new(device.clone(),
-                             usage,
-                             format.format(),
-                             dims,
-                             samples,
-                             1,
-                             Sharing::Exclusive::<Empty<u32>>,
-                             false,
-                             false)?
+            UnsafeImage::new(
+                device.clone(),
+                usage,
+                format.format(),
+                dims,
+                samples,
+                1,
+                Sharing::Exclusive::<Empty<u32>>,
+                false,
+                false,
+            )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
-                                    &mem_reqs,
-                                    AllocLayout::Optimal,
-                                    MappingRequirement::DoNotMap,
-                                    DedicatedAlloc::Image(&image),
-                                    |t| if t.is_device_local() {
-                                        AllocFromRequirementsFilter::Preferred
-                                    } else {
-                                        AllocFromRequirementsFilter::Allowed
-                                    })?;
+        let mem = MemoryPool::alloc_from_requirements(
+            &Device::standard_pool(&device),
+            &mem_reqs,
+            AllocLayout::Optimal,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Image(&image),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(mem.memory(), mem.offset())?;
         }
 
-        let view = unsafe { UnsafeImageView::raw(&image, ViewType::Dim2d, 0 .. 1, 0 .. 1)? };
+        let view = unsafe { UnsafeImageView::raw(&image, ViewType::Dim2d, 0..1, 0..1)? };
 
         Ok(Arc::new(AttachmentImage {
-                        image: image,
-                        view: view,
-                        memory: mem,
-                        format: format,
-                        attachment_layout: if is_depth {
-                            ImageLayout::DepthStencilAttachmentOptimal
-                        } else {
-                            ImageLayout::ColorAttachmentOptimal
-                        },
-                        initialized: AtomicBool::new(false),
-                        gpu_lock: AtomicUsize::new(0),
-                    }))
+            image: image,
+            view: view,
+            memory: mem,
+            format: format,
+            attachment_layout: if is_depth {
+                ImageLayout::DepthStencilAttachmentOptimal
+            } else {
+                ImageLayout::ColorAttachmentOptimal
+            },
+            initialized: AtomicBool::new(false),
+            gpu_lock: AtomicUsize::new(0),
+        }))
     }
 }
 
@@ -414,7 +487,8 @@ impl<F, A> AttachmentImage<F, A> {
 }
 
 unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
-    where F: 'static + Send + Sync
+where
+    F: 'static + Send + Sync,
 {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -457,20 +531,22 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
         if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
             if self.initialized.load(Ordering::SeqCst) {
                 return Err(AccessError::UnexpectedImageLayout {
-                               requested: expected_layout,
-                               allowed: self.attachment_layout,
-                           });
+                    requested: expected_layout,
+                    allowed: self.attachment_layout,
+                });
             } else {
                 return Err(AccessError::UnexpectedImageLayout {
-                               requested: expected_layout,
-                               allowed: ImageLayout::Undefined,
-                           });
+                    requested: expected_layout,
+                    allowed: ImageLayout::Undefined,
+                });
             }
         }
 
         if expected_layout != ImageLayout::Undefined {
             if !self.initialized.load(Ordering::SeqCst) {
-                return Err(AccessError::ImageNotInitialized { requested: expected_layout });
+                return Err(AccessError::ImageNotInitialized {
+                    requested: expected_layout,
+                });
             }
         }
 
@@ -500,17 +576,18 @@ unsafe impl<F, A> ImageAccess for AttachmentImage<F, A>
 
     #[inline]
     unsafe fn layout_initialized(&self) {
-       self.initialized.store(true, Ordering::SeqCst);
+        self.initialized.store(true, Ordering::SeqCst);
     }
 
     #[inline]
     fn is_layout_initialized(&self) -> bool {
-       self.initialized.load(Ordering::SeqCst)
+        self.initialized.load(Ordering::SeqCst)
     }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>
-    where F: FormatDesc + 'static + Send + Sync
+where
+    F: FormatDesc + 'static + Send + Sync,
 {
     #[inline]
     fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
@@ -519,7 +596,8 @@ unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>
 }
 
 unsafe impl<P, F, A> ImageContent<P> for Arc<AttachmentImage<F, A>>
-    where F: 'static + Send + Sync
+where
+    F: 'static + Send + Sync,
 {
     #[inline]
     fn matches_format(&self) -> bool {
@@ -528,7 +606,8 @@ unsafe impl<P, F, A> ImageContent<P> for Arc<AttachmentImage<F, A>>
 }
 
 unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
-    where F: 'static + Send + Sync
+where
+    F: 'static + Send + Sync,
 {
     #[inline]
     fn parent(&self) -> &dyn ImageAccess {
@@ -572,6 +651,28 @@ unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
     #[inline]
     fn identity_swizzle(&self) -> bool {
         true
+    }
+}
+
+impl<F, A> PartialEq for AttachmentImage<F, A>
+where
+    F: 'static + Send + Sync,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        ImageAccess::inner(self) == ImageAccess::inner(other)
+    }
+}
+
+impl<F, A> Eq for AttachmentImage<F, A> where F: 'static + Send + Sync {}
+
+impl<F, A> Hash for AttachmentImage<F, A>
+where
+    F: 'static + Send + Sync,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        ImageAccess::inner(self).hash(state);
     }
 }
 

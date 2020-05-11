@@ -14,25 +14,25 @@
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
 use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use buffer::BufferUsage;
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
 use buffer::sys::UnsafeBuffer;
 use buffer::traits::BufferAccess;
 use buffer::traits::BufferInner;
 use buffer::traits::TypedBufferAccess;
+use buffer::BufferUsage;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
 use image::ImageAccess;
 use instance::QueueFamily;
-use memory::DedicatedAlloc;
-use memory::DeviceMemoryAllocError;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
@@ -40,6 +40,8 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
+use memory::DedicatedAlloc;
+use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -80,9 +82,13 @@ impl<T> DeviceLocalBuffer<T> {
     /// Builds a new buffer. Only allowed for sized data.
     // TODO: unsafe because uninitialized data
     #[inline]
-    pub fn new<'a, I>(device: Arc<Device>, usage: BufferUsage, queue_families: I)
-                      -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
+    pub fn new<'a, I>(
+        device: Arc<Device>,
+        usage: BufferUsage,
+        queue_families: I,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
+    where
+        I: IntoIterator<Item = QueueFamily<'a>>,
     {
         unsafe { DeviceLocalBuffer::raw(device, mem::size_of::<T>(), usage, queue_families) }
     }
@@ -92,9 +98,14 @@ impl<T> DeviceLocalBuffer<[T]> {
     /// Builds a new buffer. Can be used for arrays.
     // TODO: unsafe because uninitialized data
     #[inline]
-    pub fn array<'a, I>(device: Arc<Device>, len: usize, usage: BufferUsage, queue_families: I)
-                        -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
+    pub fn array<'a, I>(
+        device: Arc<Device>,
+        len: usize,
+        usage: BufferUsage,
+        queue_families: I,
+    ) -> Result<Arc<DeviceLocalBuffer<[T]>>, DeviceMemoryAllocError>
+    where
+        I: IntoIterator<Item = QueueFamily<'a>>,
     {
         unsafe { DeviceLocalBuffer::raw(device, len * mem::size_of::<T>(), usage, queue_families) }
     }
@@ -107,10 +118,14 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     ///
     /// You must ensure that the size that you pass is correct for `T`.
     ///
-    pub unsafe fn raw<'a, I>(device: Arc<Device>, size: usize, usage: BufferUsage,
-                             queue_families: I)
-                             -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
-        where I: IntoIterator<Item = QueueFamily<'a>>
+    pub unsafe fn raw<'a, I>(
+        device: Arc<Device>,
+        size: usize,
+        usage: BufferUsage,
+        queue_families: I,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
+    where
+        I: IntoIterator<Item = QueueFamily<'a>>,
     {
         let queue_families = queue_families
             .into_iter()
@@ -127,31 +142,35 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
-                Err(_) => unreachable!(),        // We don't use sparse binding, therefore the other
-                // errors can't happen
+                Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
+                                          // errors can't happen
             }
         };
 
-        let mem = MemoryPool::alloc_from_requirements(&Device::standard_pool(&device),
-                                    &mem_reqs,
-                                    AllocLayout::Linear,
-                                    MappingRequirement::DoNotMap,
-                                    DedicatedAlloc::Buffer(&buffer),
-                                    |t| if t.is_device_local() {
-                                        AllocFromRequirementsFilter::Preferred
-                                    } else {
-                                        AllocFromRequirementsFilter::Allowed
-                                    })?;
+        let mem = MemoryPool::alloc_from_requirements(
+            &Device::standard_pool(&device),
+            &mem_reqs,
+            AllocLayout::Linear,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Buffer(&buffer),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
         debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
         buffer.bind_memory(mem.memory(), mem.offset())?;
 
         Ok(Arc::new(DeviceLocalBuffer {
-                        inner: buffer,
-                        memory: mem,
-                        queue_families: queue_families,
-                        gpu_lock: Mutex::new(GpuAccess::None),
-                        marker: PhantomData,
-                    }))
+            inner: buffer,
+            memory: mem,
+            queue_families: queue_families,
+            gpu_lock: Mutex::new(GpuAccess::None),
+            marker: PhantomData,
+        }))
     }
 }
 
@@ -163,11 +182,11 @@ impl<T: ?Sized, A> DeviceLocalBuffer<T, A> {
         self.queue_families
             .iter()
             .map(|&num| {
-                     self.device()
-                         .physical_device()
-                         .queue_family_by_id(num)
-                         .unwrap()
-                 })
+                self.device()
+                    .physical_device()
+                    .queue_family_by_id(num)
+                    .unwrap()
+            })
             .collect()
     }
 }
@@ -180,7 +199,8 @@ unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A> {
 }
 
 unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync
+where
+    T: 'static + Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -222,7 +242,7 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
                 }
 
                 Ok(())
-            },
+            }
             &mut GpuAccess::NonExclusive { ref mut num } => {
                 if exclusive {
                     Err(AccessError::AlreadyInUse)
@@ -230,10 +250,8 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
                     *num += 1;
                     Ok(())
                 }
-            },
-            &mut GpuAccess::Exclusive { .. } => {
-                Err(AccessError::AlreadyInUse)
-            },
+            }
+            &mut GpuAccess::Exclusive { .. } => Err(AccessError::AlreadyInUse),
         }
     }
 
@@ -245,11 +263,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
             GpuAccess::NonExclusive { ref mut num } => {
                 debug_assert!(*num >= 1);
                 *num += 1;
-            },
+            }
             GpuAccess::Exclusive { ref mut num } => {
                 debug_assert!(*num >= 1);
                 *num += 1;
-            },
+            }
         }
     }
 
@@ -265,14 +283,14 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
                 if *num >= 1 {
                     return;
                 }
-            },
+            }
             GpuAccess::Exclusive { ref mut num } => {
                 assert!(*num >= 1);
                 *num -= 1;
                 if *num >= 1 {
                     return;
                 }
-            },
+            }
         };
 
         *lock = GpuAccess::None;
@@ -280,7 +298,31 @@ unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
 }
 
 unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
-    where T: 'static + Send + Sync
+where
+    T: 'static + Send + Sync,
 {
     type Content = T;
+}
+
+impl<T: ?Sized, A> PartialEq for DeviceLocalBuffer<T, A>
+where
+    T: 'static + Send + Sync,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl<T: ?Sized, A> Eq for DeviceLocalBuffer<T, A> where T: 'static + Send + Sync {}
+
+impl<T: ?Sized, A> Hash for DeviceLocalBuffer<T, A>
+where
+    T: 'static + Send + Sync,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().hash(state);
+        self.size().hash(state);
+    }
 }

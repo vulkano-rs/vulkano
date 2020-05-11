@@ -35,10 +35,15 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use SafeDeref;
+use std::hash::Hash;
+use std::hash::Hasher;
+
 use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
+use device::DeviceOwned;
 use image::ImageViewAccess;
+use SafeDeref;
+use VulkanObject;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::fixed_size_pool::FixedSizeDescriptorSet;
@@ -77,7 +82,7 @@ mod unsafe_layout;
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-pub unsafe trait DescriptorSet: DescriptorSetDesc {
+pub unsafe trait DescriptorSet: DescriptorSetDesc + DeviceOwned {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
 
@@ -101,8 +106,9 @@ pub unsafe trait DescriptorSet: DescriptorSetDesc {
 }
 
 unsafe impl<T> DescriptorSet for T
-    where T: SafeDeref,
-          T::Target: DescriptorSet
+where
+    T: SafeDeref,
+    T::Target: DescriptorSet,
 {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
@@ -130,6 +136,24 @@ unsafe impl<T> DescriptorSet for T
     }
 }
 
+impl PartialEq for dyn DescriptorSet + Send + Sync {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner().internal_object() == other.inner().internal_object()
+            && self.device() == other.device()
+    }
+}
+
+impl Eq for dyn DescriptorSet + Send + Sync {}
+
+impl Hash for dyn DescriptorSet + Send + Sync {
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().internal_object().hash(state);
+        self.device().hash(state);
+    }
+}
+
 /// Trait for objects that describe the layout of the descriptors of a set.
 pub unsafe trait DescriptorSetDesc {
     /// Returns the number of binding slots in the set.
@@ -140,8 +164,9 @@ pub unsafe trait DescriptorSetDesc {
 }
 
 unsafe impl<T> DescriptorSetDesc for T
-    where T: SafeDeref,
-          T::Target: DescriptorSetDesc
+where
+    T: SafeDeref,
+    T::Target: DescriptorSetDesc,
 {
     #[inline]
     fn num_bindings(&self) -> usize {

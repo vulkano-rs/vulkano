@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
@@ -31,7 +31,8 @@ use sync::Semaphore;
 /// Builds a new semaphore signal future.
 #[inline]
 pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     let device = future.device().clone();
 
@@ -49,7 +50,8 @@ pub fn then_signal_semaphore<F>(future: F) -> SemaphoreSignalFuture<F>
 #[must_use = "Dropping this object will immediately block the thread until the GPU has finished \
               processing the submission"]
 pub struct SemaphoreSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     previous: F,
     semaphore: Semaphore,
@@ -61,7 +63,8 @@ pub struct SemaphoreSignalFuture<F>
 }
 
 unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -93,29 +96,29 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
                     let mut builder = SubmitCommandBufferBuilder::new();
                     builder.add_signal_semaphore(&self.semaphore);
                     builder.submit(&queue)?;
-                },
+                }
                 SubmitAnyBuilder::SemaphoresWait(sem) => {
                     let mut builder: SubmitCommandBufferBuilder = sem.into();
                     builder.add_signal_semaphore(&self.semaphore);
                     builder.submit(&queue)?;
-                },
+                }
                 SubmitAnyBuilder::CommandBuffer(mut builder) => {
                     debug_assert_eq!(builder.num_signal_semaphores(), 0);
                     builder.add_signal_semaphore(&self.semaphore);
                     builder.submit(&queue)?;
-                },
+                }
                 SubmitAnyBuilder::BindSparse(_) => {
                     unimplemented!() // TODO: how to do that?
-                    /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
-                    builder.add_signal_semaphore(&self.semaphore);
-                    builder.submit(&queue)?;*/
-                },
+                                     /*debug_assert_eq!(builder.num_signal_semaphores(), 0);
+                                     builder.add_signal_semaphore(&self.semaphore);
+                                     builder.submit(&queue)?;*/
+                }
                 SubmitAnyBuilder::QueuePresent(present) => {
                     present.submit(&queue)?;
                     let mut builder = SubmitCommandBufferBuilder::new();
                     builder.add_signal_semaphore(&self.semaphore);
                     builder.submit(&queue)?; // FIXME: problematic because if we return an error and flush() is called again, then we'll submit the present twice
-                },
+                }
             };
 
             // Only write `true` here in order to try again next time if an error occurs.
@@ -143,17 +146,24 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
 
     #[inline]
     fn check_buffer_access(
-        &self, buffer: &dyn BufferAccess, exclusive: bool, queue: &Queue)
-        -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.previous
             .check_buffer_access(buffer, exclusive, queue)
             .map(|_| None)
     }
 
     #[inline]
-    fn check_image_access(&self, image: &dyn ImageAccess, layout: ImageLayout, exclusive: bool,
-                          queue: &Queue)
-                          -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         self.previous
             .check_image_access(image, layout, exclusive, queue)
             .map(|_| None)
@@ -161,7 +171,8 @@ unsafe impl<F> GpuFuture for SemaphoreSignalFuture<F>
 }
 
 unsafe impl<F> DeviceOwned for SemaphoreSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -170,7 +181,8 @@ unsafe impl<F> DeviceOwned for SemaphoreSignalFuture<F>
 }
 
 impl<F> Drop for SemaphoreSignalFuture<F>
-    where F: GpuFuture
+where
+    F: GpuFuture,
 {
     fn drop(&mut self) {
         unsafe {

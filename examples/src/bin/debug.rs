@@ -9,11 +9,11 @@
 
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::ImmutableImage;
 use vulkano::image::Dimensions;
+use vulkano::image::ImmutableImage;
 use vulkano::instance;
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
+use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 
 fn main() {
     // Vulkano Debugging Example Code
@@ -51,7 +51,8 @@ fn main() {
     let layers = vec![layer];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let instance = Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
+    let instance =
+        Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // After creating the instance we must register the debugging callback.                                      //
@@ -87,29 +88,52 @@ fn main() {
         } else if msg.ty.validation {
             "validation"
         } else if msg.ty.performance {
-            "performance" }
-        else {
+            "performance"
+        } else {
             panic!("no-impl");
         };
 
-        println!("{} {} {}: {}", msg.layer_prefix, ty, severity, msg.description);
-    }).ok();
+        println!(
+            "{} {} {}: {}",
+            msg.layer_prefix, ty, severity, msg.description
+        );
+    })
+    .ok();
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // Create Vulkan objects in the same way as the other examples                                               //
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let physical = PhysicalDevice::enumerate(&instance).next().expect("no device available");
-    let queue_family = physical.queue_families().next().expect("couldn't find a queue family");
-    let (_, mut queues) = Device::new(physical, physical.supported_features(), &DeviceExtensions::none(), vec![(queue_family, 0.5)]).expect("failed to create device");
+    let physical = PhysicalDevice::enumerate(&instance)
+        .next()
+        .expect("no device available");
+    let queue_family = physical
+        .queue_families()
+        .next()
+        .expect("couldn't find a queue family");
+    let (_, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &DeviceExtensions::none(),
+        vec![(queue_family, 0.5)],
+    )
+    .expect("failed to create device");
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
-    let dimensions = Dimensions::Dim2d { width: 4096, height: 4096 };
-    const DATA: [[u8; 4]; 4096*4096] = [[0; 4]; 4096 * 4096];
-    let _ = ImmutableImage::from_iter(DATA.iter().cloned(), dimensions, pixel_format,
-                                               queue.clone()).unwrap();
+    let dimensions = Dimensions::Dim2d {
+        width: 4096,
+        height: 4096,
+    };
+    const DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
+    let _ = ImmutableImage::from_iter(
+        DATA.iter().cloned(),
+        dimensions,
+        pixel_format,
+        queue.clone(),
+    )
+    .unwrap();
 
     // (At this point you should see a bunch of messages printed to the terminal window - have fun debugging!)
 }

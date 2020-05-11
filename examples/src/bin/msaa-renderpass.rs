@@ -64,83 +64,113 @@
 //! an error), instead it is called *resolving* the image.
 //!
 
-use std::sync::Arc;
 use png;
+use std::fs::File;
+use std::io::BufWriter;
+use std::path::Path;
+use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
+use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, Subpass};
 use vulkano::image::{AttachmentImage, Dimensions, StorageImage};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::sync::GpuFuture;
-use vulkano::format::ClearValue;
-use std::path::Path;
-use std::fs::File;
-use std::io::BufWriter;
 
 fn main() {
     // The usual Vulkan initialization.
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let required_extensions = vulkano_win::required_extensions();
+    let instance = Instance::new(None, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical.queue_families().find(|&q| q.supports_graphics()).unwrap();
-    let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions::none(), [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_graphics())
+        .unwrap();
+    let (device, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &DeviceExtensions::none(),
+        [(queue_family, 0.5)].iter().cloned(),
+    )
+    .unwrap();
     let queue = queues.next().unwrap();
 
     // Creating our intermediate multisampled image.
     //
     // As explained in the introduction, we pass the same dimensions and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
-    let intermediary = AttachmentImage::transient_multisampled(device.clone(),
-        [1024, 1024], 4, Format::R8G8B8A8Unorm).unwrap();
+    let intermediary = AttachmentImage::transient_multisampled(
+        device.clone(),
+        [1024, 1024],
+        4,
+        Format::R8G8B8A8Unorm,
+    )
+    .unwrap();
 
     // This is the final image that will receive the anti-aliased triangle.
-    let image = StorageImage::new(device.clone(), Dimensions::Dim2d { width: 1024, height: 1024 },
-        Format::R8G8B8A8Unorm, Some(queue.family())).unwrap();
+    let image = StorageImage::new(
+        device.clone(),
+        Dimensions::Dim2d {
+            width: 1024,
+            height: 1024,
+        },
+        Format::R8G8B8A8Unorm,
+        Some(queue.family()),
+    )
+    .unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
     // doing so, as it the advantage that the Vulkan implementation doesn't have to write the
     // content of the multisampled image back to memory at the end.
-    let render_pass = Arc::new(vulkano::single_pass_renderpass!(
-        device.clone(),
-        attachments: {
-            // The first framebuffer attachment is the intermediary image.
-            intermediary: {
-                load: Clear,
-                store: DontCare,
-                format: Format::R8G8B8A8Unorm,
-                samples: 4,     // This has to match the image definition.
+    let render_pass = Arc::new(
+        vulkano::single_pass_renderpass!(
+            device.clone(),
+            attachments: {
+                // The first framebuffer attachment is the intermediary image.
+                intermediary: {
+                    load: Clear,
+                    store: DontCare,
+                    format: Format::R8G8B8A8Unorm,
+                    samples: 4,     // This has to match the image definition.
+                },
+                // The second framebuffer attachment is the final image.
+                color: {
+                    load: DontCare,
+                    store: Store,
+                    format: Format::R8G8B8A8Unorm,
+                    samples: 1,     // Same here, this has to match.
+                }
             },
-            // The second framebuffer attachment is the final image.
-            color: {
-                load: DontCare,
-                store: Store,
-                format: Format::R8G8B8A8Unorm,
-                samples: 1,     // Same here, this has to match.
+            pass: {
+                // When drawing, we have only one output which is the intermediary image.
+                color: [intermediary],
+                depth_stencil: {},
+                // The `resolve` array here must contain either zero entry (if you don't use
+                // multisampling), or one entry per color attachment. At the end of the pass, each
+                // color attachment will be *resolved* into the given image. In other words, here, at
+                // the end of the pass, the `intermediary` attachment will be copied to the attachment
+                // named `color`.
+                resolve: [color],
             }
-        },
-        pass: {
-            // When drawing, we have only one output which is the intermediary image.
-            color: [intermediary],
-            depth_stencil: {},
-            // The `resolve` array here must contain either zero entry (if you don't use
-            // multisampling), or one entry per color attachment. At the end of the pass, each
-            // color attachment will be *resolved* into the given image. In other words, here, at
-            // the end of the pass, the `intermediary` attachment will be copied to the attachment
-            // named `color`.
-            resolve: [color],
-        }
-    ).unwrap());
+        )
+        .unwrap(),
+    );
 
     // Creating the framebuffer, the calls to `add` match the list of attachments in order.
-    let framebuffer = Arc::new(Framebuffer::start(render_pass.clone())
-        .add(intermediary.clone()).unwrap()
-        .add(image.clone()).unwrap()
-        .build().unwrap());
+    let framebuffer = Arc::new(
+        Framebuffer::start(render_pass.clone())
+            .add(intermediary.clone())
+            .unwrap()
+            .add(image.clone())
+            .unwrap()
+            .build()
+            .unwrap(),
+    );
 
     // Here is the "end" of the multisampling example, as starting from here everything is the same
     // as in any other example.
@@ -150,30 +180,31 @@ fn main() {
     // then read the content of that buffer and save it to a PNG file.
 
     mod vs {
-        vulkano_shaders::shader!{
-            ty: "vertex",
-            src: "
-#version 450
+        vulkano_shaders::shader! {
+        ty: "vertex",
+        src: "
+                #version 450
 
-layout(location = 0) in vec2 position;
+                layout(location = 0) in vec2 position;
 
-void main() {
-    gl_Position = vec4(position, 0.0, 1.0);
-}"
-        }
+                void main() {
+                    gl_Position = vec4(position, 0.0, 1.0);
+                }"
+                    }
     }
 
     mod fs {
-        vulkano_shaders::shader!{
-            ty: "fragment",
-            src: "
-#version 450
+        vulkano_shaders::shader! {
+                            ty: "fragment",
+                            src: "
+                #version 450
 
-layout(location = 0) out vec4 f_color;
+                layout(location = 0) out vec4 f_color;
 
-void main() {
-    f_color = vec4(1.0, 0.0, 0.0, 1.0);
-}"
+                void main() {
+                    f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                }
+            "
         }
     }
 
@@ -186,59 +217,89 @@ void main() {
     }
     vulkano::impl_vertex!(Vertex, position);
 
-    let vertex1 = Vertex { position: [-0.5, -0.5] };
-    let vertex2 = Vertex { position: [ 0.0,  0.5] };
-    let vertex3 = Vertex { position: [ 0.5, -0.25] };
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-        vec![vertex1, vertex2, vertex3].into_iter()).unwrap();
+    let vertex1 = Vertex {
+        position: [-0.5, -0.5],
+    };
+    let vertex2 = Vertex {
+        position: [0.0, 0.5],
+    };
+    let vertex3 = Vertex {
+        position: [0.5, -0.25],
+    };
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        vec![vertex1, vertex2, vertex3].into_iter(),
+    )
+    .unwrap();
 
-    let pipeline = Arc::new(GraphicsPipeline::start()
-        .vertex_input_single_buffer::<Vertex>()
-        .vertex_shader(vs.main_entry_point(), ())
-        .viewports_dynamic_scissors_irrelevant(1)
-        .fragment_shader(fs.main_entry_point(), ())
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        .build(device.clone())
-        .unwrap());
+    let pipeline = Arc::new(
+        GraphicsPipeline::start()
+            .vertex_input_single_buffer::<Vertex>()
+            .vertex_shader(vs.main_entry_point(), ())
+            .viewports_dynamic_scissors_irrelevant(1)
+            .fragment_shader(fs.main_entry_point(), ())
+            .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
+            .build(device.clone())
+            .unwrap(),
+    );
 
     let dynamic_state = DynamicState {
         viewports: Some(vec![Viewport {
             origin: [0.0, 0.0],
             dimensions: [1024.0, 1024.0],
-            depth_range: 0.0 .. 1.0,
+            depth_range: 0.0..1.0,
         }]),
-        .. DynamicState::none()
+        ..DynamicState::none()
     };
 
-    let buf = CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(),
-        (0 .. 1024 * 1024 * 4).map(|_| 0u8)).unwrap();
+    let buf = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        (0..1024 * 1024 * 4).map(|_| 0u8),
+    )
+    .unwrap();
 
-    let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-        .begin_render_pass(framebuffer.clone(), false, vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None])
-        .unwrap()
-
-        .draw(pipeline.clone(), &dynamic_state, vertex_buffer.clone(), (), ())
-        .unwrap()
-
-        .end_render_pass()
-        .unwrap()
-
-        .copy_image_to_buffer(image.clone(), buf.clone())
-        .unwrap()
-
-        .build()
-        .unwrap();
+    let command_buffer =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+            .unwrap()
+            .begin_render_pass(
+                framebuffer.clone(),
+                false,
+                vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None],
+            )
+            .unwrap()
+            .draw(
+                pipeline.clone(),
+                &dynamic_state,
+                vertex_buffer.clone(),
+                (),
+                (),
+            )
+            .unwrap()
+            .end_render_pass()
+            .unwrap()
+            .copy_image_to_buffer(image.clone(), buf.clone())
+            .unwrap()
+            .build()
+            .unwrap();
 
     let finished = command_buffer.execute(queue.clone()).unwrap();
-    finished.then_signal_fence_and_flush().unwrap().wait(None).unwrap();
+    finished
+        .then_signal_fence_and_flush()
+        .unwrap()
+        .wait(None)
+        .unwrap();
 
     let buffer_content = buf.read().unwrap();
     let path = Path::new("triangle.png");
-	let file = File::create(path).unwrap();
-	let ref mut w = BufWriter::new(file);
-	let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
-	encoder.set_color(png::ColorType::RGBA);
-	encoder.set_depth(png::BitDepth::Eight);
-	let mut writer = encoder.write_header().unwrap();
-	writer.write_image_data(&buffer_content).unwrap();
+    let file = File::create(path).unwrap();
+    let ref mut w = BufWriter::new(file);
+    let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
+    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_depth(png::BitDepth::Eight);
+    let mut writer = encoder.write_header().unwrap();
+    writer.write_image_data(&buffer_content).unwrap();
 }

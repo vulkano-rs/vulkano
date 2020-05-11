@@ -20,8 +20,8 @@ use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
-use vulkano::sync::GpuFuture;
 use vulkano::sync;
+use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
 
@@ -36,12 +36,22 @@ fn main() {
     //
     // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
     // that supports compute operations.
-    let queue_family = physical.queue_families().find(|&q| q.supports_compute()).unwrap();
+    let queue_family = physical
+        .queue_families()
+        .find(|&q| q.supports_compute())
+        .unwrap();
 
     // Now initializing the device.
-    let (device, mut queues) = Device::new(physical, physical.supported_features(),
-        &DeviceExtensions{khr_storage_buffer_storage_class:true, ..DeviceExtensions::none()},
-        [(queue_family, 0.5)].iter().cloned()).unwrap();
+    let (device, mut queues) = Device::new(
+        physical,
+        physical.supported_features(),
+        &DeviceExtensions {
+            khr_storage_buffer_storage_class: true,
+            ..DeviceExtensions::none()
+        },
+        [(queue_family, 0.5)].iter().cloned(),
+    )
+    .unwrap();
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
     // example we use only one queue, so we just retrieve the first and only element of the
@@ -70,21 +80,22 @@ fn main() {
     // pipelines are much simpler to create.
     let pipeline = Arc::new({
         mod cs {
-            vulkano_shaders::shader!{
+            vulkano_shaders::shader! {
                 ty: "compute",
                 src: "
-#version 450
+                    #version 450
 
-layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+                    layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Data {
-    uint data[];
-} data;
+                    layout(set = 0, binding = 0) buffer Data {
+                        uint data[];
+                    } data;
 
-void main() {
-    uint idx = gl_GlobalInvocationID.x;
-    data.data[idx] *= 12;
-}"
+                    void main() {
+                        uint idx = gl_GlobalInvocationID.x;
+                        data.data[idx] *= 12;
+                    }
+                "
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
@@ -94,9 +105,10 @@ void main() {
     // We start by creating the buffer that will store the data.
     let data_buffer = {
         // Iterator that produces the data.
-        let data_iter = (0 .. 65536u32).map(|n| n);
+        let data_iter = (0..65536u32).map(|n| n);
         // Builds the buffer and fills it with this iterator.
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
+            .unwrap()
     };
 
     // In order to let the shader access the buffer, we need to build a *descriptor set* that
@@ -108,35 +120,43 @@ void main() {
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
     let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
-    let set = Arc::new(PersistentDescriptorSet::start(layout.clone())
-        .add_buffer(data_buffer.clone()).unwrap()
-        .build().unwrap()
+    let set = Arc::new(
+        PersistentDescriptorSet::start(layout.clone())
+            .add_buffer(data_buffer.clone())
+            .unwrap()
+            .build()
+            .unwrap(),
     );
 
     // In order to execute our operation, we have to build a command buffer.
-    let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap()
-        // The command buffer only does one thing: execute the compute pipeline.
-        // This is called a *dispatch* operation.
-        //
-        // Note that we clone the pipeline and the set. Since they are both wrapped around an
-        // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
-        // cloneable anyway). In this example we would avoid cloning them since this is the last
-        // time we use them, but in a real code you would probably need to clone them.
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ()).unwrap()
-        // Finish building the command buffer by calling `build`.
-        .build().unwrap();
+    let command_buffer =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+            .unwrap()
+            // The command buffer only does one thing: execute the compute pipeline.
+            // This is called a *dispatch* operation.
+            //
+            // Note that we clone the pipeline and the set. Since they are both wrapped around an
+            // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
+            // cloneable anyway). In this example we would avoid cloning them since this is the last
+            // time we use them, but in a real code you would probably need to clone them.
+            .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+            .unwrap()
+            // Finish building the command buffer by calling `build`.
+            .build()
+            .unwrap();
 
     // Let's execute this command buffer now.
     // To do so, we TODO: this is a bit clumsy, probably needs a shortcut
     let future = sync::now(device.clone())
-        .then_execute(queue.clone(), command_buffer).unwrap()
-
+        .then_execute(queue.clone(), command_buffer)
+        .unwrap()
         // This line instructs the GPU to signal a *fence* once the command buffer has finished
         // execution. A fence is a Vulkan object that allows the CPU to know when the GPU has
         // reached a certain point.
         // We need to signal a fence here because below we want to block the CPU until the GPU has
         // reached that point in the execution.
-        .then_signal_fence_and_flush().unwrap();
+        .then_signal_fence_and_flush()
+        .unwrap();
 
     // Blocks execution until the GPU has finished the operation. This method only exists on the
     // future that corresponds to a signalled fence. In other words, this method wouldn't be
@@ -155,7 +175,7 @@ void main() {
     // check it out.
     // The call to `read()` would return an error if the buffer was still in use by the GPU.
     let data_buffer_content = data_buffer.read().unwrap();
-    for n in 0 .. 65536u32 {
+    for n in 0..65536u32 {
         assert_eq!(data_buffer_content[n as usize], n * 12);
     }
 }

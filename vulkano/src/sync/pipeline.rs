@@ -64,7 +64,7 @@ macro_rules! pipeline_stages {
     );
 }
 
-pipeline_stages!{
+pipeline_stages! {
     top_of_pipe => vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT,
     draw_indirect => vk::PIPELINE_STAGE_DRAW_INDIRECT_BIT,
     vertex_input => vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
@@ -147,7 +147,7 @@ macro_rules! access_flags {
     );
 }
 
-access_flags!{
+access_flags! {
     indirect_command_read => vk::ACCESS_INDIRECT_COMMAND_READ_BIT,
     index_read => vk::ACCESS_INDEX_READ_BIT,
     vertex_attribute_read => vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
@@ -181,17 +181,21 @@ impl AccessFlagBits {
             return false;
         }
 
-        if (self.index_read || self.vertex_attribute_read) && !stages.vertex_input &&
-            !stages.all_graphics
+        if (self.index_read || self.vertex_attribute_read)
+            && !stages.vertex_input
+            && !stages.all_graphics
         {
             return false;
         }
 
-        if (self.uniform_read || self.shader_read || self.shader_write) &&
-            !stages.vertex_shader && !stages.tessellation_control_shader &&
-            !stages.tessellation_evaluation_shader && !stages.geometry_shader &&
-            !stages.fragment_shader &&
-            !stages.compute_shader && !stages.all_graphics
+        if (self.uniform_read || self.shader_read || self.shader_write)
+            && !stages.vertex_shader
+            && !stages.tessellation_control_shader
+            && !stages.tessellation_evaluation_shader
+            && !stages.geometry_shader
+            && !stages.fragment_shader
+            && !stages.compute_shader
+            && !stages.all_graphics
         {
             return false;
         }
@@ -200,15 +204,17 @@ impl AccessFlagBits {
             return false;
         }
 
-        if (self.color_attachment_read || self.color_attachment_write) &&
-            !stages.color_attachment_output && !stages.all_graphics
+        if (self.color_attachment_read || self.color_attachment_write)
+            && !stages.color_attachment_output
+            && !stages.all_graphics
         {
             return false;
         }
 
-        if (self.depth_stencil_attachment_read || self.depth_stencil_attachment_write) &&
-            !stages.early_fragment_tests && !stages.late_fragment_tests &&
-            !stages.all_graphics
+        if (self.depth_stencil_attachment_read || self.depth_stencil_attachment_write)
+            && !stages.early_fragment_tests
+            && !stages.late_fragment_tests
+            && !stages.all_graphics
         {
             return false;
         }

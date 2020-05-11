@@ -8,18 +8,17 @@
 // according to those terms.
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
-
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
 #![allow(non_camel_case_types)]
 
-use std::mem;
 use std::ffi::CStr;
 use std::fmt;
+use std::mem;
 use std::os::raw::c_char;
-use std::os::raw::c_void;
-use std::os::raw::c_ulong;
 use std::os::raw::c_double;
+use std::os::raw::c_ulong;
+use std::os::raw::c_void;
 
 pub type Flags = u32;
 pub type Bool32 = u32;
@@ -104,6 +103,7 @@ pub const ERROR_INCOMPATIBLE_DISPLAY_KHR: u32 = -1000003001i32 as u32;
 pub const ERROR_VALIDATION_FAILED_EXT: u32 = -1000011001i32 as u32;
 pub const ERROR_INVALID_SHADER_NV: u32 = -1000012000i32 as u32;
 pub const ERROR_OUT_OF_POOL_MEMORY_KHR: u32 = -1000069000i32 as u32;
+pub const ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT: u32 = -1000255000i32 as u32;
 
 pub type StructureType = u32;
 pub const STRUCTURE_TYPE_APPLICATION_INFO: u32 = 0;
@@ -165,13 +165,14 @@ pub const STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR: u32 = 1000005000;
 pub const STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR: u32 = 1000006000;
 pub const STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR: u32 = 1000008000;
 pub const STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR: u32 = 1000009000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES: u32 = 1000094000;
 pub const STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK: u32 = 1000122000 + (122 * 1000);
 pub const STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK: u32 = 1000000000 + (123 * 1000);
-pub const STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT:u32 = 1000128000;
-pub const STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_TAG_INFO_EXT:u32 = 1000128001;
-pub const STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT:u32 = 1000128002;
-pub const STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT:u32 = 1000128003;
-pub const STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT:u32 = 1000128004;
+pub const STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT: u32 = 1000128000;
+pub const STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_TAG_INFO_EXT: u32 = 1000128001;
+pub const STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT: u32 = 1000128002;
+pub const STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CALLBACK_DATA_EXT: u32 = 1000128003;
+pub const STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT: u32 = 1000128004;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR: u32 = 1000059000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR: u32 = 1000059001;
 pub const STRUCTURE_TYPE_FORMAT_PROPERTIES_2_KHR: u32 = 1000059002;
@@ -193,6 +194,7 @@ pub const STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146001;
 pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000146002;
 pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
 pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
+pub const STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT: u32 = 1000255000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -630,7 +632,6 @@ pub const FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR: u32 = 0x00004000;
 pub const FORMAT_FEATURE_TRANSFER_DST_BIT_KHR: u32 = 0x00008000;
 pub type FormatFeatureFlags = Flags;
 
-
 pub type ImageUsageFlagBits = u32;
 pub const IMAGE_USAGE_TRANSFER_SRC_BIT: u32 = 0x00000001;
 pub const IMAGE_USAGE_TRANSFER_DST_BIT: u32 = 0x00000002;
@@ -642,7 +643,6 @@ pub const IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT: u32 = 0x00000040;
 pub const IMAGE_USAGE_INPUT_ATTACHMENT_BIT: u32 = 0x00000080;
 pub type ImageUsageFlags = Flags;
 
-
 pub type ImageCreateFlagBits = u32;
 pub const IMAGE_CREATE_SPARSE_BINDING_BIT: u32 = 0x00000001;
 pub const IMAGE_CREATE_SPARSE_RESIDENCY_BIT: u32 = 0x00000002;
@@ -651,7 +651,6 @@ pub const IMAGE_CREATE_MUTABLE_FORMAT_BIT: u32 = 0x00000008;
 pub const IMAGE_CREATE_CUBE_COMPATIBLE_BIT: u32 = 0x00000010;
 pub const IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT_KHR: u32 = 0x00000020;
 pub type ImageCreateFlags = Flags;
-
 
 pub type SampleCountFlagBits = u32;
 pub const SAMPLE_COUNT_1_BIT: u32 = 0x00000001;
@@ -663,14 +662,12 @@ pub const SAMPLE_COUNT_32_BIT: u32 = 0x00000020;
 pub const SAMPLE_COUNT_64_BIT: u32 = 0x00000040;
 pub type SampleCountFlags = Flags;
 
-
 pub type QueueFlagBits = u32;
 pub const QUEUE_GRAPHICS_BIT: u32 = 0x00000001;
 pub const QUEUE_COMPUTE_BIT: u32 = 0x00000002;
 pub const QUEUE_TRANSFER_BIT: u32 = 0x00000004;
 pub const QUEUE_SPARSE_BINDING_BIT: u32 = 0x00000008;
 pub type QueueFlags = Flags;
-
 
 pub type MemoryPropertyFlagBits = u32;
 pub const MEMORY_PROPERTY_DEVICE_LOCAL_BIT: u32 = 0x00000001;
@@ -680,13 +677,11 @@ pub const MEMORY_PROPERTY_HOST_CACHED_BIT: u32 = 0x00000008;
 pub const MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT: u32 = 0x00000010;
 pub type MemoryPropertyFlags = Flags;
 
-
 pub type MemoryHeapFlagBits = u32;
 pub const MEMORY_HEAP_DEVICE_LOCAL_BIT: u32 = 0x00000001;
 pub type MemoryHeapFlags = Flags;
 pub type DeviceCreateFlags = Flags;
 pub type DeviceQueueCreateFlags = Flags;
-
 
 pub type PipelineStageFlagBits = u32;
 pub const PIPELINE_STAGE_TOP_OF_PIPE_BIT: u32 = 0x00000001;
@@ -709,7 +704,6 @@ pub const PIPELINE_STAGE_ALL_COMMANDS_BIT: u32 = 0x00010000;
 pub type PipelineStageFlags = Flags;
 pub type MemoryMapFlags = Flags;
 
-
 pub type ImageAspectFlagBits = u32;
 pub const IMAGE_ASPECT_COLOR_BIT: u32 = 0x00000001;
 pub const IMAGE_ASPECT_DEPTH_BIT: u32 = 0x00000002;
@@ -717,18 +711,15 @@ pub const IMAGE_ASPECT_STENCIL_BIT: u32 = 0x00000004;
 pub const IMAGE_ASPECT_METADATA_BIT: u32 = 0x00000008;
 pub type ImageAspectFlags = Flags;
 
-
 pub type SparseImageFormatFlagBits = u32;
 pub const SPARSE_IMAGE_FORMAT_SINGLE_MIPTAIL_BIT: u32 = 0x00000001;
 pub const SPARSE_IMAGE_FORMAT_ALIGNED_MIP_SIZE_BIT: u32 = 0x00000002;
 pub const SPARSE_IMAGE_FORMAT_NONSTANDARD_BLOCK_SIZE_BIT: u32 = 0x00000004;
 pub type SparseImageFormatFlags = Flags;
 
-
 pub type SparseMemoryBindFlagBits = u32;
 pub const SPARSE_MEMORY_BIND_METADATA_BIT: u32 = 0x00000001;
 pub type SparseMemoryBindFlags = Flags;
-
 
 pub type FenceCreateFlagBits = u32;
 pub const FENCE_CREATE_SIGNALED_BIT: u32 = 0x00000001;
@@ -736,7 +727,6 @@ pub type FenceCreateFlags = Flags;
 pub type SemaphoreCreateFlags = Flags;
 pub type EventCreateFlags = Flags;
 pub type QueryPoolCreateFlags = Flags;
-
 
 pub type QueryPipelineStatisticFlagBits = u32;
 pub const QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT: u32 = 0x00000001;
@@ -752,7 +742,6 @@ pub const QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BI
 pub const QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT: u32 = 0x00000400;
 pub type QueryPipelineStatisticFlags = Flags;
 
-
 pub type QueryResultFlagBits = u32;
 pub const QUERY_RESULT_64_BIT: u32 = 0x00000001;
 pub const QUERY_RESULT_WAIT_BIT: u32 = 0x00000002;
@@ -760,13 +749,11 @@ pub const QUERY_RESULT_WITH_AVAILABILITY_BIT: u32 = 0x00000004;
 pub const QUERY_RESULT_PARTIAL_BIT: u32 = 0x00000008;
 pub type QueryResultFlags = Flags;
 
-
 pub type BufferCreateFlagBits = u32;
 pub const BUFFER_CREATE_SPARSE_BINDING_BIT: u32 = 0x00000001;
 pub const BUFFER_CREATE_SPARSE_RESIDENCY_BIT: u32 = 0x00000002;
 pub const BUFFER_CREATE_SPARSE_ALIASED_BIT: u32 = 0x00000004;
 pub type BufferCreateFlags = Flags;
-
 
 pub type BufferUsageFlagBits = u32;
 pub const BUFFER_USAGE_TRANSFER_SRC_BIT: u32 = 0x00000001;
@@ -784,14 +771,12 @@ pub type ImageViewCreateFlags = Flags;
 pub type ShaderModuleCreateFlags = Flags;
 pub type PipelineCacheCreateFlags = Flags;
 
-
 pub type PipelineCreateFlagBits = u32;
 pub const PIPELINE_CREATE_DISABLE_OPTIMIZATION_BIT: u32 = 0x00000001;
 pub const PIPELINE_CREATE_ALLOW_DERIVATIVES_BIT: u32 = 0x00000002;
 pub const PIPELINE_CREATE_DERIVATIVE_BIT: u32 = 0x00000004;
 pub type PipelineCreateFlags = Flags;
 pub type PipelineShaderStageCreateFlags = Flags;
-
 
 pub type ShaderStageFlagBits = u32;
 pub const SHADER_STAGE_VERTEX_BIT: u32 = 0x00000001;
@@ -808,7 +793,6 @@ pub type PipelineTessellationStateCreateFlags = Flags;
 pub type PipelineViewportStateCreateFlags = Flags;
 pub type PipelineRasterizationStateCreateFlags = Flags;
 
-
 pub type CullModeFlagBits = u32;
 pub const CULL_MODE_NONE: u32 = 0;
 pub const CULL_MODE_FRONT_BIT: u32 = 0x00000001;
@@ -819,7 +803,6 @@ pub type PipelineMultisampleStateCreateFlags = Flags;
 pub type PipelineDepthStencilStateCreateFlags = Flags;
 pub type PipelineColorBlendStateCreateFlags = Flags;
 
-
 pub type ColorComponentFlagBits = u32;
 pub const COLOR_COMPONENT_R_BIT: u32 = 0x00000001;
 pub const COLOR_COMPONENT_G_BIT: u32 = 0x00000002;
@@ -829,9 +812,9 @@ pub type ColorComponentFlags = Flags;
 pub type PipelineDynamicStateCreateFlags = Flags;
 pub type PipelineLayoutCreateFlags = Flags;
 pub type ShaderStageFlags = Flags;
+pub type SubgroupFeatureFlags = Flags;
 pub type SamplerCreateFlags = Flags;
 pub type DescriptorSetLayoutCreateFlags = Flags;
-
 
 pub type DescriptorPoolCreateFlagBits = u32;
 pub const DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT: u32 = 0x00000001;
@@ -840,12 +823,10 @@ pub type DescriptorPoolResetFlags = Flags;
 pub type FramebufferCreateFlags = Flags;
 pub type RenderPassCreateFlags = Flags;
 
-
 pub type AttachmentDescriptionFlagBits = u32;
 pub const ATTACHMENT_DESCRIPTION_MAY_ALIAS_BIT: u32 = 0x00000001;
 pub type AttachmentDescriptionFlags = Flags;
 pub type SubpassDescriptionFlags = Flags;
-
 
 pub type AccessFlagBits = u32;
 pub const ACCESS_INDIRECT_COMMAND_READ_BIT: u32 = 0x00000001;
@@ -867,25 +848,20 @@ pub const ACCESS_MEMORY_READ_BIT: u32 = 0x00008000;
 pub const ACCESS_MEMORY_WRITE_BIT: u32 = 0x00010000;
 pub type AccessFlags = Flags;
 
-
 pub type DependencyFlagBits = u32;
 pub const DEPENDENCY_BY_REGION_BIT: u32 = 0x00000001;
 pub type DependencyFlags = Flags;
-
 
 pub type CommandPoolCreateFlagBits = u32;
 pub const COMMAND_POOL_CREATE_TRANSIENT_BIT: u32 = 0x00000001;
 pub const COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT: u32 = 0x00000002;
 pub type CommandPoolCreateFlags = Flags;
 
-
 pub type CommandPoolResetFlagBits = u32;
 pub const COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT: u32 = 0x00000001;
 pub type CommandPoolResetFlags = Flags;
 
-
 pub type CommandPoolTrimFlagsKHR = Flags;
-
 
 pub type CommandBufferUsageFlagBits = u32;
 pub const COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT: u32 = 0x00000001;
@@ -893,23 +869,19 @@ pub const COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT: u32 = 0x00000002;
 pub const COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT: u32 = 0x00000004;
 pub type CommandBufferUsageFlags = Flags;
 
-
 pub type QueryControlFlagBits = u32;
 pub const QUERY_CONTROL_PRECISE_BIT: u32 = 0x00000001;
 pub type QueryControlFlags = Flags;
 
-
 pub type CommandBufferResetFlagBits = u32;
 pub const COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT: u32 = 0x00000001;
 pub type CommandBufferResetFlags = Flags;
-
 
 pub type StencilFaceFlagBits = u32;
 pub const STENCIL_FACE_FRONT_BIT: u32 = 0x00000001;
 pub const STENCIL_FACE_BACK_BIT: u32 = 0x00000002;
 pub const STENCIL_FRONT_AND_BACK: u32 = 0x3;
 pub type StencilFaceFlags = Flags;
-
 
 pub type DisplayPlaneAlphaFlagBitsKHR = u32;
 pub const DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR: u32 = 0x00000001;
@@ -1034,19 +1006,53 @@ pub const DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR: u32 = 0x00000001
 pub type DescriptorUpdateTemplateTypeKHR = u32;
 pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR: u32 = 0;
 pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR: u32 = 1;
-pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_BEGIN_RANGE_KHR: u32 = DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR;
-pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_END_RANGE_KHR: u32 = DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
-pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_RANGE_SIZE_KHR: u32 = (DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR - DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR + 1);
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_BEGIN_RANGE_KHR: u32 =
+    DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_END_RANGE_KHR: u32 =
+    DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR;
+pub const DESCRIPTOR_UPDATE_TEMPLATE_TYPE_RANGE_SIZE_KHR: u32 =
+    (DESCRIPTOR_UPDATE_TEMPLATE_TYPE_PUSH_DESCRIPTORS_KHR
+        - DESCRIPTOR_UPDATE_TEMPLATE_TYPE_DESCRIPTOR_SET_KHR
+        + 1);
 pub type DescriptorUpdateTemplateCreateFlagsKHR = Flags;
 
-pub type PFN_vkAllocationFunction = extern "system" fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkReallocationFunction = extern "system" fn(*mut c_void, *mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkAllocationFunction =
+    extern "system" fn(*mut c_void, usize, usize, SystemAllocationScope) -> *mut c_void;
+pub type PFN_vkReallocationFunction = extern "system" fn(
+    *mut c_void,
+    *mut c_void,
+    usize,
+    usize,
+    SystemAllocationScope,
+) -> *mut c_void;
 pub type PFN_vkFreeFunction = extern "system" fn(*mut c_void, *mut c_void);
-pub type PFN_vkInternalAllocationNotification = extern "system" fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkInternalFreeNotification = extern "system" fn(*mut c_void, usize, InternalAllocationType, SystemAllocationScope) -> *mut c_void;
-pub type PFN_vkDebugUtilsMessengerCallbackEXT = extern "system" fn(DebugUtilsMessageSeverityFlagBitsEXT, DebugUtilsMessageTypeFlagsEXT, *const DebugUtilsMessengerCallbackDataEXT, *mut c_void) -> Bool32;
+pub type PFN_vkInternalAllocationNotification = extern "system" fn(
+    *mut c_void,
+    usize,
+    InternalAllocationType,
+    SystemAllocationScope,
+) -> *mut c_void;
+pub type PFN_vkInternalFreeNotification = extern "system" fn(
+    *mut c_void,
+    usize,
+    InternalAllocationType,
+    SystemAllocationScope,
+) -> *mut c_void;
+pub type PFN_vkDebugUtilsMessengerCallbackEXT = extern "system" fn(
+    DebugUtilsMessageSeverityFlagBitsEXT,
+    DebugUtilsMessageTypeFlagsEXT,
+    *const DebugUtilsMessengerCallbackDataEXT,
+    *mut c_void,
+) -> Bool32;
 
 pub type PFN_vkVoidFunction = extern "system" fn() -> ();
+
+pub type FullScreenExclusiveEXT = u32;
+pub const FULL_SCREEN_EXCLUSIVE_DEFAUlT_EXT: u32 = 0;
+pub const FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT: u32 = 1;
+pub const FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT: u32 = 2;
+pub const FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT: u32 = 3;
+pub const FULL_SCREEN_EXCLUSIVE_MAX_ENUM_EXT: u32 = 0x7FFFFFFF;
 
 #[repr(C)]
 pub struct ApplicationInfo {
@@ -2123,7 +2129,7 @@ pub struct BufferImageCopy {
 pub union ClearColorValue {
     pub float32: [f32; 4],
     pub int32: [i32; 4],
-    pub uint32: [u32; 4]
+    pub uint32: [u32; 4],
 }
 
 #[repr(C)]
@@ -2136,7 +2142,7 @@ pub struct ClearDepthStencilValue {
 #[repr(C)]
 pub union ClearValue {
     pub color: ClearColorValue,
-    pub depthStencil: ClearDepthStencilValue
+    pub depthStencil: ClearDepthStencilValue,
 }
 
 #[repr(C)]
@@ -2288,7 +2294,6 @@ pub struct PresentInfoKHR {
     pub pResults: *mut Result,
 }
 
-
 #[repr(C)]
 pub struct DisplayPropertiesKHR {
     pub display: DisplayKHR,
@@ -2362,7 +2367,6 @@ pub struct DisplayPresentInfoKHR {
     pub persistent: Bool32,
 }
 
-
 pub type XlibSurfaceCreateFlagsKHR = Flags;
 
 #[repr(C)]
@@ -2385,7 +2389,6 @@ pub struct XcbSurfaceCreateInfoKHR {
     pub window: u32,
 }
 
-
 pub type WaylandSurfaceCreateFlagsKHR = Flags;
 
 #[repr(C)]
@@ -2407,7 +2410,6 @@ pub struct AndroidSurfaceCreateInfoKHR {
     pub window: *mut c_void,
 }
 
-
 pub type Win32SurfaceCreateFlagsKHR = Flags;
 
 #[repr(C)]
@@ -2421,18 +2423,18 @@ pub struct Win32SurfaceCreateInfoKHR {
 
 #[repr(C)]
 pub struct IOSSurfaceCreateInfoMVK {
-	pub sType: StructureType,
-	pub pNext: *const c_void,
-	pub flags: IOSSurfaceCreateFlagsMVK,
-	pub pView: *const c_void,
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: IOSSurfaceCreateFlagsMVK,
+    pub pView: *const c_void,
 }
 
 #[repr(C)]
 pub struct MacOSSurfaceCreateInfoMVK {
-	pub sType: StructureType,
-	pub pNext: *const c_void,
-	pub flags: MacOSSurfaceCreateFlagsMVK,
-	pub pView: *const c_void,
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub flags: MacOSSurfaceCreateFlagsMVK,
+    pub pView: *const c_void,
 }
 
 #[repr(C)]
@@ -2448,11 +2450,11 @@ pub struct MVKDeviceConfiguration {
 
 #[repr(C)]
 pub struct MVKPhysicalDeviceMetalFeatures {
-	pub depthClipMode: Bool32,
-	pub indirectDrawing: Bool32,
-	pub baseVertexInstanceDrawing: Bool32,
-	pub maxVertexBufferCount: u32,
-	pub maxFragmentBufferCount: u32,
+    pub depthClipMode: Bool32,
+    pub indirectDrawing: Bool32,
+    pub baseVertexInstanceDrawing: Bool32,
+    pub maxVertexBufferCount: u32,
+    pub maxFragmentBufferCount: u32,
     pub bufferAlignment: DeviceSize,
     pub pushConstantsAlignment: DeviceSize,
 }
@@ -2474,8 +2476,18 @@ pub struct PhysicalDeviceFeatures2KHR {
 #[repr(C)]
 pub struct PhysicalDeviceProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut PhysicalDeviceSubgroupProperties,
     pub properties: PhysicalDeviceProperties,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceSubgroupProperties {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub subgroupSize: u32,
+    pub supportedStages: ShaderStageFlags,
+    pub supportedOperations: SubgroupFeatureFlags,
+    pub quadOperationsInAllStages: Bool32,
 }
 
 #[repr(C)]
@@ -2686,6 +2698,13 @@ pub struct DebugUtilsObjectNameInfoEXT {
     pub objectType: ObjectType,
     pub objectHandle: u64,
     pub pObjectName: *const c_char,
+}
+
+#[repr(C)]
+pub struct SurfaceFullScreenExclusiveInfoEXT {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub fullScreenExclusive: FullScreenExclusiveEXT,
 }
 
 macro_rules! ptrs {
@@ -2937,4 +2956,6 @@ ptrs!(DevicePointers, {
     CmdBeginDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
     CmdEndDebugUtilsLabelEXT => (commandBuffer: CommandBuffer) -> Result,
     CmdInsertDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
+    AcquireFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
+    ReleaseFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
 });

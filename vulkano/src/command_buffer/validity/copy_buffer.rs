@@ -11,10 +11,10 @@ use std::cmp;
 use std::error;
 use std::fmt;
 
-use VulkanObject;
 use buffer::TypedBufferAccess;
 use device::Device;
 use device::DeviceOwned;
+use VulkanObject;
 
 /// Checks whether a copy buffer command is valid.
 ///
@@ -22,16 +22,24 @@ use device::DeviceOwned;
 ///
 /// - Panics if the source and destination were not created with `device`.
 ///
-pub fn check_copy_buffer<S, D, T>(device: &Device, source: &S, destination: &D)
-                                  -> Result<CheckCopyBuffer, CheckCopyBufferError>
-    where S: ?Sized + TypedBufferAccess<Content = T>,
-          D: ?Sized + TypedBufferAccess<Content = T>,
-          T: ?Sized
+pub fn check_copy_buffer<S, D, T>(
+    device: &Device,
+    source: &S,
+    destination: &D,
+) -> Result<CheckCopyBuffer, CheckCopyBufferError>
+where
+    S: ?Sized + TypedBufferAccess<Content = T>,
+    D: ?Sized + TypedBufferAccess<Content = T>,
+    T: ?Sized,
 {
-    assert_eq!(source.inner().buffer.device().internal_object(),
-               device.internal_object());
-    assert_eq!(destination.inner().buffer.device().internal_object(),
-               device.internal_object());
+    assert_eq!(
+        source.inner().buffer.device().internal_object(),
+        device.internal_object()
+    );
+    assert_eq!(
+        destination.inner().buffer.device().internal_object(),
+        device.internal_object()
+    );
 
     if !source.inner().buffer.usage_transfer_source() {
         return Err(CheckCopyBufferError::SourceMissingTransferUsage);
@@ -78,13 +86,11 @@ impl error::Error for CheckCopyBufferError {
         match *self {
             CheckCopyBufferError::SourceMissingTransferUsage => {
                 "the source buffer is missing the transfer source usage"
-            },
+            }
             CheckCopyBufferError::DestinationMissingTransferUsage => {
                 "the destination buffer is missing the transfer destination usage"
-            },
-            CheckCopyBufferError::OverlappingRanges => {
-                "the source and destination are overlapping"
-            },
+            }
+            CheckCopyBufferError::OverlappingRanges => "the source and destination are overlapping",
         }
     }
 }

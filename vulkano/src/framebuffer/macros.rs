@@ -361,6 +361,7 @@ mod tests {
                 depth_stencil: {},
                 resolve: [b],
             }
-        ).unwrap();
+        )
+        .unwrap();
     }
 }

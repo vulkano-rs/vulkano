@@ -121,7 +121,7 @@ macro_rules! features {
     )
 }
 
-features!{
+features! {
     robust_buffer_access => robustBufferAccess,
     full_draw_index_uint32 => fullDrawIndexUint32,
     image_cube_array => imageCubeArray,
