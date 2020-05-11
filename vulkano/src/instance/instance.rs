@@ -867,14 +867,12 @@ impl<'a> PhysicalDevice<'a> {
 
     /// Returns the human-readable name of the device.
     #[inline]
-    pub fn name(&self) -> String {
-        // FIXME: for some reason this panics if you use a `&str`
+    pub fn name(&self) -> &str {
         unsafe {
-            let val = self.infos().properties.deviceName;
+            let val = &self.infos().properties.deviceName;
             let val = CStr::from_ptr(val.as_ptr());
             val.to_str()
                 .expect("physical device name contained non-UTF8 characters")
-                .to_owned()
         }
     }
 
