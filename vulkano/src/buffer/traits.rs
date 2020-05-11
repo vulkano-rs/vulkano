@@ -9,9 +9,11 @@
 
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::num::NonZeroU64;
 use std::ops::Range;
+use std::ptr;
 
-use buffer::sys::UnsafeBuffer;
+use buffer::sys::{UnsafeBuffer, DeviceAddressUsageNotEnabledError};
 use buffer::BufferSlice;
 use device::DeviceOwned;
 use device::Queue;
@@ -19,7 +21,7 @@ use image::ImageAccess;
 use memory::Content;
 use sync::AccessError;
 
-use SafeDeref;
+use ::{SafeDeref, VulkanObject, vk};
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
@@ -142,6 +144,39 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Must only be called once per previous lock.
     unsafe fn unlock(&self);
+
+    /// Gets the device address for this buffer.
+    ///
+    /// # Safety
+    ///
+    /// No lock checking or waiting is performed. This is nevertheless still safe because the
+    /// returned value isn't directly dereferencable. Unsafe code is required to dereference the
+    /// value in a shader.
+    fn raw_device_address(&self) -> Result<NonZeroU64, DeviceAddressUsageNotEnabledError> {
+        let inner = self.inner();
+
+        if !inner.buffer.usage_device_address() {
+            return Err(DeviceAddressUsageNotEnabledError);
+        }
+
+        let dev = self.device();
+        unsafe {
+            let info = vk::BufferDeviceAddressInfo {
+                sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
+                pNext: ptr::null(),
+                buffer: inner.buffer.internal_object(),
+            };
+            let ptr = dev.pointers()
+              .GetBufferDeviceAddressEXT(dev.internal_object(),
+                                         &info);
+
+            if ptr == 0 {
+                panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");
+            }
+
+            Ok(NonZeroU64::new_unchecked(ptr + inner.offset as u64))
+        }
+    }
 }
 
 /// Inner information about a buffer.

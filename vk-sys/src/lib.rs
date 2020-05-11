@@ -56,6 +56,7 @@ pub type SwapchainKHR = u64;
 pub type DisplayKHR = u64;
 pub type DisplayModeKHR = u64;
 pub type DescriptorUpdateTemplateKHR = u64;
+pub type DeviceAddress = u64;
 
 pub const LOD_CLAMP_NONE: f32 = 1000.0;
 pub const REMAINING_MIP_LEVELS: u32 = 0xffffffff;
@@ -195,6 +196,8 @@ pub const STRUCTURE_TYPE_IMAGE_SPARSE_MEMORY_REQUIREMENTS_INFO_2_KHR: u32 = 1000
 pub const STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146003;
 pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 1000146004;
 pub const STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT: u32 = 1000255000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT: u32 = 1000244000;
+pub const STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO: u32 = 1000244001;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -765,6 +768,7 @@ pub const BUFFER_USAGE_STORAGE_BUFFER_BIT: u32 = 0x00000020;
 pub const BUFFER_USAGE_INDEX_BUFFER_BIT: u32 = 0x00000040;
 pub const BUFFER_USAGE_VERTEX_BUFFER_BIT: u32 = 0x00000080;
 pub const BUFFER_USAGE_INDIRECT_BUFFER_BIT: u32 = 0x00000100;
+pub const BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT: u32 = 0x00020000;
 pub type BufferUsageFlags = Flags;
 pub type BufferViewCreateFlags = Flags;
 pub type ImageViewCreateFlags = Flags;
@@ -1561,6 +1565,13 @@ pub struct ImageCreateInfo {
     pub queueFamilyIndexCount: u32,
     pub pQueueFamilyIndices: *const u32,
     pub initialLayout: ImageLayout,
+}
+
+#[repr(C)]
+pub struct BufferDeviceAddressInfo {
+  pub sType: StructureType,
+  pub pNext: *const c_void,
+  pub buffer: Buffer,
 }
 
 #[repr(C)]
@@ -2547,6 +2558,15 @@ pub struct PhysicalDeviceSparseImageFormatInfo2KHR {
     pub tiling: ImageTiling,
 }
 
+#[repr(C)]
+pub struct PhysicalDeviceBufferAddressFeaturesEXT {
+  pub sType: StructureType,
+  pub pNext: *const c_void,
+  pub bufferDeviceAddress: Bool32,
+  pub bufferDeviceAddressCaptureReplay: Bool32,
+  pub bufferDeviceAddressMultiDevice: Bool32,
+}
+
 pub type ViSurfaceCreateFlagsNN = Flags;
 
 #[repr(C)]
@@ -2958,4 +2978,5 @@ ptrs!(DevicePointers, {
     CmdInsertDebugUtilsLabelEXT => (commandBuffer: CommandBuffer, pLabelInfo: *const DebugUtilsLabelEXT) -> Result,
     AcquireFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
     ReleaseFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
+    GetBufferDeviceAddressEXT => (device: Device, pInfo: *const BufferDeviceAddressInfo) -> DeviceAddress,
 });
