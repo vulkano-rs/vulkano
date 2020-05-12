@@ -364,7 +364,7 @@ fn main() {
     //
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store the submission of the previous frame here.
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -500,15 +500,15 @@ fn main() {
 
                 match future {
                     Ok(future) => {
-                        previous_frame_end = Some(Box::new(future) as Box<_>);
+                        previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {
                         recreate_swapchain = true;
-                        previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
                         println!("Failed to flush future: {:?}", e);
-                        previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
             }

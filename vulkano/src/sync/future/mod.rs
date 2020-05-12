@@ -283,6 +283,16 @@ pub unsafe trait GpuFuture: DeviceOwned {
     {
         swapchain::present_incremental(swapchain, self, queue, image_index, present_region)
     }
+
+    /// Turn the current future into a `Box<dyn GpuFuture>`.
+    ///
+    /// This is a helper function that calls `Box::new(yourFuture) as Box<dyn GpuFuture>`.
+    fn boxed(self) -> Box<dyn GpuFuture>
+    where
+        Self: Sized + 'static,
+    {
+        Box::new(self) as _
+    }
 }
 
 unsafe impl<F: ?Sized> GpuFuture for Box<F>

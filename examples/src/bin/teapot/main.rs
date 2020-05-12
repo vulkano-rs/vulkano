@@ -152,7 +152,7 @@ fn main() {
         window_size_dependent_setup(device.clone(), &vs, &fs, &images, render_pass.clone());
     let mut recreate_swapchain = false;
 
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
     let rotation_start = Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
@@ -284,15 +284,15 @@ fn main() {
 
                 match future {
                     Ok(future) => {
-                        previous_frame_end = Some(Box::new(future) as Box<_>);
+                        previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {
                         recreate_swapchain = true;
-                        previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                     Err(e) => {
                         println!("Failed to flush future: {:?}", e);
-                        previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
                     }
                 }
             }

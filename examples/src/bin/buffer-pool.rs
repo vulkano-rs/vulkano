@@ -189,7 +189,7 @@ fn main() {
     let mut framebuffers =
         window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
     event_loop.run(move |event, _, control_flow| {
         match event {
