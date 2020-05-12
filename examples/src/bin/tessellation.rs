@@ -286,7 +286,7 @@ fn main() {
     );
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
     let mut dynamic_state = DynamicState {
         line_width: None,
         viewports: None,
@@ -379,15 +379,15 @@ fn main() {
 
             match future {
                 Ok(future) => {
-                    previous_frame_end = Some(Box::new(future) as Box<_>);
+                    previous_frame_end = Some(future.boxed());
                 }
                 Err(FlushError::OutOfDate) => {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
                     println!("Failed to flush future: {:?}", e);
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
         }

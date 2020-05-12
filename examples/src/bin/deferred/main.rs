@@ -113,7 +113,7 @@ fn main() {
         TriangleDrawSystem::new(queue.clone(), frame_system.deferred_subpass());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -189,15 +189,15 @@ fn main() {
 
             match future {
                 Ok(future) => {
-                    previous_frame_end = Some(Box::new(future) as Box<_>);
+                    previous_frame_end = Some(future.boxed());
                 }
                 Err(FlushError::OutOfDate) => {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
                 Err(e) => {
                     println!("Failed to flush future: {:?}", e);
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    previous_frame_end = Some(sync::now(device.clone()).boxed());
                 }
             }
         }
