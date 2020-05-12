@@ -515,8 +515,19 @@ impl From<OomError> for FramebufferCreationError {
 
 impl error::Error for FramebufferCreationError {
     #[inline]
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            FramebufferCreationError::OomError(ref err) => Some(err),
+            FramebufferCreationError::IncompatibleAttachment(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for FramebufferCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             FramebufferCreationError::OomError(_) => "no memory available",
             FramebufferCreationError::DimensionsTooLarge => {
                 "the dimensions of the framebuffer are too large"
@@ -533,23 +544,7 @@ impl error::Error for FramebufferCreationError {
             FramebufferCreationError::CantDetermineDimensions => {
                 "the framebuffer has no attachment and no dimension was specified"
             }
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            FramebufferCreationError::OomError(ref err) => Some(err),
-            FramebufferCreationError::IncompatibleAttachment(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for FramebufferCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

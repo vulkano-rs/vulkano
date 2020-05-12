@@ -556,10 +556,12 @@ pub enum ShaderInterfaceMismatchError {
     },
 }
 
-impl error::Error for ShaderInterfaceMismatchError {
+impl error::Error for ShaderInterfaceMismatchError {}
+
+impl fmt::Display for ShaderInterfaceMismatchError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
                 "the number of elements mismatches"
             }
@@ -567,14 +569,7 @@ impl error::Error for ShaderInterfaceMismatchError {
             ShaderInterfaceMismatchError::FormatMismatch { .. } => {
                 "the format of an element does not match"
             }
-        }
-    }
-}
-
-impl fmt::Display for ShaderInterfaceMismatchError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

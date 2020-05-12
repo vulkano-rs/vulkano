@@ -152,7 +152,7 @@ pub fn compile(
 ) -> Result<CompilationArtifact, String> {
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
-    const ENV_VULKAN_VERSION: u32 = ((1 << 22) | (1 << 12));
+    const ENV_VULKAN_VERSION: u32 = (1 << 22) | (1 << 12);
     compile_options.set_target_env(TargetEnv::Vulkan, ENV_VULKAN_VERSION);
     let root_source_path = if let &Some(ref path) = &path {
         path

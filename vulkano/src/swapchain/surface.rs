@@ -708,16 +708,6 @@ pub enum SurfaceCreationError {
 
 impl error::Error for SurfaceCreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            SurfaceCreationError::OomError(_) => "not enough memory available",
-            SurfaceCreationError::MissingExtension { .. } => {
-                "the extension required for this function was not enabled"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SurfaceCreationError::OomError(ref err) => Some(err),
@@ -729,7 +719,12 @@ impl error::Error for SurfaceCreationError {
 impl fmt::Display for SurfaceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            SurfaceCreationError::OomError(_) => "not enough memory available",
+            SurfaceCreationError::MissingExtension { .. } => {
+                "the extension required for this function was not enabled"
+            }
+        })
     }
 }
 
@@ -764,14 +759,6 @@ pub enum CapabilitiesError {
 
 impl error::Error for CapabilitiesError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            CapabilitiesError::OomError(_) => "not enough memory",
-            CapabilitiesError::SurfaceLost => "the surface is no longer valid",
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CapabilitiesError::OomError(ref err) => Some(err),
@@ -783,7 +770,10 @@ impl error::Error for CapabilitiesError {
 impl fmt::Display for CapabilitiesError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            CapabilitiesError::OomError(_) => "not enough memory",
+            CapabilitiesError::SurfaceLost => "the surface is no longer valid",
+        })
     }
 }
 

@@ -955,8 +955,18 @@ pub enum SwapchainCreationError {
 
 impl error::Error for SwapchainCreationError {
     #[inline]
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            SwapchainCreationError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for SwapchainCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             SwapchainCreationError::OomError(_) => "not enough memory available",
             SwapchainCreationError::DeviceLost => "the device was lost",
             SwapchainCreationError::SurfaceLost => "the surface was lost",
@@ -1008,22 +1018,7 @@ impl error::Error for SwapchainCreationError {
             SwapchainCreationError::UnsupportedImageConfiguration => {
                 "the requested image configuration is not supported by the physical device"
             }
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            SwapchainCreationError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for SwapchainCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 
@@ -1209,13 +1204,6 @@ pub enum FullscreenExclusiveError {
     NotAppControlled,
 }
 
-impl fmt::Display for FullscreenExclusiveError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
-    }
-}
-
 impl From<Error> for FullscreenExclusiveError {
     #[inline]
     fn from(err: Error) -> FullscreenExclusiveError {
@@ -1240,8 +1228,18 @@ impl From<OomError> for FullscreenExclusiveError {
 
 impl error::Error for FullscreenExclusiveError {
     #[inline]
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            FullscreenExclusiveError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for FullscreenExclusiveError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             FullscreenExclusiveError::OomError(_) => "not enough memory",
             FullscreenExclusiveError::SurfaceLost => {
                 "the surface of this swapchain is no longer valid"
@@ -1254,17 +1252,10 @@ impl error::Error for FullscreenExclusiveError {
             FullscreenExclusiveError::NotAppControlled => {
                 "swapchain is not in fullscreen exclusive app controlled mode"
             }
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            FullscreenExclusiveError::OomError(ref err) => Some(err),
-            _ => None,
-        }
+        })
     }
 }
+
 
 /// Error that can happen when calling `acquire_next_image`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1293,20 +1284,6 @@ pub enum AcquireError {
 
 impl error::Error for AcquireError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            AcquireError::OomError(_) => "not enough memory",
-            AcquireError::DeviceLost => "the connection to the device has been lost",
-            AcquireError::Timeout => "no image is available for acquiring yet",
-            AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
-            AcquireError::OutOfDate => "the swapchain needs to be recreated",
-            AcquireError::FullscreenExclusiveLost => {
-                "the swapchain no longer has fullscreen exclusivity"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             AcquireError::OomError(ref err) => Some(err),
@@ -1318,7 +1295,16 @@ impl error::Error for AcquireError {
 impl fmt::Display for AcquireError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            AcquireError::OomError(_) => "not enough memory",
+            AcquireError::DeviceLost => "the connection to the device has been lost",
+            AcquireError::Timeout => "no image is available for acquiring yet",
+            AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
+            AcquireError::OutOfDate => "the swapchain needs to be recreated",
+            AcquireError::FullscreenExclusiveLost => {
+                "the swapchain no longer has fullscreen exclusivity"
+            }
+        })
     }
 }
 

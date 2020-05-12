@@ -186,9 +186,28 @@ pub enum GraphicsPipelineCreationError {
 
 impl error::Error for GraphicsPipelineCreationError {
     #[inline]
-    // TODO: finish
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            GraphicsPipelineCreationError::OomError(ref err) => Some(err),
+            GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
+            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::IncompatibleVertexDefinition(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for GraphicsPipelineCreationError {
+    // TODO: finish
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
             GraphicsPipelineCreationError::VertexGeometryStagesMismatch(_) => {
                 "the interface between the vertex shader and the geometry shader mismatches"
@@ -319,31 +338,7 @@ impl error::Error for GraphicsPipelineCreationError {
             GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled => {
                 "the `alpha_to_one` feature must be enabled in order to use alpha-to-one"
             }
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            GraphicsPipelineCreationError::OomError(ref err) => Some(err),
-            GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::IncompatibleVertexDefinition(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for GraphicsPipelineCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

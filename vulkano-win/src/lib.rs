@@ -92,14 +92,6 @@ pub enum CreationError {
 
 impl error::Error for CreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            CreationError::SurfaceCreationError(_) => "error while creating the surface",
-            CreationError::WindowCreationError(_) => "error while creating the window",
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CreationError::SurfaceCreationError(ref err) => Some(err),
@@ -111,7 +103,10 @@ impl error::Error for CreationError {
 impl fmt::Display for CreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            CreationError::SurfaceCreationError(_) => "error while creating the surface",
+            CreationError::WindowCreationError(_) => "error while creating the window",
+        })
     }
 }
 

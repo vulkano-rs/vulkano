@@ -333,21 +333,16 @@ pub enum DebugCallbackCreationError {
     MissingExtension,
 }
 
-impl error::Error for DebugCallbackCreationError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            DebugCallbackCreationError::MissingExtension => {
-                "the `EXT_debug_report` extension was not enabled"
-            }
-        }
-    }
-}
+impl error::Error for DebugCallbackCreationError {}
 
 impl fmt::Display for DebugCallbackCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            DebugCallbackCreationError::MissingExtension => {
+                "the `EXT_debug_report` extension was not enabled"
+            }
+        })
     }
 }
 

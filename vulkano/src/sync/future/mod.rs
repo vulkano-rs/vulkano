@@ -369,10 +369,12 @@ pub enum AccessError {
     SwapchainImageAcquireOnly,
 }
 
-impl error::Error for AccessError {
+impl error::Error for AccessError {}
+
+impl fmt::Display for AccessError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
             AccessError::AlreadyInUse => {
                 "the resource is already in use, and there is no tracking of concurrent usages"
@@ -391,14 +393,7 @@ impl error::Error for AccessError {
                 "trying to use a swapchain image without depending on a corresponding acquire \
                  image future"
             }
-        }
-    }
-}
-
-impl fmt::Display for AccessError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 
@@ -411,20 +406,15 @@ pub enum AccessCheckError {
     Unknown,
 }
 
-impl error::Error for AccessCheckError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            AccessCheckError::Denied(_) => "access to the resource has been denied",
-            AccessCheckError::Unknown => "the resource is unknown",
-        }
-    }
-}
+impl error::Error for AccessCheckError {}
 
 impl fmt::Display for AccessCheckError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            AccessCheckError::Denied(_) => "access to the resource has been denied",
+            AccessCheckError::Unknown => "the resource is unknown",
+        })
     }
 }
 
@@ -464,24 +454,6 @@ pub enum FlushError {
 
 impl error::Error for FlushError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            FlushError::AccessError(_) => "access to a resource has been denied",
-            FlushError::OomError(_) => "not enough memory",
-            FlushError::DeviceLost => "the connection to the device has been lost",
-            FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
-            FlushError::OutOfDate => "the swapchain needs to be recreated",
-            FlushError::FullscreenExclusiveLost => {
-                "the swapchain no longer has fullscreen exclusivity"
-            }
-            FlushError::Timeout => {
-                "the flush operation needed to block, but the timeout has \
-                                    elapsed"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FlushError::AccessError(ref err) => Some(err),
@@ -494,7 +466,20 @@ impl error::Error for FlushError {
 impl fmt::Display for FlushError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            FlushError::AccessError(_) => "access to a resource has been denied",
+            FlushError::OomError(_) => "not enough memory",
+            FlushError::DeviceLost => "the connection to the device has been lost",
+            FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
+            FlushError::OutOfDate => "the swapchain needs to be recreated",
+            FlushError::FullscreenExclusiveLost => {
+                "the swapchain no longer has fullscreen exclusivity"
+            }
+            FlushError::Timeout => {
+                "the flush operation needed to block, but the timeout has \
+                                    elapsed"
+            }
+        })
     }
 }
 

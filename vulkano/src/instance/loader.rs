@@ -245,17 +245,6 @@ pub enum LoadingError {
 }
 
 impl error::Error for LoadingError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
-            LoadingError::MissingEntryPoint(_) => {
-                "one of the entry points required to be supported by the Vulkan implementation \
-                 is missing"
-            }
-        }
-    }
-
     /*#[inline]
     fn cause(&self) -> Option<&error::Error> {
         match *self {
@@ -268,7 +257,13 @@ impl error::Error for LoadingError {
 impl fmt::Display for LoadingError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
+            LoadingError::MissingEntryPoint(_) => {
+                "one of the entry points required to be supported by the Vulkan implementation \
+                 is missing"
+            }
+        })
     }
 }
 

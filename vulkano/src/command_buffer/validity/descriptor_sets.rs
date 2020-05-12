@@ -81,18 +81,6 @@ pub enum CheckDescriptorSetsValidityError {
 
 impl error::Error for CheckDescriptorSetsValidityError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            CheckDescriptorSetsValidityError::MissingDescriptor { .. } => {
-                "a descriptor is missing in the descriptor sets that were provided"
-            }
-            CheckDescriptorSetsValidityError::IncompatibleDescriptor { .. } => {
-                "a descriptor in the provided sets is not compatible with what is expected"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             CheckDescriptorSetsValidityError::IncompatibleDescriptor { ref error, .. } => {
@@ -106,7 +94,14 @@ impl error::Error for CheckDescriptorSetsValidityError {
 impl fmt::Display for CheckDescriptorSetsValidityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            CheckDescriptorSetsValidityError::MissingDescriptor { .. } => {
+                "a descriptor is missing in the descriptor sets that were provided"
+            }
+            CheckDescriptorSetsValidityError::IncompatibleDescriptor { .. } => {
+                "a descriptor in the provided sets is not compatible with what is expected"
+            }
+        })
     }
 }
 

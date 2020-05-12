@@ -519,10 +519,12 @@ pub enum DescriptorPoolAllocError {
     OutOfPoolMemory,
 }
 
-impl error::Error for DescriptorPoolAllocError {
+impl error::Error for DescriptorPoolAllocError {}
+
+impl fmt::Display for DescriptorPoolAllocError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",
             DescriptorPoolAllocError::OutOfDeviceMemory => {
                 "no memory available on the graphical device"
@@ -533,14 +535,7 @@ impl error::Error for DescriptorPoolAllocError {
             DescriptorPoolAllocError::OutOfPoolMemory => {
                 "there is no more space available in the descriptor pool"
             }
-        }
-    }
-}
-
-impl fmt::Display for DescriptorPoolAllocError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

@@ -155,20 +155,15 @@ pub enum OomError {
     OutOfDeviceMemory,
 }
 
-impl error::Error for OomError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            OomError::OutOfHostMemory => "no memory available on the host",
-            OomError::OutOfDeviceMemory => "no memory available on the graphical device",
-        }
-    }
-}
+impl error::Error for OomError {}
 
 impl fmt::Display for OomError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            OomError::OutOfHostMemory => "no memory available on the host",
+            OomError::OutOfDeviceMemory => "no memory available on the graphical device",
+        })
     }
 }
 

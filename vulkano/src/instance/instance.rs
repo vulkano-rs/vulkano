@@ -671,18 +671,6 @@ pub enum InstanceCreationError {
 
 impl error::Error for InstanceCreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            InstanceCreationError::LoadingError(_) => "failed to load the Vulkan shared library",
-            InstanceCreationError::OomError(_) => "not enough memory available",
-            InstanceCreationError::InitializationFailed => "initialization failed",
-            InstanceCreationError::LayerNotPresent => "layer not present",
-            InstanceCreationError::ExtensionNotPresent => "extension not present",
-            InstanceCreationError::IncompatibleDriver => "incompatible driver",
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             InstanceCreationError::LoadingError(ref err) => Some(err),
@@ -695,7 +683,14 @@ impl error::Error for InstanceCreationError {
 impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            InstanceCreationError::LoadingError(_) => "failed to load the Vulkan shared library",
+            InstanceCreationError::OomError(_) => "not enough memory available",
+            InstanceCreationError::InitializationFailed => "initialization failed",
+            InstanceCreationError::LayerNotPresent => "layer not present",
+            InstanceCreationError::ExtensionNotPresent => "extension not present",
+            InstanceCreationError::IncompatibleDriver => "incompatible driver",
+        })
     }
 }
 

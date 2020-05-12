@@ -724,22 +724,6 @@ pub enum SamplerCreationError {
 
 impl error::Error for SamplerCreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            SamplerCreationError::OomError(_) => "not enough memory available",
-            SamplerCreationError::TooManyObjects => "too many simultaneous sampler objects",
-            SamplerCreationError::SamplerAnisotropyFeatureNotEnabled => {
-                "the `sampler_anisotropy` feature is not enabled"
-            }
-            SamplerCreationError::AnisotropyLimitExceeded { .. } => "anisotropy limit exceeded",
-            SamplerCreationError::MipLodBiasLimitExceeded { .. } => "mip lod bias limit exceeded",
-            SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled => {
-                "the device extension `VK_KHR_sampler_mirror_clamp_to_edge` is not enabled"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SamplerCreationError::OomError(ref err) => Some(err),
@@ -751,7 +735,18 @@ impl error::Error for SamplerCreationError {
 impl fmt::Display for SamplerCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}",         match *self {
+            SamplerCreationError::OomError(_) => "not enough memory available",
+            SamplerCreationError::TooManyObjects => "too many simultaneous sampler objects",
+            SamplerCreationError::SamplerAnisotropyFeatureNotEnabled => {
+                "the `sampler_anisotropy` feature is not enabled"
+            }
+            SamplerCreationError::AnisotropyLimitExceeded { .. } => "anisotropy limit exceeded",
+            SamplerCreationError::MipLodBiasLimitExceeded { .. } => "mip lod bias limit exceeded",
+            SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled => {
+                "the device extension `VK_KHR_sampler_mirror_clamp_to_edge` is not enabled"
+            }
+        })
     }
 }
 

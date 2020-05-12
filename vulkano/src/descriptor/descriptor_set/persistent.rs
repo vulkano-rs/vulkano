@@ -1191,10 +1191,12 @@ pub enum PersistentDescriptorSetError {
     },
 }
 
-impl error::Error for PersistentDescriptorSetError {
+impl error::Error for PersistentDescriptorSetError {}
+
+impl fmt::Display for PersistentDescriptorSetError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             PersistentDescriptorSetError::WrongDescriptorTy { .. } => {
                 "expected one type of resource but got another"
             }
@@ -1231,14 +1233,7 @@ impl error::Error for PersistentDescriptorSetError {
             PersistentDescriptorSetError::ImageViewTypeMismatch { .. } => {
                 "the type of an image view doesn't match what was expected"
             }
-        }
-    }
-}
-
-impl fmt::Display for PersistentDescriptorSetError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 
@@ -1257,17 +1252,7 @@ pub enum PersistentDescriptorSetBuildError {
     },
 }
 
-impl error::Error for PersistentDescriptorSetBuildError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            PersistentDescriptorSetBuildError::MissingDescriptors { .. } => {
-                "didn't fill all the descriptors before building"
-            }
-            PersistentDescriptorSetBuildError::OomError(_) => "not enough memory available",
-        }
-    }
-}
+impl error::Error for PersistentDescriptorSetBuildError {}
 
 impl From<OomError> for PersistentDescriptorSetBuildError {
     #[inline]
@@ -1279,6 +1264,11 @@ impl From<OomError> for PersistentDescriptorSetBuildError {
 impl fmt::Display for PersistentDescriptorSetBuildError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            PersistentDescriptorSetBuildError::MissingDescriptors { .. } => {
+                "didn't fill all the descriptors before building"
+            }
+            PersistentDescriptorSetBuildError::OomError(_) => "not enough memory available",
+        })
     }
 }
