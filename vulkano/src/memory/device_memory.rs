@@ -91,11 +91,11 @@ impl DeviceMemory {
         );
 
         // Note: This check is disabled because MoltenVK doesn't report correct heap sizes yet.
-        // More generally, whether or not this check is useful is questionable.
-        // TODO: ^
-        /*if size > memory_type.heap().size() {
-            return Err(OomError::OutOfDeviceMemory);
-        }*/
+        // This check was re-enabled because Mesa aborts if `size` is Very Large.
+        let reported_heap_size = memory_type.heap().size();
+        if reported_heap_size != 0 && size > reported_heap_size {
+            return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory));
+        }
 
         let memory = unsafe {
             let physical_device = device.physical_device();
