@@ -990,9 +990,8 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
-    /* 
+    /*
     Adds a command that copies from an image to a buffer.
-    
     The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
     This does not matter since the act of copying the image into a buffer converts it to linear form.
     */
