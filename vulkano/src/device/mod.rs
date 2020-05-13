@@ -716,10 +716,12 @@ pub enum DeviceCreationError {
     OutOfDeviceMemory,
 }
 
-impl error::Error for DeviceCreationError {
+impl error::Error for DeviceCreationError {}
+
+impl fmt::Display for DeviceCreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             DeviceCreationError::InitializationFailed => {
                 "failed to create the device for an implementation-specific reason"
             }
@@ -742,14 +744,7 @@ impl error::Error for DeviceCreationError {
                 "you have reached the limit to the number of devices that can be created from the
                  same physical device"
             }
-        }
-    }
-}
-
-impl fmt::Display for DeviceCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

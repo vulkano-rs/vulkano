@@ -68,20 +68,15 @@ pub enum CheckVertexBufferError {
     },
 }
 
-impl error::Error for CheckVertexBufferError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            CheckVertexBufferError::BufferMissingUsage { .. } => {
-                "the vertex buffer usage is missing on a vertex buffer"
-            }
-        }
-    }
-}
+impl error::Error for CheckVertexBufferError {}
 
 impl fmt::Display for CheckVertexBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            CheckVertexBufferError::BufferMissingUsage { .. } => {
+                "the vertex buffer usage is missing on a vertex buffer"
+            }
+        })
     }
 }

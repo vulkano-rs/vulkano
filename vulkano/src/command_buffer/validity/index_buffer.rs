@@ -67,10 +67,12 @@ pub enum CheckIndexBufferError {
     UnsupportIndexType,
 }
 
-impl error::Error for CheckIndexBufferError {
+impl error::Error for CheckIndexBufferError {}
+
+impl fmt::Display for CheckIndexBufferError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             CheckIndexBufferError::BufferMissingUsage => {
                 "the index buffer usage must be enabled on the index buffer"
             }
@@ -81,14 +83,7 @@ impl error::Error for CheckIndexBufferError {
             CheckIndexBufferError::UnsupportIndexType => {
                 "the type of the indices is not supported by the device"
             }
-        }
-    }
-}
-
-impl fmt::Display for CheckIndexBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

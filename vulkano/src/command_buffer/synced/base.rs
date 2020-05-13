@@ -155,19 +155,14 @@ pub enum SyncCommandBufferBuilderError {
     },
 }
 
-impl error::Error for SyncCommandBufferBuilderError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            SyncCommandBufferBuilderError::Conflict { .. } => "unsolvable conflict",
-        }
-    }
-}
+impl error::Error for SyncCommandBufferBuilderError {}
 
 impl fmt::Display for SyncCommandBufferBuilderError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            SyncCommandBufferBuilderError::Conflict { .. } => "unsolvable conflict",
+        })
     }
 }
 

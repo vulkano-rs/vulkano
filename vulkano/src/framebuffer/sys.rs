@@ -546,16 +546,6 @@ pub enum RenderPassCreationError {
 
 impl error::Error for RenderPassCreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            RenderPassCreationError::OomError(_) => "not enough memory available",
-            RenderPassCreationError::ColorAttachmentsLimitExceeded => {
-                "the maximum number of color attachments has been exceeded"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             RenderPassCreationError::OomError(ref err) => Some(err),
@@ -567,7 +557,12 @@ impl error::Error for RenderPassCreationError {
 impl fmt::Display for RenderPassCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            RenderPassCreationError::OomError(_) => "not enough memory available",
+            RenderPassCreationError::ColorAttachmentsLimitExceeded => {
+                "the maximum number of color attachments has been exceeded"
+            }
+        })
     }
 }
 

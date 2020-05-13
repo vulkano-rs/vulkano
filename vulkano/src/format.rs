@@ -139,17 +139,12 @@ unsafe impl Data for u8 {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct IncompatiblePixelsType;
 
-impl error::Error for IncompatiblePixelsType {
-    #[inline]
-    fn description(&self) -> &str {
-        "supplied pixels' type is incompatible with this format"
-    }
-}
+impl error::Error for IncompatiblePixelsType {}
 
 impl fmt::Display for IncompatiblePixelsType {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", "supplied pixels' type is incompatible with this format")
     }
 }
 

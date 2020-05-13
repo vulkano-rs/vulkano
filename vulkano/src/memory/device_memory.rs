@@ -485,17 +485,6 @@ pub enum DeviceMemoryAllocError {
 
 impl error::Error for DeviceMemoryAllocError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            DeviceMemoryAllocError::OomError(_) => "not enough memory available",
-            DeviceMemoryAllocError::TooManyObjects => {
-                "the maximum number of allocations has been exceeded"
-            }
-            DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             DeviceMemoryAllocError::OomError(ref err) => Some(err),
@@ -507,7 +496,13 @@ impl error::Error for DeviceMemoryAllocError {
 impl fmt::Display for DeviceMemoryAllocError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            DeviceMemoryAllocError::OomError(_) => "not enough memory available",
+            DeviceMemoryAllocError::TooManyObjects => {
+                "the maximum number of allocations has been exceeded"
+            }
+            DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
+        })
     }
 }
 

@@ -224,19 +224,6 @@ pub enum SubmitPresentError {
 
 impl error::Error for SubmitPresentError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            SubmitPresentError::OomError(_) => "not enough memory",
-            SubmitPresentError::DeviceLost => "the connection to the device has been lost",
-            SubmitPresentError::SurfaceLost => "the surface of this swapchain is no longer valid",
-            SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
-            SubmitPresentError::FullscreenExclusiveLost => {
-                "the swapchain no longer has fullscreen exclusivity"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SubmitPresentError::OomError(ref err) => Some(err),
@@ -248,7 +235,15 @@ impl error::Error for SubmitPresentError {
 impl fmt::Display for SubmitPresentError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            SubmitPresentError::OomError(_) => "not enough memory",
+            SubmitPresentError::DeviceLost => "the connection to the device has been lost",
+            SubmitPresentError::SurfaceLost => "the surface of this swapchain is no longer valid",
+            SubmitPresentError::OutOfDate => "the swapchain needs to be recreated",
+            SubmitPresentError::FullscreenExclusiveLost => {
+                "the swapchain no longer has fullscreen exclusivity"
+            }
+        })
     }
 }
 

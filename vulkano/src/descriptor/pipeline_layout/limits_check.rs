@@ -375,10 +375,12 @@ pub enum PipelineLayoutLimitsError {
     },
 }
 
-impl error::Error for PipelineLayoutLimitsError {
+impl error::Error for PipelineLayoutLimitsError {}
+
+impl fmt::Display for PipelineLayoutLimitsError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded { .. } => {
                 "the maximum number of descriptor sets has been exceeded"
             }
@@ -430,14 +432,7 @@ impl error::Error for PipelineLayoutLimitsError {
             PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded { .. } => {
                 "the `max_descriptor_set_input_attachments()` limit has been exceeded"
             }
-        }
-    }
-}
-
-impl fmt::Display for PipelineLayoutLimitsError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

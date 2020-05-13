@@ -365,15 +365,6 @@ pub enum FenceWaitError {
 
 impl error::Error for FenceWaitError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            FenceWaitError::OomError(_) => "no memory available",
-            FenceWaitError::Timeout => "the timeout has been reached",
-            FenceWaitError::DeviceLostError => "the device was lost",
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             FenceWaitError::OomError(ref err) => Some(err),
@@ -385,7 +376,11 @@ impl error::Error for FenceWaitError {
 impl fmt::Display for FenceWaitError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            FenceWaitError::OomError(_) => "no memory available",
+            FenceWaitError::Timeout => "the timeout has been reached",
+            FenceWaitError::DeviceLostError => "the device was lost",
+        })
     }
 }
 

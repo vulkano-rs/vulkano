@@ -141,10 +141,12 @@ pub enum IncompatibleRenderPassAttachmentError {
     MissingInputAttachmentUsage,
 }
 
-impl error::Error for IncompatibleRenderPassAttachmentError {
+impl error::Error for IncompatibleRenderPassAttachmentError {}
+
+impl fmt::Display for IncompatibleRenderPassAttachmentError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             IncompatibleRenderPassAttachmentError::FormatMismatch { .. } => {
                 "mismatch between the format expected by the render pass and the actual format"
             }
@@ -166,14 +168,7 @@ impl error::Error for IncompatibleRenderPassAttachmentError {
                 "the image is used as an input attachment but is missing the input \
                  attachment usage"
             }
-        }
-    }
-}
-
-impl fmt::Display for IncompatibleRenderPassAttachmentError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

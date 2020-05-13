@@ -922,8 +922,18 @@ pub enum ImageCreationError {
 
 impl error::Error for ImageCreationError {
     #[inline]
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            ImageCreationError::AllocError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ImageCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             ImageCreationError::AllocError(_) => "allocating memory failed",
             ImageCreationError::InvalidMipmapsCount { .. } => {
                 "a wrong number of mipmaps was provided"
@@ -945,22 +955,7 @@ impl error::Error for ImageCreationError {
                 "the `shader_storage_image_multisample` feature must be enabled to create such \
                  an image"
             }
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            ImageCreationError::AllocError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for ImageCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

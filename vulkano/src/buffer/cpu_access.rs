@@ -567,24 +567,19 @@ pub enum ReadLockError {
     GpuWriteLocked,
 }
 
-impl error::Error for ReadLockError {
+impl error::Error for ReadLockError {}
+
+impl fmt::Display for ReadLockError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             ReadLockError::CpuWriteLocked => {
                 "the buffer is already locked for write mode by the CPU"
             }
             ReadLockError::GpuWriteLocked => {
                 "the buffer is already locked for write mode by the GPU"
             }
-        }
-    }
-}
-
-impl fmt::Display for ReadLockError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 
@@ -636,20 +631,15 @@ pub enum WriteLockError {
     GpuLocked,
 }
 
-impl error::Error for WriteLockError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
-            WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
-        }
-    }
-}
+impl error::Error for WriteLockError {}
 
 impl fmt::Display for WriteLockError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
+            WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
+        })
     }
 }
 

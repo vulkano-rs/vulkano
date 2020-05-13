@@ -91,22 +91,17 @@ pub enum IncompatibleVertexDefinitionError {
     },
 }
 
-impl error::Error for IncompatibleVertexDefinitionError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            IncompatibleVertexDefinitionError::MissingAttribute { .. } => "an attribute is missing",
-            IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
-                "the format of an attribute does not match"
-            }
-        }
-    }
-}
+impl error::Error for IncompatibleVertexDefinitionError {}
 
 impl fmt::Display for IncompatibleVertexDefinitionError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            IncompatibleVertexDefinitionError::MissingAttribute { .. } => "an attribute is missing",
+            IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
+                "the format of an attribute does not match"
+            }
+        })
     }
 }
 

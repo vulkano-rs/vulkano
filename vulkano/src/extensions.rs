@@ -9,7 +9,6 @@
 
 use std::error;
 use std::fmt;
-use std::str;
 
 use instance::loader::LoadingError;
 use Error;
@@ -185,14 +184,6 @@ pub enum SupportedExtensionsError {
 
 impl error::Error for SupportedExtensionsError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            SupportedExtensionsError::LoadingError(_) => "failed to load the Vulkan shared library",
-            SupportedExtensionsError::OomError(_) => "not enough memory available",
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             SupportedExtensionsError::LoadingError(ref err) => Some(err),
@@ -204,7 +195,10 @@ impl error::Error for SupportedExtensionsError {
 impl fmt::Display for SupportedExtensionsError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            SupportedExtensionsError::LoadingError(_) => "failed to load the Vulkan shared library",
+            SupportedExtensionsError::OomError(_) => "not enough memory available",
+        })
     }
 }
 

@@ -200,10 +200,12 @@ pub enum CheckCopyImageError {
     IncompatibleRangeForImageType,
 }
 
-impl error::Error for CheckCopyImageError {
+impl error::Error for CheckCopyImageError {}
+
+impl fmt::Display for CheckCopyImageError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             CheckCopyImageError::MissingTransferSourceUsage => {
                 "the source is missing the transfer source usage"
             }
@@ -231,13 +233,6 @@ impl error::Error for CheckCopyImageError {
             CheckCopyImageError::IncompatibleRangeForImageType => {
                 "the offsets or extent are incompatible with the image type"
             }
-        }
-    }
-}
-
-impl fmt::Display for CheckCopyImageError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }

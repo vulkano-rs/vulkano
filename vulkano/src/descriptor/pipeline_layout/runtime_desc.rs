@@ -105,21 +105,16 @@ pub enum RuntimePipelineDescError {
     },
 }
 
-impl error::Error for RuntimePipelineDescError {
-    #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            RuntimePipelineDescError::PushConstantsConflict { .. } => {
-                "conflict between different push constants ranges"
-            }
-        }
-    }
-}
+impl error::Error for RuntimePipelineDescError {}
 
 impl fmt::Display for RuntimePipelineDescError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            RuntimePipelineDescError::PushConstantsConflict { .. } => {
+                "conflict between different push constants ranges"
+            }
+        })
     }
 }
 

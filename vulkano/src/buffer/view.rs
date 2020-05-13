@@ -316,8 +316,18 @@ pub enum BufferViewCreationError {
 
 impl error::Error for BufferViewCreationError {
     #[inline]
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            BufferViewCreationError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for BufferViewCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
             BufferViewCreationError::WrongBufferUsage => {
                 "the buffer is missing correct usage flags"
@@ -332,22 +342,7 @@ impl error::Error for BufferViewCreationError {
             BufferViewCreationError::MaxTexelBufferElementsExceeded => {
                 "the maximum number of texel elements is exceeded"
             }
-        }
-    }
-
-    #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            BufferViewCreationError::OomError(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for BufferViewCreationError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

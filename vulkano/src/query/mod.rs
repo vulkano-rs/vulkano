@@ -276,17 +276,6 @@ pub enum QueryPoolCreationError {
 
 impl error::Error for QueryPoolCreationError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            QueryPoolCreationError::OomError(_) => "not enough memory available",
-            QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
-                "a pipeline statistics pool was requested but the corresponding feature \
-                 wasn't enabled"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
@@ -298,7 +287,13 @@ impl error::Error for QueryPoolCreationError {
 impl fmt::Display for QueryPoolCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            QueryPoolCreationError::OomError(_) => "not enough memory available",
+            QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
+                "a pipeline statistics pool was requested but the corresponding feature \
+                 wasn't enabled"
+            }
+        })
     }
 }
 

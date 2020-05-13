@@ -80,10 +80,12 @@ pub enum CheckCopyBufferError {
     OverlappingRanges,
 }
 
-impl error::Error for CheckCopyBufferError {
+impl error::Error for CheckCopyBufferError {}
+
+impl fmt::Display for CheckCopyBufferError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             CheckCopyBufferError::SourceMissingTransferUsage => {
                 "the source buffer is missing the transfer source usage"
             }
@@ -91,13 +93,6 @@ impl error::Error for CheckCopyBufferError {
                 "the destination buffer is missing the transfer destination usage"
             }
             CheckCopyBufferError::OverlappingRanges => "the source and destination are overlapping",
-        }
-    }
-}
-
-impl fmt::Display for CheckCopyBufferError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }

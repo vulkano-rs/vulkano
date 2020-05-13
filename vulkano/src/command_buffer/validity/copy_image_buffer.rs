@@ -211,9 +211,18 @@ pub enum CheckCopyBufferImageError {
 }
 
 impl error::Error for CheckCopyBufferImageError {
-    #[inline]
-    fn description(&self) -> &str {
+    fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
+            CheckCopyBufferImageError::WrongPixelType(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for CheckCopyBufferImageError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(fmt, "{}", match *self {
             CheckCopyBufferImageError::SourceMissingTransferUsage => {
                 "the source buffer is missing the transfer source usage"
             }
@@ -235,21 +244,7 @@ impl error::Error for CheckCopyBufferImageError {
             CheckCopyBufferImageError::BufferTooSmall { .. } => {
                 "the buffer is too small for the copy operation"
             }
-        }
-    }
-
-    fn cause(&self) -> Option<&dyn error::Error> {
-        match *self {
-            CheckCopyBufferImageError::WrongPixelType(ref err) => Some(err),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for CheckCopyBufferImageError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        })
     }
 }
 

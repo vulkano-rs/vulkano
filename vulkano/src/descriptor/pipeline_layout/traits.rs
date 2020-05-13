@@ -252,21 +252,6 @@ pub enum PipelineLayoutNotSupersetError {
 
 impl error::Error for PipelineLayoutNotSupersetError {
     #[inline]
-    fn description(&self) -> &str {
-        match *self {
-            PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
-                "there are more descriptors in the child than in the parent layout"
-            }
-            PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
-                "expected an empty descriptor, but got something instead"
-            }
-            PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
-                "two descriptors are incompatible"
-            }
-        }
-    }
-
-    #[inline]
     fn cause(&self) -> Option<&dyn error::Error> {
         match *self {
             PipelineLayoutNotSupersetError::IncompatibleDescriptors { ref error, .. } => {
@@ -280,7 +265,17 @@ impl error::Error for PipelineLayoutNotSupersetError {
 impl fmt::Display for PipelineLayoutNotSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", error::Error::description(self))
+        write!(fmt, "{}", match *self {
+            PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
+                "there are more descriptors in the child than in the parent layout"
+            }
+            PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
+                "expected an empty descriptor, but got something instead"
+            }
+            PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
+                "two descriptors are incompatible"
+            }
+        })
     }
 }
 
