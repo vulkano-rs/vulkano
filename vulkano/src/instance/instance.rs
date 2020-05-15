@@ -33,7 +33,7 @@ use Error;
 use OomError;
 use VulkanObject;
 
-use features::Features;
+use features::{Features, FeaturesFfi};
 use instance::{InstanceExtensions, RawInstanceExtensions};
 use version::Version;
 
@@ -444,14 +444,11 @@ impl Instance {
                 output.memoryProperties
             };
 
-            let available_features: vk::PhysicalDeviceFeatures = unsafe {
-                let mut output = vk::PhysicalDeviceFeatures2KHR {
-                    sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR,
-                    pNext: ptr::null_mut(),
-                    features: mem::zeroed(),
-                };
-                vk.GetPhysicalDeviceFeatures2KHR(device, &mut output);
-                output.features
+            let available_features: Features = unsafe {
+                let mut output = FeaturesFfi::new();
+                let ptr = FeaturesFfi::mut_base_ptr(&mut output) as *mut _;
+                vk.GetPhysicalDeviceFeatures2KHR(device, ptr);
+                Features::from_vulkan_features_v2(&output.main)
             };
 
             output.push(PhysicalDeviceInfos {
@@ -460,7 +457,7 @@ impl Instance {
                 extended_properties,
                 memory,
                 queue_families,
-                available_features: Features::from_vulkan_features(available_features),
+                available_features,
             });
         }
         output

@@ -69,7 +69,7 @@ impl UnsafeBuffer {
     pub unsafe fn new<'a, I>(
         device: Arc<Device>,
         size: usize,
-        usage: BufferUsage,
+        mut usage: BufferUsage,
         sharing: Sharing<I>,
         sparse: SparseLevel,
     ) -> Result<(UnsafeBuffer, MemoryRequirements), BufferCreationError>
@@ -85,14 +85,6 @@ impl UnsafeBuffer {
         } else {
             size
         };
-
-        let usage_bits = usage.to_vulkan_bits();
-
-        // Checking for empty BufferUsage.
-        assert!(
-            usage_bits != 0,
-            "Can't create buffer with empty BufferUsage"
-        );
 
         // Checking sparse features.
         assert!(
@@ -112,6 +104,21 @@ impl UnsafeBuffer {
         if sparse.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
             return Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled);
         }
+        if usage.device_address && !device.enabled_features().buffer_device_address {
+            usage.device_address = false;
+            if usage.to_vulkan_bits() == 0 {
+                // return an error iff device_address was the only requested usage and the
+                // feature isn't enabled. Otherwise we'll hit that assert below.
+                return Err(BufferCreationError::DeviceAddressFeatureNotEnabled);
+            }
+        }
+        let usage_bits = usage.to_vulkan_bits();
+
+        // Checking for empty BufferUsage.
+        assert!(
+            usage_bits != 0,
+            "Can't create buffer with empty BufferUsage"
+        );
 
         let buffer = {
             let (sh_mode, sh_indices) = match sharing {
@@ -324,6 +331,11 @@ impl UnsafeBuffer {
         (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
     }
 
+    #[inline]
+    pub fn usage_device_address(&self) -> bool {
+        (self.usage & vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0
+    }
+
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {
@@ -416,6 +428,17 @@ impl SparseLevel {
     }
 }
 
+/// The device address usage flag was not set.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DeviceAddressUsageNotEnabledError;
+impl error::Error for DeviceAddressUsageNotEnabledError { }
+impl fmt::Display for DeviceAddressUsageNotEnabledError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str("the device address usage flag was not set on this buffer")
+    }
+}
+
 /// Error that can happen when creating a buffer.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BufferCreationError {
@@ -427,6 +450,8 @@ pub enum BufferCreationError {
     SparseResidencyBufferFeatureNotEnabled,
     /// Sparse aliasing was requested but the corresponding feature wasn't enabled.
     SparseResidencyAliasedFeatureNotEnabled,
+    /// Device address was requested but the corresponding feature wasn't enabled.
+    DeviceAddressFeatureNotEnabled,
 }
 
 impl error::Error for BufferCreationError {
@@ -452,6 +477,9 @@ impl fmt::Display for BufferCreationError {
             }
             BufferCreationError::SparseResidencyAliasedFeatureNotEnabled => {
                 "sparse aliasing was requested but the corresponding feature wasn't enabled"
+            }
+            BufferCreationError::DeviceAddressFeatureNotEnabled => {
+                "device address was requested but the corresponding feature wasn't enabled"
             }
         })
     }

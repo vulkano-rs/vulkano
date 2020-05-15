@@ -221,6 +221,11 @@ impl Device {
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
 
+        let mut requested_features = requested_features.clone();
+        // Always enabled; see below.
+        requested_features.robust_buffer_access = true;
+        let requested_features = requested_features;
+
         // device creation
         let device = unsafe {
             // each element of `queues` is a `(queue_family, priorities)`
@@ -281,15 +286,12 @@ impl Device {
             //
             //       Note that if we ever remove this, don't forget to adjust the change in
             //       `Device`'s construction below.
-            let features = {
-                let mut features = requested_features.clone().into_vulkan_features();
-                features.robustBufferAccess = vk::TRUE;
-                features
-            };
+
+            let features = requested_features.into_vulkan_features_v2();
 
             let infos = vk::DeviceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                pNext: ptr::null(),
+                pNext: features.base_ptr() as *const _,
                 flags: 0, // reserved
                 queueCreateInfoCount: queues.len() as u32,
                 pQueueCreateInfos: queues.as_ptr(),
@@ -297,7 +299,7 @@ impl Device {
                 ppEnabledLayerNames: layers_ptr.as_ptr(),
                 enabledExtensionCount: extensions_list.len() as u32,
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
-                pEnabledFeatures: &features,
+                pEnabledFeatures: ptr::null(),
             };
 
             let mut output = MaybeUninit::uninit();

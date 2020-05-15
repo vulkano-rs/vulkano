@@ -27,6 +27,9 @@ pub struct BufferUsage {
     pub index_buffer: bool,
     pub vertex_buffer: bool,
     pub indirect_buffer: bool,
+    /// Requires the `buffer_device_address` feature. If that feature is not enabled, this will
+    /// be silently ignored.
+    pub device_address: bool,
 }
 
 impl BufferUsage {
@@ -60,6 +63,9 @@ impl BufferUsage {
         if self.indirect_buffer {
             result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
         }
+        if self.device_address {
+            result |= vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        }
         result
     }
 
@@ -76,6 +82,7 @@ impl BufferUsage {
             index_buffer: false,
             vertex_buffer: false,
             indirect_buffer: false,
+            device_address: false,
         }
     }
 
@@ -92,6 +99,7 @@ impl BufferUsage {
             index_buffer: true,
             vertex_buffer: true,
             indirect_buffer: true,
+            device_address: true,
         }
     }
 
@@ -191,6 +199,15 @@ impl BufferUsage {
             ..BufferUsage::none()
         }
     }
+
+    /// Builds a `BufferUsage` with `device_address` set to true and the rest to false.
+    #[inline]
+    pub fn device_address() -> BufferUsage {
+        BufferUsage {
+            device_address: true,
+            ..BufferUsage::none()
+        }
+    }
 }
 
 impl BitOr for BufferUsage {
@@ -208,6 +225,7 @@ impl BitOr for BufferUsage {
             index_buffer: self.index_buffer || rhs.index_buffer,
             vertex_buffer: self.vertex_buffer || rhs.vertex_buffer,
             indirect_buffer: self.indirect_buffer || rhs.indirect_buffer,
+            device_address: self.device_address || rhs.device_address,
         }
     }
 }
