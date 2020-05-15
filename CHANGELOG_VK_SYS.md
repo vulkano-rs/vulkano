@@ -1,5 +1,12 @@
 # Unreleased
 
+- Added support for:
+    + `PhysicalDeviceVariablePointersFeatures`
+    + `PhysicalDeviceShaderAtomicInt64Features`
+    + `PhysicalDevice8BitStorageFeatures`
+    + `PhysicalDevice16BitStorageFeatures`
+    + `PhysicalDeviceShaderFloat16Int8Features`
+
 # Version 0.5.2 (2020-06-01)
 
 - Added support for the physical storage buffer access.

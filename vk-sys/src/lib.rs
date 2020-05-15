@@ -198,6 +198,11 @@ pub const STRUCTURE_TYPE_SPARSE_IMAGE_MEMORY_REQUIREMENTS_2_KHR: u32 = 100014600
 pub const STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT: u32 = 1000255000;
 pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT: u32 = 1000244000;
 pub const STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO: u32 = 1000244001;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTERS_FEATURES: u32 = 1000120000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES: u32 = 1000180000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES: u32 = 1000177000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES: u32 = 1000083000;
+pub const STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES: u32 = 1000082000;
 
 pub type SystemAllocationScope = u32;
 pub const SYSTEM_ALLOCATION_SCOPE_COMMAND: u32 = 0;
@@ -2597,6 +2602,49 @@ pub struct PhysicalDeviceBufferAddressFeaturesEXT {
     pub bufferDeviceAddress: Bool32,
     pub bufferDeviceAddressCaptureReplay: Bool32,
     pub bufferDeviceAddressMultiDevice: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceVariablePointersFeatures {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub variablePointersStorageBuffer: Bool32,
+    pub variablePointers: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceShaderAtomicInt64Features {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub shaderBufferInt64Atomics: Bool32,
+    pub shaderSharedInt64Atomics: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDevice8BitStorageFeatures {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub storageBuffer8BitAccess: Bool32,
+    pub uniformAndStorageBuffer8BitAccess: Bool32,
+    pub storagePushConstant8: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDevice16BitStorageFeatures {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub storageBuffer16BitAccess: Bool32,
+    pub uniformAndStorageBuffer16BitAccess: Bool32,
+    pub storagePushConstant16: Bool32,
+    pub storageInputOutput16: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceShaderFloat16Int8Features {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub shaderFloat16: Bool32,
+    pub shaderInt8: Bool32,
 }
 
 pub type ViSurfaceCreateFlagsNN = Flags;

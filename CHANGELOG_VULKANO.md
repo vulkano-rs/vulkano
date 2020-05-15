@@ -1,6 +1,7 @@
 # Unreleased
 
 - Added a `properties` method to `Format`.
+- Added additional device feature flags for enabling SPIR-V related capabilities.
 
 # Version 0.19.0 (2020-06-01)
 
