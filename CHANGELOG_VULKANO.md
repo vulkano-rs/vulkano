@@ -1,5 +1,8 @@
 # Unreleased
 
+- Update dependency `half` 1.5 -> 1.6
+- Update MacOS dependency `metal` 0.17 -> 0.18
+- Added additional checks around image/device compatibility.
 - Fixed all warnings as of Rust 1.43.1
 - Provides new API to fetch additional information of the Physical Device from the `PhysicalDeviceProperties2KHR` structure whenever it possible. In the current implementation only `subgroupSize` property is fetching. This interface can be extended in the future to obtain more metadata depending on community needs.
 - `dynamic-local-size` compute shader example added showing how to utilize `subgroupSize` to compute and set shader's local size in run time.
