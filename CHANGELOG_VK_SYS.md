@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added support for the physical storage buffer access.
+
 # Version 0.5.1 (2020-02-09)
 
 - Added support for `VK_EXT_full_screen_exclusive`

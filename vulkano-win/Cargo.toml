@@ -16,6 +16,6 @@ winit = "0.22"
 vulkano = { version = "0.18.0", path = "../vulkano" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-metal = "0.17.0"
+metal = "0.18.0"
 cocoa = "0.20.0"
 objc = "0.2.7"

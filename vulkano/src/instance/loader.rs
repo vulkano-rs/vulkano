@@ -225,7 +225,7 @@ pub fn auto_loader(
 
     lazy_static! {
         static ref DEFAULT_LOADER: Result<FunctionPointers<Box<dyn Loader + Send + Sync>>, LoadingError> =
-            { def_loader_impl().map(FunctionPointers::new) };
+            def_loader_impl().map(FunctionPointers::new);
     }
 
     match DEFAULT_LOADER.deref() {

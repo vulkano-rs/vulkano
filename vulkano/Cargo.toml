@@ -19,4 +19,4 @@ shared_library = "0.1"
 smallvec = "1.2"
 lazy_static = "1.4"
 vk-sys = { version = "0.5.1", path = "../vk-sys" }
-half = "1.5"
+half = "1.6"
