@@ -557,12 +557,16 @@ impl error::Error for RenderPassCreationError {
 impl fmt::Display for RenderPassCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            RenderPassCreationError::OomError(_) => "not enough memory available",
-            RenderPassCreationError::ColorAttachmentsLimitExceeded => {
-                "the maximum number of color attachments has been exceeded"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                RenderPassCreationError::OomError(_) => "not enough memory available",
+                RenderPassCreationError::ColorAttachmentsLimitExceeded => {
+                    "the maximum number of color attachments has been exceeded"
+                }
             }
-        })
+        )
     }
 }
 

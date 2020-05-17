@@ -146,29 +146,33 @@ impl error::Error for IncompatibleRenderPassAttachmentError {}
 impl fmt::Display for IncompatibleRenderPassAttachmentError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            IncompatibleRenderPassAttachmentError::FormatMismatch { .. } => {
-                "mismatch between the format expected by the render pass and the actual format"
-            }
-            IncompatibleRenderPassAttachmentError::SamplesMismatch { .. } => {
-                "mismatch between the number of samples expected by the render pass and the actual \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                IncompatibleRenderPassAttachmentError::FormatMismatch { .. } => {
+                    "mismatch between the format expected by the render pass and the actual format"
+                }
+                IncompatibleRenderPassAttachmentError::SamplesMismatch { .. } => {
+                    "mismatch between the number of samples expected by the render pass and the actual \
                  number of samples"
-            }
-            IncompatibleRenderPassAttachmentError::NotIdentitySwizzled => {
-                "the image view does not use identity swizzling"
-            }
-            IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage => {
-                "the image is used as a color attachment but is missing the color attachment usage"
-            }
-            IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage => {
-                "the image is used as a depth/stencil attachment but is missing the depth-stencil \
+                }
+                IncompatibleRenderPassAttachmentError::NotIdentitySwizzled => {
+                    "the image view does not use identity swizzling"
+                }
+                IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage => {
+                    "the image is used as a color attachment but is missing the color attachment usage"
+                }
+                IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage => {
+                    "the image is used as a depth/stencil attachment but is missing the depth-stencil \
                  attachment usage"
-            }
-            IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage => {
-                "the image is used as an input attachment but is missing the input \
+                }
+                IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage => {
+                    "the image is used as an input attachment but is missing the input \
                  attachment usage"
+                }
             }
-        })
+        )
     }
 }
 

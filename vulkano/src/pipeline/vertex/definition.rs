@@ -96,12 +96,17 @@ impl error::Error for IncompatibleVertexDefinitionError {}
 impl fmt::Display for IncompatibleVertexDefinitionError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            IncompatibleVertexDefinitionError::MissingAttribute { .. } => "an attribute is missing",
-            IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
-                "the format of an attribute does not match"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                IncompatibleVertexDefinitionError::MissingAttribute { .. } =>
+                    "an attribute is missing",
+                IncompatibleVertexDefinitionError::FormatMismatch { .. } => {
+                    "the format of an attribute does not match"
+                }
             }
-        })
+        )
     }
 }
 

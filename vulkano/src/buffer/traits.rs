@@ -13,7 +13,7 @@ use std::num::NonZeroU64;
 use std::ops::Range;
 use std::ptr;
 
-use buffer::sys::{UnsafeBuffer, DeviceAddressUsageNotEnabledError};
+use buffer::sys::{DeviceAddressUsageNotEnabledError, UnsafeBuffer};
 use buffer::BufferSlice;
 use device::DeviceOwned;
 use device::Queue;
@@ -21,7 +21,7 @@ use image::ImageAccess;
 use memory::Content;
 use sync::AccessError;
 
-use ::{SafeDeref, VulkanObject, vk};
+use {vk, SafeDeref, VulkanObject};
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
@@ -166,9 +166,9 @@ pub unsafe trait BufferAccess: DeviceOwned {
                 pNext: ptr::null(),
                 buffer: inner.buffer.internal_object(),
             };
-            let ptr = dev.pointers()
-              .GetBufferDeviceAddressEXT(dev.internal_object(),
-                                         &info);
+            let ptr = dev
+                .pointers()
+                .GetBufferDeviceAddressEXT(dev.internal_object(), &info);
 
             if ptr == 0 {
                 panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");

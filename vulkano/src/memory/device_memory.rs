@@ -94,7 +94,9 @@ impl DeviceMemory {
         // This check was re-enabled because Mesa aborts if `size` is Very Large.
         let reported_heap_size = memory_type.heap().size();
         if reported_heap_size != 0 && size > reported_heap_size {
-            return Err(DeviceMemoryAllocError::OomError(OomError::OutOfDeviceMemory));
+            return Err(DeviceMemoryAllocError::OomError(
+                OomError::OutOfDeviceMemory,
+            ));
         }
 
         let memory = unsafe {
@@ -496,13 +498,17 @@ impl error::Error for DeviceMemoryAllocError {
 impl fmt::Display for DeviceMemoryAllocError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            DeviceMemoryAllocError::OomError(_) => "not enough memory available",
-            DeviceMemoryAllocError::TooManyObjects => {
-                "the maximum number of allocations has been exceeded"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                DeviceMemoryAllocError::OomError(_) => "not enough memory available",
+                DeviceMemoryAllocError::TooManyObjects => {
+                    "the maximum number of allocations has been exceeded"
+                }
+                DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
             }
-            DeviceMemoryAllocError::MemoryMapFailed => "memory map failed",
-        })
+        )
     }
 }
 

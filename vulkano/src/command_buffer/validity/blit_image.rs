@@ -253,43 +253,47 @@ impl error::Error for CheckBlitImageError {}
 impl fmt::Display for CheckBlitImageError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckBlitImageError::MissingTransferSourceUsage => {
-                "the source is missing the transfer source usage"
-            }
-            CheckBlitImageError::MissingTransferDestinationUsage => {
-                "the destination is missing the transfer destination usage"
-            }
-            CheckBlitImageError::SourceFormatNotSupported => {
-                "the format of the source image doesn't support blit operations"
-            }
-            CheckBlitImageError::DestinationFormatNotSupported => {
-                "the format of the destination image doesn't support blit operations"
-            }
-            CheckBlitImageError::DepthStencilNearestMandatory => {
-                "you must use the nearest filter when blitting depth/stencil images"
-            }
-            CheckBlitImageError::DepthStencilFormatMismatch => {
-                "the format of the source and destination must be equal when blitting \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckBlitImageError::MissingTransferSourceUsage => {
+                    "the source is missing the transfer source usage"
+                }
+                CheckBlitImageError::MissingTransferDestinationUsage => {
+                    "the destination is missing the transfer destination usage"
+                }
+                CheckBlitImageError::SourceFormatNotSupported => {
+                    "the format of the source image doesn't support blit operations"
+                }
+                CheckBlitImageError::DestinationFormatNotSupported => {
+                    "the format of the destination image doesn't support blit operations"
+                }
+                CheckBlitImageError::DepthStencilNearestMandatory => {
+                    "you must use the nearest filter when blitting depth/stencil images"
+                }
+                CheckBlitImageError::DepthStencilFormatMismatch => {
+                    "the format of the source and destination must be equal when blitting \
                  depth/stencil images"
-            }
-            CheckBlitImageError::IncompatibleFormatsTypes { .. } => {
-                "the types of the source format and the destination format aren't compatible"
-            }
-            CheckBlitImageError::UnexpectedMultisampled => {
-                "blitting between multisampled images is forbidden"
-            }
-            CheckBlitImageError::SourceCoordinatesOutOfRange => {
-                "the offsets, array layers and/or mipmap levels are out of range in the source \
+                }
+                CheckBlitImageError::IncompatibleFormatsTypes { .. } => {
+                    "the types of the source format and the destination format aren't compatible"
+                }
+                CheckBlitImageError::UnexpectedMultisampled => {
+                    "blitting between multisampled images is forbidden"
+                }
+                CheckBlitImageError::SourceCoordinatesOutOfRange => {
+                    "the offsets, array layers and/or mipmap levels are out of range in the source \
                  image"
-            }
-            CheckBlitImageError::DestinationCoordinatesOutOfRange => {
-                "the offsets, array layers and/or mipmap levels are out of range in the \
+                }
+                CheckBlitImageError::DestinationCoordinatesOutOfRange => {
+                    "the offsets, array layers and/or mipmap levels are out of range in the \
                  destination image"
+                }
+                CheckBlitImageError::IncompatibleRangeForImageType => {
+                    "the top-left and/or bottom-right coordinates are incompatible with the image type"
+                }
             }
-            CheckBlitImageError::IncompatibleRangeForImageType => {
-                "the top-left and/or bottom-right coordinates are incompatible with the image type"
-            }
-        })
+        )
     }
 }

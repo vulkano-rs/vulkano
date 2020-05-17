@@ -1569,9 +1569,9 @@ pub struct ImageCreateInfo {
 
 #[repr(C)]
 pub struct BufferDeviceAddressInfo {
-  pub sType: StructureType,
-  pub pNext: *const c_void,
-  pub buffer: Buffer,
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub buffer: Buffer,
 }
 
 #[repr(C)]
@@ -2560,11 +2560,11 @@ pub struct PhysicalDeviceSparseImageFormatInfo2KHR {
 
 #[repr(C)]
 pub struct PhysicalDeviceBufferAddressFeaturesEXT {
-  pub sType: StructureType,
-  pub pNext: *const c_void,
-  pub bufferDeviceAddress: Bool32,
-  pub bufferDeviceAddressCaptureReplay: Bool32,
-  pub bufferDeviceAddressMultiDevice: Bool32,
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub bufferDeviceAddress: Bool32,
+    pub bufferDeviceAddressCaptureReplay: Bool32,
+    pub bufferDeviceAddressMultiDevice: Bool32,
 }
 
 pub type ViSurfaceCreateFlagsNN = Flags;

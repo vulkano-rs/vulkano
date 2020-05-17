@@ -524,18 +524,22 @@ impl error::Error for DescriptorPoolAllocError {}
 impl fmt::Display for DescriptorPoolAllocError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",
-            DescriptorPoolAllocError::OutOfDeviceMemory => {
-                "no memory available on the graphical device"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                DescriptorPoolAllocError::OutOfHostMemory => "no memory available on the host",
+                DescriptorPoolAllocError::OutOfDeviceMemory => {
+                    "no memory available on the graphical device"
+                }
+                DescriptorPoolAllocError::FragmentedPool => {
+                    "allocation has failed because the pool is too fragmented"
+                }
+                DescriptorPoolAllocError::OutOfPoolMemory => {
+                    "there is no more space available in the descriptor pool"
+                }
             }
-            DescriptorPoolAllocError::FragmentedPool => {
-                "allocation has failed because the pool is too fragmented"
-            }
-            DescriptorPoolAllocError::OutOfPoolMemory => {
-                "there is no more space available in the descriptor pool"
-            }
-        })
+        )
     }
 }
 

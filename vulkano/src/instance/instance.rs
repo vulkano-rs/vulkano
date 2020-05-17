@@ -680,14 +680,19 @@ impl error::Error for InstanceCreationError {
 impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            InstanceCreationError::LoadingError(_) => "failed to load the Vulkan shared library",
-            InstanceCreationError::OomError(_) => "not enough memory available",
-            InstanceCreationError::InitializationFailed => "initialization failed",
-            InstanceCreationError::LayerNotPresent => "layer not present",
-            InstanceCreationError::ExtensionNotPresent => "extension not present",
-            InstanceCreationError::IncompatibleDriver => "incompatible driver",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                InstanceCreationError::LoadingError(_) =>
+                    "failed to load the Vulkan shared library",
+                InstanceCreationError::OomError(_) => "not enough memory available",
+                InstanceCreationError::InitializationFailed => "initialization failed",
+                InstanceCreationError::LayerNotPresent => "layer not present",
+                InstanceCreationError::ExtensionNotPresent => "extension not present",
+                InstanceCreationError::IncompatibleDriver => "incompatible driver",
+            }
+        )
     }
 }
 

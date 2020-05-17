@@ -144,7 +144,11 @@ impl error::Error for IncompatiblePixelsType {}
 impl fmt::Display for IncompatiblePixelsType {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", "supplied pixels' type is incompatible with this format")
+        write!(
+            fmt,
+            "{}",
+            "supplied pixels' type is incompatible with this format"
+        )
     }
 }
 

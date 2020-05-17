@@ -599,32 +599,36 @@ impl error::Error for DescriptorDescSupersetError {}
 impl fmt::Display for DescriptorDescSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            DescriptorDescSupersetError::ArrayTooSmall { .. } => {
-                "the number of array elements of the descriptor is smaller than expected"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                DescriptorDescSupersetError::ArrayTooSmall { .. } => {
+                    "the number of array elements of the descriptor is smaller than expected"
+                }
+                DescriptorDescSupersetError::TypeMismatch => {
+                    "the descriptor type doesn't match the type of the other descriptor"
+                }
+                DescriptorDescSupersetError::MutabilityRequired => {
+                    "the descriptor is marked as read-only, but the other is not"
+                }
+                DescriptorDescSupersetError::ShaderStagesNotSuperset => {
+                    "the shader stages are not a superset of one another"
+                }
+                DescriptorDescSupersetError::DimensionsMismatch { .. } => {
+                    "mismatch between the dimensions of the two descriptors"
+                }
+                DescriptorDescSupersetError::FormatMismatch { .. } => {
+                    "mismatch between the format of the two descriptors"
+                }
+                DescriptorDescSupersetError::MultisampledMismatch { .. } => {
+                    "mismatch between whether the descriptors are multisampled"
+                }
+                DescriptorDescSupersetError::IncompatibleArrayLayers { .. } => {
+                    "the array layers of the descriptors aren't compatible"
+                }
             }
-            DescriptorDescSupersetError::TypeMismatch => {
-                "the descriptor type doesn't match the type of the other descriptor"
-            }
-            DescriptorDescSupersetError::MutabilityRequired => {
-                "the descriptor is marked as read-only, but the other is not"
-            }
-            DescriptorDescSupersetError::ShaderStagesNotSuperset => {
-                "the shader stages are not a superset of one another"
-            }
-            DescriptorDescSupersetError::DimensionsMismatch { .. } => {
-                "mismatch between the dimensions of the two descriptors"
-            }
-            DescriptorDescSupersetError::FormatMismatch { .. } => {
-                "mismatch between the format of the two descriptors"
-            }
-            DescriptorDescSupersetError::MultisampledMismatch { .. } => {
-                "mismatch between whether the descriptors are multisampled"
-            }
-            DescriptorDescSupersetError::IncompatibleArrayLayers { .. } => {
-                "the array layers of the descriptors aren't compatible"
-            }
-        })
+        )
     }
 }
 
@@ -810,8 +814,12 @@ impl error::Error for ShaderStagesSupersetError {}
 impl fmt::Display for ShaderStagesSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            ShaderStagesSupersetError::NotSuperset => "shader stages not a superset",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ShaderStagesSupersetError::NotSuperset => "shader stages not a superset",
+            }
+        )
     }
 }

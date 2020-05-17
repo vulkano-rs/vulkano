@@ -287,13 +287,17 @@ impl error::Error for QueryPoolCreationError {
 impl fmt::Display for QueryPoolCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            QueryPoolCreationError::OomError(_) => "not enough memory available",
-            QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
-                "a pipeline statistics pool was requested but the corresponding feature \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                QueryPoolCreationError::OomError(_) => "not enough memory available",
+                QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled => {
+                    "a pipeline statistics pool was requested but the corresponding feature \
                  wasn't enabled"
+                }
             }
-        })
+        )
     }
 }
 

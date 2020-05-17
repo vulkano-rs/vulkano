@@ -293,15 +293,19 @@ impl error::Error for PipelineLayoutCreationError {
 impl fmt::Display for PipelineLayoutCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            PipelineLayoutCreationError::OomError(_) => "not enough memory available",
-            PipelineLayoutCreationError::LimitsError(_) => {
-                "the pipeline layout description doesn't fulfill the limit requirements"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                PipelineLayoutCreationError::OomError(_) => "not enough memory available",
+                PipelineLayoutCreationError::LimitsError(_) => {
+                    "the pipeline layout description doesn't fulfill the limit requirements"
+                }
+                PipelineLayoutCreationError::InvalidPushConstant => {
+                    "one of the push constants range didn't obey the rules"
+                }
             }
-            PipelineLayoutCreationError::InvalidPushConstant => {
-                "one of the push constants range didn't obey the rules"
-            }
-        })
+        )
     }
 }
 

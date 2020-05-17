@@ -1196,44 +1196,48 @@ impl error::Error for PersistentDescriptorSetError {}
 impl fmt::Display for PersistentDescriptorSetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            PersistentDescriptorSetError::WrongDescriptorTy { .. } => {
-                "expected one type of resource but got another"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                PersistentDescriptorSetError::WrongDescriptorTy { .. } => {
+                    "expected one type of resource but got another"
+                }
+                PersistentDescriptorSetError::EmptyExpected => {
+                    "expected an empty descriptor but got something"
+                }
+                PersistentDescriptorSetError::ArrayOutOfBounds => {
+                    "tried to add too many elements to an array"
+                }
+                PersistentDescriptorSetError::MissingArrayElements { .. } => {
+                    "didn't fill all the elements of an array before leaving"
+                }
+                PersistentDescriptorSetError::IncompatibleImageViewSampler => {
+                    "the image view isn't compatible with the sampler"
+                }
+                PersistentDescriptorSetError::MissingBufferUsage { .. } => {
+                    "the buffer is missing the correct usage"
+                }
+                PersistentDescriptorSetError::MissingImageUsage { .. } => {
+                    "the image is missing the correct usage"
+                }
+                PersistentDescriptorSetError::ExpectedMultisampled => {
+                    "expected a multisampled image, but got a single-sampled image"
+                }
+                PersistentDescriptorSetError::UnexpectedMultisampled => {
+                    "expected a single-sampled image, but got a multisampled image"
+                }
+                PersistentDescriptorSetError::ArrayLayersMismatch { .. } => {
+                    "the number of array layers of an image doesn't match what was expected"
+                }
+                PersistentDescriptorSetError::ImageViewFormatMismatch { .. } => {
+                    "the format of an image view doesn't match what was expected"
+                }
+                PersistentDescriptorSetError::ImageViewTypeMismatch { .. } => {
+                    "the type of an image view doesn't match what was expected"
+                }
             }
-            PersistentDescriptorSetError::EmptyExpected => {
-                "expected an empty descriptor but got something"
-            }
-            PersistentDescriptorSetError::ArrayOutOfBounds => {
-                "tried to add too many elements to an array"
-            }
-            PersistentDescriptorSetError::MissingArrayElements { .. } => {
-                "didn't fill all the elements of an array before leaving"
-            }
-            PersistentDescriptorSetError::IncompatibleImageViewSampler => {
-                "the image view isn't compatible with the sampler"
-            }
-            PersistentDescriptorSetError::MissingBufferUsage { .. } => {
-                "the buffer is missing the correct usage"
-            }
-            PersistentDescriptorSetError::MissingImageUsage { .. } => {
-                "the image is missing the correct usage"
-            }
-            PersistentDescriptorSetError::ExpectedMultisampled => {
-                "expected a multisampled image, but got a single-sampled image"
-            }
-            PersistentDescriptorSetError::UnexpectedMultisampled => {
-                "expected a single-sampled image, but got a multisampled image"
-            }
-            PersistentDescriptorSetError::ArrayLayersMismatch { .. } => {
-                "the number of array layers of an image doesn't match what was expected"
-            }
-            PersistentDescriptorSetError::ImageViewFormatMismatch { .. } => {
-                "the format of an image view doesn't match what was expected"
-            }
-            PersistentDescriptorSetError::ImageViewTypeMismatch { .. } => {
-                "the type of an image view doesn't match what was expected"
-            }
-        })
+        )
     }
 }
 
@@ -1264,11 +1268,15 @@ impl From<OomError> for PersistentDescriptorSetBuildError {
 impl fmt::Display for PersistentDescriptorSetBuildError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            PersistentDescriptorSetBuildError::MissingDescriptors { .. } => {
-                "didn't fill all the descriptors before building"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                PersistentDescriptorSetBuildError::MissingDescriptors { .. } => {
+                    "didn't fill all the descriptors before building"
+                }
+                PersistentDescriptorSetBuildError::OomError(_) => "not enough memory available",
             }
-            PersistentDescriptorSetBuildError::OomError(_) => "not enough memory available",
-        })
+        )
     }
 }

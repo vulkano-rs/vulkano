@@ -273,10 +273,15 @@ impl error::Error for SubmitCommandBufferError {
 impl fmt::Display for SubmitCommandBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            SubmitCommandBufferError::OomError(_) => "not enough memory",
-            SubmitCommandBufferError::DeviceLost => "the connection to the device has been lost",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                SubmitCommandBufferError::OomError(_) => "not enough memory",
+                SubmitCommandBufferError::DeviceLost =>
+                    "the connection to the device has been lost",
+            }
+        )
     }
 }
 

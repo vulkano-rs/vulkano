@@ -85,14 +85,19 @@ impl error::Error for CheckCopyBufferError {}
 impl fmt::Display for CheckCopyBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckCopyBufferError::SourceMissingTransferUsage => {
-                "the source buffer is missing the transfer source usage"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckCopyBufferError::SourceMissingTransferUsage => {
+                    "the source buffer is missing the transfer source usage"
+                }
+                CheckCopyBufferError::DestinationMissingTransferUsage => {
+                    "the destination buffer is missing the transfer destination usage"
+                }
+                CheckCopyBufferError::OverlappingRanges =>
+                    "the source and destination are overlapping",
             }
-            CheckCopyBufferError::DestinationMissingTransferUsage => {
-                "the destination buffer is missing the transfer destination usage"
-            }
-            CheckCopyBufferError::OverlappingRanges => "the source and destination are overlapping",
-        })
+        )
     }
 }

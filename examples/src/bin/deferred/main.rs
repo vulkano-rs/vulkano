@@ -26,6 +26,7 @@
 // drawn after the lighting, and that the whole process consumes more memory.
 
 use vulkano::device::{Device, DeviceExtensions};
+use vulkano::image::ImageUsage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::swapchain;
 use vulkano::swapchain::{
@@ -34,7 +35,6 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-use vulkano::image::ImageUsage;
 
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};

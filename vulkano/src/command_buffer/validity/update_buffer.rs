@@ -74,15 +74,19 @@ impl error::Error for CheckUpdateBufferError {}
 impl fmt::Display for CheckUpdateBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckUpdateBufferError::BufferMissingUsage => {
-                "the transfer destination usage must be enabled on the buffer"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckUpdateBufferError::BufferMissingUsage => {
+                    "the transfer destination usage must be enabled on the buffer"
+                }
+                CheckUpdateBufferError::WrongAlignment => {
+                    "the offset or size are not aligned to 4 bytes"
+                }
+                CheckUpdateBufferError::DataTooLarge => "data is too large",
             }
-            CheckUpdateBufferError::WrongAlignment => {
-                "the offset or size are not aligned to 4 bytes"
-            }
-            CheckUpdateBufferError::DataTooLarge => "data is too large",
-        })
+        )
     }
 }
 

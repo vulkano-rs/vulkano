@@ -160,10 +160,14 @@ impl error::Error for OomError {}
 impl fmt::Display for OomError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            OomError::OutOfHostMemory => "no memory available on the host",
-            OomError::OutOfDeviceMemory => "no memory available on the graphical device",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                OomError::OutOfHostMemory => "no memory available on the host",
+                OomError::OutOfDeviceMemory => "no memory available on the graphical device",
+            }
+        )
     }
 }
 

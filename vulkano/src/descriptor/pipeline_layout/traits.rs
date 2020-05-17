@@ -265,17 +265,21 @@ impl error::Error for PipelineLayoutNotSupersetError {
 impl fmt::Display for PipelineLayoutNotSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
-                "there are more descriptors in the child than in the parent layout"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
+                    "there are more descriptors in the child than in the parent layout"
+                }
+                PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
+                    "expected an empty descriptor, but got something instead"
+                }
+                PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
+                    "two descriptors are incompatible"
+                }
             }
-            PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
-                "expected an empty descriptor, but got something instead"
-            }
-            PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
-                "two descriptors are incompatible"
-            }
-        })
+        )
     }
 }
 

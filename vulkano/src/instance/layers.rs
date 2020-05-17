@@ -184,10 +184,14 @@ impl error::Error for LayersListError {
 impl fmt::Display for LayersListError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            LayersListError::LoadingError(_) => "failed to load the Vulkan shared library",
-            LayersListError::OomError(_) => "not enough memory available",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                LayersListError::LoadingError(_) => "failed to load the Vulkan shared library",
+                LayersListError::OomError(_) => "not enough memory available",
+            }
+        )
     }
 }
 

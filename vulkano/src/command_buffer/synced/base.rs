@@ -160,9 +160,13 @@ impl error::Error for SyncCommandBufferBuilderError {}
 impl fmt::Display for SyncCommandBufferBuilderError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            SyncCommandBufferBuilderError::Conflict { .. } => "unsolvable conflict",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                SyncCommandBufferBuilderError::Conflict { .. } => "unsolvable conflict",
+            }
+        )
     }
 }
 

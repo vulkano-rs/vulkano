@@ -46,11 +46,15 @@ impl error::Error for CheckDispatchError {}
 impl fmt::Display for CheckDispatchError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckDispatchError::UnsupportedDimensions { .. } => {
-                "the dimensions are too large for the device's limits"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckDispatchError::UnsupportedDimensions { .. } => {
+                    "the dimensions are too large for the device's limits"
+                }
             }
-        })
+        )
     }
 }
 

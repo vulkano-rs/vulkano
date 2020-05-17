@@ -572,14 +572,18 @@ impl error::Error for ReadLockError {}
 impl fmt::Display for ReadLockError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            ReadLockError::CpuWriteLocked => {
-                "the buffer is already locked for write mode by the CPU"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ReadLockError::CpuWriteLocked => {
+                    "the buffer is already locked for write mode by the CPU"
+                }
+                ReadLockError::GpuWriteLocked => {
+                    "the buffer is already locked for write mode by the GPU"
+                }
             }
-            ReadLockError::GpuWriteLocked => {
-                "the buffer is already locked for write mode by the GPU"
-            }
-        })
+        )
     }
 }
 
@@ -636,10 +640,14 @@ impl error::Error for WriteLockError {}
 impl fmt::Display for WriteLockError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
-            WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                WriteLockError::CpuLocked => "the buffer is already locked by the CPU",
+                WriteLockError::GpuLocked => "the buffer is already locked by the GPU",
+            }
+        )
     }
 }
 

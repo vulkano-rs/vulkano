@@ -72,18 +72,22 @@ impl error::Error for CheckIndexBufferError {}
 impl fmt::Display for CheckIndexBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckIndexBufferError::BufferMissingUsage => {
-                "the index buffer usage must be enabled on the index buffer"
-            }
-            CheckIndexBufferError::WrongAlignment => {
-                "the sum of offset and the address of the range of VkDeviceMemory object that is \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckIndexBufferError::BufferMissingUsage => {
+                    "the index buffer usage must be enabled on the index buffer"
+                }
+                CheckIndexBufferError::WrongAlignment => {
+                    "the sum of offset and the address of the range of VkDeviceMemory object that is \
                  backing buffer, must be a multiple of the type indicated by indexType"
+                }
+                CheckIndexBufferError::UnsupportIndexType => {
+                    "the type of the indices is not supported by the device"
+                }
             }
-            CheckIndexBufferError::UnsupportIndexType => {
-                "the type of the indices is not supported by the device"
-            }
-        })
+        )
     }
 }
 

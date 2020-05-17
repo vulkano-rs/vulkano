@@ -257,13 +257,17 @@ impl error::Error for LoadingError {
 impl fmt::Display for LoadingError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
-            LoadingError::MissingEntryPoint(_) => {
-                "one of the entry points required to be supported by the Vulkan implementation \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                LoadingError::LibraryLoadFailure(_) => "failed to load the Vulkan shared library",
+                LoadingError::MissingEntryPoint(_) => {
+                    "one of the entry points required to be supported by the Vulkan implementation \
                  is missing"
+                }
             }
-        })
+        )
     }
 }
 
