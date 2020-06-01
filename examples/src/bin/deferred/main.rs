@@ -34,6 +34,7 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::image::ImageUsage;
 
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
@@ -82,8 +83,6 @@ fn main() {
 
     let (mut swapchain, mut images) = {
         let caps = surface.capabilities(physical).unwrap();
-
-        let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
@@ -95,7 +94,7 @@ fn main() {
             format,
             dimensions,
             1,
-            usage,
+            ImageUsage::color_attachment(),
             &queue,
             SurfaceTransform::Identity,
             alpha,

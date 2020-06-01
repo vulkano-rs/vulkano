@@ -32,7 +32,7 @@ use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::SwapchainImage;
+use vulkano::image::{SwapchainImage, ImageUsage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule,
@@ -100,7 +100,6 @@ fn main() {
 
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).unwrap();
-        let usage = caps.supported_usage_flags;
         let alpha = caps.supported_composite_alpha.iter().next().unwrap();
         let format = caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
@@ -112,7 +111,7 @@ fn main() {
             format,
             dimensions,
             1,
-            usage,
+            ImageUsage::color_attachment(),
             &queue,
             SurfaceTransform::Identity,
             alpha,
