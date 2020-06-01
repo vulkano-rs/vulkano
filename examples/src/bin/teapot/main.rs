@@ -15,7 +15,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::attachment::AttachmentImage;
-use vulkano::image::{SwapchainImage, ImageUsage};
+use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::instance::PhysicalDevice;
 use vulkano::pipeline::vertex::TwoBuffersDefinition;
@@ -247,30 +247,30 @@ fn main() {
                     recreate_swapchain = true;
                 }
 
-                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
                     device.clone(),
                     queue.family(),
                 )
-                .unwrap()
-                .begin_render_pass(
-                    framebuffers[image_num].clone(),
-                    false,
-                    vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
-                )
-                .unwrap()
-                .draw_indexed(
-                    pipeline.clone(),
-                    &DynamicState::none(),
-                    vec![vertex_buffer.clone(), normals_buffer.clone()],
-                    index_buffer.clone(),
-                    set.clone(),
-                    (),
-                )
-                .unwrap()
-                .end_render_pass()
-                .unwrap()
-                .build()
                 .unwrap();
+                builder
+                    .begin_render_pass(
+                        framebuffers[image_num].clone(),
+                        false,
+                        vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
+                    )
+                    .unwrap()
+                    .draw_indexed(
+                        pipeline.clone(),
+                        &DynamicState::none(),
+                        vec![vertex_buffer.clone(), normals_buffer.clone()],
+                        index_buffer.clone(),
+                        set.clone(),
+                        (),
+                    )
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap();
+                let command_buffer = builder.build().unwrap();
 
                 let future = previous_frame_end
                     .take()

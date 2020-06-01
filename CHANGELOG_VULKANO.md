@@ -1,7 +1,8 @@
 # Unreleased
 
-# Version 0.18.1 (2020-06-01)
+# Version 0.19.0 (2020-06-01)
 
+- **Breaking** AutoCommandBufferBuilder methods now take a mutable reference to `self` instead of taking ownership
 - Update `smallvec` 1.2 -> 1.4
 - Added additional `ImageUsage` constructor functions, `color_attachment`, `depth_stencil_attachment`, `transient_color_attachment` & `transient_depth_stencil_attachment`.
 - Update dependency `half` 1.5 -> 1.6

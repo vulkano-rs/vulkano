@@ -84,29 +84,29 @@ impl TriangleDrawSystem {
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
     pub fn draw(&self, viewport_dimensions: [u32; 2]) -> AutoCommandBuffer {
-        AutoCommandBufferBuilder::secondary_graphics(
+        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
             self.pipeline.clone().subpass(),
         )
-        .unwrap()
-        .draw(
-            self.pipeline.clone(),
-            &DynamicState {
-                viewports: Some(vec![Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                    depth_range: 0.0..1.0,
-                }]),
-                ..DynamicState::none()
-            },
-            vec![self.vertex_buffer.clone()],
-            (),
-            (),
-        )
-        .unwrap()
-        .build()
-        .unwrap()
+        .unwrap();
+        builder
+            .draw(
+                self.pipeline.clone(),
+                &DynamicState {
+                    viewports: Some(vec![Viewport {
+                        origin: [0.0, 0.0],
+                        dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+                        depth_range: 0.0..1.0,
+                    }]),
+                    ..DynamicState::none()
+                },
+                vec![self.vertex_buffer.clone()],
+                (),
+                (),
+            )
+            .unwrap();
+        builder.build().unwrap()
     }
 }
 

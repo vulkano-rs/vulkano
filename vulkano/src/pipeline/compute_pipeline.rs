@@ -337,15 +337,19 @@ impl error::Error for ComputePipelineCreationError {
 impl fmt::Display for ComputePipelineCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            ComputePipelineCreationError::OomError(_) => "not enough memory available",
-            ComputePipelineCreationError::PipelineLayoutCreationError(_) => {
-                "error while creating the pipeline layout object"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ComputePipelineCreationError::OomError(_) => "not enough memory available",
+                ComputePipelineCreationError::PipelineLayoutCreationError(_) => {
+                    "error while creating the pipeline layout object"
+                }
+                ComputePipelineCreationError::IncompatiblePipelineLayout(_) => {
+                    "the pipeline layout is not compatible with what the shader expects"
+                }
             }
-            ComputePipelineCreationError::IncompatiblePipelineLayout(_) => {
-                "the pipeline layout is not compatible with what the shader expects"
-            }
-        })
+        )
     }
 }
 
@@ -531,16 +535,14 @@ mod tests {
             .build()
             .unwrap();
 
-        let command_buffer =
+        let mut cbb =
             AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                .unwrap()
-                .dispatch([1, 1, 1], pipeline.clone(), set, ())
-                .unwrap()
-                .build()
                 .unwrap();
+        cbb.dispatch([1, 1, 1], pipeline.clone(), set, ()).unwrap();
+        let cb = cbb.build().unwrap();
 
         let future = now(device.clone())
-            .then_execute(queue.clone(), command_buffer)
+            .then_execute(queue.clone(), cb)
             .unwrap()
             .then_signal_fence_and_flush()
             .unwrap();

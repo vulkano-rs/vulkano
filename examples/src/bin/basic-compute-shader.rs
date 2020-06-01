@@ -129,21 +129,20 @@ fn main() {
     );
 
     // In order to execute our operation, we have to build a command buffer.
-    let command_buffer =
-        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-            .unwrap()
-            // The command buffer only does one thing: execute the compute pipeline.
-            // This is called a *dispatch* operation.
-            //
-            // Note that we clone the pipeline and the set. Since they are both wrapped around an
-            // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
-            // cloneable anyway). In this example we would avoid cloning them since this is the last
-            // time we use them, but in a real code you would probably need to clone them.
-            .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
-            .unwrap()
-            // Finish building the command buffer by calling `build`.
-            .build()
-            .unwrap();
+    let mut builder =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+    builder
+        // The command buffer only does one thing: execute the compute pipeline.
+        // This is called a *dispatch* operation.
+        //
+        // Note that we clone the pipeline and the set. Since they are both wrapped around an
+        // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
+        // cloneable anyway). In this example we would avoid cloning them since this is the last
+        // time we use them, but in a real code you would probably need to clone them.
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+        .unwrap();
+    // Finish building the command buffer by calling `build`.
+    let command_buffer = builder.build().unwrap();
 
     // Let's execute this command buffer now.
     // To do so, we TODO: this is a bit clumsy, probably needs a shortcut
