@@ -274,7 +274,6 @@ fn main() {
                 .unwrap();
             let window_id = surface.window().id();
             let (swapchain, images) = {
-                let usage = surface_caps.supported_usage_flags;
                 let alpha = surface_caps
                     .supported_composite_alpha
                     .iter()
@@ -290,7 +289,7 @@ fn main() {
                     format,
                     dimensions,
                     1,
-                    usage,
+                    ImageUsage::color_attachment(),
                     &queue,
                     SurfaceTransform::Identity,
                     alpha,
