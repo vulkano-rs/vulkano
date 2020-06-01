@@ -157,22 +157,22 @@ impl DirectionalLightingSystem {
             ..DynamicState::none()
         };
 
-        AutoCommandBufferBuilder::secondary_graphics(
+        let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
             self.pipeline.clone().subpass(),
         )
-        .unwrap()
-        .draw(
-            self.pipeline.clone(),
-            &dynamic_state,
-            vec![self.vertex_buffer.clone()],
-            descriptor_set,
-            push_constants,
-        )
-        .unwrap()
-        .build()
-        .unwrap()
+        .unwrap();
+        builder
+            .draw(
+                self.pipeline.clone(),
+                &dynamic_state,
+                vec![self.vertex_buffer.clone()],
+                descriptor_set,
+                push_constants,
+            )
+            .unwrap();
+        builder.build().unwrap()
     }
 }
 

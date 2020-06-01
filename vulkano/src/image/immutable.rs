@@ -285,19 +285,18 @@ impl<F> ImmutableImage<F> {
             source.device().active_queue_families(),
         )?;
 
-        let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
-            .copy_buffer_to_image_dimensions(
-                source,
-                init,
-                [0, 0, 0],
-                dimensions.width_height_depth(),
-                0,
-                dimensions.array_layers_with_cube(),
-                0,
-            )
-            .unwrap()
-            .build()
-            .unwrap();
+        let mut cbb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?;
+        cbb.copy_buffer_to_image_dimensions(
+            source,
+            init,
+            [0, 0, 0],
+            dimensions.width_height_depth(),
+            0,
+            dimensions.array_layers_with_cube(),
+            0,
+        )
+        .unwrap();
+        let cb = cbb.build().unwrap();
 
         let future = match cb.execute(queue) {
             Ok(f) => f,

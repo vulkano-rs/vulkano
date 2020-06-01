@@ -23,7 +23,7 @@ use vulkano::buffer::CpuBufferPool;
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::{SwapchainImage, ImageUsage};
+use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -273,20 +273,20 @@ fn main() {
 
                 // Allocate a new chunk from buffer_pool
                 let buffer = buffer_pool.chunk(data.to_vec()).unwrap();
-                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
                     device.clone(),
                     queue.family(),
                 )
-                .unwrap()
-                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
-                .unwrap()
-                // Draw our buffer
-                .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
-                .unwrap()
-                .end_render_pass()
-                .unwrap()
-                .build()
                 .unwrap();
+                builder
+                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                    .unwrap()
+                    // Draw our buffer
+                    .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap();
+                let command_buffer = builder.build().unwrap();
 
                 let future = previous_frame_end
                     .take()

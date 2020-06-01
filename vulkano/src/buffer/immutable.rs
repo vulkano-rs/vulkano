@@ -137,11 +137,9 @@ impl<T: ?Sized> ImmutableBuffer<T> {
                 source.device().active_queue_families(),
             )?;
 
-            let cb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?
-                .copy_buffer(source, init)
-                .unwrap() // TODO: return error?
-                .build()
-                .unwrap(); // TODO: return OomError
+            let mut cbb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?;
+            cbb.copy_buffer(source, init).unwrap(); // TODO: return error?
+            let cb = cbb.build().unwrap(); // TODO: return OomError
 
             let future = match cb.execute(queue) {
                 Ok(f) => f,
@@ -546,10 +544,9 @@ mod tests {
         let destination =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
-        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .copy_buffer(buffer, destination.clone())
-            .unwrap()
+        let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+        cbb.copy_buffer(buffer, destination.clone()).unwrap();
+        let _ = cbb
             .build()
             .unwrap()
             .execute(queue.clone())
@@ -580,10 +577,9 @@ mod tests {
         )
         .unwrap();
 
-        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .copy_buffer(buffer, destination.clone())
-            .unwrap()
+        let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+        cbb.copy_buffer(buffer, destination.clone()).unwrap();
+        let _ = cbb
             .build()
             .unwrap()
             .execute(queue.clone())
@@ -606,10 +602,9 @@ mod tests {
 
         assert_should_panic!({
             // TODO: check Result error instead of panicking
-            let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-                .unwrap()
-                .fill_buffer(buffer, 50)
-                .unwrap()
+            let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+            cbb.fill_buffer(buffer, 50).unwrap();
+            let _ = cbb
                 .build()
                 .unwrap()
                 .execute(queue.clone())
@@ -632,10 +627,9 @@ mod tests {
 
         assert_should_panic!({
             // TODO: check Result error instead of panicking
-            let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-                .unwrap()
-                .copy_buffer(source, buffer)
-                .unwrap()
+            let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+            cbb.copy_buffer(source, buffer).unwrap();
+            let _ = cbb
                 .build()
                 .unwrap()
                 .execute(queue.clone())
@@ -656,12 +650,12 @@ mod tests {
         let source =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
-        let _ = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .copy_buffer(source.clone(), init)
+        let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+        cbb.copy_buffer(source.clone(), init)
             .unwrap()
             .copy_buffer(buffer, source.clone())
-            .unwrap()
+            .unwrap();
+        let _ = cbb
             .build()
             .unwrap()
             .execute(queue.clone())
@@ -682,19 +676,13 @@ mod tests {
         let source =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
 
-        let cb1 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .copy_buffer(source.clone(), init)
-            .unwrap()
-            .build()
-            .unwrap();
+        let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+        cbb.copy_buffer(source.clone(), init).unwrap();
+        let cb1 = cbb.build().unwrap();
 
-        let cb2 = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-            .unwrap()
-            .copy_buffer(buffer, source.clone())
-            .unwrap()
-            .build()
-            .unwrap();
+        let mut cbb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+        cbb.copy_buffer(buffer, source.clone()).unwrap();
+        let cb2 = cbb.build().unwrap();
 
         let _ = cb1
             .execute(queue.clone())
