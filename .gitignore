@@ -1,4 +1,5 @@
 target
 /Cargo.lock
 .cargo
-examples/src/bin/triangle.png
+examples/**/triangle.png
+examples/**/mandelbrot.png
