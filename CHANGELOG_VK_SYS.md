@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.5.2 (2020-06-01)
+
 - Added support for the physical storage buffer access.
 
 # Version 0.5.1 (2020-02-09)
