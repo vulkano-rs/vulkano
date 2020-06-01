@@ -93,6 +93,66 @@ impl ImageUsage {
         }
     }
 
+    /// Builds a ImageUsage with color_attachment set to true and the rest to false.
+    #[inline]
+    pub fn color_attachment() -> ImageUsage {
+        ImageUsage {
+            transfer_source: false,
+            transfer_destination: false,
+            sampled: false,
+            storage: false,
+            color_attachment: true,
+            depth_stencil_attachment: false,
+            transient_attachment: false,
+            input_attachment: false,
+        }
+    }
+
+    /// Builds a ImageUsage with depth_stencil_attachment set to true and the rest to false.
+    #[inline]
+    pub fn depth_stencil_attachment() -> ImageUsage {
+        ImageUsage {
+            transfer_source: false,
+            transfer_destination: false,
+            sampled: false,
+            storage: false,
+            color_attachment: false,
+            depth_stencil_attachment: true,
+            transient_attachment: false,
+            input_attachment: false,
+        }
+    }
+
+    /// Builds a ImageUsage with color_attachment and transient_attachment set to true and the rest to false.
+    #[inline]
+    pub fn transient_color_attachment() -> ImageUsage {
+        ImageUsage {
+            transfer_source: false,
+            transfer_destination: false,
+            sampled: false,
+            storage: false,
+            color_attachment: true,
+            depth_stencil_attachment: false,
+            transient_attachment: true,
+            input_attachment: false,
+        }
+    }
+
+    /// Builds a ImageUsage with depth_stencil_attachment and transient_attachment set to true and the rest to false.
+    #[inline]
+    pub fn transient_depth_stencil_attachment() -> ImageUsage {
+        ImageUsage {
+            transfer_source: false,
+            transfer_destination: false,
+            sampled: false,
+            storage: false,
+            color_attachment: false,
+            depth_stencil_attachment: true,
+            transient_attachment: true,
+            input_attachment: false,
+        }
+    }
+
     #[inline]
     pub(crate) fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
         let mut result = 0;
