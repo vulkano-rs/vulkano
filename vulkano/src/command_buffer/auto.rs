@@ -532,11 +532,11 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// You must call this before you can add draw commands.
     #[inline]
     pub fn begin_render_pass<F, C>(
-        mut self,
+        &mut self,
         framebuffer: F,
         secondary: bool,
         clear_values: C,
-    ) -> Result<Self, BeginRenderPassError>
+    ) -> Result<&mut Self, BeginRenderPassError>
     where
         F: FramebufferAbstract + RenderPassDescClearValues<C> + Clone + Send + Sync + 'static,
     {
@@ -638,7 +638,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// - Panics if the source or the destination was not created with `device`.
     ///
     pub fn copy_image<S, D>(
-        mut self,
+        &mut self,
         source: S,
         source_offset: [i32; 3],
         source_base_array_layer: u32,
@@ -649,7 +649,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         destination_mip_level: u32,
         extent: [u32; 3],
         layer_count: u32,
-    ) -> Result<Self, CopyImageError>
+    ) -> Result<&mut Self, CopyImageError>
     where
         S: ImageAccess + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
@@ -736,7 +736,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// - Panics if the source or the destination was not created with `device`.
     ///
     pub fn blit_image<S, D>(
-        mut self,
+        &mut self,
         source: S,
         source_top_left: [i32; 3],
         source_bottom_right: [i32; 3],
@@ -749,7 +749,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         destination_mip_level: u32,
         layer_count: u32,
         filter: Filter,
-    ) -> Result<Self, BlitImageError>
+    ) -> Result<&mut Self, BlitImageError>
     where
         S: ImageAccess + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
@@ -819,10 +819,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Panics if `color` is not a color value.
     ///
     pub fn clear_color_image<I>(
-        self,
+        &mut self,
         image: I,
         color: ClearValue,
-    ) -> Result<Self, ClearColorImageError>
+    ) -> Result<&mut Self, ClearColorImageError>
     where
         I: ImageAccess + Send + Sync + 'static,
     {
@@ -839,14 +839,14 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// - Panics if `color` is not a color value.
     ///
     pub fn clear_color_image_dimensions<I>(
-        mut self,
+        &mut self,
         image: I,
         first_layer: u32,
         num_layers: u32,
         first_mipmap: u32,
         num_mipmaps: u32,
         color: ClearValue,
-    ) -> Result<Self, ClearColorImageError>
+    ) -> Result<&mut Self, ClearColorImageError>
     where
         I: ImageAccess + Send + Sync + 'static,
     {
@@ -894,10 +894,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// the amount of data copied is equal to the smallest of the two.
     #[inline]
     pub fn copy_buffer<S, D, T>(
-        mut self,
+        &mut self,
         source: S,
         destination: D,
-    ) -> Result<Self, CopyBufferError>
+    ) -> Result<&mut Self, CopyBufferError>
     where
         S: TypedBufferAccess<Content = T> + Send + Sync + 'static,
         D: TypedBufferAccess<Content = T> + Send + Sync + 'static,
@@ -914,10 +914,10 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D, Px>(
-        self,
+        &mut self,
         source: S,
         destination: D,
-    ) -> Result<Self, CopyBufferImageError>
+    ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
@@ -931,7 +931,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image_dimensions<S, D, Px>(
-        mut self,
+        &mut self,
         source: S,
         destination: D,
         offset: [u32; 3],
@@ -939,7 +939,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         first_layer: u32,
         num_layers: u32,
         mipmap: u32,
-    ) -> Result<Self, CopyBufferImageError>
+    ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
@@ -996,10 +996,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     This does not matter since the act of copying the image into a buffer converts it to linear form.
     */
     pub fn copy_image_to_buffer<S, D, Px>(
-        self,
+        &mut self,
         source: S,
         destination: D,
-    ) -> Result<Self, CopyBufferImageError>
+    ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: ImageAccess + Send + Sync + 'static,
         D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
@@ -1013,7 +1013,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that copies from an image to a buffer.
     pub fn copy_image_to_buffer_dimensions<S, D, Px>(
-        mut self,
+        &mut self,
         source: S,
         destination: D,
         offset: [u32; 3],
@@ -1021,7 +1021,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         first_layer: u32,
         num_layers: u32,
         mipmap: u32,
-    ) -> Result<Self, CopyBufferImageError>
+    ) -> Result<&mut Self, CopyBufferImageError>
     where
         S: ImageAccess + Send + Sync + 'static,
         D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
@@ -1070,12 +1070,12 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     #[inline]
     pub fn dispatch<Cp, S, Pc>(
-        mut self,
+        &mut self,
         dimensions: [u32; 3],
         pipeline: Cp,
         sets: S,
         constants: Pc,
-    ) -> Result<Self, DispatchError>
+    ) -> Result<&mut Self, DispatchError>
     where
         Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
@@ -1115,13 +1115,13 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// To use only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw<V, Gp, S, Pc>(
-        mut self,
+        &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
         sets: S,
         constants: Pc,
-    ) -> Result<Self, DrawError>
+    ) -> Result<&mut Self, DrawError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
@@ -1175,14 +1175,14 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
-        mut self,
+        &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
         index_buffer: Ib,
         sets: S,
         constants: Pc,
-    ) -> Result<Self, DrawIndexedError>
+    ) -> Result<&mut Self, DrawIndexedError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
@@ -1248,14 +1248,14 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw_indirect<V, Gp, S, Pc, Ib>(
-        mut self,
+        &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
         indirect_buffer: Ib,
         sets: S,
         constants: Pc,
-    ) -> Result<Self, DrawIndirectError>
+    ) -> Result<&mut Self, DrawIndirectError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
@@ -1316,7 +1316,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// To use only some data in a buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
     pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(
-        mut self,
+        &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffer: V,
@@ -1324,7 +1324,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         indirect_buffer: Inb,
         sets: S,
         constants: Pc,
-    ) -> Result<Self, DrawIndexedIndirectError>
+    ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
@@ -1393,7 +1393,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// This must be called after you went through all the subpasses and before you can build
     /// the command buffer or add further commands.
     #[inline]
-    pub fn end_render_pass(mut self) -> Result<Self, AutoCommandBufferBuilderContextError> {
+    pub fn end_render_pass(&mut self) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if self.secondary_cb {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary);
@@ -1426,9 +1426,9 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// implemented.**
     // TODO: implement correctly
     pub unsafe fn execute_commands<C>(
-        mut self,
+        &mut self,
         command_buffer: C,
-    ) -> Result<Self, ExecuteCommandsError>
+    ) -> Result<&mut Self, ExecuteCommandsError>
     where
         C: CommandBuffer + Send + Sync + 'static,
     {
@@ -1449,9 +1449,9 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// implemented.**
     // TODO: implement correctly
     pub unsafe fn execute_commands_from_vec<C>(
-        mut self,
+        &mut self,
         command_buffers: Vec<C>,
-    ) -> Result<Self, ExecuteCommandsError>
+    ) -> Result<&mut Self, ExecuteCommandsError>
     where
         C: CommandBuffer + Send + Sync + 'static,
     {
@@ -1479,7 +1479,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// > this function only for zeroing the content of a buffer by passing `0` for the data.
     // TODO: not safe because of signalling NaNs
     #[inline]
-    pub fn fill_buffer<B>(mut self, buffer: B, data: u32) -> Result<Self, FillBufferError>
+    pub fn fill_buffer<B>(&mut self, buffer: B, data: u32) -> Result<&mut Self, FillBufferError>
     where
         B: BufferAccess + Send + Sync + 'static,
     {
@@ -1494,9 +1494,9 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// Adds a command that jumps to the next subpass of the current render pass.
     #[inline]
     pub fn next_subpass(
-        mut self,
+        &mut self,
         secondary: bool,
-    ) -> Result<Self, AutoCommandBufferBuilderContextError> {
+    ) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if self.secondary_cb {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary);
@@ -1538,7 +1538,11 @@ impl<P> AutoCommandBufferBuilder<P> {
     /// buffer is larger than `data`, only the start of the buffer is written.
     // TODO: allow unsized values
     #[inline]
-    pub fn update_buffer<B, D>(mut self, buffer: B, data: D) -> Result<Self, UpdateBufferError>
+    pub fn update_buffer<B, D>(
+        &mut self,
+        buffer: B,
+        data: D,
+    ) -> Result<&mut Self, UpdateBufferError>
     where
         B: TypedBufferAccess<Content = D> + Send + Sync + 'static,
         D: Send + Sync + 'static,
@@ -2003,36 +2007,40 @@ impl error::Error for AutoCommandBufferBuilderContextError {}
 impl fmt::Display for AutoCommandBufferBuilderContextError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            AutoCommandBufferBuilderContextError::ForbiddenInSecondary => {
-                "operation forbidden in a secondary command buffer"
-            }
-            AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass => {
-                "operation forbidden inside of a render pass"
-            }
-            AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass => {
-                "operation forbidden outside of a render pass"
-            }
-            AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
-                "the queue family doesn't allow this operation"
-            }
-            AutoCommandBufferBuilderContextError::NumSubpassesMismatch { .. } => {
-                "tried to end a render pass with subpasses remaining, or tried to go to next \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                AutoCommandBufferBuilderContextError::ForbiddenInSecondary => {
+                    "operation forbidden in a secondary command buffer"
+                }
+                AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass => {
+                    "operation forbidden inside of a render pass"
+                }
+                AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass => {
+                    "operation forbidden outside of a render pass"
+                }
+                AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
+                    "the queue family doesn't allow this operation"
+                }
+                AutoCommandBufferBuilderContextError::NumSubpassesMismatch { .. } => {
+                    "tried to end a render pass with subpasses remaining, or tried to go to next \
                  subpass with no subpass remaining"
-            }
-            AutoCommandBufferBuilderContextError::WrongSubpassType => {
-                "tried to execute a secondary command buffer inside a subpass that only allows \
+                }
+                AutoCommandBufferBuilderContextError::WrongSubpassType => {
+                    "tried to execute a secondary command buffer inside a subpass that only allows \
                  inline commands, or a draw command in a subpass that only allows secondary \
                  command buffers"
-            }
-            AutoCommandBufferBuilderContextError::WrongSubpassIndex => {
-                "tried to use a graphics pipeline whose subpass index didn't match the current \
+                }
+                AutoCommandBufferBuilderContextError::WrongSubpassIndex => {
+                    "tried to use a graphics pipeline whose subpass index didn't match the current \
                  subpass index"
-            }
-            AutoCommandBufferBuilderContextError::IncompatibleRenderPass => {
-                "tried to use a graphics pipeline whose render pass is incompatible with the \
+                }
+                AutoCommandBufferBuilderContextError::IncompatibleRenderPass => {
+                    "tried to use a graphics pipeline whose render pass is incompatible with the \
                  current render pass"
+                }
             }
-        })
+        )
     }
 }

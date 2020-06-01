@@ -32,7 +32,7 @@ use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::{SwapchainImage, ImageUsage};
+use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule,
@@ -517,8 +517,9 @@ fn main() {
             }
 
             let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
-            let command_buffer = AutoCommandBufferBuilder::new(device.clone(), queue.family())
-                .unwrap()
+            let mut builder =
+                AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+            builder
                 .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
                 .unwrap()
                 .draw(
@@ -530,9 +531,8 @@ fn main() {
                 )
                 .unwrap()
                 .end_render_pass()
-                .unwrap()
-                .build()
                 .unwrap();
+            let command_buffer = builder.build().unwrap();
 
             let future = previous_frame_end
                 .take()

@@ -36,7 +36,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::{SwapchainImage, ImageUsage};
+use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
@@ -333,37 +333,38 @@ fn main() {
                         .unwrap(),
                 );
 
-                let command_buffer = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
                     device.clone(),
                     queue.family(),
                 )
-                .unwrap()
+                .unwrap();
+
                 // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
                 // call arguments
-                .dispatch(
-                    [1, 1, 1],
-                    compute_pipeline.clone(),
-                    cs_desciptor_set.clone(),
-                    (),
-                )
-                .unwrap()
-                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
-                .unwrap()
-                // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
-                // contain the arguments when the draw is executed on the GPU
-                .draw_indirect(
-                    render_pipeline.clone(),
-                    &dynamic_state,
-                    vertices.clone(),
-                    indirect_args.clone(),
-                    (),
-                    (),
-                )
-                .unwrap()
-                .end_render_pass()
-                .unwrap()
-                .build()
-                .unwrap();
+                builder
+                    .dispatch(
+                        [1, 1, 1],
+                        compute_pipeline.clone(),
+                        cs_desciptor_set.clone(),
+                        (),
+                    )
+                    .unwrap()
+                    .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                    .unwrap()
+                    // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
+                    // contain the arguments when the draw is executed on the GPU
+                    .draw_indirect(
+                        render_pipeline.clone(),
+                        &dynamic_state,
+                        vertices.clone(),
+                        indirect_args.clone(),
+                        (),
+                        (),
+                    )
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap();
+                let command_buffer = builder.build().unwrap();
 
                 let future = previous_frame_end
                     .take()
