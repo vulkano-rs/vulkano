@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking** AutoCommandBufferBuilder methods now take a mutable reference to `self` instead of taking ownership
 - Added additional `ImageUsage` constructor functions, `color_attachment`, `depth_stencil_attachment`, `transient_color_attachment` & `transient_depth_stencil_attachment`.
 - Update dependency `half` 1.5 -> 1.6
 - Update MacOS dependency `metal` 0.17 -> 0.18
