@@ -41,14 +41,10 @@ before_cache:
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
 
-before_script:
-  - if [[ "$TRAVIS_RUST_VERSION" == "stable" ]]; then rustup component add rustfmt; fi
-
 script:
   - git diff-tree --check $(git hash-object -t tree /dev/null) HEAD
   - travis_wait 30 cargo build -j 2 --all
   - travis_wait 30 cargo test -j 2 --all
-  - if [[ "$TRAVIS_RUST_VERSION" == "stable" ]]; then cargo fmt --all -- --check; fi
 
 after_success:
   - |
