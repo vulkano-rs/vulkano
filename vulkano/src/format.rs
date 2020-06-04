@@ -245,6 +245,7 @@ macro_rules! formats {
                 }
             }
 
+            /// Retrieves the properties of a format when used by a certain device.
             #[inline]
             pub fn properties(&self, device: PhysicalDevice) -> FormatProperties {
                 let vk_properties = unsafe {
@@ -999,6 +1000,7 @@ macro_rules! impl_clear_values_tuple {
 
 impl_clear_values_tuple!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
 
+/// The properties of an image format that are supported by a physical device.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct FormatProperties {
     /// Features available for images with linear tiling.
@@ -1011,6 +1013,7 @@ pub struct FormatProperties {
     pub buffer_features: FormatFeatures,
 }
 
+/// The features supported by images with a particular format.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[allow(missing_docs)]
 pub struct FormatFeatures {
