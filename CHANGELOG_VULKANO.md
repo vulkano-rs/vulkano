@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added a `properties` method to `Format`.
+
 # Version 0.19.0 (2020-06-01)
 
 - **Breaking** AutoCommandBufferBuilder methods now take a mutable reference to `self` instead of taking ownership

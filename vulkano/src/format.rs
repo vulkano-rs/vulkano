@@ -102,12 +102,15 @@
 //! // TODO: storage formats
 //!
 
+use std::mem::MaybeUninit;
 use std::vec::IntoIter as VecIntoIter;
 use std::{error, fmt, mem};
 
 use half::f16;
+use instance::PhysicalDevice;
 
 use vk;
+use VulkanObject;
 
 // TODO: add enumerations for color, depth, stencil and depthstencil formats
 
@@ -144,7 +147,11 @@ impl error::Error for IncompatiblePixelsType {}
 impl fmt::Display for IncompatiblePixelsType {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", "supplied pixels' type is incompatible with this format")
+        write!(
+            fmt,
+            "{}",
+            "supplied pixels' type is incompatible with this format"
+        )
     }
 }
 
@@ -220,12 +227,42 @@ macro_rules! formats {
                 }
             }
 
+            /// Returns the Vulkan constant corresponding to the `Format`.
+            pub(crate) fn to_vulkan_num(&self) -> u32 {
+                match *self {
+                    $(
+                        Format::$name => vk::$vk,
+                    )+
+                }
+            }
+
             #[inline]
             pub fn ty(&self) -> FormatTy {
                 match *self {
                     $(
                         Format::$name => formats!(__inner_ty__ $name $($f_ty)*),
                     )+
+                }
+            }
+
+            /// Retrieves the properties of a format when used by a certain device.
+            #[inline]
+            pub fn properties(&self, device: PhysicalDevice) -> FormatProperties {
+                let vk_properties = unsafe {
+                    let vk_i = device.instance().pointers();
+                    let mut output = MaybeUninit::uninit();
+                    vk_i.GetPhysicalDeviceFormatProperties(
+                        device.internal_object(),
+                        self.to_vulkan_num(),
+                        output.as_mut_ptr(),
+                    );
+                    output.assume_init()
+                };
+
+                FormatProperties {
+                    linear_tiling_features: FormatFeatures::from_bits(vk_properties.linearTilingFeatures),
+                    optimal_tiling_features: FormatFeatures::from_bits(vk_properties.optimalTilingFeatures),
+                    buffer_features: FormatFeatures::from_bits(vk_properties.bufferFeatures),
                 }
             }
         }
@@ -962,3 +999,83 @@ macro_rules! impl_clear_values_tuple {
 }
 
 impl_clear_values_tuple!(A B C D E F G H I J K L M N O P Q R S T U V W X Y Z);
+
+/// The properties of an image format that are supported by a physical device.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct FormatProperties {
+    /// Features available for images with linear tiling.
+    pub linear_tiling_features: FormatFeatures,
+
+    /// Features available for images with optimal tiling.
+    pub optimal_tiling_features: FormatFeatures,
+
+    /// Features available for buffers.
+    pub buffer_features: FormatFeatures,
+}
+
+/// The features supported by images with a particular format.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[allow(missing_docs)]
+pub struct FormatFeatures {
+    pub sampled_image: bool,
+    pub storage_image: bool,
+    pub storage_image_atomic: bool,
+    pub uniform_texel_buffer: bool,
+    pub storage_texel_buffer: bool,
+    pub storage_texel_buffer_atomic: bool,
+    pub vertex_buffer: bool,
+    pub color_attachment: bool,
+    pub color_attachment_blend: bool,
+    pub depth_stencil_attachment: bool,
+    pub blit_src: bool,
+    pub blit_dst: bool,
+    pub sampled_image_filter_linear: bool,
+    pub transfer_src: bool,
+    pub transfer_dst: bool,
+    pub midpoint_chroma_samples: bool,
+    pub sampled_image_ycbcr_conversion_linear_filter: bool,
+    pub sampled_image_ycbcr_conversion_separate_reconstruction_filter: bool,
+    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: bool,
+    pub sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: bool,
+    pub disjoint: bool,
+    pub cosited_chroma_samples: bool,
+    pub sampled_image_filter_minmax: bool,
+    pub img_sampled_image_filter_cubic: bool,
+    pub khr_acceleration_structure_vertex_buffer: bool,
+    pub ext_fragment_density_map: bool,
+}
+
+impl FormatFeatures {
+    #[inline]
+    #[rustfmt::skip]
+    pub(crate) fn from_bits(val: u32) -> FormatFeatures {
+        FormatFeatures {
+            sampled_image: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0,
+            storage_image: (val & vk::FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0,
+            storage_image_atomic: (val & vk::FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT) != 0,
+            uniform_texel_buffer: (val & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) != 0,
+            storage_texel_buffer: (val & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) != 0,
+            storage_texel_buffer_atomic: (val & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT) != 0,
+            vertex_buffer: (val & vk::FORMAT_FEATURE_VERTEX_BUFFER_BIT) != 0,
+            color_attachment: (val & vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT) != 0,
+            color_attachment_blend: (val & vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT) != 0,
+            depth_stencil_attachment: (val & vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0,
+            blit_src: (val & vk::FORMAT_FEATURE_BLIT_SRC_BIT) != 0,
+            blit_dst: (val & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0,
+            sampled_image_filter_linear: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0,
+            transfer_src: (val & vk::FORMAT_FEATURE_TRANSFER_SRC_BIT) != 0,
+            transfer_dst: (val & vk::FORMAT_FEATURE_TRANSFER_DST_BIT) != 0,
+            midpoint_chroma_samples: (val & vk::FORMAT_FEATURE_MIDPOINT_CHROMA_SAMPLES_BIT) != 0,
+            sampled_image_ycbcr_conversion_linear_filter: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT) != 0,
+            sampled_image_ycbcr_conversion_separate_reconstruction_filter: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER_BIT) != 0,
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_BIT) != 0,
+            sampled_image_ycbcr_conversion_chroma_reconstruction_explicit_forceable: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_YCBCR_CONVERSION_CHROMA_RECONSTRUCTION_EXPLICIT_FORCEABLE_BIT) != 0,
+            disjoint: (val & vk::FORMAT_FEATURE_DISJOINT_BIT) != 0,
+            cosited_chroma_samples: (val & vk::FORMAT_FEATURE_COSITED_CHROMA_SAMPLES_BIT) != 0,
+            sampled_image_filter_minmax: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT) != 0,
+            img_sampled_image_filter_cubic: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_CUBIC_BIT_IMG) != 0,
+            khr_acceleration_structure_vertex_buffer: (val & vk::FORMAT_FEATURE_ACCELERATION_STRUCTURE_VERTEX_BUFFER_BIT_KHR) != 0,
+            ext_fragment_density_map: (val & vk::FORMAT_FEATURE_FRAGMENT_DENSITY_MAP_BIT_EXT) != 0,
+        }
+    }
+}
