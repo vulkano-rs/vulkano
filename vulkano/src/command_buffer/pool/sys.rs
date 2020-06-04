@@ -312,11 +312,15 @@ impl error::Error for CommandPoolTrimError {}
 impl fmt::Display for CommandPoolTrimError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CommandPoolTrimError::Maintenance1ExtensionNotEnabled => {
-                "the `KHR_maintenance1` extension was not enabled"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CommandPoolTrimError::Maintenance1ExtensionNotEnabled => {
+                    "the `KHR_maintenance1` extension was not enabled"
+                }
             }
-        })
+        )
     }
 }
 

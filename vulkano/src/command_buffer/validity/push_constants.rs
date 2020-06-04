@@ -41,10 +41,14 @@ impl error::Error for CheckPushConstantsValidityError {}
 impl fmt::Display for CheckPushConstantsValidityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckPushConstantsValidityError::IncompatiblePushConstants => {
-                "the push constants are incompatible with the pipeline layout"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckPushConstantsValidityError::IncompatiblePushConstants => {
+                    "the push constants are incompatible with the pipeline layout"
+                }
             }
-        })
+        )
     }
 }

@@ -73,10 +73,14 @@ impl error::Error for CheckVertexBufferError {}
 impl fmt::Display for CheckVertexBufferError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckVertexBufferError::BufferMissingUsage { .. } => {
-                "the vertex buffer usage is missing on a vertex buffer"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckVertexBufferError::BufferMissingUsage { .. } => {
+                    "the vertex buffer usage is missing on a vertex buffer"
+                }
             }
-        })
+        )
     }
 }

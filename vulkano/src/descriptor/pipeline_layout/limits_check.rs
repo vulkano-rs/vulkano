@@ -380,59 +380,75 @@ impl error::Error for PipelineLayoutLimitsError {}
 impl fmt::Display for PipelineLayoutLimitsError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded { .. } => {
-                "the maximum number of descriptor sets has been exceeded"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded { .. } => {
+                    "the maximum number of descriptor sets has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded { .. } => {
+                    "the maximum size of push constants has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded { .. } => {
+                    "the `max_per_stage_resources()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
+                    ..
+                } => {
+                    "the `max_per_stage_descriptor_samplers()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
+                    ..
+                } => "the `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
+                    ..
+                } => "the `max_per_stage_descriptor_storage_buffers()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
+                    ..
+                } => "the `max_per_stage_descriptor_sampled_images()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
+                    ..
+                } => "the `max_per_stage_descriptor_storage_images()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
+                    ..
+                } => "the `max_per_stage_descriptor_input_attachments()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded { .. } => {
+                    "the `max_descriptor_set_samplers()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
+                    ..
+                } => {
+                    "the `max_descriptor_set_uniform_buffers()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
+                    ..
+                } => "the `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
+                    ..
+                } => {
+                    "the `max_descriptor_set_storage_buffers()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
+                    ..
+                } => "the `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded",
+                PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
+                    ..
+                } => {
+                    "the `max_descriptor_set_sampled_images()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
+                    ..
+                } => {
+                    "the `max_descriptor_set_storage_images()` limit has been exceeded"
+                }
+                PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
+                    ..
+                } => {
+                    "the `max_descriptor_set_input_attachments()` limit has been exceeded"
+                }
             }
-            PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded { .. } => {
-                "the maximum size of push constants has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded { .. } => {
-                "the `max_per_stage_resources()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded { .. } => {
-                "the `max_per_stage_descriptor_samplers()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
-                ..
-            } => "the `max_per_stage_descriptor_uniform_buffers()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
-                ..
-            } => "the `max_per_stage_descriptor_storage_buffers()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
-                ..
-            } => "the `max_per_stage_descriptor_sampled_images()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
-                ..
-            } => "the `max_per_stage_descriptor_storage_images()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-                ..
-            } => "the `max_per_stage_descriptor_input_attachments()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded { .. } => {
-                "the `max_descriptor_set_samplers()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded { .. } => {
-                "the `max_descriptor_set_uniform_buffers()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-                ..
-            } => "the `max_descriptor_set_uniform_buffers_dynamic()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded { .. } => {
-                "the `max_descriptor_set_storage_buffers()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-                ..
-            } => "the `max_descriptor_set_storage_buffers_dynamic()` limit has been exceeded",
-            PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded { .. } => {
-                "the `max_descriptor_set_sampled_images()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded { .. } => {
-                "the `max_descriptor_set_storage_images()` limit has been exceeded"
-            }
-            PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded { .. } => {
-                "the `max_descriptor_set_input_attachments()` limit has been exceeded"
-            }
-        })
+        )
     }
 }
 

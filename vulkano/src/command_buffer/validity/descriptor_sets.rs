@@ -94,14 +94,18 @@ impl error::Error for CheckDescriptorSetsValidityError {
 impl fmt::Display for CheckDescriptorSetsValidityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckDescriptorSetsValidityError::MissingDescriptor { .. } => {
-                "a descriptor is missing in the descriptor sets that were provided"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckDescriptorSetsValidityError::MissingDescriptor { .. } => {
+                    "a descriptor is missing in the descriptor sets that were provided"
+                }
+                CheckDescriptorSetsValidityError::IncompatibleDescriptor { .. } => {
+                    "a descriptor in the provided sets is not compatible with what is expected"
+                }
             }
-            CheckDescriptorSetsValidityError::IncompatibleDescriptor { .. } => {
-                "a descriptor in the provided sets is not compatible with what is expected"
-            }
-        })
+        )
     }
 }
 

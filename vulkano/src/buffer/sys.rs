@@ -431,7 +431,7 @@ impl SparseLevel {
 /// The device address usage flag was not set.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct DeviceAddressUsageNotEnabledError;
-impl error::Error for DeviceAddressUsageNotEnabledError { }
+impl error::Error for DeviceAddressUsageNotEnabledError {}
 impl fmt::Display for DeviceAddressUsageNotEnabledError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
@@ -467,21 +467,25 @@ impl error::Error for BufferCreationError {
 impl fmt::Display for BufferCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            BufferCreationError::AllocError(_) => "allocating memory failed",
-            BufferCreationError::SparseBindingFeatureNotEnabled => {
-                "sparse binding was requested but the corresponding feature wasn't enabled"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                BufferCreationError::AllocError(_) => "allocating memory failed",
+                BufferCreationError::SparseBindingFeatureNotEnabled => {
+                    "sparse binding was requested but the corresponding feature wasn't enabled"
+                }
+                BufferCreationError::SparseResidencyBufferFeatureNotEnabled => {
+                    "sparse residency was requested but the corresponding feature wasn't enabled"
+                }
+                BufferCreationError::SparseResidencyAliasedFeatureNotEnabled => {
+                    "sparse aliasing was requested but the corresponding feature wasn't enabled"
+                }
+                BufferCreationError::DeviceAddressFeatureNotEnabled => {
+                    "device address was requested but the corresponding feature wasn't enabled"
+                }
             }
-            BufferCreationError::SparseResidencyBufferFeatureNotEnabled => {
-                "sparse residency was requested but the corresponding feature wasn't enabled"
-            }
-            BufferCreationError::SparseResidencyAliasedFeatureNotEnabled => {
-                "sparse aliasing was requested but the corresponding feature wasn't enabled"
-            }
-            BufferCreationError::DeviceAddressFeatureNotEnabled => {
-                "device address was requested but the corresponding feature wasn't enabled"
-            }
-        })
+        )
     }
 }
 

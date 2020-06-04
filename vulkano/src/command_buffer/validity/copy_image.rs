@@ -205,34 +205,38 @@ impl error::Error for CheckCopyImageError {}
 impl fmt::Display for CheckCopyImageError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckCopyImageError::MissingTransferSourceUsage => {
-                "the source is missing the transfer source usage"
-            }
-            CheckCopyImageError::MissingTransferDestinationUsage => {
-                "the destination is missing the transfer destination usage"
-            }
-            CheckCopyImageError::SampleCountMismatch => {
-                "the number of samples in the source and destination do not match"
-            }
-            CheckCopyImageError::DepthStencilFormatMismatch => {
-                "the format of the source and destination must be equal when copying \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckCopyImageError::MissingTransferSourceUsage => {
+                    "the source is missing the transfer source usage"
+                }
+                CheckCopyImageError::MissingTransferDestinationUsage => {
+                    "the destination is missing the transfer destination usage"
+                }
+                CheckCopyImageError::SampleCountMismatch => {
+                    "the number of samples in the source and destination do not match"
+                }
+                CheckCopyImageError::DepthStencilFormatMismatch => {
+                    "the format of the source and destination must be equal when copying \
                  depth/stencil images"
-            }
-            CheckCopyImageError::SizeIncompatibleFormatsTypes { .. } => {
-                "the types of the source format and the destination format aren't size-compatible"
-            }
-            CheckCopyImageError::SourceCoordinatesOutOfRange => {
-                "the offsets, array layers and/or mipmap levels are out of range in the source \
+                }
+                CheckCopyImageError::SizeIncompatibleFormatsTypes { .. } => {
+                    "the types of the source format and the destination format aren't size-compatible"
+                }
+                CheckCopyImageError::SourceCoordinatesOutOfRange => {
+                    "the offsets, array layers and/or mipmap levels are out of range in the source \
                  image"
-            }
-            CheckCopyImageError::DestinationCoordinatesOutOfRange => {
-                "the offsets, array layers and/or mipmap levels are out of range in the \
+                }
+                CheckCopyImageError::DestinationCoordinatesOutOfRange => {
+                    "the offsets, array layers and/or mipmap levels are out of range in the \
                  destination image"
+                }
+                CheckCopyImageError::IncompatibleRangeForImageType => {
+                    "the offsets or extent are incompatible with the image type"
+                }
             }
-            CheckCopyImageError::IncompatibleRangeForImageType => {
-                "the offsets or extent are incompatible with the image type"
-            }
-        })
+        )
     }
 }

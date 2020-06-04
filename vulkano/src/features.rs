@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::{mem, ptr};
 use std::marker::PhantomPinned;
 use std::pin::Pin;
+use std::{mem, ptr};
 
 use vk;
 
@@ -75,10 +75,10 @@ macro_rules! features_difference {
 }
 
 macro_rules! from_feature_v1 {
-  (core { $name:ident => $vk:ident }, $out:expr, $features:expr) => {
-    $out.$name = $features.$vk != vk::FALSE;
-  };
-  (extension {
+    (core { $name:ident => $vk:ident }, $out:expr, $features:expr) => {
+        $out.$name = $features.$vk != vk::FALSE;
+    };
+    (extension {
     ty: $ty:ty,
     ffi_name: $ffi_name:ident,
     sType: $stype:expr,
@@ -86,14 +86,14 @@ macro_rules! from_feature_v1 {
       $($name:ident => $vk:ident,)+
     ],
   }, $out:expr, $features:expr) => {
-    // nothing.
-  };
+        // nothing.
+    };
 }
 macro_rules! into_feature_v1 {
-  (core { $name:ident => $vk:ident }, $out:expr, $self:expr) => {
-    $out.$vk = if $self.$name { vk::TRUE } else { vk::FALSE };
-  };
-  (extension {
+    (core { $name:ident => $vk:ident }, $out:expr, $self:expr) => {
+        $out.$vk = if $self.$name { vk::TRUE } else { vk::FALSE };
+    };
+    (extension {
     ty: $ty:ty,
     ffi_name: $ffi_name:ident,
     sType: $stype:expr,
@@ -101,8 +101,8 @@ macro_rules! into_feature_v1 {
       $($name:ident => $vk:ident,)+
     ],
   }, $out:expr, $self:expr) => {
-    // nothing.
-  };
+        // nothing.
+    };
 }
 
 macro_rules! from_ext_features_match {
@@ -144,10 +144,10 @@ macro_rules! into_ext_features_match {
   };
 }
 macro_rules! features_ffi_init_pinned {
-  (core { $name:ident => $vk:ident }, $this:expr, $prev:expr) => {
-    // nothing.
-  };
-  (extension {
+    (core { $name:ident => $vk:ident }, $this:expr, $prev:expr) => {
+        // nothing.
+    };
+    (extension {
     ty: $ty:ty,
     ffi_name: $ffi_name:ident,
     sType: $stype:expr,
@@ -155,18 +155,18 @@ macro_rules! features_ffi_init_pinned {
       $($name:ident => $vk:ident,)*
     ],
   }, $this:expr, $prev:expr) => {{
-    $this.$ffi_name.sType = $stype;
-    let next = &mut $this.$ffi_name as *mut _ as *mut Base;
-    (&mut *$prev).pNext = next;
-    $prev = next;
-  }};
+        $this.$ffi_name.sType = $stype;
+        let next = &mut $this.$ffi_name as *mut _ as *mut Base;
+        (&mut *$prev).pNext = next;
+        $prev = next;
+    }};
 }
 
 #[allow(non_snake_case)]
 #[repr(C)]
 pub(crate) struct Base {
-  sType: vk::StructureType,
-  pNext: *mut Base,
+    sType: vk::StructureType,
+    pNext: *mut Base,
 }
 
 // Can't define this structure with macros :(
@@ -203,71 +203,71 @@ pub(crate) struct Base {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 #[allow(missing_docs)]
 pub struct Features {
-  pub robust_buffer_access: bool,
-  pub full_draw_index_uint32: bool,
-  pub image_cube_array: bool,
-  pub independent_blend: bool,
-  pub geometry_shader: bool,
-  pub tessellation_shader: bool,
-  pub sample_rate_shading: bool,
-  pub dual_src_blend: bool,
-  pub logic_op: bool,
-  pub multi_draw_indirect: bool,
-  pub draw_indirect_first_instance: bool,
-  pub depth_clamp: bool,
-  pub depth_bias_clamp: bool,
-  pub fill_mode_non_solid: bool,
-  pub depth_bounds: bool,
-  pub wide_lines: bool,
-  pub large_points: bool,
-  pub alpha_to_one: bool,
-  pub multi_viewport: bool,
-  pub sampler_anisotropy: bool,
-  pub texture_compression_etc2: bool,
-  pub texture_compression_astc_ldr: bool,
-  pub texture_compression_bc: bool,
-  pub occlusion_query_precise: bool,
-  pub pipeline_statistics_query: bool,
-  pub vertex_pipeline_stores_and_atomics: bool,
-  pub fragment_stores_and_atomics: bool,
-  pub shader_tessellation_and_geometry_point_size: bool,
-  pub shader_image_gather_extended: bool,
-  pub shader_storage_image_extended_formats: bool,
-  pub shader_storage_image_multisample: bool,
-  pub shader_storage_image_read_without_format: bool,
-  pub shader_storage_image_write_without_format: bool,
-  pub shader_uniform_buffer_array_dynamic_indexing: bool,
-  pub shader_sampled_image_array_dynamic_indexing: bool,
-  pub shader_storage_buffer_array_dynamic_indexing: bool,
-  pub shader_storage_image_array_dynamic_indexing: bool,
-  pub shader_clip_distance: bool,
-  pub shader_cull_distance: bool,
-  pub shader_f3264: bool,
-  pub shader_int64: bool,
-  pub shader_int16: bool,
-  pub shader_resource_residency: bool,
-  pub shader_resource_min_lod: bool,
-  pub sparse_binding: bool,
-  pub sparse_residency_buffer: bool,
-  pub sparse_residency_image2d: bool,
-  pub sparse_residency_image3d: bool,
-  pub sparse_residency2_samples: bool,
-  pub sparse_residency4_samples: bool,
-  pub sparse_residency8_samples: bool,
-  pub sparse_residency16_samples: bool,
-  pub sparse_residency_aliased: bool,
-  pub variable_multisample_rate: bool,
-  pub inherited_queries: bool,
+    pub robust_buffer_access: bool,
+    pub full_draw_index_uint32: bool,
+    pub image_cube_array: bool,
+    pub independent_blend: bool,
+    pub geometry_shader: bool,
+    pub tessellation_shader: bool,
+    pub sample_rate_shading: bool,
+    pub dual_src_blend: bool,
+    pub logic_op: bool,
+    pub multi_draw_indirect: bool,
+    pub draw_indirect_first_instance: bool,
+    pub depth_clamp: bool,
+    pub depth_bias_clamp: bool,
+    pub fill_mode_non_solid: bool,
+    pub depth_bounds: bool,
+    pub wide_lines: bool,
+    pub large_points: bool,
+    pub alpha_to_one: bool,
+    pub multi_viewport: bool,
+    pub sampler_anisotropy: bool,
+    pub texture_compression_etc2: bool,
+    pub texture_compression_astc_ldr: bool,
+    pub texture_compression_bc: bool,
+    pub occlusion_query_precise: bool,
+    pub pipeline_statistics_query: bool,
+    pub vertex_pipeline_stores_and_atomics: bool,
+    pub fragment_stores_and_atomics: bool,
+    pub shader_tessellation_and_geometry_point_size: bool,
+    pub shader_image_gather_extended: bool,
+    pub shader_storage_image_extended_formats: bool,
+    pub shader_storage_image_multisample: bool,
+    pub shader_storage_image_read_without_format: bool,
+    pub shader_storage_image_write_without_format: bool,
+    pub shader_uniform_buffer_array_dynamic_indexing: bool,
+    pub shader_sampled_image_array_dynamic_indexing: bool,
+    pub shader_storage_buffer_array_dynamic_indexing: bool,
+    pub shader_storage_image_array_dynamic_indexing: bool,
+    pub shader_clip_distance: bool,
+    pub shader_cull_distance: bool,
+    pub shader_f3264: bool,
+    pub shader_int64: bool,
+    pub shader_int16: bool,
+    pub shader_resource_residency: bool,
+    pub shader_resource_min_lod: bool,
+    pub sparse_binding: bool,
+    pub sparse_residency_buffer: bool,
+    pub sparse_residency_image2d: bool,
+    pub sparse_residency_image3d: bool,
+    pub sparse_residency2_samples: bool,
+    pub sparse_residency4_samples: bool,
+    pub sparse_residency8_samples: bool,
+    pub sparse_residency16_samples: bool,
+    pub sparse_residency_aliased: bool,
+    pub variable_multisample_rate: bool,
+    pub inherited_queries: bool,
 
-  pub buffer_device_address: bool,
-  pub buffer_device_address_capture_replay: bool,
-  pub buffer_device_address_multi_device: bool,
+    pub buffer_device_address: bool,
+    pub buffer_device_address_capture_replay: bool,
+    pub buffer_device_address_multi_device: bool,
 }
 
 pub(crate) struct FeaturesFfi {
-  _pinned: PhantomPinned,
-  pub(crate) main: vk::PhysicalDeviceFeatures2KHR,
-  phys_dev_buf_addr: vk::PhysicalDeviceBufferAddressFeaturesEXT,
+    _pinned: PhantomPinned,
+    pub(crate) main: vk::PhysicalDeviceFeatures2KHR,
+    phys_dev_buf_addr: vk::PhysicalDeviceBufferAddressFeaturesEXT,
 }
 
 macro_rules! features {

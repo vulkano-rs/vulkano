@@ -327,22 +327,26 @@ impl error::Error for BufferViewCreationError {
 impl fmt::Display for BufferViewCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
-            BufferViewCreationError::WrongBufferUsage => {
-                "the buffer is missing correct usage flags"
-            }
-            BufferViewCreationError::WrongBufferAlignment => {
-                "the offset within the buffer is not a multiple of the
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                BufferViewCreationError::OomError(_) => "out of memory when creating buffer view",
+                BufferViewCreationError::WrongBufferUsage => {
+                    "the buffer is missing correct usage flags"
+                }
+                BufferViewCreationError::WrongBufferAlignment => {
+                    "the offset within the buffer is not a multiple of the
                  `min_texel_buffer_offset_alignment` limit"
+                }
+                BufferViewCreationError::UnsupportedFormat => {
+                    "the requested format is not supported for this usage"
+                }
+                BufferViewCreationError::MaxTexelBufferElementsExceeded => {
+                    "the maximum number of texel elements is exceeded"
+                }
             }
-            BufferViewCreationError::UnsupportedFormat => {
-                "the requested format is not supported for this usage"
-            }
-            BufferViewCreationError::MaxTexelBufferElementsExceeded => {
-                "the maximum number of texel elements is exceeded"
-            }
-        })
+        )
     }
 }
 

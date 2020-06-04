@@ -933,29 +933,33 @@ impl error::Error for ImageCreationError {
 impl fmt::Display for ImageCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            ImageCreationError::AllocError(_) => "allocating memory failed",
-            ImageCreationError::InvalidMipmapsCount { .. } => {
-                "a wrong number of mipmaps was provided"
-            }
-            ImageCreationError::UnsupportedSamplesCount { .. } => {
-                "the requested number of samples is not supported, or is 0"
-            }
-            ImageCreationError::UnsupportedDimensions { .. } => {
-                "the dimensions are too large, or one of the dimensions is 0"
-            }
-            ImageCreationError::FormatNotSupported => {
-                "the requested format is not supported by the Vulkan implementation"
-            }
-            ImageCreationError::UnsupportedUsage => {
-                "the format is supported, but at least one of the requested usages is not \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ImageCreationError::AllocError(_) => "allocating memory failed",
+                ImageCreationError::InvalidMipmapsCount { .. } => {
+                    "a wrong number of mipmaps was provided"
+                }
+                ImageCreationError::UnsupportedSamplesCount { .. } => {
+                    "the requested number of samples is not supported, or is 0"
+                }
+                ImageCreationError::UnsupportedDimensions { .. } => {
+                    "the dimensions are too large, or one of the dimensions is 0"
+                }
+                ImageCreationError::FormatNotSupported => {
+                    "the requested format is not supported by the Vulkan implementation"
+                }
+                ImageCreationError::UnsupportedUsage => {
+                    "the format is supported, but at least one of the requested usages is not \
                  supported"
-            }
-            ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled => {
-                "the `shader_storage_image_multisample` feature must be enabled to create such \
+                }
+                ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled => {
+                    "the `shader_storage_image_multisample` feature must be enabled to create such \
                  an image"
+                }
             }
-        })
+        )
     }
 }
 

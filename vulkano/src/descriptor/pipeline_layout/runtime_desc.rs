@@ -110,11 +110,15 @@ impl error::Error for RuntimePipelineDescError {}
 impl fmt::Display for RuntimePipelineDescError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            RuntimePipelineDescError::PushConstantsConflict { .. } => {
-                "conflict between different push constants ranges"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                RuntimePipelineDescError::PushConstantsConflict { .. } => {
+                    "conflict between different push constants ranges"
+                }
             }
-        })
+        )
     }
 }
 

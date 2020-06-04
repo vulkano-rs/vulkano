@@ -719,12 +719,16 @@ impl error::Error for SurfaceCreationError {
 impl fmt::Display for SurfaceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            SurfaceCreationError::OomError(_) => "not enough memory available",
-            SurfaceCreationError::MissingExtension { .. } => {
-                "the extension required for this function was not enabled"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                SurfaceCreationError::OomError(_) => "not enough memory available",
+                SurfaceCreationError::MissingExtension { .. } => {
+                    "the extension required for this function was not enabled"
+                }
             }
-        })
+        )
     }
 }
 
@@ -770,10 +774,14 @@ impl error::Error for CapabilitiesError {
 impl fmt::Display for CapabilitiesError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CapabilitiesError::OomError(_) => "not enough memory",
-            CapabilitiesError::SurfaceLost => "the surface is no longer valid",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CapabilitiesError::OomError(_) => "not enough memory",
+                CapabilitiesError::SurfaceLost => "the surface is no longer valid",
+            }
+        )
     }
 }
 

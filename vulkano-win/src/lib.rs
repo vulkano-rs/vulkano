@@ -103,10 +103,14 @@ impl error::Error for CreationError {
 impl fmt::Display for CreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CreationError::SurfaceCreationError(_) => "error while creating the surface",
-            CreationError::WindowCreationError(_) => "error while creating the window",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CreationError::SurfaceCreationError(_) => "error while creating the surface",
+                CreationError::WindowCreationError(_) => "error while creating the window",
+            }
+        )
     }
 }
 

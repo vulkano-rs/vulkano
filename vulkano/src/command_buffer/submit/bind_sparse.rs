@@ -491,10 +491,14 @@ impl error::Error for SubmitBindSparseError {
 impl fmt::Display for SubmitBindSparseError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            SubmitBindSparseError::OomError(_) => "not enough memory",
-            SubmitBindSparseError::DeviceLost => "the connection to the device has been lost",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                SubmitBindSparseError::OomError(_) => "not enough memory",
+                SubmitBindSparseError::DeviceLost => "the connection to the device has been lost",
+            }
+        )
     }
 }
 

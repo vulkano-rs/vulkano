@@ -966,59 +966,63 @@ impl error::Error for SwapchainCreationError {
 impl fmt::Display for SwapchainCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            SwapchainCreationError::OomError(_) => "not enough memory available",
-            SwapchainCreationError::DeviceLost => "the device was lost",
-            SwapchainCreationError::SurfaceLost => "the surface was lost",
-            SwapchainCreationError::SurfaceInUse => {
-                "the surface is already used by another swapchain"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                SwapchainCreationError::OomError(_) => "not enough memory available",
+                SwapchainCreationError::DeviceLost => "the device was lost",
+                SwapchainCreationError::SurfaceLost => "the surface was lost",
+                SwapchainCreationError::SurfaceInUse => {
+                    "the surface is already used by another swapchain"
+                }
+                SwapchainCreationError::NativeWindowInUse => {
+                    "the window is already in use by another API"
+                }
+                SwapchainCreationError::MissingExtensionKHRSwapchain => {
+                    "the `VK_KHR_swapchain` extension was not enabled"
+                }
+                SwapchainCreationError::MissingExtensionExtFullScreenExclusive => {
+                    "the `VK_EXT_full_screen_exclusive` extension was not enabled"
+                }
+                SwapchainCreationError::OldSwapchainSurfaceMismatch => {
+                    "surface mismatch between old and new swapchain"
+                }
+                SwapchainCreationError::OldSwapchainAlreadyUsed => {
+                    "old swapchain has already been used to recreate a new one"
+                }
+                SwapchainCreationError::UnsupportedMinImagesCount => {
+                    "the requested number of swapchain images is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedMaxImagesCount => {
+                    "the requested number of swapchain images is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedFormat => {
+                    "the requested image format is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedDimensions => {
+                    "the requested dimensions are not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedArrayLayers => {
+                    "the requested array layers count is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedUsageFlags => {
+                    "the requested image usage is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedSurfaceTransform => {
+                    "the requested surface transform is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedCompositeAlpha => {
+                    "the requested composite alpha is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedPresentMode => {
+                    "the requested present mode is not supported by the surface"
+                }
+                SwapchainCreationError::UnsupportedImageConfiguration => {
+                    "the requested image configuration is not supported by the physical device"
+                }
             }
-            SwapchainCreationError::NativeWindowInUse => {
-                "the window is already in use by another API"
-            }
-            SwapchainCreationError::MissingExtensionKHRSwapchain => {
-                "the `VK_KHR_swapchain` extension was not enabled"
-            }
-            SwapchainCreationError::MissingExtensionExtFullScreenExclusive => {
-                "the `VK_EXT_full_screen_exclusive` extension was not enabled"
-            }
-            SwapchainCreationError::OldSwapchainSurfaceMismatch => {
-                "surface mismatch between old and new swapchain"
-            }
-            SwapchainCreationError::OldSwapchainAlreadyUsed => {
-                "old swapchain has already been used to recreate a new one"
-            }
-            SwapchainCreationError::UnsupportedMinImagesCount => {
-                "the requested number of swapchain images is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedMaxImagesCount => {
-                "the requested number of swapchain images is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedFormat => {
-                "the requested image format is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedDimensions => {
-                "the requested dimensions are not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedArrayLayers => {
-                "the requested array layers count is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedUsageFlags => {
-                "the requested image usage is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedSurfaceTransform => {
-                "the requested surface transform is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedCompositeAlpha => {
-                "the requested composite alpha is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedPresentMode => {
-                "the requested present mode is not supported by the surface"
-            }
-            SwapchainCreationError::UnsupportedImageConfiguration => {
-                "the requested image configuration is not supported by the physical device"
-            }
-        })
+        )
     }
 }
 
@@ -1239,23 +1243,27 @@ impl error::Error for FullscreenExclusiveError {
 impl fmt::Display for FullscreenExclusiveError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            FullscreenExclusiveError::OomError(_) => "not enough memory",
-            FullscreenExclusiveError::SurfaceLost => {
-                "the surface of this swapchain is no longer valid"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                FullscreenExclusiveError::OomError(_) => "not enough memory",
+                FullscreenExclusiveError::SurfaceLost => {
+                    "the surface of this swapchain is no longer valid"
+                }
+                FullscreenExclusiveError::InitializationFailed => {
+                    "operation could not be completed for driver specific reasons"
+                }
+                FullscreenExclusiveError::DoubleAcquire =>
+                    "fullscreen exclusivity is already acquired",
+                FullscreenExclusiveError::DoubleRelease => "fullscreen exclusivity is not acquired",
+                FullscreenExclusiveError::NotAppControlled => {
+                    "swapchain is not in fullscreen exclusive app controlled mode"
+                }
             }
-            FullscreenExclusiveError::InitializationFailed => {
-                "operation could not be completed for driver specific reasons"
-            }
-            FullscreenExclusiveError::DoubleAcquire => "fullscreen exclusivity is already acquired",
-            FullscreenExclusiveError::DoubleRelease => "fullscreen exclusivity is not acquired",
-            FullscreenExclusiveError::NotAppControlled => {
-                "swapchain is not in fullscreen exclusive app controlled mode"
-            }
-        })
+        )
     }
 }
-
 
 /// Error that can happen when calling `acquire_next_image`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -1295,16 +1303,20 @@ impl error::Error for AcquireError {
 impl fmt::Display for AcquireError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            AcquireError::OomError(_) => "not enough memory",
-            AcquireError::DeviceLost => "the connection to the device has been lost",
-            AcquireError::Timeout => "no image is available for acquiring yet",
-            AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
-            AcquireError::OutOfDate => "the swapchain needs to be recreated",
-            AcquireError::FullscreenExclusiveLost => {
-                "the swapchain no longer has fullscreen exclusivity"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                AcquireError::OomError(_) => "not enough memory",
+                AcquireError::DeviceLost => "the connection to the device has been lost",
+                AcquireError::Timeout => "no image is available for acquiring yet",
+                AcquireError::SurfaceLost => "the surface of this swapchain is no longer valid",
+                AcquireError::OutOfDate => "the swapchain needs to be recreated",
+                AcquireError::FullscreenExclusiveLost => {
+                    "the swapchain no longer has fullscreen exclusivity"
+                }
             }
-        })
+        )
     }
 }
 

@@ -384,26 +384,30 @@ impl error::Error for AccessError {}
 impl fmt::Display for AccessError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
-            AccessError::AlreadyInUse => {
-                "the resource is already in use, and there is no tracking of concurrent usages"
-            }
-            AccessError::UnexpectedImageLayout { .. } => {
-                unimplemented!() // TODO: find a description
-            }
-            AccessError::ImageNotInitialized { .. } => {
-                "trying to use an image without transitioning it from the undefined or \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                AccessError::ExclusiveDenied => "only shared access is allowed for this resource",
+                AccessError::AlreadyInUse => {
+                    "the resource is already in use, and there is no tracking of concurrent usages"
+                }
+                AccessError::UnexpectedImageLayout { .. } => {
+                    unimplemented!() // TODO: find a description
+                }
+                AccessError::ImageNotInitialized { .. } => {
+                    "trying to use an image without transitioning it from the undefined or \
                  preinitialized layouts first"
-            }
-            AccessError::BufferNotInitialized => {
-                "trying to use a buffer that still contains garbage data"
-            }
-            AccessError::SwapchainImageAcquireOnly => {
-                "trying to use a swapchain image without depending on a corresponding acquire \
+                }
+                AccessError::BufferNotInitialized => {
+                    "trying to use a buffer that still contains garbage data"
+                }
+                AccessError::SwapchainImageAcquireOnly => {
+                    "trying to use a swapchain image without depending on a corresponding acquire \
                  image future"
+                }
             }
-        })
+        )
     }
 }
 
@@ -421,10 +425,14 @@ impl error::Error for AccessCheckError {}
 impl fmt::Display for AccessCheckError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            AccessCheckError::Denied(_) => "access to the resource has been denied",
-            AccessCheckError::Unknown => "the resource is unknown",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                AccessCheckError::Denied(_) => "access to the resource has been denied",
+                AccessCheckError::Unknown => "the resource is unknown",
+            }
+        )
     }
 }
 
@@ -476,20 +484,24 @@ impl error::Error for FlushError {
 impl fmt::Display for FlushError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            FlushError::AccessError(_) => "access to a resource has been denied",
-            FlushError::OomError(_) => "not enough memory",
-            FlushError::DeviceLost => "the connection to the device has been lost",
-            FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
-            FlushError::OutOfDate => "the swapchain needs to be recreated",
-            FlushError::FullscreenExclusiveLost => {
-                "the swapchain no longer has fullscreen exclusivity"
-            }
-            FlushError::Timeout => {
-                "the flush operation needed to block, but the timeout has \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                FlushError::AccessError(_) => "access to a resource has been denied",
+                FlushError::OomError(_) => "not enough memory",
+                FlushError::DeviceLost => "the connection to the device has been lost",
+                FlushError::SurfaceLost => "the surface of this swapchain is no longer valid",
+                FlushError::OutOfDate => "the swapchain needs to be recreated",
+                FlushError::FullscreenExclusiveLost => {
+                    "the swapchain no longer has fullscreen exclusivity"
+                }
+                FlushError::Timeout => {
+                    "the flush operation needed to block, but the timeout has \
                                     elapsed"
+                }
             }
-        })
+        )
     }
 }
 

@@ -527,24 +527,28 @@ impl error::Error for FramebufferCreationError {
 impl fmt::Display for FramebufferCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            FramebufferCreationError::OomError(_) => "no memory available",
-            FramebufferCreationError::DimensionsTooLarge => {
-                "the dimensions of the framebuffer are too large"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                FramebufferCreationError::OomError(_) => "no memory available",
+                FramebufferCreationError::DimensionsTooLarge => {
+                    "the dimensions of the framebuffer are too large"
+                }
+                FramebufferCreationError::AttachmentDimensionsIncompatible { .. } => {
+                    "the attachment has a size that isn't compatible with the framebuffer dimensions"
+                }
+                FramebufferCreationError::AttachmentsCountMismatch { .. } => {
+                    "the number of attachments doesn't match the number expected by the render pass"
+                }
+                FramebufferCreationError::IncompatibleAttachment(_) => {
+                    "one of the images cannot be used as the requested attachment"
+                }
+                FramebufferCreationError::CantDetermineDimensions => {
+                    "the framebuffer has no attachment and no dimension was specified"
+                }
             }
-            FramebufferCreationError::AttachmentDimensionsIncompatible { .. } => {
-                "the attachment has a size that isn't compatible with the framebuffer dimensions"
-            }
-            FramebufferCreationError::AttachmentsCountMismatch { .. } => {
-                "the number of attachments doesn't match the number expected by the render pass"
-            }
-            FramebufferCreationError::IncompatibleAttachment(_) => {
-                "one of the images cannot be used as the requested attachment"
-            }
-            FramebufferCreationError::CantDetermineDimensions => {
-                "the framebuffer has no attachment and no dimension was specified"
-            }
-        })
+        )
     }
 }
 

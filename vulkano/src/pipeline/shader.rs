@@ -561,15 +561,19 @@ impl error::Error for ShaderInterfaceMismatchError {}
 impl fmt::Display for ShaderInterfaceMismatchError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
-                "the number of elements mismatches"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ShaderInterfaceMismatchError::ElementsCountMismatch { .. } => {
+                    "the number of elements mismatches"
+                }
+                ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
+                ShaderInterfaceMismatchError::FormatMismatch { .. } => {
+                    "the format of an element does not match"
+                }
             }
-            ShaderInterfaceMismatchError::MissingElement { .. } => "an element is missing",
-            ShaderInterfaceMismatchError::FormatMismatch { .. } => {
-                "the format of an element does not match"
-            }
-        })
+        )
     }
 }
 

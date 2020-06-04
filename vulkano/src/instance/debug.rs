@@ -338,11 +338,15 @@ impl error::Error for DebugCallbackCreationError {}
 impl fmt::Display for DebugCallbackCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            DebugCallbackCreationError::MissingExtension => {
-                "the `EXT_debug_report` extension was not enabled"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                DebugCallbackCreationError::MissingExtension => {
+                    "the `EXT_debug_report` extension was not enabled"
+                }
             }
-        })
+        )
     }
 }
 

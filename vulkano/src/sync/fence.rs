@@ -376,11 +376,15 @@ impl error::Error for FenceWaitError {
 impl fmt::Display for FenceWaitError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            FenceWaitError::OomError(_) => "no memory available",
-            FenceWaitError::Timeout => "the timeout has been reached",
-            FenceWaitError::DeviceLostError => "the device was lost",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                FenceWaitError::OomError(_) => "no memory available",
+                FenceWaitError::Timeout => "the timeout has been reached",
+                FenceWaitError::DeviceLostError => "the device was lost",
+            }
+        )
     }
 }
 

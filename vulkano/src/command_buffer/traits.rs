@@ -417,17 +417,22 @@ impl error::Error for CommandBufferExecError {
 impl fmt::Display for CommandBufferExecError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CommandBufferExecError::AccessError { .. } => "access to a resource has been denied",
-            CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
-                "the command buffer or one of the secondary command buffers it executes was \
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CommandBufferExecError::AccessError { .. } =>
+                    "access to a resource has been denied",
+                CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
+                    "the command buffer or one of the secondary command buffers it executes was \
                  created with the \"one time submit\" flag, but has already been submitted it \
                  the past"
-            }
-            CommandBufferExecError::ExclusiveAlreadyInUse => {
-                "the command buffer or one of the secondary command buffers it executes is \
+                }
+                CommandBufferExecError::ExclusiveAlreadyInUse => {
+                    "the command buffer or one of the secondary command buffers it executes is \
                  already in use by the GPU and was not created with the \"concurrent\" flag"
+                }
             }
-        })
+        )
     }
 }

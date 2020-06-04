@@ -65,13 +65,17 @@ impl error::Error for CheckClearColorImageError {}
 impl fmt::Display for CheckClearColorImageError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            CheckClearColorImageError::MissingTransferUsage => {
-                "the image is missing the transfer destination usage"
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                CheckClearColorImageError::MissingTransferUsage => {
+                    "the image is missing the transfer destination usage"
+                }
+                CheckClearColorImageError::OutOfRange => {
+                    "the array layers and mipmap levels are out of range"
+                }
             }
-            CheckClearColorImageError::OutOfRange => {
-                "the array layers and mipmap levels are out of range"
-            }
-        })
+        )
     }
 }

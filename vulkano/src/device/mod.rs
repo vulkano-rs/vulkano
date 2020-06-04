@@ -723,30 +723,35 @@ impl error::Error for DeviceCreationError {}
 impl fmt::Display for DeviceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            DeviceCreationError::InitializationFailed => {
-                "failed to create the device for an implementation-specific reason"
-            }
-            DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-            DeviceCreationError::OutOfDeviceMemory => "no memory available on the graphical device",
-            DeviceCreationError::DeviceLost => "failed to connect to the device",
-            DeviceCreationError::TooManyQueuesForFamily => {
-                "tried to create too many queues for a given family"
-            }
-            DeviceCreationError::FeatureNotPresent => {
-                "some of the requested features are unsupported by the physical device"
-            }
-            DeviceCreationError::PriorityOutOfRange => {
-                "the priority of one of the queues is out of the [0.0; 1.0] range"
-            }
-            DeviceCreationError::ExtensionNotPresent => {
-                "some of the requested device extensions are not supported by the physical device"
-            }
-            DeviceCreationError::TooManyObjects => {
-                "you have reached the limit to the number of devices that can be created from the
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                DeviceCreationError::InitializationFailed => {
+                    "failed to create the device for an implementation-specific reason"
+                }
+                DeviceCreationError::OutOfHostMemory => "no memory available on the host",
+                DeviceCreationError::OutOfDeviceMemory =>
+                    "no memory available on the graphical device",
+                DeviceCreationError::DeviceLost => "failed to connect to the device",
+                DeviceCreationError::TooManyQueuesForFamily => {
+                    "tried to create too many queues for a given family"
+                }
+                DeviceCreationError::FeatureNotPresent => {
+                    "some of the requested features are unsupported by the physical device"
+                }
+                DeviceCreationError::PriorityOutOfRange => {
+                    "the priority of one of the queues is out of the [0.0; 1.0] range"
+                }
+                DeviceCreationError::ExtensionNotPresent => {
+                    "some of the requested device extensions are not supported by the physical device"
+                }
+                DeviceCreationError::TooManyObjects => {
+                    "you have reached the limit to the number of devices that can be created from the
                  same physical device"
+                }
             }
-        })
+        )
     }
 }
 

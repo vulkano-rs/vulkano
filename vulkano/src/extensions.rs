@@ -195,10 +195,15 @@ impl error::Error for SupportedExtensionsError {
 impl fmt::Display for SupportedExtensionsError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "{}", match *self {
-            SupportedExtensionsError::LoadingError(_) => "failed to load the Vulkan shared library",
-            SupportedExtensionsError::OomError(_) => "not enough memory available",
-        })
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                SupportedExtensionsError::LoadingError(_) =>
+                    "failed to load the Vulkan shared library",
+                SupportedExtensionsError::OomError(_) => "not enough memory available",
+            }
+        )
     }
 }
 
