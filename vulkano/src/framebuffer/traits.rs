@@ -31,7 +31,7 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns the attachment of the framebuffer with the given index.
     ///
     /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess>;
+    fn attached_image_view(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)>;
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
@@ -68,7 +68,7 @@ where
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)> {
         (**self).attached_image_view(index)
     }
 }

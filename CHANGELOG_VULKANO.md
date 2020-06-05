@@ -1,6 +1,7 @@
 # Unreleased
 
 - Added a `properties` method to `Format`.
+- `FramebufferAbstract::attached_image_view` and `AttachmentLists::as_image_view_access` now return a trait object that is `Send + Sync`. Attachments for framebuffers must now also implement these traits.
 
 # Version 0.19.0 (2020-06-01)
 

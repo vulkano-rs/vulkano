@@ -387,7 +387,7 @@ where
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)> {
         self.resources.as_image_view_access(index)
     }
 }

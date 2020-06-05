@@ -18,7 +18,7 @@ use SafeDeref;
 pub unsafe trait AttachmentsList {
     fn num_attachments(&self) -> usize;
 
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess>;
+    fn as_image_view_access(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)>;
 }
 
 unsafe impl<T> AttachmentsList for T
@@ -32,7 +32,7 @@ where
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)> {
         (**self).as_image_view_access(index)
     }
 }
@@ -44,7 +44,7 @@ unsafe impl AttachmentsList for () {
     }
 
     #[inline]
-    fn as_image_view_access(&self, _: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, _: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)> {
         None
     }
 }
@@ -56,12 +56,12 @@ unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAccess + Send + Sync>> {
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)> {
         self.get(index).map(|v| &**v as &_)
     }
 }
 
-unsafe impl<A, B> AttachmentsList for (A, B)
+unsafe impl<A, B: Send + Sync> AttachmentsList for (A, B)
 where
     A: AttachmentsList,
     B: ImageViewAccess,
@@ -72,7 +72,7 @@ where
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&(dyn ImageViewAccess + Send + Sync)> {
         if index == self.0.num_attachments() {
             Some(&self.1)
         } else {
