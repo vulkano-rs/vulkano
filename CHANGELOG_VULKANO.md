@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added two vulkano-win features `raw-window-handle_` and `winit_` to be able to use vulkano without winit
+- Added function to create surface from RawWindowHandle
 - Added a `properties` method to `Format`.
 
 # Version 0.19.0 (2020-06-01)
