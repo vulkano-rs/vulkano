@@ -6,9 +6,9 @@
 /// RawWindowHandle feature is called 'raw-window-handle_'
 /// winit featur is called 'winit_'
 
-#[cfg(feature = "raw_window_handle_")]
+#[cfg(feature = "raw-window-handle_")]
 mod raw_window_handle;
-#[cfg(feature = "raw_window_handle_")]
+#[cfg(feature = "raw-window-handle_")]
 pub use crate::raw_window_handle::*;
 
 #[cfg(feature = "winit_")]
