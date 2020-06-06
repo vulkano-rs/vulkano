@@ -1,4 +1,11 @@
 use std::ffi::c_void;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use std::os::raw::c_ulong;
 use std::sync::Arc;
 
@@ -21,9 +28,9 @@ where
     unsafe {
         match handle {
             #[cfg(target_os = "ios")]
-            RawWindowHandle::IOS(h) => handle_to_surface(h.ui_view, window),
+            RawWindowHandle::IOS(h) => handle_to_surface(h.ui_view, instance, window),
             #[cfg(target_os = "macos")]
-            RawWindowHandle::MacOS(h) => handle_to_surface(h.ui_view, window),
+            RawWindowHandle::MacOS(h) => handle_to_surface(h.ns_view, instance, window),
             #[cfg(any(
                 target_os = "linux",
                 target_os = "dragonflybsd",
@@ -55,8 +62,9 @@ where
                 handle_to_surface_wl(h.surface, h.display, instance, window)
             }
             #[cfg(target_os = "android")]
-            RawWindowHandle::Android(h) => handle_to_surface(h.a_native_window, window),
-            RawWindowHandle::Windows(h) => handle_to_surface(h.hinstance, h.hwnd),
+            RawWindowHandle::Android(h) => handle_to_surface(h.a_native_window, instance, window),
+            #[cfg(target_os = "windows")]
+            RawWindowHandle::Windows(h) => handle_to_surface(h.hinstance, h.hwnd, instance, window),
             #[cfg(target_os = "wasm")]
             RawWindowHandle::Web(_) => unimplemented!(),
             _ => unimplemented!(),
@@ -118,7 +126,7 @@ unsafe fn handle_to_surface<W: Sized>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    Surface::from_macos_moltenvk(instance, view as *const _)
+    Surface::from_macos_moltenvk(instance, view as *const _, win)
 }
 
 #[cfg(target_os = "ios")]
@@ -127,7 +135,7 @@ unsafe fn handle_to_surface<W: Sized>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    Surface::from_ios_moltenvk(instance, view as *const _)
+    Surface::from_ios_moltenvk(instance, view as *const _, win)
 }
 
 #[cfg(target_os = "android")]
@@ -136,11 +144,11 @@ unsafe fn handle_to_surface<W: Sized>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    Surface::from_anativewindow(instance, window as *const _)
+    Surface::from_anativewindow(instance, window as *const _, win)
 }
 
 #[cfg(target_os = "windows")]
-unsafe fn handle_to_surface_wl<W: Sized>(
+unsafe fn handle_to_surface<W: Sized>(
     hinstance: *mut c_void,
     hwnd: *mut c_void,
     instance: Arc<Instance>,
