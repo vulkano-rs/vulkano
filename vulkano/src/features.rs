@@ -262,12 +262,35 @@ pub struct Features {
     pub buffer_device_address: bool,
     pub buffer_device_address_capture_replay: bool,
     pub buffer_device_address_multi_device: bool,
+
+    pub variable_pointers_storage_buffer: bool,
+    pub variable_pointers: bool,
+
+    pub shader_buffer_int64_atomics: bool,
+    pub shader_shared_int64_atomics: bool,
+
+    pub storage_buffer_8bit: bool,
+    pub storage_uniform_8bit: bool,
+    pub storage_push_constant_8bit: bool,
+
+    pub storage_buffer_16bit: bool,
+    pub storage_uniform_16bit: bool,
+    pub storage_push_constant_16bit: bool,
+    pub storage_input_output_16bit: bool,
+
+    pub shader_float16: bool,
+    pub shader_int8: bool,
 }
 
 pub(crate) struct FeaturesFfi {
     _pinned: PhantomPinned,
     pub(crate) main: vk::PhysicalDeviceFeatures2KHR,
     phys_dev_buf_addr: vk::PhysicalDeviceBufferAddressFeaturesEXT,
+    variable_pointers: vk::PhysicalDeviceVariablePointersFeatures,
+    shader_atomic_i64: vk::PhysicalDeviceShaderAtomicInt64Features,
+    i8_storage: vk::PhysicalDevice8BitStorageFeatures,
+    i16_storage: vk::PhysicalDevice16BitStorageFeatures,
+    f16_i8: vk::PhysicalDeviceShaderFloat16Int8Features,
 }
 
 macro_rules! features {
@@ -481,6 +504,54 @@ features! {
         buffer_device_address => bufferDeviceAddress,
         buffer_device_address_capture_replay => bufferDeviceAddressCaptureReplay,
         buffer_device_address_multi_device => bufferDeviceAddressMultiDevice,
+      ],
+    },
+    extension {
+      ty: vk::PhysicalDeviceVariablePointersFeatures,
+      ffi_name: variable_pointers,
+      sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTERS_FEATURES,
+      fields: [
+        variable_pointers_storage_buffer => variablePointersStorageBuffer,
+        variable_pointers => variablePointers,
+      ],
+    },
+    extension {
+      ty: vk::PhysicalDeviceShaderAtomicInt64Features,
+      ffi_name: shader_atomic_i64,
+      sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES,
+      fields: [
+        shader_buffer_int64_atomics => shaderBufferInt64Atomics,
+        shader_shared_int64_atomics => shaderSharedInt64Atomics,
+      ],
+    },
+    extension {
+      ty: vk::PhysicalDevice8BitStorageFeatures,
+      ffi_name: i8_storage,
+      sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
+      fields: [
+        storage_buffer_8bit => storageBuffer8BitAccess,
+        storage_uniform_8bit => uniformAndStorageBuffer8BitAccess,
+        storage_push_constant_8bit => storagePushConstant8,
+      ],
+    },
+    extension {
+      ty: vk::PhysicalDevice16BitStorageFeatures,
+      ffi_name: i16_storage,
+      sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES,
+      fields: [
+        storage_buffer_16bit => storageBuffer16BitAccess,
+        storage_uniform_16bit => uniformAndStorageBuffer16BitAccess,
+        storage_push_constant_16bit => storagePushConstant16,
+        storage_input_output_16bit => storageInputOutput16,
+      ],
+    },
+    extension {
+      ty: vk::PhysicalDeviceShaderFloat16Int8Features,
+      ffi_name: f16_i8,
+      sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
+      fields: [
+        shader_float16 => shaderFloat16,
+        shader_int8 => shaderInt8,
       ],
     },
 }
