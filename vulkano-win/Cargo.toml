@@ -11,11 +11,17 @@ homepage = "https://vulkano.rs"
 keywords = ["vulkan", "bindings", "graphics", "gpu", "rendering"]
 categories = ["rendering::graphics-api"]
 
+[features]
+default = ["winit_", "raw-window-handle_"]
+winit_ = ["winit", "metal", "cocoa", "objc"]
+raw-window-handle_ = ["raw-window-handle"]
+
 [dependencies]
-winit = "0.22"
+winit = { version = "0.22", optional = true }
 vulkano = { version = "0.19.0", path = "../vulkano" }
+raw-window-handle = { version = "0.3.3", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-metal = "0.18.0"
-cocoa = "0.20.0"
-objc = "0.2.7"
+metal = { version = "0.18.0", optional = true }
+cocoa = { version = "0.20.0", optional = true }
+objc = { version = "0.2.7", optional = true }
