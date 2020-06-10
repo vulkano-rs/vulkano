@@ -179,7 +179,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 
     Surface::from_hwnd(
         instance,
-        ptr::null() as *const (), // FIXME
+        win.borrow().hinstance(),
         win.borrow().hwnd(),
         win,
     )
