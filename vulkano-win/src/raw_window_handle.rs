@@ -9,24 +9,22 @@ use std::ffi::c_void;
 use std::os::raw::c_ulong;
 use std::sync::Arc;
 
-use raw_window_handle::RawWindowHandle;
+use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
 use vulkano::instance::Instance;
 use vulkano::swapchain::Surface;
 use vulkano::swapchain::SurfaceCreationError;
 
-/// Creates a vulkan surface from an os-dependent handle
-/// window here is a generic type for a Window which can be handed over
-/// to ensure that it will be dropped after the surface
+/// Creates a vulkan surface from a generic window
+/// which implements HasRawWindowHandle and thus can reveal the os-dependent handle
 pub fn create_vk_surface_from_handle<W>(
     window: W,
-    handle: RawWindowHandle,
     instance: Arc<Instance>,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError>
 where
-    W: Sized,
+    W: HasRawWindowHandle,
 {
     unsafe {
-        match handle {
+        match window.raw_window_handle(){
             #[cfg(target_os = "ios")]
             RawWindowHandle::IOS(h) => handle_to_surface(h.ui_view, instance, window),
             #[cfg(target_os = "macos")]
