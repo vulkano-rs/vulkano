@@ -99,39 +99,14 @@ sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-utils
 ### macOS and iOS Specific Setup
 
 Vulkan is not natively supported by macOS and iOS. However, there exists [MoltenVK](https://github.com/KhronosGroup/MoltenVK)
-a Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
+an open-source Vulkan implementation on top of Apple's Metal API. This allows vulkano to build and run on macOS
 and iOS platforms.
 
-The easiest way to get vulkano up and running on macOS is to install the
-[Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). To install the SDK so that
-Vulkano will find it and dynamically link with `libvulkan.dylib`:
+The easiest way to get vulkano up and running with MoltenVK is to install the
+[Vulkan SDK for macOS](https://vulkan.lunarg.com/sdk/home). There are [installation instructions](https://vulkan.lunarg.com/doc/sdk/latest/mac/getting_started.html) on the LunarG website.
 
-1. Download the latest macOS release and unpack it somewhere, for the next step
-we'll assume that's `~/vulkan_sdk`.
-2. Modify your environment to contain the SDK bin directory in PATH and the SDK lib directory in
-DYLD_LIBRARY_PATH. We also need to set VK_ICD_FILENAMES and VK_LAYER_PATH. When using the Bash
-shell, which is the default for macOS, it's easiest to do this by appending the following to the
-`~/.bash_profile` file and then restarting the terminal.
-
-```sh
-export VULKAN_SDK=$HOME/vulkan_sdk/macOS
-export PATH=$VULKAN_SDK/bin:$PATH
-export DYLD_LIBRARY_PATH=$VULKAN_SDK/lib:$DYLD_LIBRARY_PATH
-export VK_ICD_FILENAMES=$VULKAN_SDK/etc/vulkan/icd.d/MoltenVK_icd.json
-export VK_LAYER_PATH=$VULKAN_SDK/etc/vulkan/explicit_layer.d
-```
-
-It is also possible to link with the MoltenVK framework (as vulkano did in previous versions) by adding the
-appropriate cargo output lines to your build script and implementing your own
-`vulkano::instance::loader::Loader` that calls the MoltenVK `vkGetInstanceProcAddr` implementation.
-
-On iOS vulkano links directly to the MoltenVK framework. There is nothing else to do besides
+On iOS, vulkano links directly to the MoltenVK framework. There is nothing else to do besides
 installing it. Note that the Vulkan SDK for macOS also comes with the iOS framework.
-
-Note that as of writing, MoltenVK has some bugs that show up in the examples.
-Some minor modifications may be required as workarounds: see https://github.com/vulkano-rs/vulkano/pull/1027.
-The examples also do not work properly on macOS 10.11 and lower without workarounds due to MoltenVK's Metal backend not getting
-the required features until macOS 10.12. See https://github.com/vulkano-rs/vulkano/issues/1075 for workarounds.
 
 ## Donate
 
