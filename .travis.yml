@@ -31,12 +31,10 @@ jobs:
 cache:
   directories:
     - $TRAVIS_HOME/.cargo/
-    - $TRAVIS_BUILD_DIR/target/debug/build
-    - $TRAVIS_BUILD_DIR/target/debug/deps
-    - $TRAVIS_BUILD_DIR/target/debug/incremental
 
 before_cache:
   - rm -rf $TRAVIS_HOME/.cargo/registry/src
+  - du -sh $TRAVIS_HOME/.cargo/
 
 before_install:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then choco install ninja; choco install python3 --params "/InstallAllUsers"; fi
