@@ -4,6 +4,7 @@
 - Added function to create surface from RawWindowHandle
 - Added a `properties` method to `Format`.
 - Added additional device feature flags for enabling SPIR-V related capabilities.
+- Added method `copy_buffer_dimensions` that allows copying parts of buffers containing arrays.
 
 # Version 0.19.0 (2020-06-01)
 

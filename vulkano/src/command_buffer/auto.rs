@@ -912,6 +912,38 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Adds a command that copies a range from the source to the destination buffer.
+    /// Panics if out of bounds.
+    #[inline]
+    pub fn copy_buffer_dimensions<S, D, T>(
+        &mut self,
+        source: S,
+        source_offset: usize,
+        destination: D,
+        destination_offset: usize,
+        count: usize,
+    ) -> Result<&mut Self, CopyBufferError>
+    where
+        S: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        D: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+    {
+        self.ensure_outside_render_pass()?;
+
+        let _infos = check_copy_buffer(self.device(), &source, &destination)?;
+        debug_assert!(source_offset + count <= source.len());
+        debug_assert!(destination_offset + count <= destination.len());
+
+        let size = std::mem::size_of::<T>();
+        unsafe {
+            self.inner.copy_buffer(
+                source,
+                destination,
+                iter::once((source_offset * size, destination_offset * size, count * size)),
+            )?;
+        }
+        Ok(self)
+    }
+
     /// Adds a command that copies from a buffer to an image.
     pub fn copy_buffer_to_image<S, D, Px>(
         &mut self,
@@ -2042,5 +2074,78 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
                 }
             }
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use instance;
+    use crate::device::Device;
+    use crate::device::Features;
+    use crate::device::DeviceExtensions;
+    use crate::buffer::CpuAccessibleBuffer;
+    use crate::buffer::BufferUsage;
+    use crate::command_buffer::AutoCommandBufferBuilder;
+    use crate::command_buffer::CommandBuffer;
+    use crate::sync::GpuFuture;
+
+    #[test]
+    fn copy_buffer_dimensions() {
+        let instance = instance!();
+
+        let phys = match instance::PhysicalDevice::enumerate(&instance).next() {
+            Some(p) => p,
+            None => return,
+        };
+
+        let queue_family = match phys.queue_families().next() {
+            Some(q) => q,
+            None => return,
+        };
+
+        let (device, mut queues) = Device::new(
+            phys,
+            &Features::none(),
+            &DeviceExtensions::none(),
+            std::iter::once((queue_family, 0.5)),
+        ).unwrap();
+
+        let queue = queues.next().unwrap();
+
+        let source = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            true,
+            [1_u32, 2].iter().copied(),
+        ).unwrap();
+
+        let destination = CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            true,
+            [0_u32, 10, 20, 3, 4].iter().copied(),
+        ).unwrap();
+
+        let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
+            device.clone(),
+            queue.family(),
+        ).unwrap();
+
+        cbb.copy_buffer_dimensions(
+            source.clone(),
+            0,
+            destination.clone(),
+            1,
+            2,
+        ).unwrap();
+
+        let cb = cbb.build().unwrap();
+
+        let future = cb.execute(queue.clone()).unwrap().then_signal_fence_and_flush().unwrap();
+        future.wait(None).unwrap();
+
+        let result = destination.read().unwrap();
+
+        assert_eq!(*result, [0_u32, 1, 2, 3, 4]);
     }
 }
