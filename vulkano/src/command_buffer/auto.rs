@@ -938,7 +938,11 @@ impl<P> AutoCommandBufferBuilder<P> {
             self.inner.copy_buffer(
                 source,
                 destination,
-                iter::once((source_offset * size, destination_offset * size, count * size)),
+                iter::once((
+                    source_offset * size,
+                    destination_offset * size,
+                    count * size,
+                )),
             )?;
         }
         Ok(self)
@@ -2079,15 +2083,15 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
 
 #[cfg(test)]
 mod tests {
-    use instance;
-    use crate::device::Device;
-    use crate::device::Features;
-    use crate::device::DeviceExtensions;
-    use crate::buffer::CpuAccessibleBuffer;
     use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBuffer;
+    use crate::device::Device;
+    use crate::device::DeviceExtensions;
+    use crate::device::Features;
     use crate::sync::GpuFuture;
+    use instance;
 
     #[test]
     fn copy_buffer_dimensions() {
@@ -2108,7 +2112,8 @@ mod tests {
             &Features::none(),
             &DeviceExtensions::none(),
             std::iter::once((queue_family, 0.5)),
-        ).unwrap();
+        )
+        .unwrap();
 
         let queue = queues.next().unwrap();
 
@@ -2117,31 +2122,31 @@ mod tests {
             BufferUsage::all(),
             true,
             [1_u32, 2].iter().copied(),
-        ).unwrap();
+        )
+        .unwrap();
 
         let destination = CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage::all(),
             true,
             [0_u32, 10, 20, 3, 4].iter().copied(),
-        ).unwrap();
+        )
+        .unwrap();
 
-        let mut cbb = AutoCommandBufferBuilder::primary_one_time_submit(
-            device.clone(),
-            queue.family(),
-        ).unwrap();
+        let mut cbb =
+            AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+                .unwrap();
 
-        cbb.copy_buffer_dimensions(
-            source.clone(),
-            0,
-            destination.clone(),
-            1,
-            2,
-        ).unwrap();
+        cbb.copy_buffer_dimensions(source.clone(), 0, destination.clone(), 1, 2)
+            .unwrap();
 
         let cb = cbb.build().unwrap();
 
-        let future = cb.execute(queue.clone()).unwrap().then_signal_fence_and_flush().unwrap();
+        let future = cb
+            .execute(queue.clone())
+            .unwrap()
+            .then_signal_fence_and_flush()
+            .unwrap();
         future.wait(None).unwrap();
 
         let result = destination.read().unwrap();
