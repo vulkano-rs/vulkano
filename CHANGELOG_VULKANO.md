@@ -6,7 +6,7 @@
 - Added additional device feature flags for enabling SPIR-V related capabilities.
 - Added method `copy_buffer_dimensions` that allows copying parts of buffers containing arrays.
 - Fixed surface creation function on Windows(PR #1410).
-- Travis Linux Nightly job temporary disabled until #1423 resolved.
+- Travis CI Linux Nightly job temporary disabled until #1423 resolved.
 
 # Version 0.19.0 (2020-06-01)
 
