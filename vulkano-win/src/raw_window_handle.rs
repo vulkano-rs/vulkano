@@ -24,7 +24,7 @@ where
     W: HasRawWindowHandle,
 {
     unsafe {
-        match window.raw_window_handle(){
+        match window.raw_window_handle() {
             #[cfg(target_os = "ios")]
             RawWindowHandle::IOS(h) => handle_to_surface(h.ui_view, instance, window),
             #[cfg(target_os = "macos")]
@@ -152,5 +152,5 @@ unsafe fn handle_to_surface<W: Sized>(
     instance: Arc<Instance>,
     win: W,
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-    Surface::from_wayland(instance, hinstance as *const _, hwnd as *const _, win)
+    Surface::from_hwnd(instance, hinstance as *const _, hwnd as *const _, win)
 }

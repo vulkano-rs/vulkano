@@ -177,12 +177,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
 ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
     use winit::platform::windows::WindowExtWindows;
 
-    Surface::from_hwnd(
-        instance,
-        win.borrow().hinstance(),
-        win.borrow().hwnd(),
-        win,
-    )
+    Surface::from_hwnd(instance, win.borrow().hinstance(), win.borrow().hwnd(), win)
 }
 
 #[cfg(target_os = "macos")]
