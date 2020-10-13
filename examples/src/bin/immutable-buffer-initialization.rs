@@ -78,29 +78,33 @@ void main() {
 
     let data_buffer = {
         let data_iter = (0..65536u32).map(|n| n);
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), data_iter).unwrap()
+        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
+            .unwrap()
     };
 
     // Create immutable buffer and initialize it
     let immutable_data_buffer = {
-        // uninitialized(), uninitialized_array() and raw() return two things: the buffer, and a
-        // special access that should be used for the initial upload to the buffer.
+
+        // uninitialized(), uninitialized_array() and raw() return two things: the buffer,
+        // and a special access that should be used for the initial upload to the buffer.
         let (immutable_data_buffer, immutable_data_buffer_init) = unsafe {
             ImmutableBuffer::<u32>::uninitialized(device.clone(), BufferUsage::all()).unwrap()
         };
 
         // Build command buffer which initialize our buffer.
-        let command_buffer =
+        let mut builder =
             AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                .unwrap()
-                // Initializing a immutable buffer is done by coping data to
-                // ImmutableBufferInitiazlization which is returned by a fucntion we use to create buffer.
-                // We can use copy_buffer(), fill_buffer() and some other functions that copies data to
-                // buffer also.
-                .update_buffer(immutable_data_buffer_init, 3)
-                .unwrap()
-                .build()
                 .unwrap();
+
+        // Initializing a immutable buffer is done by coping data to
+        // ImmutableBufferInitialization which is returned by a function we use to create buffer.
+        // We can use copy_buffer(), fill_buffer() and some other functions that copies data to
+        // buffer also.
+        builder
+            .update_buffer(immutable_data_buffer_init, 3)
+            .unwrap();
+
+        let command_buffer = builder.build().unwrap();
 
         let future = sync::now(device.clone())
             .then_execute(queue.clone(), command_buffer)
@@ -127,13 +131,14 @@ void main() {
             .unwrap(),
     );
 
-    let command_buffer =
-        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-            .unwrap()
-            .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
-            .unwrap()
-            .build()
-            .unwrap();
+    let mut builder =
+        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+
+    builder
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+        .unwrap();
+
+    let command_buffer = builder.build().unwrap();
 
     let future = sync::now(device.clone())
         .then_execute(queue.clone(), command_buffer)
