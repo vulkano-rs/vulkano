@@ -9,7 +9,7 @@
 
 use pipeline::vertex::VertexMemberTy;
 
-/// Implements the `Vertex` trait on a struct.
+/// Implements the `Vertex` trait on a struct. Calling the impl_vertex! macro is what makes it possible for vulkano to build the link between the content of the buffer and the input of the vertex shader.
 ///# Example
 ///
 ///```
