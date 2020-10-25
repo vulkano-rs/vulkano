@@ -95,6 +95,10 @@ For example on ubuntu:
 ```
 sudo apt-get install build-essential git python cmake libvulkan-dev vulkan-utils
 ```
+On arch based system
+```
+sudo pacman -Sy base-devel git python cmake vulkan-devel --noconfirm
+```
 
 ### macOS and iOS Specific Setup
 
