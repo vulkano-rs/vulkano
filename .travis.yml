@@ -17,10 +17,11 @@ jobs:
       dist: bionic
       rust:
         - stable
-    - os: linux
-      dist: bionic
-      rust:
-        - nightly
+# Nightly build turned off until #1423 resolved
+#    - os: linux
+#      dist: bionic
+#      rust:
+#        - nightly
     - os: osx
       rust:
         - stable
