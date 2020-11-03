@@ -170,3 +170,13 @@ impl Default for DynamicState {
         DynamicState::none()
     }
 }
+
+/// Describes what a subpass in a command buffer will contain.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SubpassContents {
+    /// The subpass will only directly contain commands.
+    Inline = vk::SUBPASS_CONTENTS_INLINE,
+    /// The subpass will only contain secondary command buffers invocations.
+    SecondaryCommandBuffers = vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS,
+}

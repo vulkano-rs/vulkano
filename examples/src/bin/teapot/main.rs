@@ -9,7 +9,7 @@
 
 use vulkano::buffer::cpu_pool::CpuBufferPool;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
@@ -255,7 +255,7 @@ fn main() {
                 builder
                     .begin_render_pass(
                         framebuffers[image_num].clone(),
-                        false,
+                        SubpassContents::Inline,
                         vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
                     )
                     .unwrap()

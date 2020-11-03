@@ -13,6 +13,7 @@ use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::CommandBuffer;
+use vulkano::command_buffer::SubpassContents;
 use vulkano::device::Queue;
 use vulkano::format::Format;
 use vulkano::framebuffer::Framebuffer;
@@ -288,7 +289,7 @@ impl FrameSystem {
         command_buffer_builder
             .begin_render_pass(
                 framebuffer.clone(),
-                true,
+                SubpassContents::SecondaryCommandBuffers,
                 vec![
                     [0.0, 0.0, 0.0, 0.0].into(),
                     [0.0, 0.0, 0.0, 0.0].into(),
@@ -359,7 +360,7 @@ impl<'a> Frame<'a> {
                 self.command_buffer_builder
                     .as_mut()
                     .unwrap()
-                    .next_subpass(true)
+                    .next_subpass(SubpassContents::SecondaryCommandBuffers)
                     .unwrap();
 
                 // And returning an object that will allow the user to apply lighting to the scene.

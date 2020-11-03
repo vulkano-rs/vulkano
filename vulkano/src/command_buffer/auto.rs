@@ -42,6 +42,7 @@ use command_buffer::DrawIndirectCommand;
 use command_buffer::DynamicState;
 use command_buffer::StateCacher;
 use command_buffer::StateCacherOutcome;
+use command_buffer::SubpassContents;
 use descriptor::descriptor_set::DescriptorSetsCollection;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
@@ -60,7 +61,6 @@ use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassCompatible;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::Subpass;
-use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
@@ -90,18 +90,20 @@ pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
     // True if the queue family supports compute operations.
     compute_allowed: bool,
 
-    // If we're inside a render pass, contains the render pass and the subpass index.
-    render_pass: Option<(Box<dyn RenderPassAbstract>, u32)>,
+    // If we're inside a render pass, contains the render pass state.
+    render_pass: Option<RenderPassState>,
 
     // True if we are a secondary command buffer.
     secondary_cb: bool,
 
-    // True if we're in a subpass that only allows executing secondary command buffers. False if
-    // we're in a subpass that only allows inline commands. Irrelevant if not in a subpass.
-    subpass_secondary: bool,
-
     // Flags passed when creating the command buffer.
     flags: Flags,
+}
+
+// The state of the current render pass, specifying the pass, subpass index and its intended contents.
+struct RenderPassState {
+    subpass: (Box<dyn RenderPassAbstract>, u32),
+    contents: SubpassContents,
 }
 
 impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
@@ -413,7 +415,13 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
                 } => {
                     let render_pass = sec.subpass.render_pass().clone();
                     let index = sec.subpass.index();
-                    (true, Some((Box::new(render_pass) as Box<_>, index)))
+                    (
+                        true,
+                        Some(RenderPassState {
+                            subpass: (Box::new(render_pass) as Box<_>, index),
+                            contents: SubpassContents::Inline,
+                        }),
+                    )
                 }
                 Kind::Secondary {
                     render_pass: None, ..
@@ -434,7 +442,6 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
                 compute_allowed,
                 render_pass,
                 secondary_cb,
-                subpass_secondary: false,
                 flags,
             })
         }
@@ -455,11 +462,12 @@ impl<P> AutoCommandBufferBuilder<P> {
     fn ensure_inside_render_pass_secondary(
         &self,
     ) -> Result<(), AutoCommandBufferBuilderContextError> {
-        if self.render_pass.is_some() {
-            if self.subpass_secondary {
-                Ok(())
-            } else {
-                Err(AutoCommandBufferBuilderContextError::WrongSubpassType)
+        if let Some(render_pass) = self.render_pass.as_ref() {
+            match render_pass.contents {
+                SubpassContents::SecondaryCommandBuffers => Ok(()),
+                SubpassContents::Inline => {
+                    Err(AutoCommandBufferBuilderContextError::WrongSubpassType)
+                }
             }
         } else {
             Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
@@ -474,25 +482,27 @@ impl<P> AutoCommandBufferBuilder<P> {
     where
         Gp: ?Sized + GraphicsPipelineAbstract,
     {
-        if self.render_pass.is_none() {
-            return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
+        if let Some(render_pass) = self.render_pass.as_ref() {
+            match render_pass.contents {
+                SubpassContents::Inline => {
+                    if pipeline.subpass_index() != render_pass.subpass.1 {
+                        Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex)
+                    } else if !RenderPassCompatible::is_compatible_with(
+                        pipeline,
+                        &render_pass.subpass.0,
+                    ) {
+                        Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass)
+                    } else {
+                        Ok(())
+                    }
+                }
+                SubpassContents::SecondaryCommandBuffers => {
+                    Err(AutoCommandBufferBuilderContextError::WrongSubpassType)
+                }
+            }
+        } else {
+            Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
         }
-
-        if self.subpass_secondary {
-            return Err(AutoCommandBufferBuilderContextError::WrongSubpassType);
-        }
-
-        let local_render_pass = self.render_pass.as_ref().unwrap();
-
-        if pipeline.subpass_index() != local_render_pass.1 {
-            return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
-        }
-
-        if !RenderPassCompatible::is_compatible_with(pipeline, &local_render_pass.0) {
-            return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
-        }
-
-        Ok(())
     }
 
     /// Builds the command buffer.
@@ -534,7 +544,7 @@ impl<P> AutoCommandBufferBuilder<P> {
     pub fn begin_render_pass<F, C>(
         &mut self,
         framebuffer: F,
-        secondary: bool,
+        contents: SubpassContents,
         clear_values: C,
     ) -> Result<&mut Self, BeginRenderPassError>
     where
@@ -602,15 +612,12 @@ impl<P> AutoCommandBufferBuilder<P> {
                 panic!("Too many clear values")
             }
 
-            let contents = if secondary {
-                SubpassContents::SecondaryCommandBuffers
-            } else {
-                SubpassContents::Inline
-            };
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
-            self.render_pass = Some((Box::new(framebuffer) as Box<_>, 0));
-            self.subpass_secondary = secondary;
+            self.render_pass = Some(RenderPassState {
+                subpass: (Box::new(framebuffer) as Box<_>, 0),
+                contents,
+            });
             Ok(self)
         }
     }
@@ -1435,17 +1442,17 @@ impl<P> AutoCommandBufferBuilder<P> {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary);
             }
 
-            match self.render_pass {
-                Some((ref rp, index)) if rp.num_subpasses() as u32 == index + 1 => (),
-                None => {
-                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
-                }
-                Some((ref rp, index)) => {
+            if let Some(render_pass) = self.render_pass.as_ref() {
+                let (ref rp, index) = render_pass.subpass;
+
+                if rp.num_subpasses() as u32 != index + 1 {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
                         actual: rp.num_subpasses() as u32,
                         current: index,
                     });
                 }
+            } else {
+                return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
 
             debug_assert!(self.graphics_allowed);
@@ -1531,38 +1538,31 @@ impl<P> AutoCommandBufferBuilder<P> {
     #[inline]
     pub fn next_subpass(
         &mut self,
-        secondary: bool,
+        contents: SubpassContents,
     ) -> Result<&mut Self, AutoCommandBufferBuilderContextError> {
         unsafe {
             if self.secondary_cb {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary);
             }
 
-            match self.render_pass {
-                None => {
-                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
-                }
-                Some((ref rp, ref mut index)) => {
-                    if *index + 1 >= rp.num_subpasses() as u32 {
-                        return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                            actual: rp.num_subpasses() as u32,
-                            current: *index,
-                        });
-                    } else {
-                        *index += 1;
-                    }
-                }
-            };
+            if let Some(render_pass) = self.render_pass.as_mut() {
+                let (ref rp, ref mut index) = render_pass.subpass;
 
-            self.subpass_secondary = secondary;
+                if *index + 1 >= rp.num_subpasses() as u32 {
+                    return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
+                        actual: rp.num_subpasses() as u32,
+                        current: *index,
+                    });
+                } else {
+                    *index += 1;
+                    render_pass.contents = contents;
+                }
+            } else {
+                return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
+            }
 
             debug_assert!(self.graphics_allowed);
 
-            let contents = if secondary {
-                SubpassContents::SecondaryCommandBuffers
-            } else {
-                SubpassContents::Inline
-            };
             self.inner.next_subpass(contents);
             Ok(self)
         }
