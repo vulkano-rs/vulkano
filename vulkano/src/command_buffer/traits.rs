@@ -22,6 +22,7 @@ use command_buffer::sys::UnsafeCommandBuffer;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use framebuffer::{RenderPassAbstract, Subpass};
 use image::ImageAccess;
 use image::ImageLayout;
 use sync::now;
@@ -143,7 +144,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         Ok(CommandBufferExecFuture {
             previous: future,
             command_buffer: self,
-            queue: queue,
+            queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),
         })
@@ -163,6 +164,13 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+
+    /// Returns whether the command buffer is a secondary command buffer.
+    fn is_secondary(&self) -> bool;
+
+    /// For secondary graphics command buffers, returns the subpass that it was created for.
+    /// Returns `None` for a secondary compute command buffer or a primary command buffer.
+    fn subpass(&self) -> Option<&Subpass<Box<dyn RenderPassAbstract + Send + Sync>>>;
 
     // FIXME: lots of other methods
 }
@@ -212,6 +220,16 @@ where
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
+    }
+
+    #[inline]
+    fn is_secondary(&self) -> bool {
+        (**self).is_secondary()
+    }
+
+    #[inline]
+    fn subpass(&self) -> Option<&Subpass<Box<dyn RenderPassAbstract + Send + Sync>>> {
+        (**self).subpass()
     }
 }
 
