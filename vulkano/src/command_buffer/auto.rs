@@ -463,11 +463,11 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 impl<P> AutoCommandBufferBuilder<P> {
     #[inline]
     fn ensure_outside_render_pass(&self) -> Result<(), AutoCommandBufferBuilderContextError> {
-        if self.render_pass_state.is_none() {
-            Ok(())
-        } else {
-            Err(AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass)
+        if self.render_pass_state.is_some() {
+            return Err(AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass);
         }
+
+        Ok(())
     }
 
     #[inline]
@@ -476,43 +476,37 @@ impl<P> AutoCommandBufferBuilder<P> {
         render_pass: &KindSecondaryRenderPass<&dyn RenderPassAbstract, &dyn FramebufferAbstract>,
     ) -> Result<(), AutoCommandBufferBuilderContextError> {
         if let Some(render_pass_state) = self.render_pass_state.as_ref() {
-            match render_pass_state.contents {
-                SubpassContents::SecondaryCommandBuffers => {
-                    // Subpasses must be the same.
-                    if render_pass.subpass.index() != render_pass_state.subpass.1 {
-                        return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
-                    }
+            if render_pass_state.contents == SubpassContents::Inline {
+                return Err(AutoCommandBufferBuilderContextError::WrongSubpassType);
+            }
 
-                    // Render passes must be compatible.
-                    if !RenderPassCompatible::is_compatible_with(
-                        render_pass.subpass.render_pass(),
-                        &render_pass_state.subpass.0,
-                    ) {
-                        return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
-                    }
+            // Subpasses must be the same.
+            if render_pass.subpass.index() != render_pass_state.subpass.1 {
+                return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
+            }
 
-                    // Framebuffer, if present on the secondary command buffer, must be the
-                    // same as the one in the current render pass.
-                    if let Some(framebuffer) = render_pass.framebuffer {
-                        if FramebufferAbstract::inner(framebuffer).internal_object()
-                            != FramebufferAbstract::inner(&render_pass_state.framebuffer)
-                                .internal_object()
-                        {
-                            return Err(
-                                AutoCommandBufferBuilderContextError::IncompatibleFramebuffer,
-                            );
-                        }
-                    }
+            // Render passes must be compatible.
+            if !RenderPassCompatible::is_compatible_with(
+                render_pass.subpass.render_pass(),
+                &render_pass_state.subpass.0,
+            ) {
+                return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
+            }
 
-                    Ok(())
-                }
-                SubpassContents::Inline => {
-                    Err(AutoCommandBufferBuilderContextError::WrongSubpassType)
+            // Framebuffer, if present on the secondary command buffer, must be the
+            // same as the one in the current render pass.
+            if let Some(framebuffer) = render_pass.framebuffer {
+                if FramebufferAbstract::inner(framebuffer).internal_object()
+                    != FramebufferAbstract::inner(&render_pass_state.framebuffer).internal_object()
+                {
+                    return Err(AutoCommandBufferBuilderContextError::IncompatibleFramebuffer);
                 }
             }
         } else {
-            Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
+            return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
         }
+
+        Ok(())
     }
 
     #[inline]
@@ -526,35 +520,34 @@ impl<P> AutoCommandBufferBuilder<P> {
         match &self.kind {
             Kind::Primary => {
                 if let Some(render_pass_state) = self.render_pass_state.as_ref() {
-                    match render_pass_state.contents {
-                        SubpassContents::Inline => {
-                            if pipeline.subpass_index() != render_pass_state.subpass.1 {
-                                Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex)
-                            } else if !RenderPassCompatible::is_compatible_with(
-                                pipeline,
-                                &render_pass_state.subpass.0,
-                            ) {
-                                Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass)
-                            } else {
-                                Ok(())
-                            }
-                        }
-                        SubpassContents::SecondaryCommandBuffers => {
-                            Err(AutoCommandBufferBuilderContextError::WrongSubpassType)
-                        }
+                    if render_pass_state.contents == SubpassContents::SecondaryCommandBuffers {
+                        return Err(AutoCommandBufferBuilderContextError::WrongSubpassType);
+                    }
+
+                    // Subpasses must be the same.
+                    if pipeline.subpass_index() != render_pass_state.subpass.1 {
+                        return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
+                    }
+
+                    // Render passes must be compatible.
+                    if !RenderPassCompatible::is_compatible_with(
+                        pipeline,
+                        &render_pass_state.subpass.0,
+                    ) {
+                        return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
                     }
                 } else {
-                    Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
+                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
                 }
             }
             Kind::Secondary { render_pass, .. } => {
                 if render_pass.is_none() {
-                    Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass)
-                } else {
-                    Ok(())
+                    return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
                 }
             }
         }
+
+        Ok(())
     }
 
     /// Builds the command buffer.
