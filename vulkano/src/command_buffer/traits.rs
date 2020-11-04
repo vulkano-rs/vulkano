@@ -19,10 +19,11 @@ use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
+use command_buffer::Kind;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
-use framebuffer::{RenderPassAbstract, Subpass};
+use framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use image::ImageAccess;
 use image::ImageLayout;
 use sync::now;
@@ -165,12 +166,8 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
-    /// Returns whether the command buffer is a secondary command buffer.
-    fn is_secondary(&self) -> bool;
-
-    /// For secondary graphics command buffers, returns the subpass that it was created for.
-    /// Returns `None` for a secondary compute command buffer or a primary command buffer.
-    fn subpass(&self) -> Option<&Subpass<Box<dyn RenderPassAbstract + Send + Sync>>>;
+    /// Returns a `Kind` value describing the command buffer.
+    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
 
     // FIXME: lots of other methods
 }
@@ -223,13 +220,8 @@ where
     }
 
     #[inline]
-    fn is_secondary(&self) -> bool {
-        (**self).is_secondary()
-    }
-
-    #[inline]
-    fn subpass(&self) -> Option<&Subpass<Box<dyn RenderPassAbstract + Send + Sync>>> {
-        (**self).subpass()
+    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+        (**self).kind()
     }
 }
 

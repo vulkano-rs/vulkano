@@ -14,7 +14,7 @@ use buffer::CpuAccessibleBuffer;
 use command_buffer::synced::base::SyncCommandBufferBuilder;
 use command_buffer::synced::base::SyncCommandBufferBuilderError;
 use command_buffer::sys::Flags;
-use command_buffer::sys::Kind;
+use command_buffer::Kind;
 use device::Device;
 
 #[test]

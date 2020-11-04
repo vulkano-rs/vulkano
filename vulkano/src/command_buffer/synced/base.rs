@@ -21,11 +21,11 @@ use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolAlloc;
 use command_buffer::pool::CommandPoolBuilderAlloc;
 use command_buffer::sys::Flags;
-use command_buffer::sys::Kind;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use command_buffer::CommandBufferExecError;
+use command_buffer::Kind;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
@@ -721,8 +721,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                 }
 
                 entry.insert(ResourceState {
-                    stages: stages,
-                    access: access,
+                    stages,
+                    access,
                     exclusive_any: actually_exclusive,
                     exclusive: actually_exclusive,
                     initial_layout: actual_start_layout,
