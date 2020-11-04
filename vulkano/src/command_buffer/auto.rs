@@ -1511,6 +1511,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that executes a secondary command buffer.
+    ///
+    /// # Safety
+    /// The execution state of the secondary command buffer is not checked, and resources are not
+    /// synchronised against concurrent access.
     pub unsafe fn execute_commands<C>(
         &mut self,
         command_buffer: C,
@@ -1535,6 +1539,10 @@ impl<P> AutoCommandBufferBuilder<P> {
     }
 
     /// Adds a command that multiple secondary command buffers in a vector.
+    ///
+    /// # Safety
+    /// The execution state of the secondary command buffer is not checked, and resources are not
+    /// synchronised against concurrent access.
     pub unsafe fn execute_commands_from_vec<C>(
         &mut self,
         command_buffers: Vec<C>,
