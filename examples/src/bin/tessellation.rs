@@ -1,8 +1,8 @@
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
@@ -12,14 +12,14 @@
 // *    Tessellation Control Shader     https://www.khronos.org/opengl/wiki/Tessellation_Control_Shader
 // *    Tessellation Evaluation Shader  https://www.khronos.org/opengl/wiki/Tessellation_Evaluation_Shader
 // *    Tessellation real-world usage 1 http://ogldev.atspace.co.uk/www/tutorial30/tutorial30.html
-// *    Tessellation real-world usage 2 http://prideout.net/blog/?p=48
+// *    Tessellation real-world usage 2 https://prideout.net/blog/?p=48
 
 // Notable elements of this example:
 // *    tessellation control shader and a tessellation evaluation shader
 // *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -92,7 +92,7 @@ mod tcs {
 // if layout(quads) is used then gl_TessCoord is in cartesian coordinates.
 // Barrycentric coordinates are of the form (x, y, z) where x + y + z = 1
 // and the values x, y and z represent the distance from a vertex of the triangle.
-// http://mathworld.wolfram.com/BarycentricCoordinates.html
+// https://mathworld.wolfram.com/BarycentricCoordinates.html
 
 mod tes {
     vulkano_shaders::shader! {
@@ -351,7 +351,7 @@ fn main() {
             builder
                 .begin_render_pass(
                     framebuffers[image_num].clone(),
-                    false,
+                    SubpassContents::Inline,
                     vec![[0.0, 0.0, 0.0, 1.0].into()],
                 )
                 .unwrap()

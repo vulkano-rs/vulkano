@@ -1,8 +1,8 @@
 // Copyright (c) 2017 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
@@ -70,7 +70,9 @@ use std::io::BufWriter;
 use std::path::Path;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBuffer, DynamicState};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBuffer, DynamicState, SubpassContents,
+};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
@@ -267,7 +269,7 @@ fn main() {
     builder
         .begin_render_pass(
             framebuffer.clone(),
-            false,
+            SubpassContents::Inline,
             vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None],
         )
         .unwrap()

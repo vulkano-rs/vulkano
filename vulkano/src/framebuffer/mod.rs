@@ -1,8 +1,8 @@
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
@@ -117,8 +117,6 @@ pub use self::traits::RenderPassDescClearValues;
 pub use self::traits::RenderPassSubpassInterface;
 pub use self::traits::Subpass;
 
-use vk;
-
 #[macro_use]
 mod macros;
 mod attachments_list;
@@ -128,13 +126,3 @@ mod empty;
 mod framebuffer;
 mod sys;
 mod traits;
-
-/// Describes what a subpass in a command buffer will contain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
-pub enum SubpassContents {
-    /// The subpass will only directly contain commands.
-    Inline = vk::SUBPASS_CONTENTS_INLINE,
-    /// The subpass will only contain secondary command buffers invocations.
-    SecondaryCommandBuffers = vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS,
-}

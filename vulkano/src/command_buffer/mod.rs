@@ -1,8 +1,8 @@
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
@@ -97,9 +97,11 @@ pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 
+use framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
 use pipeline::depth_stencil::DynamicStencilValue;
-use pipeline::viewport::Scissor;
-use pipeline::viewport::Viewport;
+use pipeline::viewport::{Scissor, Viewport};
+use query::QueryPipelineStatisticFlags;
+use std::sync::Arc;
 
 pub mod pool;
 pub mod submit;
@@ -168,5 +170,108 @@ impl Default for DynamicState {
     #[inline]
     fn default() -> DynamicState {
         DynamicState::none()
+    }
+}
+
+/// Describes what a subpass in a command buffer will contain.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SubpassContents {
+    /// The subpass will only directly contain commands.
+    Inline = vk::SUBPASS_CONTENTS_INLINE,
+    /// The subpass will only contain secondary command buffers invocations.
+    SecondaryCommandBuffers = vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS,
+}
+
+/// Determines the kind of command buffer that we want to create.
+#[derive(Debug, Clone)]
+pub enum Kind<R, F> {
+    /// A primary command buffer can execute all commands and can call secondary command buffers.
+    Primary,
+
+    /// A secondary command buffer.
+    Secondary {
+        /// If `Some`, can only call draw operations that can be executed from within a specific
+        /// subpass. Otherwise it can execute all dispatch and transfer operations, but not drawing
+        /// operations.
+        render_pass: Option<KindSecondaryRenderPass<R, F>>,
+
+        /// Whether it is allowed to have an active occlusion query in the primary command buffer
+        /// when executing this secondary command buffer.
+        occlusion_query: KindOcclusionQuery,
+
+        /// Which pipeline statistics queries are allowed to be active when this secondary command
+        /// buffer starts.
+        ///
+        /// Note that the `pipeline_statistics_query` feature must be enabled if any of the flags
+        /// of this value are set.
+        query_statistics_flags: QueryPipelineStatisticFlags,
+    },
+}
+
+/// Additional information for `Kind::Secondary`.
+#[derive(Debug, Clone)]
+pub struct KindSecondaryRenderPass<R, F> {
+    /// Which subpass this secondary command buffer can be called from.
+    pub subpass: Subpass<R>,
+
+    /// The framebuffer object that will be used when calling the command buffer.
+    /// This parameter is optional and is an optimization hint for the implementation.
+    pub framebuffer: Option<F>,
+}
+
+/// Additional information for `Kind::Secondary`.
+#[derive(Debug, Copy, Clone)]
+pub enum KindOcclusionQuery {
+    /// It is allowed to have an active occlusion query in the primary command buffer when
+    /// executing this secondary command buffer.
+    ///
+    /// The `inherited_queries` feature must be enabled on the device for this to be a valid option.
+    Allowed {
+        /// The occlusion query can have the `control_precise` flag.
+        control_precise_allowed: bool,
+    },
+
+    /// It is forbidden to have an active occlusion query.
+    Forbidden,
+}
+
+impl
+    Kind<
+        RenderPass<EmptySinglePassRenderPassDesc>,
+        Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
+    >
+{
+    /// Equivalent to `Kind::Primary`.
+    ///
+    /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
+    /// > compilation error because the Rust compiler couldn't determine the template parameters
+    /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
+    #[inline]
+    pub fn primary() -> Kind<
+        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
+        Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
+    > {
+        Kind::Primary
+    }
+
+    /// Equivalent to `Kind::Secondary`.
+    ///
+    /// > **Note**: If you use `let kind = Kind::Secondary;` in your code, you will probably get a
+    /// > compilation error because the Rust compiler couldn't determine the template parameters
+    /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
+    #[inline]
+    pub fn secondary(
+        occlusion_query: KindOcclusionQuery,
+        query_statistics_flags: QueryPipelineStatisticFlags,
+    ) -> Kind<
+        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
+        Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
+    > {
+        Kind::Secondary {
+            render_pass: None,
+            occlusion_query,
+            query_statistics_flags,
+        }
     }
 }

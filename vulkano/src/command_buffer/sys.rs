@@ -1,8 +1,8 @@
 // Copyright (c) 2016 The vulkano developers
 // Licensed under the Apache License, Version 2.0
 // <LICENSE-APACHE or
-// http://www.apache.org/licenses/LICENSE-2.0> or the MIT
-// license <LICENSE-MIT or http://opensource.org/licenses/MIT>,
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
 // at your option. All files in the project carrying such
 // notice may not be copied, modified, or distributed except
 // according to those terms.
@@ -21,6 +21,9 @@ use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolAlloc;
 use command_buffer::pool::CommandPoolBuilderAlloc;
 use command_buffer::CommandBuffer;
+use command_buffer::Kind;
+use command_buffer::KindOcclusionQuery;
+use command_buffer::SubpassContents;
 use descriptor::descriptor::ShaderStages;
 use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
@@ -29,13 +32,8 @@ use device::DeviceOwned;
 use format::ClearValue;
 use format::FormatTy;
 use format::PossibleCompressedFormatDesc;
-use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::Framebuffer;
 use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPass;
 use framebuffer::RenderPassAbstract;
-use framebuffer::Subpass;
-use framebuffer::SubpassContents;
 use image::ImageAccess;
 use image::ImageLayout;
 use instance::QueueFamily;
@@ -45,7 +43,6 @@ use pipeline::viewport::Scissor;
 use pipeline::viewport::Viewport;
 use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
-use query::QueryPipelineStatisticFlags;
 use query::UnsafeQueriesRange;
 use query::UnsafeQuery;
 use sampler::Filter;
@@ -56,99 +53,6 @@ use sync::PipelineStages;
 use vk;
 use OomError;
 use VulkanObject;
-
-/// Determines the kind of command buffer that we want to create.
-#[derive(Debug, Clone)]
-pub enum Kind<R, F> {
-    /// A primary command buffer can execute all commands and can call secondary command buffers.
-    Primary,
-
-    /// A secondary command buffer.
-    Secondary {
-        /// If `Some`, can only call draw operations that can be executed from within a specific
-        /// subpass. Otherwise it can execute all dispatch and transfer operations, but not drawing
-        /// operations.
-        render_pass: Option<KindSecondaryRenderPass<R, F>>,
-
-        /// Whether it is allowed to have an active occlusion query in the primary command buffer
-        /// when executing this secondary command buffer.
-        occlusion_query: KindOcclusionQuery,
-
-        /// Which pipeline statistics queries are allowed to be active when this secondary command
-        /// buffer starts.
-        ///
-        /// Note that the `pipeline_statistics_query` feature must be enabled if any of the flags
-        /// of this value are set.
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    },
-}
-
-/// Additional information for `Kind::Secondary`.
-#[derive(Debug, Clone)]
-pub struct KindSecondaryRenderPass<R, F> {
-    /// Which subpass this secondary command buffer can be called from.
-    pub subpass: Subpass<R>,
-
-    /// The framebuffer object that will be used when calling the command buffer.
-    /// This parameter is optional and is an optimization hint for the implementation.
-    pub framebuffer: Option<F>,
-}
-
-/// Additional information for `Kind::Secondary`.
-#[derive(Debug, Copy, Clone)]
-pub enum KindOcclusionQuery {
-    /// It is allowed to have an active occlusion query in the primary command buffer when
-    /// executing this secondary command buffer.
-    ///
-    /// The `inherited_queries` feature must be enabled on the device for this to be a valid option.
-    Allowed {
-        /// The occlusion query can have the `control_precise` flag.
-        control_precise_allowed: bool,
-    },
-
-    /// It is forbidden to have an active occlusion query.
-    Forbidden,
-}
-
-impl
-    Kind<
-        RenderPass<EmptySinglePassRenderPassDesc>,
-        Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
-    >
-{
-    /// Equivalent to `Kind::Primary`.
-    ///
-    /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
-    /// > compilation error because the Rust compiler couldn't determine the template parameters
-    /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
-    #[inline]
-    pub fn primary() -> Kind<
-        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-        Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
-    > {
-        Kind::Primary
-    }
-
-    /// Equivalent to `Kind::Secondary`.
-    ///
-    /// > **Note**: If you use `let kind = Kind::Secondary;` in your code, you will probably get a
-    /// > compilation error because the Rust compiler couldn't determine the template parameters
-    /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
-    #[inline]
-    pub fn secondary(
-        occlusion_query: KindOcclusionQuery,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Kind<
-        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-        Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
-    > {
-        Kind::Secondary {
-            render_pass: None,
-            occlusion_query,
-            query_statistics_flags,
-        }
-    }
-}
 
 /// Flags to pass when creating a command buffer.
 ///
@@ -371,7 +275,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
             Ok(UnsafeCommandBuffer {
                 cmd: cmd.into_alloc(),
-                cmd_raw: cmd_raw,
+                cmd_raw,
                 device: self.device.clone(),
             })
         }
@@ -435,10 +339,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                     },
                 },
                 ClearValue::DepthStencil((depth, stencil)) => vk::ClearValue {
-                    depthStencil: vk::ClearDepthStencilValue {
-                        depth: depth,
-                        stencil: stencil,
-                    },
+                    depthStencil: vk::ClearDepthStencilValue { depth, stencil },
                 },
             })
             .collect();
@@ -1452,7 +1353,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdSetBlendConstants(cmd, constants); // TODO: correct to pass array?
+        vk.CmdSetBlendConstants(cmd, &constants);
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.

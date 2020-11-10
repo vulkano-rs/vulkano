@@ -1,10 +1,16 @@
 # Unreleased
 
-- Added two vulkano-win features `raw-window-handle_` and `winit_` to be able to use vulkano without winit
-- Added function to create surface from RawWindowHandle
+- **Breaking** The `Kind` and `SubpassContents` types have been moved to the root of the `command_buffer` module.
+- **Breaking** On `AutoCommandBufferBuilder`, the methods `begin_render_pass` and `next_subpass` now take `SubpassContents` instead of a boolean value.
+- **Breaking** The `CommandBuffer` trait now has an additional required method, `kind`.
+- Some safety checks have been added to `execute_commands`/`execute_commands_from_vec` on `AutoCommandBufferBuilder`, but not everything is checked yet so it's still unsafe to call.
+- Added two vulkano-win features `raw-window-handle_` and `winit_` to be able to use vulkano without winit.
+- Added function to create surface from `RawWindowHandle`.
 - Added a `properties` method to `Format`.
 - Added additional device feature flags for enabling SPIR-V related capabilities.
 - Added method `copy_buffer_dimensions` that allows copying parts of buffers containing arrays.
+- Fixed surface creation function on Windows(PR #1410).
+- Travis CI Linux Nightly job temporary disabled until #1423 resolved.
 
 # Version 0.19.0 (2020-06-01)
 
