@@ -3000,7 +3000,7 @@ ptrs!(DevicePointers, {
     CmdSetScissor => (commandBuffer: CommandBuffer, firstScissor: u32, scissorCount: u32, pScissors: *const Rect2D) -> (),
     CmdSetLineWidth => (commandBuffer: CommandBuffer, lineWidth: f32) -> (),
     CmdSetDepthBias => (commandBuffer: CommandBuffer, depthBiasConstantFactor: f32, depthBiasClamp: f32, depthBiasSlopeFactor: f32) -> (),
-    CmdSetBlendConstants => (commandBuffer: CommandBuffer, blendConstants: [f32; 4]) -> (),
+    CmdSetBlendConstants => (commandBuffer: CommandBuffer, blendConstants: &[f32; 4]) -> (),
     CmdSetDepthBounds => (commandBuffer: CommandBuffer, minDepthBounds: f32, maxDepthBounds: f32) -> (),
     CmdSetStencilCompareMask => (commandBuffer: CommandBuffer, faceMask: StencilFaceFlags, compareMask: u32) -> (),
     CmdSetStencilWriteMask => (commandBuffer: CommandBuffer, faceMask: StencilFaceFlags, writeMask: u32) -> (),
