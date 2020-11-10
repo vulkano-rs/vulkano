@@ -19,9 +19,11 @@ use buffer::BufferAccess;
 use command_buffer::submit::SubmitAnyBuilder;
 use command_buffer::submit::SubmitCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBuffer;
+use command_buffer::Kind;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use image::ImageAccess;
 use image::ImageLayout;
 use sync::now;
@@ -143,7 +145,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         Ok(CommandBufferExecFuture {
             previous: future,
             command_buffer: self,
-            queue: queue,
+            queue,
             submitted: Mutex::new(false),
             finished: AtomicBool::new(false),
         })
@@ -163,6 +165,9 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+
+    /// Returns a `Kind` value describing the command buffer.
+    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
 
     // FIXME: lots of other methods
 }
@@ -212,6 +217,11 @@ where
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
+    }
+
+    #[inline]
+    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+        (**self).kind()
     }
 }
 

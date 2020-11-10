@@ -117,8 +117,6 @@ pub use self::traits::RenderPassDescClearValues;
 pub use self::traits::RenderPassSubpassInterface;
 pub use self::traits::Subpass;
 
-use vk;
-
 #[macro_use]
 mod macros;
 mod attachments_list;
@@ -128,13 +126,3 @@ mod empty;
 mod framebuffer;
 mod sys;
 mod traits;
-
-/// Describes what a subpass in a command buffer will contain.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
-pub enum SubpassContents {
-    /// The subpass will only directly contain commands.
-    Inline = vk::SUBPASS_CONTENTS_INLINE,
-    /// The subpass will only contain secondary command buffers invocations.
-    SecondaryCommandBuffers = vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS,
-}

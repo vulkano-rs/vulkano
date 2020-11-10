@@ -22,8 +22,7 @@
 use vulkano as vk;
 use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
 use vulkano::buffer::BufferUsage;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::DynamicState;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::descriptor::descriptor::DescriptorDesc;
 use vulkano::descriptor::descriptor::ShaderStages;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
@@ -520,7 +519,11 @@ fn main() {
             let mut builder =
                 AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
             builder
-                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                .begin_render_pass(
+                    framebuffers[image_num].clone(),
+                    SubpassContents::Inline,
+                    clear_values,
+                )
                 .unwrap()
                 .draw(
                     graphics_pipeline.clone(),

@@ -19,7 +19,7 @@
 // *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -351,7 +351,7 @@ fn main() {
             builder
                 .begin_render_pass(
                     framebuffers[image_num].clone(),
-                    false,
+                    SubpassContents::Inline,
                     vec![[0.0, 0.0, 0.0, 1.0].into()],
                 )
                 .unwrap()

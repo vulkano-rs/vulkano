@@ -17,7 +17,7 @@
 // what a vertex or a shader is.
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -371,7 +371,11 @@ fn main() {
                     .unwrap();
 
             builder
-                .begin_render_pass(framebuffers[image_num].clone(), false, clear_values)
+                .begin_render_pass(
+                    framebuffers[image_num].clone(),
+                    SubpassContents::Inline,
+                    clear_values,
+                )
                 .unwrap()
                 .draw(
                     pipeline.clone(),
