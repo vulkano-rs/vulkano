@@ -3,6 +3,7 @@
 - **Breaking** The `Kind` and `SubpassContents` types have been moved to the root of the `command_buffer` module.
 - **Breaking** On `AutoCommandBufferBuilder`, the methods `begin_render_pass` and `next_subpass` now take `SubpassContents` instead of a boolean value.
 - **Breaking** The `CommandBuffer` trait now has an additional required method, `kind`.
+- **Breaking** Update dependency `winit` 0.22 -> 0.23
 - Some safety checks have been added to `execute_commands`/`execute_commands_from_vec` on `AutoCommandBufferBuilder`, but not everything is checked yet so it's still unsafe to call.
 - Added two vulkano-win features `raw-window-handle_` and `winit_` to be able to use vulkano without winit.
 - Added function to create surface from `RawWindowHandle`.
