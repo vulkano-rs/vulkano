@@ -1452,7 +1452,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdSetBlendConstants(cmd, constants); // TODO: correct to pass array?
+        vk.CmdSetBlendConstants(cmd, &constants);
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
