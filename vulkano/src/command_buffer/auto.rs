@@ -70,6 +70,7 @@ use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use query::QueryPipelineStatisticFlags;
 use sampler::Filter;
+use std::ffi::CStr;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
@@ -1158,6 +1159,69 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
     }
 
+    /// Open a command buffer debug label region.
+    ///
+    /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
+    #[inline]
+    pub fn debug_marker_begin(
+        &mut self,
+        name: &'static CStr,
+        color: [f32; 4],
+    ) -> Result<&mut Self, DebugMarkerError> {
+        if !self.graphics_allowed && self.compute_allowed {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
+
+        check_debug_marker_color(color)?;
+
+        unsafe {
+            self.inner.debug_marker_begin(name.into(), color);
+        }
+
+        Ok(self)
+    }
+
+    /// Close a command buffer label region.
+    ///
+    /// Note: you need to open a command buffer label region first with `debug_marker_begin`.
+    /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
+    #[inline]
+    pub fn debug_marker_end(&mut self) -> Result<&mut Self, DebugMarkerError> {
+        if !self.graphics_allowed && self.compute_allowed {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
+
+        // TODO: validate that debug_marker_begin with same name was sent earlier
+
+        unsafe {
+            self.inner.debug_marker_end();
+        }
+
+        Ok(self)
+    }
+
+    /// Insert a label into a command buffer.
+    ///
+    /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
+    #[inline]
+    pub fn debug_marker_insert(
+        &mut self,
+        name: &'static CStr,
+        color: [f32; 4],
+    ) -> Result<&mut Self, DebugMarkerError> {
+        if !self.graphics_allowed && self.compute_allowed {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
+
+        check_debug_marker_color(color)?;
+
+        unsafe {
+            self.inner.debug_marker_insert(name.into(), color);
+        }
+
+        Ok(self)
+    }
+
     #[inline]
     pub fn dispatch<Cp, S, Pc>(
         &mut self,
@@ -2064,6 +2128,11 @@ err_gen!(CopyBufferImageError {
 err_gen!(FillBufferError {
     AutoCommandBufferBuilderContextError,
     CheckFillBufferError,
+});
+
+err_gen!(DebugMarkerError {
+    AutoCommandBufferBuilderContextError,
+    CheckColorError,
 });
 
 err_gen!(DispatchError {

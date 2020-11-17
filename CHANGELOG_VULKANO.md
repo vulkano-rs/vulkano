@@ -10,6 +10,7 @@
 - Added a `properties` method to `Format`.
 - Added additional device feature flags for enabling SPIR-V related capabilities.
 - Added method `copy_buffer_dimensions` that allows copying parts of buffers containing arrays.
+- Added `debug_marker_begin`, `debug_marker_end` and `debug_marker_insert` to `AutoCommandBufferBuilder`.
 - Fixed surface creation function on Windows(PR #1410).
 - Travis CI Linux Nightly job temporary disabled until #1423 resolved.
 
