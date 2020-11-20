@@ -83,6 +83,7 @@ pub use self::auto::ClearColorImageError;
 pub use self::auto::CopyBufferError;
 pub use self::auto::CopyBufferImageError;
 pub use self::auto::CopyImageError;
+pub use self::auto::DebugMarkerError;
 pub use self::auto::DispatchError;
 pub use self::auto::DrawError;
 pub use self::auto::DrawIndexedError;

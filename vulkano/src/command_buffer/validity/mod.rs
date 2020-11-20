@@ -16,6 +16,7 @@ pub use self::copy_image::{check_copy_image, CheckCopyImageError};
 pub use self::copy_image_buffer::{
     check_copy_buffer_image, CheckCopyBufferImageError, CheckCopyBufferImageTy,
 };
+pub use self::debug_marker::{check_debug_marker_color, CheckColorError};
 pub use self::descriptor_sets::{check_descriptor_sets_validity, CheckDescriptorSetsValidityError};
 pub use self::dispatch::{check_dispatch, CheckDispatchError};
 pub use self::dynamic_state::{check_dynamic_state_validity, CheckDynamicStateValidityError};
@@ -30,6 +31,7 @@ mod clear_color_image;
 mod copy_buffer;
 mod copy_image;
 mod copy_image_buffer;
+mod debug_marker;
 mod descriptor_sets;
 mod dispatch;
 mod dynamic_state;
