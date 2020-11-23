@@ -1169,7 +1169,7 @@ pub struct PhysicalDeviceFeatures {
     pub shaderStorageImageArrayDynamicIndexing: Bool32,
     pub shaderClipDistance: Bool32,
     pub shaderCullDistance: Bool32,
-    pub shaderf3264: Bool32,
+    pub shaderFloat64: Bool32,
     pub shaderInt64: Bool32,
     pub shaderInt16: Bool32,
     pub shaderResourceResidency: Bool32,

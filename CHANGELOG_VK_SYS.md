@@ -7,6 +7,9 @@
     + `PhysicalDevice16BitStorageFeatures`
     + `PhysicalDeviceShaderFloat16Int8Features`
 
+- Fix feature name in `PhysicalDeviceFeatures`:
+  + Rename `shaderf3264` to `shaderFloat64`
+
 # Version 0.5.2 (2020-06-01)
 
 - Added support for the physical storage buffer access.

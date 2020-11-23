@@ -373,7 +373,7 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::CapabilityVector16 => panic!(),  // not supported
         Capability::CapabilityFloat16Buffer => panic!(), // not supported
         Capability::CapabilityFloat16 => panic!(),   // not supported
-        Capability::CapabilityFloat64 => DeviceRequirement::Features(&["shader_f3264"]),
+        Capability::CapabilityFloat64 => DeviceRequirement::Features(&["shader_float64"]),
         Capability::CapabilityInt64 => DeviceRequirement::Features(&["shader_int64"]),
         Capability::CapabilityInt64Atomics => panic!(), // not supported
         Capability::CapabilityImageBasic => panic!(),   // not supported

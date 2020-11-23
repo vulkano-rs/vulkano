@@ -13,6 +13,7 @@
 - Added `debug_marker_begin`, `debug_marker_end` and `debug_marker_insert` to `AutoCommandBufferBuilder`.
 - Fixed surface creation function on Windows(PR #1410).
 - Travis CI Linux Nightly job temporary disabled until #1423 resolved.
+- Renamed feature from `shader_f3264` to `shader_float64`.
 
 # Version 0.19.0 (2020-06-01)
 
