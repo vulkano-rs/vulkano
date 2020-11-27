@@ -14,15 +14,15 @@
 //!
 //! You can create either an empty cache or a cache from some initial data. Whenever you create a
 //! graphics or compute pipeline, you have the possibility to pass a reference to that cache.
-//! TODO: ^ that's not the case yet
+//! Note: This is currently only possible with the GraphicsPipelineBuilder
 //! The Vulkan implementation will then look in the cache for an existing entry, or add one if it
 //! doesn't exist.
 //!
 //! Once that is done, you can extract the data from the cache and store it. See the documentation
 //! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
 //! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
-//!
 
+// TODO: implement the cache functionality for ComputePipeline
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
