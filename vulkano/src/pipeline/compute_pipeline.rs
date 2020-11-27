@@ -45,6 +45,10 @@ use VulkanObject;
 ///
 /// All compute pipeline objects implement the `ComputePipelineAbstract` trait. You can turn any
 /// `Arc<ComputePipeline<Pl>>` into an `Arc<ComputePipelineAbstract>` if necessary.
+///
+/// Pass an optional `Arc` to a `PipelineCache` to enable pipeline caching. The vulkan
+/// implementation will handle the `PipelineCache` and check if it is available.
+/// Check the documentation of the `PipelineCache` for more information.
 pub struct ComputePipeline<Pl> {
     inner: Inner,
     pipeline_layout: Pl,
