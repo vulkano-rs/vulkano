@@ -14,6 +14,7 @@
 - Fixed surface creation function on Windows(PR #1410).
 - Travis CI Linux Nightly job temporary disabled until #1423 resolved.
 - Renamed feature from `shader_f3264` to `shader_float64`.
+- Added method `build_with_cache` to the `GraphicsPipelineBuilder` that enables pipeline caching.
 
 # Version 0.19.0 (2020-06-01)
 
