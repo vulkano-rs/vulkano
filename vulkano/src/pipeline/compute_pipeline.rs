@@ -537,8 +537,13 @@ mod tests {
         }
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &SpecConsts { VALUE: 0x12345678 }, None)
-                .unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                &shader,
+                &SpecConsts { VALUE: 0x12345678 },
+                None,
+            )
+            .unwrap(),
         );
 
         let data_buffer =

@@ -155,7 +155,13 @@ fn main() {
         constant_2: local_size_y,
     };
     let pipeline = Arc::new(
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &spec_consts, None).unwrap(),
+        ComputePipeline::new(
+            device.clone(),
+            &shader.main_entry_point(),
+            &spec_consts,
+            None,
+        )
+        .unwrap(),
     );
 
     let image = StorageImage::new(
