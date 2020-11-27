@@ -25,6 +25,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use pipeline::cache::PipelineCache;
 use pipeline::shader::EntryPointAbstract;
 use pipeline::shader::SpecializationConstants;
 
@@ -60,6 +61,7 @@ impl ComputePipeline<()> {
         device: Arc<Device>,
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
+        cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
     where
         Cs::PipelineLayout: Clone,
@@ -72,6 +74,7 @@ impl ComputePipeline<()> {
                 shader,
                 specialization,
                 pipeline_layout,
+                cache,
             )
         }
     }
@@ -87,6 +90,7 @@ impl<Pl> ComputePipeline<Pl> {
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl,
+        cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
     where
         Cs::PipelineLayout: Clone,
@@ -100,6 +104,7 @@ impl<Pl> ComputePipeline<Pl> {
                 shader,
                 specialization,
                 pipeline_layout,
+                cache,
             )
         }
     }
@@ -111,6 +116,7 @@ impl<Pl> ComputePipeline<Pl> {
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl,
+        cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
     where
         Cs::PipelineLayout: Clone,
@@ -152,10 +158,15 @@ impl<Pl> ComputePipeline<Pl> {
                 basePipelineIndex: 0,
             };
 
+            let cache_handle = match cache {
+                Some(cache) => cache.internal_object(),
+                None => vk::NULL_HANDLE,
+            };
+
             let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateComputePipelines(
                 device.internal_object(),
-                0,
+                cache_handle,
                 1,
                 &infos,
                 ptr::null(),
@@ -522,7 +533,7 @@ mod tests {
         }
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &SpecConsts { VALUE: 0x12345678 })
+            ComputePipeline::new(device.clone(), &shader, &SpecConsts { VALUE: 0x12345678 }, None)
                 .unwrap(),
         );
 

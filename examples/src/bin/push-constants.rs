@@ -71,7 +71,7 @@ fn main() {
 
     let shader = cs::Shader::load(device.clone()).unwrap();
     let pipeline =
-        Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap());
+        Arc::new(ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), None).unwrap());
 
     let data_buffer = {
         let data_iter = (0..65536u32).map(|n| n);
