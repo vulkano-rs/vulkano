@@ -75,7 +75,13 @@ fn main() {
         addend: 1.0,
     };
     let pipeline = Arc::new(
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &spec_consts).unwrap(),
+        ComputePipeline::new(
+            device.clone(),
+            &shader.main_entry_point(),
+            &spec_consts,
+            None,
+        )
+        .unwrap(),
     );
 
     let data_buffer = {

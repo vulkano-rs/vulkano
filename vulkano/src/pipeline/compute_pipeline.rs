@@ -25,6 +25,7 @@ use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use descriptor::pipeline_layout::PipelineLayoutSuperset;
 use descriptor::pipeline_layout::PipelineLayoutSys;
+use pipeline::cache::PipelineCache;
 use pipeline::shader::EntryPointAbstract;
 use pipeline::shader::SpecializationConstants;
 
@@ -44,6 +45,10 @@ use VulkanObject;
 ///
 /// All compute pipeline objects implement the `ComputePipelineAbstract` trait. You can turn any
 /// `Arc<ComputePipeline<Pl>>` into an `Arc<ComputePipelineAbstract>` if necessary.
+///
+/// Pass an optional `Arc` to a `PipelineCache` to enable pipeline caching. The vulkan
+/// implementation will handle the `PipelineCache` and check if it is available.
+/// Check the documentation of the `PipelineCache` for more information.
 pub struct ComputePipeline<Pl> {
     inner: Inner,
     pipeline_layout: Pl,
@@ -60,6 +65,7 @@ impl ComputePipeline<()> {
         device: Arc<Device>,
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
+        cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
     where
         Cs::PipelineLayout: Clone,
@@ -72,6 +78,7 @@ impl ComputePipeline<()> {
                 shader,
                 specialization,
                 pipeline_layout,
+                cache,
             )
         }
     }
@@ -87,6 +94,7 @@ impl<Pl> ComputePipeline<Pl> {
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl,
+        cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
     where
         Cs::PipelineLayout: Clone,
@@ -100,6 +108,7 @@ impl<Pl> ComputePipeline<Pl> {
                 shader,
                 specialization,
                 pipeline_layout,
+                cache,
             )
         }
     }
@@ -111,6 +120,7 @@ impl<Pl> ComputePipeline<Pl> {
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
         pipeline_layout: Pl,
+        cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
     where
         Cs::PipelineLayout: Clone,
@@ -152,10 +162,15 @@ impl<Pl> ComputePipeline<Pl> {
                 basePipelineIndex: 0,
             };
 
+            let cache_handle = match cache {
+                Some(cache) => cache.internal_object(),
+                None => vk::NULL_HANDLE,
+            };
+
             let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateComputePipelines(
                 device.internal_object(),
-                0,
+                cache_handle,
                 1,
                 &infos,
                 ptr::null(),
@@ -522,8 +537,13 @@ mod tests {
         }
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &SpecConsts { VALUE: 0x12345678 })
-                .unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                &shader,
+                &SpecConsts { VALUE: 0x12345678 },
+                None,
+            )
+            .unwrap(),
         );
 
         let data_buffer =

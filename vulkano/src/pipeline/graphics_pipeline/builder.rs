@@ -26,6 +26,7 @@ use pipeline::blend::AttachmentBlend;
 use pipeline::blend::AttachmentsBlend;
 use pipeline::blend::Blend;
 use pipeline::blend::LogicOp;
+use pipeline::cache::PipelineCache;
 use pipeline::depth_stencil::Compare;
 use pipeline::depth_stencil::DepthBounds;
 use pipeline::depth_stencil::DepthStencil;
@@ -76,6 +77,7 @@ pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss,
     depth_stencil: DepthStencil,
     blend: Blend,
     render_pass: Option<Subpass<Rp>>,
+    cache: Option<Arc<PipelineCache>>,
 }
 
 // Additional parameters if tessellation is used.
@@ -125,6 +127,7 @@ impl
                 depth_stencil: DepthStencil::disabled(),
                 blend: Blend::pass_through(),
                 render_pass: None,
+                cache: None,
             }
         }
     }
@@ -1191,10 +1194,15 @@ where
                 basePipelineIndex: -1, // TODO:
             };
 
+            let cache_handle = match self.cache {
+                Some(cache) => cache.internal_object(),
+                None => vk::NULL_HANDLE,
+            };
+
             let mut output = MaybeUninit::uninit();
             check_errors(vk.CreateGraphicsPipelines(
                 device.internal_object(),
-                0,
+                cache_handle,
                 1,
                 &infos,
                 ptr::null(),
@@ -1266,6 +1274,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: self.render_pass,
+            cache: self.cache,
         }
     }
 
@@ -1319,6 +1328,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: self.render_pass,
+            cache: self.cache,
         }
     }
 
@@ -1477,6 +1487,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: self.render_pass,
+            cache: self.cache,
         }
     }
 
@@ -1513,6 +1524,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: self.render_pass,
+            cache: self.cache,
         }
     }
 
@@ -1795,6 +1807,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: self.render_pass,
+            cache: self.cache,
         }
     }
 
@@ -1912,7 +1925,19 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             depth_stencil: self.depth_stencil,
             blend: self.blend,
             render_pass: Some(subpass),
+            cache: self.cache,
         }
+    }
+
+    /// Enable caching of this pipeline via a PipelineCache object.
+    ///
+    /// If this pipeline already exists in the cache it will be used, if this is a new
+    /// pipeline it will be inserted into the cache. The implementation handles the
+    /// PipelineCache.
+    #[inline]
+    pub fn build_with_cache(mut self, pipeline_cache: Arc<PipelineCache>) -> Self {
+        self.cache = Some(pipeline_cache);
+        self
     }
 }
 
@@ -1957,6 +1982,7 @@ where
             depth_stencil: self.depth_stencil.clone(),
             blend: self.blend.clone(),
             render_pass: self.render_pass.clone(),
+            cache: self.cache.clone(),
         }
     }
 }

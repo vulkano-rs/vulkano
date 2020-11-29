@@ -99,7 +99,7 @@ fn main() {
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
+        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), None).unwrap()
     });
 
     // We start by creating the buffer that will store the data.

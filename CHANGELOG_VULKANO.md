@@ -4,6 +4,7 @@
 - **Breaking** On `AutoCommandBufferBuilder`, the methods `begin_render_pass` and `next_subpass` now take `SubpassContents` instead of a boolean value.
 - **Breaking** The `CommandBuffer` trait now has an additional required method, `kind`.
 - **Breaking** Update dependency `winit` 0.22 -> 0.23
+- **Breaking** Added an Option to the ComputePipeline constructor to enable pipeline caching.
 - Some safety checks have been added to `execute_commands`/`execute_commands_from_vec` on `AutoCommandBufferBuilder`, but not everything is checked yet so it's still unsafe to call.
 - Added two vulkano-win features `raw-window-handle_` and `winit_` to be able to use vulkano without winit.
 - Added function to create surface from `RawWindowHandle`.
@@ -14,6 +15,7 @@
 - Fixed surface creation function on Windows(PR #1410).
 - Travis CI Linux Nightly job temporary disabled until #1423 resolved.
 - Renamed feature from `shader_f3264` to `shader_float64`.
+- Added method `build_with_cache` to the `GraphicsPipelineBuilder` that enables pipeline caching.
 
 # Version 0.19.0 (2020-06-01)
 

@@ -14,14 +14,12 @@
 //!
 //! You can create either an empty cache or a cache from some initial data. Whenever you create a
 //! graphics or compute pipeline, you have the possibility to pass a reference to that cache.
-//! TODO: ^ that's not the case yet
 //! The Vulkan implementation will then look in the cache for an existing entry, or add one if it
 //! doesn't exist.
 //!
 //! Once that is done, you can extract the data from the cache and store it. See the documentation
 //! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
 //! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
-//!
 
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -252,7 +250,14 @@ impl Drop for PipelineCache {
 
 #[cfg(test)]
 mod tests {
+    use std::{ffi::CStr, sync::Arc};
+
+    use descriptor::descriptor::DescriptorDesc;
+    use descriptor::pipeline_layout::PipelineLayoutDesc;
+    use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     use pipeline::cache::PipelineCache;
+    use pipeline::shader::ShaderModule;
+    use pipeline::ComputePipeline;
 
     #[test]
     fn merge_self_forbidden() {
@@ -261,5 +266,267 @@ mod tests {
         assert_should_panic!({
             pipeline.merge(&[&pipeline]).unwrap();
         });
+    }
+
+    #[test]
+    fn cache_returns_same_data() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let cache = PipelineCache::empty(device.clone()).unwrap();
+
+        let module = unsafe {
+            /*
+             * #version 450
+             * void main() {
+             * }
+             */
+            const MODULE: [u8; 192] = [
+                3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 6, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0, 0,
+                0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48, 0,
+                0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1,
+                0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2,
+                0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
+                5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
+            ];
+            ShaderModule::new(device.clone(), &MODULE).unwrap()
+        };
+
+        let shader = unsafe {
+            #[derive(Clone)]
+            struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                fn num_sets(&self) -> usize {
+                    0
+                }
+
+                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                    None
+                }
+
+                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                    None
+                }
+
+                fn num_push_constants_ranges(&self) -> usize {
+                    0
+                }
+
+                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+                    None
+                }
+            }
+            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
+            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+        };
+
+        let pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone())).unwrap(),
+        );
+
+        let cache_data = cache.get_data().unwrap();
+        let second_data = cache.get_data().unwrap();
+
+        assert_eq!(cache_data, second_data);
+    }
+
+    #[test]
+    fn cache_returns_different_data() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let cache = PipelineCache::empty(device.clone()).unwrap();
+
+        let first_module = unsafe {
+            /*
+             * #version 450
+             * void main() {
+             * }
+             */
+            const MODULE: [u8; 192] = [
+                3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 6, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0, 0,
+                0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48, 0,
+                0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1,
+                0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2,
+                0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
+                5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
+            ];
+            ShaderModule::new(device.clone(), &MODULE).unwrap()
+        };
+
+        let first_shader = unsafe {
+            #[derive(Clone)]
+            struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                fn num_sets(&self) -> usize {
+                    0
+                }
+
+                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                    None
+                }
+
+                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                    None
+                }
+
+                fn num_push_constants_ranges(&self) -> usize {
+                    0
+                }
+
+                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+                    None
+                }
+            }
+            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
+            first_module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+        };
+
+        let second_module = unsafe {
+            /*
+             * #version 450
+             *
+             * void main() {
+             *     uint idx = gl_GlobalInvocationID.x;
+             * }
+             */
+            const SECOND_MODULE: [u8; 432] = [
+                3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 16, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0,
+                0, 0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48,
+                0, 0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 6, 0, 5, 0, 0, 0, 4, 0, 0,
+                0, 109, 97, 105, 110, 0, 0, 0, 0, 11, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0,
+                0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0,
+                4, 0, 4, 0, 0, 0, 109, 97, 105, 110, 0, 0, 0, 0, 5, 0, 3, 0, 8, 0, 0, 0, 105, 100,
+                120, 0, 5, 0, 8, 0, 11, 0, 0, 0, 103, 108, 95, 71, 108, 111, 98, 97, 108, 73, 110,
+                118, 111, 99, 97, 116, 105, 111, 110, 73, 68, 0, 0, 0, 71, 0, 4, 0, 11, 0, 0, 0,
+                11, 0, 0, 0, 28, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2, 0,
+                0, 0, 21, 0, 4, 0, 6, 0, 0, 0, 32, 0, 0, 0, 0, 0, 0, 0, 32, 0, 4, 0, 7, 0, 0, 0, 7,
+                0, 0, 0, 6, 0, 0, 0, 23, 0, 4, 0, 9, 0, 0, 0, 6, 0, 0, 0, 3, 0, 0, 0, 32, 0, 4, 0,
+                10, 0, 0, 0, 1, 0, 0, 0, 9, 0, 0, 0, 59, 0, 4, 0, 10, 0, 0, 0, 11, 0, 0, 0, 1, 0,
+                0, 0, 43, 0, 4, 0, 6, 0, 0, 0, 12, 0, 0, 0, 0, 0, 0, 0, 32, 0, 4, 0, 13, 0, 0, 0,
+                1, 0, 0, 0, 6, 0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0,
+                0, 248, 0, 2, 0, 5, 0, 0, 0, 59, 0, 4, 0, 7, 0, 0, 0, 8, 0, 0, 0, 7, 0, 0, 0, 65,
+                0, 5, 0, 13, 0, 0, 0, 14, 0, 0, 0, 11, 0, 0, 0, 12, 0, 0, 0, 61, 0, 4, 0, 6, 0, 0,
+                0, 15, 0, 0, 0, 14, 0, 0, 0, 62, 0, 3, 0, 8, 0, 0, 0, 15, 0, 0, 0, 253, 0, 1, 0,
+                56, 0, 1, 0,
+            ];
+            ShaderModule::new(device.clone(), &SECOND_MODULE).unwrap()
+        };
+
+        let second_shader = unsafe {
+            #[derive(Clone)]
+            struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                fn num_sets(&self) -> usize {
+                    0
+                }
+
+                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                    None
+                }
+
+                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                    None
+                }
+
+                fn num_push_constants_ranges(&self) -> usize {
+                    0
+                }
+
+                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+                    None
+                }
+            }
+            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
+            second_module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+        };
+
+        let pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &first_shader, &(), Some(cache.clone())).unwrap(),
+        );
+
+        let cache_data = cache.get_data().unwrap();
+
+        let second_pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &second_shader, &(), Some(cache.clone())).unwrap(),
+        );
+
+        let second_data = cache.get_data().unwrap();
+
+        if cache_data.is_empty() {
+            assert_eq!(cache_data, second_data);
+        } else {
+            assert_ne!(cache_data, second_data);
+        }
+    }
+
+    #[test]
+    fn cache_data_does_not_change() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        let cache = PipelineCache::empty(device.clone()).unwrap();
+
+        let module = unsafe {
+            /*
+             * #version 450
+             * void main() {
+             * }
+             */
+            const MODULE: [u8; 192] = [
+                3, 2, 35, 7, 0, 0, 1, 0, 10, 0, 8, 0, 6, 0, 0, 0, 0, 0, 0, 0, 17, 0, 2, 0, 1, 0, 0,
+                0, 11, 0, 6, 0, 1, 0, 0, 0, 71, 76, 83, 76, 46, 115, 116, 100, 46, 52, 53, 48, 0,
+                0, 0, 0, 14, 0, 3, 0, 0, 0, 0, 0, 1, 0, 0, 0, 15, 0, 5, 0, 5, 0, 0, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 16, 0, 6, 0, 4, 0, 0, 0, 17, 0, 0, 0, 1, 0, 0, 0, 1,
+                0, 0, 0, 1, 0, 0, 0, 3, 0, 3, 0, 2, 0, 0, 0, 194, 1, 0, 0, 5, 0, 4, 0, 4, 0, 0, 0,
+                109, 97, 105, 110, 0, 0, 0, 0, 19, 0, 2, 0, 2, 0, 0, 0, 33, 0, 3, 0, 3, 0, 0, 0, 2,
+                0, 0, 0, 54, 0, 5, 0, 2, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 248, 0, 2, 0,
+                5, 0, 0, 0, 253, 0, 1, 0, 56, 0, 1, 0,
+            ];
+            ShaderModule::new(device.clone(), &MODULE).unwrap()
+        };
+
+        let shader = unsafe {
+            #[derive(Clone)]
+            struct Layout;
+            unsafe impl PipelineLayoutDesc for Layout {
+                fn num_sets(&self) -> usize {
+                    0
+                }
+
+                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                    None
+                }
+
+                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                    None
+                }
+
+                fn num_push_constants_ranges(&self) -> usize {
+                    0
+                }
+
+                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
+                    None
+                }
+            }
+            static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
+            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+        };
+
+        let pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone())).unwrap(),
+        );
+
+        let cache_data = cache.get_data().unwrap();
+
+        let second_pipeline = Arc::new(
+            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone())).unwrap(),
+        );
+
+        let second_data = cache.get_data().unwrap();
+
+        assert_eq!(cache_data, second_data);
     }
 }

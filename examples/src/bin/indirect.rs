@@ -209,7 +209,7 @@ fn main() {
     let vertex_pool: CpuBufferPool<Vertex> = CpuBufferPool::new(device.clone(), BufferUsage::all());
 
     let compute_pipeline =
-        Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &()).unwrap());
+        Arc::new(ComputePipeline::new(device.clone(), &cs.main_entry_point(), &(), None).unwrap());
 
     let render_pass = Arc::new(
         single_pass_renderpass!(
