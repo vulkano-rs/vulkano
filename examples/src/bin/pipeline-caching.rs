@@ -27,17 +27,16 @@
 // In the future, vulkano might implement those safety checks, but for
 // now, you would have to do that yourself or trust the data and the user.
 
-use std::sync::Arc;
 use std::fs;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use std::sync::Arc;
 
-use vulkano::pipeline::cache::PipelineCache;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
+use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::ComputePipeline;
-
 
 fn main() {
     // As with other examples, the first step is to create an instance.
@@ -69,10 +68,8 @@ fn main() {
 
     println!("Device initialized");
 
-
     // We are creating an empty PipelineCache to start somewhere.
     let pipeline_cache = PipelineCache::empty(device.clone()).unwrap();
-
 
     // We need to create the compute pipeline that describes our operation. We are using the
     // shader from the basic-compute-shader example.
@@ -104,7 +101,13 @@ fn main() {
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), Some(pipeline_cache.clone())).unwrap()
+        ComputePipeline::new(
+            device.clone(),
+            &shader.main_entry_point(),
+            &(),
+            Some(pipeline_cache.clone()),
+        )
+        .unwrap()
     });
 
     // Normally you would use your pipeline for computing, but we just want to focus on the
@@ -137,8 +140,12 @@ fn main() {
             let mut data = Vec::new();
             if let Ok(_) = file.read_to_end(&mut data) {
                 Some(data)
-            } else { None }
-        } else { None }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     };
 
     let second_cache = if let Some(data) = data {
