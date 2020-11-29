@@ -356,12 +356,10 @@ impl UnsafeImage {
                 array_layers,
             } => {
                 if width == 0 || array_layers == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    });
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
                 let extent = vk::Extent3D {
-                    width: width,
+                    width,
                     height: 1,
                     depth: 1,
                 };
@@ -374,18 +372,14 @@ impl UnsafeImage {
                 cubemap_compatible,
             } => {
                 if width == 0 || height == 0 || array_layers == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    });
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
                 if cubemap_compatible && width != height {
-                    return Err(ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    });
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
                 let extent = vk::Extent3D {
-                    width: width,
-                    height: height,
+                    width,
+                    height,
                     depth: 1,
                 };
                 let flags = if cubemap_compatible {
@@ -401,14 +395,12 @@ impl UnsafeImage {
                 depth,
             } => {
                 if width == 0 || height == 0 || depth == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    });
+                    return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
                 let extent = vk::Extent3D {
-                    width: width,
-                    height: height,
-                    depth: depth,
+                    width,
+                    height,
+                    depth,
                 };
                 (vk::IMAGE_TYPE_3D, extent, 1, 0)
             }
@@ -416,26 +408,20 @@ impl UnsafeImage {
 
         // Checking the dimensions against the limits.
         if array_layers > device.physical_device().limits().max_image_array_layers() {
-            let err = ImageCreationError::UnsupportedDimensions {
-                dimensions: dimensions,
-            };
+            let err = ImageCreationError::UnsupportedDimensions { dimensions };
             capabilities_error = Some(err);
         }
         match ty {
             vk::IMAGE_TYPE_1D => {
                 if extent.width > device.physical_device().limits().max_image_dimension_1d() {
-                    let err = ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    };
+                    let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
             }
             vk::IMAGE_TYPE_2D => {
                 let limit = device.physical_device().limits().max_image_dimension_2d();
                 if extent.width > limit || extent.height > limit {
-                    let err = ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    };
+                    let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
 
@@ -443,9 +429,7 @@ impl UnsafeImage {
                     let limit = device.physical_device().limits().max_image_dimension_cube();
                     debug_assert_eq!(extent.width, extent.height); // checked above
                     if extent.width > limit {
-                        let err = ImageCreationError::UnsupportedDimensions {
-                            dimensions: dimensions,
-                        };
+                        let err = ImageCreationError::UnsupportedDimensions { dimensions };
                         capabilities_error = Some(err);
                     }
                 }
@@ -453,9 +437,7 @@ impl UnsafeImage {
             vk::IMAGE_TYPE_3D => {
                 let limit = device.physical_device().limits().max_image_dimension_3d();
                 if extent.width > limit || extent.height > limit || extent.depth > limit {
-                    let err = ImageCreationError::UnsupportedDimensions {
-                        dimensions: dimensions,
-                    };
+                    let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
             }
@@ -511,10 +493,10 @@ impl UnsafeImage {
             let infos = vk::ImageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: flags,
+                flags,
                 imageType: ty,
                 format: format as u32,
-                extent: extent,
+                extent,
                 mipLevels: mipmaps,
                 arrayLayers: array_layers,
                 samples: num_samples,
@@ -523,7 +505,7 @@ impl UnsafeImage {
                 } else {
                     vk::IMAGE_TILING_OPTIMAL
                 },
-                usage: usage,
+                usage,
                 sharingMode: sh_mode,
                 queueFamilyIndexCount: sh_indices.len() as u32,
                 pQueueFamilyIndices: sh_indices.as_ptr(),
@@ -548,7 +530,7 @@ impl UnsafeImage {
             let infos = vk::ImageMemoryRequirementsInfo2KHR {
                 sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR,
                 pNext: ptr::null_mut(),
-                image: image,
+                image,
             };
 
             let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
@@ -590,13 +572,13 @@ impl UnsafeImage {
 
         let image = UnsafeImage {
             device: device.clone(),
-            image: image,
-            usage: usage,
-            format: format,
-            dimensions: dimensions,
+            image,
+            usage,
+            format,
+            dimensions,
             samples: num_samples,
-            mipmaps: mipmaps,
-            format_features: format_features,
+            mipmaps,
+            format_features,
             needs_destruction: true,
             preinitialized_layout,
         };
@@ -627,11 +609,11 @@ impl UnsafeImage {
         UnsafeImage {
             device: device.clone(),
             image: handle,
-            usage: usage,
-            format: format,
-            dimensions: dimensions,
-            samples: samples,
-            mipmaps: mipmaps,
+            usage,
+            format,
+            dimensions,
+            samples,
+            mipmaps,
             format_features: output.assume_init().optimalTilingFeatures,
             needs_destruction: false,     // TODO: pass as parameter
             preinitialized_layout: false, // TODO: Maybe this should be passed in?
@@ -1034,6 +1016,19 @@ impl UnsafeImageView {
         assert!(mipmap_levels.end <= image.mipmaps);
         assert!(array_layers.end > array_layers.start);
         assert!(array_layers.end <= image.dimensions.array_layers());
+        assert!(
+            (
+                vk::IMAGE_USAGE_SAMPLED_BIT
+                    | vk::IMAGE_USAGE_STORAGE_BIT
+                    | vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+                    | vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
+                    | vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT
+                    | vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT
+                // TODO | vk::IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
+                // TODO | vk::IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT
+            ) & image.usage
+                != 0
+        );
 
         let aspect_mask = match image.format.ty() {
             FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
@@ -1115,7 +1110,7 @@ impl UnsafeImageView {
         };
 
         Ok(UnsafeImageView {
-            view: view,
+            view,
             device: image.device.clone(),
             usage: image.usage,
             identity_swizzle: true, // FIXME:
