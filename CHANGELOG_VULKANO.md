@@ -16,6 +16,7 @@
 - Travis CI Linux Nightly job temporary disabled until #1423 resolved.
 - Renamed feature from `shader_f3264` to `shader_float64`.
 - Added method `build_with_cache` to the `GraphicsPipelineBuilder` that enables pipeline caching.
+- Check usage bits on image when creating image view.
 - Fixing an assertion panic in the SyncCommandBuffer. If the buffer encountered an error while locking the necessary resources, it would unlock all previously locked resources. Images were unlocked incorrectly and an assert in the image unlock function would panic.
 
 # Version 0.19.0 (2020-06-01)

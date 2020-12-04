@@ -80,7 +80,7 @@ fn main() {
     // Pass the PipelineCache as an optional parameter to the ComputePipeline constructor.
     // For GraphicPipelines you can use the GraphicPipelineBuilder that has a method
     // `build_with_cache(cache: Arc<PipelineCache>)`
-    let pipeline = Arc::new({
+    let _pipeline = Arc::new({
         mod cs {
             vulkano_shaders::shader! {
                 ty: "compute",
