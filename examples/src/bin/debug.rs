@@ -11,6 +11,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::image::Dimensions;
 use vulkano::image::ImmutableImage;
+use vulkano::image::MipmapsCount;
 use vulkano::instance;
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
@@ -130,6 +131,7 @@ fn main() {
     let _ = ImmutableImage::from_iter(
         DATA.iter().cloned(),
         dimensions,
+        MipmapsCount::One,
         pixel_format,
         queue.clone(),
     )

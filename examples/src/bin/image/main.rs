@@ -13,7 +13,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::{Dimensions, ImageUsage, ImmutableImage, SwapchainImage};
+use vulkano::image::{Dimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -163,6 +163,7 @@ fn main() {
         ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
+            MipmapsCount::One,
             Format::R8G8B8A8Srgb,
             queue.clone(),
         )

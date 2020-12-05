@@ -583,6 +583,16 @@ where
     fn is_layout_initialized(&self) -> bool {
         self.initialized.load(Ordering::SeqCst)
     }
+
+    #[inline]
+    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+        0..self.mipmap_levels()
+    }
+
+    #[inline]
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+        0..1
+    }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for Arc<AttachmentImage<F, A>>

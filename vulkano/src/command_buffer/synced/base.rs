@@ -321,7 +321,13 @@ impl<P> Hash for BuilderKey<P> {
             }
             KeyTy::Image => {
                 let c = &commands_lock.commands[self.command_ids.borrow()[0]];
-                c.image(self.resource_index).conflict_key().hash(state)
+                c.image(self.resource_index).conflict_key().hash(state);
+                c.image(self.resource_index)
+                    .current_miplevels_access()
+                    .hash(state);
+                c.image(self.resource_index)
+                    .current_layer_levels_access()
+                    .hash(state);
             }
         }
     }
@@ -557,6 +563,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                                 {
                                     let cmd1 = &commands_lock.commands[*collision_cmd_id];
                                     let cmd2 = &commands_lock.commands[latest_command_id];
+
                                     return Err(SyncCommandBufferBuilderError::Conflict {
                                         command1_name: cmd1.name(),
                                         command1_param: match entry_key_resource_ty {
@@ -617,8 +624,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                                 let b = &mut self.pending_barrier;
                                 b.add_image_memory_barrier(
                                     img,
-                                    0..img.mipmap_levels(),
-                                    0..img.dimensions().array_layers(),
+                                    img.current_miplevels_access(),
+                                    img.current_layer_levels_access(),
                                     entry.stages,
                                     entry.access,
                                     stages,
@@ -701,8 +708,8 @@ impl<P> SyncCommandBufferBuilder<P> {
                             let b = &mut self.pending_barrier;
                             b.add_image_memory_barrier(
                                 img,
-                                0..img.mipmap_levels(),
-                                0..img.dimensions().array_layers(),
+                                img.current_miplevels_access(),
+                                img.current_layer_levels_access(),
                                 PipelineStages {
                                     bottom_of_pipe: true,
                                     ..PipelineStages::none()
@@ -774,8 +781,8 @@ impl<P> SyncCommandBufferBuilder<P> {
 
                     barrier.add_image_memory_barrier(
                         img,
-                        0..img.mipmap_levels(),
-                        0..img.dimensions().array_layers(),
+                        img.current_miplevels_access(),
+                        img.current_layer_levels_access(),
                         state.stages,
                         state.access,
                         PipelineStages {
