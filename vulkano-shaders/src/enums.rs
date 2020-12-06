@@ -551,5 +551,6 @@ enumeration! {
         CapabilityStorageUniform16 = 4434,
         CapabilityStoragePushConstant16 = 4435,
         CapabilityStorageInputOutput16 = 4436,
+        CapabilityStorageInputOutput8 = 4448,
     } Capability;
 }
