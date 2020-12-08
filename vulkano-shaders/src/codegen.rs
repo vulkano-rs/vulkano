@@ -422,7 +422,7 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::CapabilityImageRect => panic!(), // not supported
         Capability::CapabilitySampledRect => panic!(), // not supported
         Capability::CapabilityGenericPointer => panic!(), // not supported
-        Capability::CapabilityInt8 => panic!(),      // not supported
+        Capability::CapabilityInt8 => DeviceRequirement::Extensions(&["khr_8bit_storage"]),
         Capability::CapabilityInputAttachment => DeviceRequirement::None,
         Capability::CapabilitySparseResidency => {
             DeviceRequirement::Features(&["shader_resource_residency"])
@@ -466,6 +466,9 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         }
         Capability::CapabilityStorageInputOutput16 => {
             DeviceRequirement::Extensions(&["khr_16bit_storage"])
+        }
+        Capability::CapabilityStorageInputOutput8 => {
+            DeviceRequirement::Extensions(&["khr_8bit_storage"])
         }
     }
 }
