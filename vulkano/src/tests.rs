@@ -68,7 +68,7 @@ macro_rules! gfx_dev_and_queue {
 
 macro_rules! assert_should_panic {
     ($msg:expr, $code:block) => {{
-        let res = ::std::panic::catch_unwind(|| $code);
+        let res = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| $code));
 
         match res {
             Ok(_) => panic!("Test expected to panic but didn't"),
@@ -85,7 +85,7 @@ macro_rules! assert_should_panic {
     }};
 
     ($code:block) => {{
-        let res = ::std::panic::catch_unwind(|| $code);
+        let res = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| $code));
 
         match res {
             Ok(_) => panic!("Test expected to panic but didn't"),

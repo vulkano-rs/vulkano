@@ -30,9 +30,6 @@ use std::ptr;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::sync::RwLock;
-use std::sync::RwLockReadGuard;
-use std::sync::RwLockWriteGuard;
 
 use buffer::sys::BufferCreationError;
 use buffer::sys::SparseLevel;
@@ -57,6 +54,9 @@ use memory::Content;
 use memory::CpuAccess as MemCpuAccess;
 use memory::DedicatedAlloc;
 use memory::DeviceMemoryAllocError;
+use parking_lot::RwLock;
+use parking_lot::RwLockReadGuard;
+use parking_lot::RwLockWriteGuard;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -309,11 +309,11 @@ where
     #[inline]
     pub fn read(&self) -> Result<ReadLock<T>, ReadLockError> {
         let lock = match self.access.try_read() {
-            Ok(l) => l,
+            Some(l) => l,
             // TODO: if a user simultaneously calls .write(), and write() is currently finding out
             //       that the buffer is in fact GPU locked, then we will return a CpuWriteLocked
             //       error instead of a GpuWriteLocked ; is this a problem? how do we fix this?
-            Err(_) => return Err(ReadLockError::CpuWriteLocked),
+            None => return Err(ReadLockError::CpuWriteLocked),
         };
 
         if let CurrentGpuAccess::Exclusive { .. } = *lock {
@@ -340,12 +340,12 @@ where
     #[inline]
     pub fn write(&self) -> Result<WriteLock<T>, WriteLockError> {
         let lock = match self.access.try_write() {
-            Ok(l) => l,
+            Some(l) => l,
             // TODO: if a user simultaneously calls .read() or .write(), and the function is
             //       currently finding out that the buffer is in fact GPU locked, then we will
             //       return a CpuLocked error instead of a GpuLocked ; is this a problem?
             //       how do we fix this?
-            Err(_) => return Err(WriteLockError::CpuLocked),
+            None => return Err(WriteLockError::CpuLocked),
         };
 
         match *lock {
@@ -399,8 +399,8 @@ where
     fn try_gpu_lock(&self, exclusive_access: bool, _: &Queue) -> Result<(), AccessError> {
         if exclusive_access {
             let mut lock = match self.access.try_write() {
-                Ok(lock) => lock,
-                Err(_) => return Err(AccessError::AlreadyInUse),
+                Some(lock) => lock,
+                None => return Err(AccessError::AlreadyInUse),
             };
 
             match *lock {
@@ -412,8 +412,8 @@ where
             Ok(())
         } else {
             let lock = match self.access.try_read() {
-                Ok(lock) => lock,
-                Err(_) => return Err(AccessError::AlreadyInUse),
+                Some(lock) => lock,
+                None => return Err(AccessError::AlreadyInUse),
             };
 
             match *lock {
@@ -432,7 +432,7 @@ where
             // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
             // the buffer. The buffer can still be briefly in a write-locked state for the duration
             // of the check though.
-            let read_lock = self.access.read().unwrap();
+            let read_lock = self.access.read();
             if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
                 let prev = num.fetch_add(1, Ordering::SeqCst);
                 debug_assert!(prev >= 1);
@@ -443,7 +443,7 @@ where
         // If we reach here, this means that `access` contains `CurrentGpuAccess::Exclusive`.
         {
             // Same remark as above, but for writing.
-            let mut write_lock = self.access.write().unwrap();
+            let mut write_lock = self.access.write();
             if let CurrentGpuAccess::Exclusive { ref mut num } = *write_lock {
                 *num += 1;
             } else {
@@ -459,7 +459,7 @@ where
             // Since the buffer is in use by the GPU, it is invalid to hold a write-lock to
             // the buffer. The buffer can still be briefly in a write-locked state for the duration
             // of the check though.
-            let read_lock = self.access.read().unwrap();
+            let read_lock = self.access.read();
             if let CurrentGpuAccess::NonExclusive { ref num } = *read_lock {
                 let prev = num.fetch_sub(1, Ordering::SeqCst);
                 debug_assert!(prev >= 1);
@@ -470,7 +470,7 @@ where
         // If we reach here, this means that `access` contains `CurrentGpuAccess::Exclusive`.
         {
             // Same remark as above, but for writing.
-            let mut write_lock = self.access.write().unwrap();
+            let mut write_lock = self.access.write();
             if let CurrentGpuAccess::Exclusive { ref mut num } = *write_lock {
                 if *num != 1 {
                     *num -= 1;
