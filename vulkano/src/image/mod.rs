@@ -684,11 +684,11 @@ impl ImageDimensions {
 
 #[cfg(test)]
 mod tests {
+    use format;
+    use image::Dimensions;
     use image::ImageDimensions;
     use image::ImmutableImage;
-    use image::Dimensions;
     use image::MipmapsCount;
-    use format;
 
     #[test]
     fn max_mipmaps() {
@@ -806,13 +806,23 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let dimensions = Dimensions::Dim2d{width: 512, height: 512};
+        let dimensions = Dimensions::Dim2d {
+            width: 512,
+            height: 512,
+        };
         {
             let mut vec = Vec::new();
 
             vec.resize(512 * 512, 0u8);
 
-            let (image, _) = ImmutableImage::from_iter(vec.into_iter(), dimensions, MipmapsCount::One, format::R8Unorm, queue.clone()).unwrap();
+            let (image, _) = ImmutableImage::from_iter(
+                vec.into_iter(),
+                dimensions,
+                MipmapsCount::One,
+                format::R8Unorm,
+                queue.clone(),
+            )
+            .unwrap();
             assert_eq!(image.mipmap_levels(), 1);
         }
         {
@@ -820,7 +830,14 @@ mod tests {
 
             vec.resize(512 * 512, 0u8);
 
-            let (image, _) = ImmutableImage::from_iter(vec.into_iter(), dimensions, MipmapsCount::Log2, format::R8Unorm, queue.clone()).unwrap();
+            let (image, _) = ImmutableImage::from_iter(
+                vec.into_iter(),
+                dimensions,
+                MipmapsCount::Log2,
+                format::R8Unorm,
+                queue.clone(),
+            )
+            .unwrap();
             assert_eq!(image.mipmap_levels(), 10);
         }
     }
