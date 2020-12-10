@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added support for VK1.2 formats.
+
 # Version 0.5.3 (2020-12-26)
 
 - Added support for:
