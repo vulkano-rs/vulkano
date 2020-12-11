@@ -206,7 +206,7 @@ macro_rules! formats {
                 }
             }
 
-            /// Returns (width, heigh) of the dimensions for block based formats. For
+            /// Returns (width, height) of the dimensions for block based formats. For
             /// non block formats will return (1,1)
             #[inline]
             pub fn block_dimensions(&self) -> (u32, u32) {
@@ -432,6 +432,27 @@ macro_rules! formats {
         }
     };
 
+    (__inner_impl__ $name:ident ycbcr) => {
+        unsafe impl FormatDesc for $name {
+            type ClearValue = [f32; 4];
+
+	    #[inline]
+            fn format(&self) -> Format {
+                Format::$name
+            }
+
+            #[inline]
+            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
+                ClearValue::None
+            }
+        }
+
+        unsafe impl PossibleYcbcrFormatDesc for $name {
+            #[inline(always)]
+            fn is_ycbcr(&self) -> bool { true }
+        }
+    };
+
     (__inner_ty__ $name:ident float=$num:tt) => { FormatTy::Float };
     (__inner_ty__ $name:ident uint=$num:tt) => { FormatTy::Uint };
     (__inner_ty__ $name:ident sint=$num:tt) => { FormatTy::Sint };
@@ -439,6 +460,7 @@ macro_rules! formats {
     (__inner_ty__ $name:ident stencil) => { FormatTy::Stencil };
     (__inner_ty__ $name:ident depthstencil) => { FormatTy::DepthStencil };
     (__inner_ty__ $name:ident compressed=$f:tt) => { FormatTy::Compressed };
+    (__inner_ty__ $name:ident ycbcr) => { FormatTy::Ycbcr };
 
 
     (__inner_strongstorage__ $name:ident [$ty:ty; $dim:expr]) => {
@@ -648,6 +670,8 @@ formats! {
     ASTC_12x10SrgbBlock => FORMAT_ASTC_12x10_SRGB_BLOCK [(12, 10)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
     ASTC_12x12UnormBlock => FORMAT_ASTC_12x12_UNORM_BLOCK [(12, 12)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
     ASTC_12x12SrgbBlock => FORMAT_ASTC_12x12_SRGB_BLOCK [(12, 12)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
+    G8B8R8_3PLANE420Unorm => FORMAT_G8_B8_R8_3PLANE_420_UNORM [(1, 1)] [None] [ycbcr] {},
+    G8B8R8_2PLANE420Unorm => FORMAT_G8_B8R8_2PLANE_420_UNORM [(1, 1)] [None] [ycbcr] {},
 }
 
 pub unsafe trait FormatDesc {
@@ -772,6 +796,19 @@ unsafe impl PossibleFloatOrCompressedFormatDesc for Format {
     }
 }
 
+/// Trait for types that can possibly describe a Ycbcr format.
+pub unsafe trait PossibleYcbcrFormatDesc: FormatDesc {
+    /// Trait for types that can possibly describe a Ycbcr format.
+    fn is_ycbcr(&self) -> bool;
+}
+
+unsafe impl PossibleYcbcrFormatDesc for Format {
+    #[inline]
+    fn is_ycbcr(&self) -> bool {
+        self.ty() == FormatTy::Ycbcr
+    }
+}
+
 macro_rules! impl_pixel {
     {$($ty:ty;)+} => {
         $(impl_pixel!(inner $ty);)*
@@ -818,6 +855,7 @@ pub enum FormatTy {
     Stencil,
     DepthStencil,
     Compressed,
+    Ycbcr,
 }
 
 impl FormatTy {
@@ -825,9 +863,7 @@ impl FormatTy {
     #[inline]
     pub fn is_depth_and_or_stencil(&self) -> bool {
         match *self {
-            FormatTy::Depth => true,
-            FormatTy::Stencil => true,
-            FormatTy::DepthStencil => true,
+            FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil => true,
             _ => false,
         }
     }

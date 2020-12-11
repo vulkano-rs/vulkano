@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
+
 # Version 0.20.0 (2020-12-26)
 
 - **Breaking** The `ImmutableImage::from_iter` and `ImmutableImage::from_buffer` can build Mipmaps

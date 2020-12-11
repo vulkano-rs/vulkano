@@ -49,6 +49,7 @@
 use std::cmp;
 use std::convert::TryFrom;
 
+pub use self::aspect::ImageAspect;
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
 pub use self::layout::ImageLayout;
@@ -60,6 +61,7 @@ pub use self::traits::ImageInner;
 pub use self::traits::ImageViewAccess;
 pub use self::usage::ImageUsage;
 
+mod aspect;
 pub mod attachment; // TODO: make private
 pub mod immutable; // TODO: make private
 mod layout;
