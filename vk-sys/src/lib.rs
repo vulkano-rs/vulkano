@@ -66,6 +66,7 @@ pub const ATTACHMENT_UNUSED: u32 = 0xffffffff;
 pub const TRUE: u32 = 1;
 pub const FALSE: u32 = 0;
 pub const QUEUE_FAMILY_IGNORED: u32 = 0xffffffff;
+pub const QUEUE_FAMILY_EXTERNAL: u32 = 0xfffffffe;
 pub const SUBPASS_EXTERNAL: u32 = 0xffffffff;
 pub const MAX_PHYSICAL_DEVICE_NAME_SIZE: u32 = 256;
 pub const UUID_SIZE: u32 = 16;
@@ -1700,6 +1701,34 @@ pub const COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR: u32 = 0x00000002;
 pub const COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR: u32 = 0x00000004;
 pub const COMPOSITE_ALPHA_INHERIT_BIT_KHR: u32 = 0x00000008;
 pub type CompositeAlphaFlagsKHR = Flags;
+
+pub type ExternalMemoryHandleTypeFlagBits = u32;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT: u32 = 0x00000001;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT: u32 = 0x00000002;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT: u32 = 0x00000004;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT: u32 = 0x00000008;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT: u32 = 0x00000010;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT: u32 = 0x00000020;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT: u32 = 0x00000040;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT: u32 = 0x00000200;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID: u32 = 0x00000400;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT: u32 = 0x00000080;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT: u32 = 0x00000100;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT;
+pub const EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT_KHR: u32 =
+    EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT;
+pub type ExternalMemoryHandleTypeFlags = Flags;
 
 pub type ObjectType = u32;
 pub const OBJECT_TYPE_UNKNOWN: u32 = 0;
@@ -3532,6 +3561,51 @@ pub struct SurfaceFullScreenExclusiveInfoEXT {
     pub fullScreenExclusive: FullScreenExclusiveEXT,
 }
 
+#[repr(C)]
+pub struct ExportMemoryAllocateInfo {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub handleTypes: ExternalMemoryHandleTypeFlagBits,
+}
+
+#[repr(C)]
+pub struct ExternalMemoryBufferCreateInfo {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub handleTypes: ExternalMemoryHandleTypeFlagBits,
+}
+
+#[repr(C)]
+pub struct ExternalMemoryImageCreateInfo {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub handleTypes: ExternalMemoryHandleTypeFlagBits,
+}
+
+#[repr(C)]
+pub struct MemoryFdPropertiesKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub handleType: ExternalMemoryHandleTypeFlagBits,
+    pub memoryTypeBits: u32,
+}
+
+#[repr(C)]
+pub struct MemoryGetFdInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub memory: DeviceMemory,
+    pub handleType: ExternalMemoryHandleTypeFlagBits,
+}
+
+#[repr(C)]
+pub struct ImportMemoryFdInfoKHR {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub handleType: ExternalMemoryHandleTypeFlagBits,
+    pub fd: i32,
+}
+
 macro_rules! ptrs {
     ($struct_name:ident, { $($name:ident => ($($param_n:ident: $param_ty:ty),*) -> $ret:ty,)+ }) => (
         pub struct $struct_name {
@@ -3784,4 +3858,6 @@ ptrs!(DevicePointers, {
     AcquireFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
     ReleaseFullScreenExclusiveModeEXT => (device: Device, swapchain: SwapchainKHR) -> Result,
     GetBufferDeviceAddressEXT => (device: Device, pInfo: *const BufferDeviceAddressInfo) -> DeviceAddress,
+    GetMemoryFdKHR => (device: Device, pGetFdInfo: *const MemoryGetFdInfoKHR, pFd: *mut i32) -> Result,
+    GetMemoryFdPropertiesKHR => (device: Device, handleType: ExternalMemoryHandleTypeFlagBits, fd: i32, pMemoryFdProperties: *mut MemoryFdPropertiesKHR) -> Result,
 });
