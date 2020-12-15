@@ -17,12 +17,18 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 
+#[cfg(target_os = "linux")]
+use std::fs::File;
+#[cfg(target_os = "linux")]
+use std::os::unix::io::FromRawFd;
+
 use check_errors;
 use device::Device;
 use device::DeviceOwned;
 use instance::MemoryType;
 use memory::Content;
 use memory::DedicatedAlloc;
+use memory::ExternalMemoryHandleType;
 use vk;
 use Error;
 use OomError;
@@ -48,6 +54,7 @@ pub struct DeviceMemory {
     device: Arc<Device>,
     size: usize,
     memory_type_index: u32,
+    handle_types: ExternalMemoryHandleType,
 }
 
 /// Represents a builder for the device memory object.
@@ -70,6 +77,7 @@ pub struct DeviceMemoryBuilder<'a> {
     dedicated_info: Option<vk::MemoryDedicatedAllocateInfoKHR>,
     export_info: Option<vk::ExportMemoryAllocateInfo>,
     import_info: Option<vk::ImportMemoryFdInfoKHR>,
+    handle_types: ExternalMemoryHandleType,
 }
 
 impl<'a> DeviceMemoryBuilder<'a> {
@@ -100,6 +108,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             dedicated_info: None,
             export_info: None,
             import_info: None,
+            handle_types: ExternalMemoryHandleType::none(),
         }
     }
 
@@ -127,16 +136,74 @@ impl<'a> DeviceMemoryBuilder<'a> {
                     image: image.internal_object(),
                     buffer: 0,
                 }),
-                DedicatedAlloc::None => None,
+                DedicatedAlloc::None => return self,
             };
 
-            self.allocate.pNext = self
+            let ptr = self
                 .dedicated_info
                 .as_ref()
                 .map(|i| i as *const vk::MemoryDedicatedAllocateInfoKHR)
                 .unwrap_or(ptr::null()) as *const _;
+
+            if let Some(ref mut export_info) = self.export_info {
+                export_info.pNext = ptr;
+            } else {
+                self.allocate.pNext = ptr;
+            }
         }
 
+        self
+    }
+
+    /// Sets an optional field for exportable allocations in the `DeviceMemoryBuilder`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the export info has already been set.
+    /// - Panics if the extensions associated with `handle_types` have not been loaded by the
+    ///   by the device.
+    pub fn export_info(
+        mut self,
+        handle_types: ExternalMemoryHandleType,
+    ) -> DeviceMemoryBuilder<'a> {
+        assert!(self.export_info.is_none());
+        // TODO: check exportFromImportedHandleTypes instead.
+        assert!(self.import_info.is_none());
+
+        // Only extensions tested with Vulkano so far.
+        assert!(self.device.loaded_extensions().khr_external_memory);
+        assert!(self.device.loaded_extensions().khr_external_memory_fd);
+
+        let handle_bits = handle_types.to_bits();
+        if handle_bits & vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT == 0 {
+            assert!(self.device.loaded_extensions().ext_external_memory_dmabuf);
+        }
+
+        let unsupported = handle_bits
+            & !(vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
+                | vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT);
+        assert!(unsupported == 0);
+
+        let export_info = vk::ExportMemoryAllocateInfo {
+            sType: vk::STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
+            pNext: ptr::null(),
+            handleTypes: handle_bits,
+        };
+
+        self.export_info = Some(export_info);
+        let ptr = self
+            .export_info
+            .as_ref()
+            .map(|i| i as *const vk::ExportMemoryAllocateInfo)
+            .unwrap_or(ptr::null()) as *const _;
+
+        if let Some(ref mut dedicated_info) = self.dedicated_info {
+            dedicated_info.pNext = ptr;
+        } else {
+            self.allocate.pNext = ptr;
+        }
+
+        self.handle_types = handle_types;
         self
     }
 
@@ -184,6 +251,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             device: self.device,
             size: self.allocate.allocationSize as usize,
             memory_type_index: self.memory_type.id(),
+            handle_types: self.handle_types,
         })
     }
 }
@@ -290,6 +358,48 @@ impl DeviceMemory {
     #[inline]
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    /// Exports the device memory into a Unix file descriptor.  The caller retains ownership of the
+    /// file, as per the Vulkan spec.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the user requests an invalid handle type for this device memory object.
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn export_fd(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+    ) -> Result<File, DeviceMemoryAllocError> {
+        let vk = self.device.pointers();
+
+        let bits = handle_type.to_bits();
+        assert!(
+            bits == vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
+                || bits == vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT
+        );
+        assert!(handle_type.to_bits() & self.handle_types.to_bits() != 0);
+
+        let fd = unsafe {
+            let info = vk::MemoryGetFdInfoKHR {
+                sType: vk::STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+                pNext: ptr::null(),
+                memory: self.memory,
+                handleType: handle_type.to_bits(),
+            };
+
+            let mut output = MaybeUninit::uninit();
+            check_errors(vk.GetMemoryFdKHR(
+                self.device.internal_object(),
+                &info,
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        let file = unsafe { File::from_raw_fd(fd) };
+        Ok(file)
     }
 }
 
