@@ -129,7 +129,7 @@
 //! ## `bytes: "..."`
 //!
 //! Provides the path to precompiled SPIR-V bytecode, relative to `Cargo.toml`.
-//! Cannot be used in conjunction with the `src` or `bytes` field.
+//! Cannot be used in conjunction with the `src` or `path` field.
 //! This allows using shaders compiled through a separate build system.
 //!
 //! ## `include: ["...", "...", ..., "..."]`
