@@ -178,7 +178,7 @@ where
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
 
-        let img_dims = attachment.dimensions();
+        let img_dims = attachment.dimensions().to_image_dimensions();
         debug_assert_eq!(img_dims.depth(), 1);
 
         let dimensions = match self.dimensions {
