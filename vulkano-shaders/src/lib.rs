@@ -119,12 +119,18 @@
 //! ## `src: "..."`
 //!
 //! Provides the raw GLSL source to be compiled in the form of a string. Cannot
-//! be used in conjunction with the `path` field.
+//! be used in conjunction with the `path` or `bytes` field.
 //!
 //! ## `path: "..."`
 //!
 //! Provides the path to the GLSL source to be compiled, relative to `Cargo.toml`.
-//! Cannot be used in conjunction with the `src` field.
+//! Cannot be used in conjunction with the `src` or `bytes` field.
+//!
+//! ## `bytes: "..."`
+//!
+//! Provides the path to precompiled SPIR-V bytecode, relative to `Cargo.toml`.
+//! Cannot be used in conjunction with the `src` or `bytes` field.
+//! This allows using shaders compiled through a separate build system.
 //!
 //! ## `include: ["...", "...", ..., "..."]`
 //!
@@ -164,6 +170,7 @@ extern crate syn;
 extern crate proc_macro;
 
 use std::env;
+use std::fs;
 use std::fs::File;
 use std::io::{Read, Result as IoResult};
 use std::path::Path;
@@ -181,10 +188,12 @@ mod spirv_search;
 mod structs;
 
 use crate::codegen::ShaderKind;
+use std::slice::from_raw_parts;
 
 enum SourceKind {
     Src(String),
     Path(String),
+    Bytes(String),
 }
 
 struct MacroInput {
@@ -227,7 +236,7 @@ impl Parse for MacroInput {
                 }
                 "src" => {
                     if source_kind.is_some() {
-                        panic!("Only one `src` or `path` can be defined")
+                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
                     }
 
                     let src: LitStr = input.parse()?;
@@ -235,11 +244,19 @@ impl Parse for MacroInput {
                 }
                 "path" => {
                     if source_kind.is_some() {
-                        panic!("Only one `src` or `path` can be defined")
+                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
                     }
 
                     let path: LitStr = input.parse()?;
                     source_kind = Some(SourceKind::Path(path.value()));
+                }
+                "bytes" => {
+                    if source_kind.is_some() {
+                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
+                    }
+
+                    let path: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Bytes(path.value()));
                 }
                 "define" => {
                     let array_input;
@@ -319,47 +336,73 @@ pub(self) fn read_file_to_string(full_path: &Path) -> IoResult<String> {
 #[proc_macro]
 pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as MacroInput);
+
     let root = env::var("CARGO_MANIFEST_DIR").unwrap_or(".".into());
     let root_path = Path::new(&root);
 
-    let (path, source_code) = match input.source_kind {
-        SourceKind::Src(source) => (None, source),
-        SourceKind::Path(path) => (Some(path.clone()), {
-            let full_path = root_path.join(&path);
+    if let SourceKind::Bytes(path) = input.source_kind {
+        let full_path = root_path.join(&path);
 
-            if full_path.is_file() {
-                read_file_to_string(&full_path)
-                    .expect(&format!("Error reading source from {:?}", path))
-            } else {
-                panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
-            }
-        }),
-    };
+        let bytes = if full_path.is_file() {
+            fs::read(full_path).expect(&format!("Error reading source from {:?}", path))
+        } else {
+            panic!(
+                "File {:?} was not found ; note that the path must be relative to your Cargo.toml",
+                path
+            );
+        };
 
-    let include_paths = input
-        .include_directories
-        .iter()
-        .map(|include_directory| {
-            let include_path = Path::new(include_directory);
-            let mut full_include_path = root_path.to_owned();
-            full_include_path.push(include_path);
-            full_include_path
-        })
-        .collect::<Vec<_>>();
-
-    let content = match codegen::compile(
-        path,
-        &root_path,
-        &source_code,
-        input.shader_kind,
-        &include_paths,
-        &input.macro_defines,
-    ) {
-        Ok(ok) => ok,
-        Err(e) => panic!(e.replace("(s): ", "(s):\n")),
-    };
-
-    codegen::reflect("Shader", content.as_binary(), input.dump)
+        // The SPIR-V specification essentially guarantees that
+        // a shader will always be an integer number of words
+        assert_eq!(0, bytes.len() % 4);
+        codegen::reflect(
+            "Shader",
+            unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
+            input.dump,
+        )
         .unwrap()
         .into()
+    } else {
+        let (path, source_code) = match input.source_kind {
+            SourceKind::Src(source) => (None, source),
+            SourceKind::Path(path) => (Some(path.clone()), {
+                let full_path = root_path.join(&path);
+
+                if full_path.is_file() {
+                    read_file_to_string(&full_path)
+                        .expect(&format!("Error reading source from {:?}", path))
+                } else {
+                    panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
+                }
+            }),
+            SourceKind::Bytes(_) => unreachable!(),
+        };
+
+        let include_paths = input
+            .include_directories
+            .iter()
+            .map(|include_directory| {
+                let include_path = Path::new(include_directory);
+                let mut full_include_path = root_path.to_owned();
+                full_include_path.push(include_path);
+                full_include_path
+            })
+            .collect::<Vec<_>>();
+
+        let content = match codegen::compile(
+            path,
+            &root_path,
+            &source_code,
+            input.shader_kind,
+            &include_paths,
+            &input.macro_defines,
+        ) {
+            Ok(ok) => ok,
+            Err(e) => panic!(e.replace("(s): ", "(s):\n")),
+        };
+
+        codegen::reflect("Shader", content.as_binary(), input.dump)
+            .unwrap()
+            .into()
+    }
 }
