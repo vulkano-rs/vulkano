@@ -157,6 +157,16 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     unsafe fn unlock(&self, _: Option<ImageLayout>) {
         // TODO: store that the image was initialized
     }
+
+    #[inline]
+    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+        0..self.mipmap_levels()
+    }
+
+    #[inline]
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+        0..1
+    }
 }
 
 unsafe impl<W> ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage<W> {

@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking** The `ImmutableImage::from_iter` and `ImmutableImage::from_buffer` can build Mipmaps
 - **Breaking** `CpuAccessibleBuffer` now uses `RwLock` from `parking_lot`.
 - **Breaking** The `Kind` and `SubpassContents` types have been moved to the root of the `command_buffer` module.
 - **Breaking** On `AutoCommandBufferBuilder`, the methods `begin_render_pass` and `next_subpass` now take `SubpassContents` instead of a boolean value.
