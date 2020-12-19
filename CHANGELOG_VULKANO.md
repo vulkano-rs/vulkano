@@ -22,6 +22,7 @@
 - Check usage bits on image when creating image view.
 - Fixing an assertion panic in the SyncCommandBuffer. If the buffer encountered an error while locking the necessary resources, it would unlock all previously locked resources. Images were unlocked incorrectly and an assert in the image unlock function would panic.
 - Added support for including precompiled shaders in vulkano-shaders using the `bytes` option.
+- Fixed clear `Cubemap` and `CubemapArray` framebuffer attachment dimensions; previously only 1/6th of the layers in each of these image layouts were actually considered by the framebuffer (for clearing and rendering). This seems to have been a result of the difference between `Dimensions` and `ImageDimensions`.
 
 # Version 0.19.0 (2020-06-01)
 
