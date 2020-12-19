@@ -187,6 +187,12 @@ pub unsafe trait ImageAccess {
     /// verify whether they actually overlap.
     fn conflict_key(&self) -> u64;
 
+    /// Returns the current mip level that is accessed by the gpu
+    fn current_miplevels_access(&self) -> std::ops::Range<u32>;
+
+    /// Returns the current layer level that is accessed by the gpu
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32>;
+
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
     /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
@@ -324,6 +330,14 @@ where
     fn is_layout_initialized(&self) -> bool {
         (**self).is_layout_initialized()
     }
+
+    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+        (**self).current_miplevels_access()
+    }
+
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+        (**self).current_layer_levels_access()
+    }
 }
 
 impl PartialEq for dyn ImageAccess + Send + Sync {
@@ -405,6 +419,14 @@ where
     #[inline]
     unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
         self.image.unlock(new_layout)
+    }
+
+    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+        self.image.current_miplevels_access()
+    }
+
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+        self.image.current_layer_levels_access()
     }
 }
 

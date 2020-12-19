@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking** The `ImmutableImage::from_iter` and `ImmutableImage::from_buffer` can build Mipmaps
 - **Breaking** `CpuAccessibleBuffer` now uses `RwLock` from `parking_lot`.
 - **Breaking** The `Kind` and `SubpassContents` types have been moved to the root of the `command_buffer` module.
 - **Breaking** On `AutoCommandBufferBuilder`, the methods `begin_render_pass` and `next_subpass` now take `SubpassContents` instead of a boolean value.
@@ -20,6 +21,7 @@
 - Added method `build_with_cache` to the `GraphicsPipelineBuilder` that enables pipeline caching.
 - Check usage bits on image when creating image view.
 - Fixing an assertion panic in the SyncCommandBuffer. If the buffer encountered an error while locking the necessary resources, it would unlock all previously locked resources. Images were unlocked incorrectly and an assert in the image unlock function would panic.
+- Added support for including precompiled shaders in vulkano-shaders using the `bytes` option.
 
 # Version 0.19.0 (2020-06-01)
 

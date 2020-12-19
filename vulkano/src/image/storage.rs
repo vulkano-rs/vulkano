@@ -264,6 +264,16 @@ where
         assert!(new_layout.is_none() || new_layout == Some(ImageLayout::General));
         self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
     }
+
+    #[inline]
+    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+        0..self.mipmap_levels()
+    }
+
+    #[inline]
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+        0..self.dimensions().array_layers()
+    }
 }
 
 unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>
