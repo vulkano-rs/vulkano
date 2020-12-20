@@ -202,7 +202,7 @@ use std::io::{Read, Result as IoResult};
 use std::path::Path;
 
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Ident, LitBool, LitStr, MetaList, Meta, NestedMeta, TypeImplTrait, TypeParamBound, ItemUse, Path as SynPath};
+use syn::{Ident, LitBool, LitStr, MetaList, Meta, NestedMeta, TypeImplTrait, ItemUse, Path as SynPath};
 
 mod codegen;
 mod descriptor_sets;
@@ -215,7 +215,6 @@ mod structs;
 
 use crate::codegen::ShaderKind;
 use std::slice::from_raw_parts;
-use std::borrow::Cow;
 
 enum SourceKind {
     Src(String),
@@ -446,7 +445,7 @@ impl Parse for MacroInput {
                                         };
 
                                         if custom_derive {
-                                            if meta.custom_derives.iter().any(|candidate| candidate == &path) {
+                                            if meta.custom_derives.iter().any(|candidate| candidate.eq(&path)) {
                                                 return Err(in_braces.error("Duplicate derive declaration"));
                                             }
 
@@ -555,7 +554,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         // The SPIR-V specification essentially guarantees that
         // a shader will always be an integer number of words
         assert_eq!(0, bytes.len() % 4);
-        codegen::reflect_internal(
+        codegen::reflect(
             "Shader",
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
             input.types_meta,
@@ -602,7 +601,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!(e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect_internal(
+        codegen::reflect(
             "Shader",
             content.as_binary(),
             input.types_meta,

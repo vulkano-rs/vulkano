@@ -15,16 +15,10 @@ use syn::Ident;
 use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
-use std::borrow::Cow;
 use syn::LitStr;
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-#[inline]
-pub fn write_structs(doc: &Spirv) -> TokenStream {
-    write_structs_internal(doc, &TypesMeta::default())
-}
-
-pub(super) fn write_structs_internal(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_structs(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
     let mut structs = vec![];
     for instruction in &doc.instructions {
         match *instruction {
@@ -70,7 +64,7 @@ fn write_struct(
 
     for (num, &member) in members.iter().enumerate() {
         // Compute infos about the member.
-        let (ty, rust_size, rust_align) = type_from_id_internal(doc, member, types_meta);
+        let (ty, rust_size, rust_align) = type_from_id(doc, member, types_meta);
         let member_name = spirv_search::member_name_from_id(doc, struct_id, num as u32);
 
         // Ignore the whole struct is a member is built in, which includes
@@ -346,12 +340,7 @@ fn write_struct(
 /// Returns the type name to put in the Rust struct, and its size and alignment.
 ///
 /// The size can be `None` if it's only known at runtime.
-#[inline]
-pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, usize) {
-    type_from_id_internal(doc, searched, &TypesMeta::default())
-}
-
-pub(super) fn type_from_id_internal(
+pub(super) fn type_from_id(
     doc: &Spirv,
     searched: u32,
     types_meta: &TypesMeta
@@ -497,7 +486,7 @@ pub(super) fn type_from_id_internal(
                 count,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id_internal(doc, component_id, types_meta);
+                let (ty, t_size, t_align) = type_from_id(doc, component_id, types_meta);
                 let array_length = count as usize;
                 let size = t_size.map(|s| s * count as usize);
                 return (quote! { [#ty; #array_length] }, size, t_align);
@@ -509,7 +498,7 @@ pub(super) fn type_from_id_internal(
             } if result_id == searched => {
                 // FIXME: row-major or column-major
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id_internal(doc, column_type_id, types_meta);
+                let (ty, t_size, t_align) = type_from_id(doc, column_type_id, types_meta);
                 let array_length = column_count as usize;
                 let size = t_size.map(|s| s * column_count as usize);
                 return (quote! { [#ty; #array_length] }, size, t_align);
@@ -520,7 +509,7 @@ pub(super) fn type_from_id_internal(
                 length_id,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id_internal(doc, type_id, types_meta);
+                let (ty, t_size, t_align) = type_from_id(doc, type_id, types_meta);
                 let t_size = t_size.expect("array components must be sized");
                 let len = doc
                     .instructions
@@ -551,7 +540,7 @@ pub(super) fn type_from_id_internal(
             }
             &Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, _, t_align) = type_from_id_internal(doc, type_id, types_meta);
+                let (ty, _, t_align) = type_from_id(doc, type_id, types_meta);
                 return (quote! { [#ty] }, None, t_align);
             }
             &Instruction::TypeStruct {
@@ -572,7 +561,7 @@ pub(super) fn type_from_id_internal(
                 );
                 let align = member_types
                     .iter()
-                    .map(|&t| type_from_id_internal(doc, t, types_meta).2)
+                    .map(|&t| type_from_id(doc, t, types_meta).2)
                     .max()
                     .unwrap_or(1);
                 return (ty, size, align);

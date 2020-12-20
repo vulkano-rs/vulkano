@@ -34,12 +34,7 @@ pub fn has_specialization_constants(doc: &Spirv) -> bool {
 
 /// Writes the `SpecializationConstants` struct that contains the specialization constants and
 /// implements the `Default` and the `vulkano::pipeline::shader::SpecializationConstants` traits.
-#[inline]
-pub fn write_specialization_constants(doc: &Spirv) -> TokenStream {
-    write_specialization_constants_internal(doc, &TypesMeta::default())
-}
-
-pub(super) fn write_specialization_constants_internal(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
     struct SpecConst {
         name: String,
         constant_id: u32,
@@ -191,5 +186,5 @@ fn spec_const_type_from_id(
         }
     }
 
-    structs::type_from_id_internal(doc, searched, types_meta)
+    structs::type_from_id(doc, searched, types_meta)
 }

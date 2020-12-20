@@ -187,12 +187,7 @@ pub fn compile(
     Ok(content)
 }
 
-#[inline]
-pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Error> {
-    reflect_internal(name, spirv, TypesMeta::default(), dump)
-}
-
-pub(super) fn reflect_internal(
+pub(super) fn reflect(
     name: &str,
     spirv: &[u32],
     types_meta: TypesMeta,
@@ -258,9 +253,9 @@ pub(super) fn reflect_internal(
         }
     }
 
-    let structs = structs::write_structs_internal(&doc, &types_meta);
-    let descriptor_sets = descriptor_sets::write_descriptor_sets_internal(&doc, &types_meta);
-    let specialization_constants = spec_consts::write_specialization_constants_internal(&doc, &types_meta);
+    let structs = structs::write_structs(&doc, &types_meta);
+    let descriptor_sets = descriptor_sets::write_descriptor_sets(&doc, &types_meta);
+    let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);
     let uses = &types_meta.uses;
     let ast = quote! {
         #[allow(unused_imports)]
@@ -546,7 +541,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        let res = std::panic::catch_unwind(|| structs::write_structs_internal(&doc, &TypesMeta::default()));
+        let res = std::panic::catch_unwind(|| structs::write_structs(&doc, &TypesMeta::default()));
         assert!(res.is_err());
     }
     #[test]
@@ -572,7 +567,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs_internal(&doc, &TypesMeta::default());
+        structs::write_structs(&doc, &TypesMeta::default());
     }
     #[test]
     fn test_wrap_alignment() {
@@ -602,7 +597,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs_internal(&doc, &TypesMeta::default());
+        structs::write_structs(&doc, &TypesMeta::default());
     }
 
     #[test]
