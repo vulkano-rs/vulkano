@@ -13,9 +13,9 @@ use proc_macro2::TokenStream;
 
 use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
-use crate::spirv_search;
+use crate::{spirv_search, TypesMeta};
 
-pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
+pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
     // TODO: not implemented correctly
 
     // Finding all the descriptors.
@@ -71,7 +71,7 @@ pub fn write_descriptor_sets(doc: &Spirv) -> TokenStream {
             _ => continue,
         };
 
-        let (_, size, _) = crate::structs::type_from_id(doc, type_id);
+        let (_, size, _) = crate::structs::type_from_id(doc, type_id, types_meta);
         let size = size.expect("Found runtime-sized push constants");
         push_constants_size = cmp::max(push_constants_size, size);
     }

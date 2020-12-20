@@ -51,6 +51,9 @@
 //! return the various entry point structs that can be found in the
 //! [vulkano::pipeline::shader][pipeline::shader] module.
 //! * A Rust struct translated from each struct contained in the shader data.
+//! By default each structure has a `Clone` and a `Copy` implemenetations. This
+//! behavior could be customized through the `types_meta` macro option(see below
+//! for details).
 //! * The `Layout` newtype. This contains a [`ShaderStages`][ShaderStages] struct.
 //! An implementation of [`PipelineLayoutDesc`][PipelineLayoutDesc] is also
 //! generated for the newtype.
@@ -146,6 +149,29 @@
 //! Adds the given macro definitions to the pre-processor. This is equivalent to passing `-DNAME=VALUE`
 //! on the command line.
 //!
+//! ## `types_meta: { use a::b; #[derive(Clone, Default, PartialEq ...)] impl Eq }`
+//!
+//! Extends implementations of Rust structs that represent Shader structs.
+//!
+//! By default each generated struct has a `Clone` and a `Copy` implementations
+//! only. If the struct has unsized members none of derives or impls applied on
+//! this struct.
+//!
+//! The block may have as many `use`, `derive` or `impl` statements as needed
+//! and in any order.
+//!
+//! Each `use` declaration will be added to generated `ty` module. And each
+//! `derive`'s trait and `impl` statement will be applied to each generated
+//! struct inside `ty` module.
+//!
+//! For `Default` derive implementation fills a struct data with all zeroes.
+//! For `Display` and `Debug` derive implementation prints all fields except `_dummyX`.
+//! For `PartialEq` derive implementation all non-`_dummyX` are checking for equality.
+//!
+//! The macro performs trivial checking for duplicate declarations. To see the
+//! final output of generated code the user can also use `dump` macro
+//! option(see below).
+//!
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
@@ -176,7 +202,9 @@ use std::io::{Read, Result as IoResult};
 use std::path::Path;
 
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Ident, LitBool, LitStr};
+use syn::{
+    Ident, ItemUse, LitBool, LitStr, Meta, MetaList, NestedMeta, Path as SynPath, TypeImplTrait,
+};
 
 mod codegen;
 mod descriptor_sets;
@@ -196,11 +224,58 @@ enum SourceKind {
     Bytes(String),
 }
 
+struct TypesMeta {
+    custom_derives: Vec<SynPath>,
+    clone: bool,
+    copy: bool,
+    display: bool,
+    debug: bool,
+    default: bool,
+    partial_eq: bool,
+    uses: Vec<ItemUse>,
+    impls: Vec<TypeImplTrait>,
+}
+
+impl Default for TypesMeta {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            custom_derives: vec![],
+            clone: true,
+            copy: true,
+            partial_eq: false,
+            debug: false,
+            display: false,
+            default: false,
+            uses: Vec::new(),
+            impls: Vec::new(),
+        }
+    }
+}
+
+impl TypesMeta {
+    #[inline]
+    fn empty() -> Self {
+        Self {
+            custom_derives: Vec::new(),
+            clone: false,
+            copy: false,
+            partial_eq: false,
+            debug: false,
+            display: false,
+            default: false,
+            uses: Vec::new(),
+            impls: Vec::new(),
+        }
+    }
+}
+
 struct MacroInput {
     shader_kind: ShaderKind,
     source_kind: SourceKind,
     include_directories: Vec<String>,
     macro_defines: Vec<(String, String)>,
+    types_meta: TypesMeta,
     dump: bool,
 }
 
@@ -211,6 +286,7 @@ impl Parse for MacroInput {
         let mut source_kind = None;
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
+        let mut types_meta = None;
 
         while !input.is_empty() {
             let name: Ident = input.parse()?;
@@ -290,6 +366,144 @@ impl Parse for MacroInput {
                         }
                     }
                 }
+                "types_meta" => {
+                    let in_braces;
+                    braced!(in_braces in input);
+
+                    let mut meta = TypesMeta::empty();
+
+                    while !in_braces.is_empty() {
+                        if in_braces.peek(Token![#]) {
+                            in_braces.parse::<Token![#]>()?;
+
+                            let in_brackets;
+                            bracketed!(in_brackets in in_braces);
+
+                            let derive_list: MetaList = in_brackets.parse()?;
+
+                            for derive in derive_list.nested {
+                                match derive {
+                                    NestedMeta::Meta(Meta::Path(path)) => {
+                                        let custom_derive = if let Some(derive_ident) =
+                                            path.get_ident()
+                                        {
+                                            match derive_ident.to_string().as_str() {
+                                                "Clone" => {
+                                                    if meta.default {
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Clone derive"));
+                                                    }
+
+                                                    meta.clone = true;
+
+                                                    false
+                                                }
+                                                "Copy" => {
+                                                    if meta.copy {
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Copy derive"));
+                                                    }
+
+                                                    meta.copy = true;
+
+                                                    false
+                                                }
+                                                "PartialEq" => {
+                                                    if meta.partial_eq {
+                                                        return Err(in_brackets
+                                                            .error("Duplicate PartialEq derive"));
+                                                    }
+
+                                                    meta.partial_eq = true;
+
+                                                    false
+                                                }
+                                                "Debug" => {
+                                                    if meta.debug {
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Debug derive"));
+                                                    }
+
+                                                    meta.debug = true;
+
+                                                    false
+                                                }
+                                                "Display" => {
+                                                    if meta.display {
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Display derive"));
+                                                    }
+
+                                                    meta.display = true;
+
+                                                    false
+                                                }
+                                                "Default" => {
+                                                    if meta.default {
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Default derive"));
+                                                    }
+
+                                                    meta.default = true;
+
+                                                    false
+                                                }
+                                                _ => true,
+                                            }
+                                        } else {
+                                            true
+                                        };
+
+                                        if custom_derive {
+                                            if meta
+                                                .custom_derives
+                                                .iter()
+                                                .any(|candidate| candidate.eq(&path))
+                                            {
+                                                return Err(
+                                                    in_braces.error("Duplicate derive declaration")
+                                                );
+                                            }
+
+                                            meta.custom_derives.push(path);
+                                        }
+                                    }
+                                    _ => return Err(in_brackets.error("Unsupported syntax")),
+                                }
+                            }
+
+                            continue;
+                        }
+
+                        if in_braces.peek(Token![impl]) {
+                            let impl_trait: TypeImplTrait = in_braces.parse()?;
+
+                            if meta.impls.iter().any(|candidate| candidate == &impl_trait) {
+                                return Err(in_braces.error("Duplicate \"impl\" declaration"));
+                            }
+
+                            meta.impls.push(impl_trait);
+
+                            continue;
+                        }
+
+                        if in_braces.peek(Token![use]) {
+                            let item_use: ItemUse = in_braces.parse()?;
+
+                            if meta.uses.iter().any(|candidate| candidate == &item_use) {
+                                return Err(in_braces.error("Duplicate \"use\" declaration"));
+                            }
+
+                            meta.uses.push(item_use);
+
+                            continue;
+                        }
+
+                        return Err(in_braces.error("Type meta must by \"use a::b::c\", \"#[derive(Type1, Type2, ..)]\" or \"impl Type\""));
+                    }
+
+                    types_meta = Some(meta);
+                }
                 "dump" => {
                     if dump.is_some() {
                         panic!("Only one `dump` can be defined")
@@ -317,12 +531,13 @@ impl Parse for MacroInput {
 
         let dump = dump.unwrap_or(false);
 
-        Ok(MacroInput {
+        Ok(Self {
             shader_kind,
             source_kind,
             include_directories,
             dump,
             macro_defines,
+            types_meta: types_meta.unwrap_or_else(|| TypesMeta::default()),
         })
     }
 }
@@ -358,6 +573,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         codegen::reflect(
             "Shader",
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
+            input.types_meta,
             input.dump,
         )
         .unwrap()
@@ -401,7 +617,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!(e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect("Shader", content.as_binary(), input.dump)
+        codegen::reflect("Shader", content.as_binary(), input.types_meta, input.dump)
             .unwrap()
             .into()
     }
