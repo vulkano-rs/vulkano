@@ -21,7 +21,7 @@ use crate::enums::Capability;
 use crate::enums::StorageClass;
 use crate::parse::Instruction;
 
-use crate::descriptor_sets;
+use crate::{descriptor_sets, TypesMeta};
 use crate::entry_point;
 use crate::parse;
 use crate::read_file_to_string;
@@ -187,7 +187,17 @@ pub fn compile(
     Ok(content)
 }
 
+#[inline]
 pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Error> {
+    reflect_internal(name, spirv, TypesMeta::default(), dump)
+}
+
+pub(super) fn reflect_internal(
+    name: &str,
+    spirv: &[u32],
+    types_meta: TypesMeta,
+    dump: bool,
+) -> Result<TokenStream, Error> {
     let struct_name = Ident::new(&name, Span::call_site());
     let doc = parse::parse_spirv(spirv)?;
 
@@ -248,9 +258,10 @@ pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Err
         }
     }
 
-    let structs = structs::write_structs(&doc);
-    let descriptor_sets = descriptor_sets::write_descriptor_sets(&doc);
-    let specialization_constants = spec_consts::write_specialization_constants(&doc);
+    let structs = structs::write_structs_internal(&doc, &types_meta);
+    let descriptor_sets = descriptor_sets::write_descriptor_sets_internal(&doc, &types_meta);
+    let specialization_constants = spec_consts::write_specialization_constants_internal(&doc, &types_meta);
+    let uses = &types_meta.uses;
     let ast = quote! {
         #[allow(unused_imports)]
         use std::sync::Arc;
@@ -324,6 +335,7 @@ pub fn reflect(name: &str, spirv: &[u32], dump: bool) -> Result<TokenStream, Err
         #( #entry_points_outside_impl )*
 
         pub mod ty {
+            #( #uses )*
             #structs
         }
 
@@ -534,7 +546,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        let res = std::panic::catch_unwind(|| structs::write_structs(&doc));
+        let res = std::panic::catch_unwind(|| structs::write_structs_internal(&doc, &TypesMeta::default()));
         assert!(res.is_err());
     }
     #[test]
@@ -560,7 +572,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs(&doc);
+        structs::write_structs_internal(&doc, &TypesMeta::default());
     }
     #[test]
     fn test_wrap_alignment() {
@@ -590,7 +602,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs(&doc);
+        structs::write_structs_internal(&doc, &TypesMeta::default());
     }
 
     #[test]

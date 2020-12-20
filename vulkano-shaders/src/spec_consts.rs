@@ -14,7 +14,7 @@ use syn::Ident;
 
 use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
-use crate::spirv_search;
+use crate::{spirv_search, TypesMeta};
 use crate::structs;
 
 /// Returns true if the document has specialization constants.
@@ -34,7 +34,12 @@ pub fn has_specialization_constants(doc: &Spirv) -> bool {
 
 /// Writes the `SpecializationConstants` struct that contains the specialization constants and
 /// implements the `Default` and the `vulkano::pipeline::shader::SpecializationConstants` traits.
+#[inline]
 pub fn write_specialization_constants(doc: &Spirv) -> TokenStream {
+    write_specialization_constants_internal(doc, &TypesMeta::default())
+}
+
+pub(super) fn write_specialization_constants_internal(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
     struct SpecConst {
         name: String,
         constant_id: u32,
@@ -81,7 +86,7 @@ pub fn write_specialization_constants(doc: &Spirv) -> TokenStream {
             _ => continue,
         };
 
-        let (rust_ty, rust_size, rust_alignment) = spec_const_type_from_id(doc, type_id);
+        let (rust_ty, rust_size, rust_alignment) = spec_const_type_from_id(doc, type_id, types_meta);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
         let constant_id = doc.get_decoration_params(result_id, Decoration::DecorationSpecId);
@@ -168,7 +173,11 @@ pub fn write_specialization_constants(doc: &Spirv) -> TokenStream {
 }
 
 // Wrapper around `type_from_id` that also handles booleans.
-fn spec_const_type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, usize) {
+fn spec_const_type_from_id(
+    doc: &Spirv,
+    searched: u32,
+    types_meta: &TypesMeta
+) -> (TokenStream, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
             &Instruction::TypeBool { result_id } if result_id == searched => {
@@ -182,5 +191,5 @@ fn spec_const_type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<u
         }
     }
 
-    structs::type_from_id(doc, searched)
+    structs::type_from_id_internal(doc, searched, types_meta)
 }
