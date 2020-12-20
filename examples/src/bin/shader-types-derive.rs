@@ -9,7 +9,7 @@
 
 // This example demonstrates how to put derives onto generated Rust structs from
 // the Shader types through the "types-meta" options of
-// `vulkano_shaders::shader!` macro
+// `vulkano_shaders::shader!` macro.
 
 // Vulkano Shader macro is capable to generate Rust structs representing each
 // type found in the shader source. These structs appear in the `ty` module
@@ -104,8 +104,8 @@ fn main() {
         ..Default::default()
     };
 
-    // The data inside "_dummyX" has no use, but still can fill it with
-    // something different from Zero
+    // The data inside "_dummyX" has no use, but we still can fill it with
+    // something different from zeroes.
     bar._dummy0 = [5; 8];
 
     // Objects are equal since "_dummyX" fields ignoring during comparison
