@@ -25,6 +25,7 @@
 - Added an option for Vulkano-Shaders macro to automatically generate standard
   traits(Default, PartialEq, etc) implementations for Rust types generated from
   the Shader types, and to derive these structs with external traits.
+- Fixed clear `Cubemap` and `CubemapArray` framebuffer attachment dimensions; previously only 1/6th of the layers in each of these image layouts were actually considered by the framebuffer (for clearing and rendering). This seems to have been a result of the difference between `Dimensions` and `ImageDimensions`.
 
 # Version 0.19.0 (2020-06-01)
 
