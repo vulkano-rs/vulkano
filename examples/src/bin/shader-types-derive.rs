@@ -30,9 +30,9 @@
 // developer can also specify derives of traits from external modules/crates
 // whenever such traits provide custom derive feature.
 
-use std::fmt::{Display, Formatter, Error, Debug};
-use ron::ser::{to_string_pretty, PrettyConfig};
 use ron::from_str;
+use ron::ser::{to_string_pretty, PrettyConfig};
+use std::fmt::{Debug, Display, Error, Formatter};
 
 vulkano_shaders::shader! {
     ty: "compute",
@@ -90,11 +90,14 @@ fn main() {
     use crate::ty::*;
 
     // Prints "Foo { x: 0.0, z: [100.0, 200.0, 300.0] }" skipping "_dummyX" fields.
-    println!("{}", Foo {
-        z: [100.0, 200.0, 300.0],
+    println!(
+        "{}",
+        Foo {
+            z: [100.0, 200.0, 300.0],
 
-        ..Default::default()
-    });
+            ..Default::default()
+        }
+    );
 
     let mut bar = Bar {
         y: [5.1, 6.2],
@@ -110,7 +113,10 @@ fn main() {
 
     // Objects are equal since "_dummyX" fields ignoring during comparison
     assert_eq!(
-        Bar { y: [5.1, 6.2], ..Default::default() },
+        Bar {
+            y: [5.1, 6.2],
+            ..Default::default()
+        },
         bar,
     );
 

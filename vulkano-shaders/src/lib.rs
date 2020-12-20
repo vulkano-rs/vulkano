@@ -202,7 +202,9 @@ use std::io::{Read, Result as IoResult};
 use std::path::Path;
 
 use syn::parse::{Parse, ParseStream, Result};
-use syn::{Ident, LitBool, LitStr, MetaList, Meta, NestedMeta, TypeImplTrait, ItemUse, Path as SynPath};
+use syn::{
+    Ident, ItemUse, LitBool, LitStr, Meta, MetaList, NestedMeta, Path as SynPath, TypeImplTrait,
+};
 
 mod codegen;
 mod descriptor_sets;
@@ -382,11 +384,14 @@ impl Parse for MacroInput {
                             for derive in derive_list.nested {
                                 match derive {
                                     NestedMeta::Meta(Meta::Path(path)) => {
-                                        let custom_derive = if let Some(derive_ident) = path.get_ident() {
+                                        let custom_derive = if let Some(derive_ident) =
+                                            path.get_ident()
+                                        {
                                             match derive_ident.to_string().as_str() {
                                                 "Clone" => {
                                                     if meta.default {
-                                                        return Err(in_brackets.error("Duplicate Clone derive"));
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Clone derive"));
                                                     }
 
                                                     meta.clone = true;
@@ -395,7 +400,8 @@ impl Parse for MacroInput {
                                                 }
                                                 "Copy" => {
                                                     if meta.copy {
-                                                        return Err(in_brackets.error("Duplicate Copy derive"));
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Copy derive"));
                                                     }
 
                                                     meta.copy = true;
@@ -404,7 +410,8 @@ impl Parse for MacroInput {
                                                 }
                                                 "PartialEq" => {
                                                     if meta.partial_eq {
-                                                        return Err(in_brackets.error("Duplicate PartialEq derive"));
+                                                        return Err(in_brackets
+                                                            .error("Duplicate PartialEq derive"));
                                                     }
 
                                                     meta.partial_eq = true;
@@ -413,7 +420,8 @@ impl Parse for MacroInput {
                                                 }
                                                 "Debug" => {
                                                     if meta.debug {
-                                                        return Err(in_brackets.error("Duplicate Debug derive"));
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Debug derive"));
                                                     }
 
                                                     meta.debug = true;
@@ -422,7 +430,8 @@ impl Parse for MacroInput {
                                                 }
                                                 "Display" => {
                                                     if meta.display {
-                                                        return Err(in_brackets.error("Duplicate Display derive"));
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Display derive"));
                                                     }
 
                                                     meta.display = true;
@@ -431,27 +440,34 @@ impl Parse for MacroInput {
                                                 }
                                                 "Default" => {
                                                     if meta.default {
-                                                        return Err(in_brackets.error("Duplicate Default derive"));
+                                                        return Err(in_brackets
+                                                            .error("Duplicate Default derive"));
                                                     }
 
                                                     meta.default = true;
 
                                                     false
                                                 }
-                                                _ => true
+                                                _ => true,
                                             }
                                         } else {
                                             true
                                         };
 
                                         if custom_derive {
-                                            if meta.custom_derives.iter().any(|candidate| candidate.eq(&path)) {
-                                                return Err(in_braces.error("Duplicate derive declaration"));
+                                            if meta
+                                                .custom_derives
+                                                .iter()
+                                                .any(|candidate| candidate.eq(&path))
+                                            {
+                                                return Err(
+                                                    in_braces.error("Duplicate derive declaration")
+                                                );
                                             }
 
                                             meta.custom_derives.push(path);
                                         }
-                                    },
+                                    }
                                     _ => return Err(in_brackets.error("Unsupported syntax")),
                                 }
                             }
@@ -601,12 +617,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!(e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect(
-            "Shader",
-            content.as_binary(),
-            input.types_meta,
-            input.dump
-        )
+        codegen::reflect("Shader", content.as_binary(), input.types_meta, input.dump)
             .unwrap()
             .into()
     }

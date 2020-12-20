@@ -21,12 +21,12 @@ use crate::enums::Capability;
 use crate::enums::StorageClass;
 use crate::parse::Instruction;
 
-use crate::{descriptor_sets, TypesMeta};
 use crate::entry_point;
 use crate::parse;
 use crate::read_file_to_string;
 use crate::spec_consts;
 use crate::structs;
+use crate::{descriptor_sets, TypesMeta};
 
 fn include_callback(
     requested_source_path_raw: &str,

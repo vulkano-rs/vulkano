@@ -40,7 +40,7 @@ fn write_struct(
     doc: &Spirv,
     struct_id: u32,
     members: &[u32],
-    types_meta: &TypesMeta
+    types_meta: &TypesMeta,
 ) -> (TokenStream, Option<usize>) {
     let name = Ident::new(
         &spirv_search::name_from_id(doc, struct_id),
@@ -224,53 +224,54 @@ fn write_struct(
         quote! {}
     };
 
-    let (debug_impl, display_impl) =
-        if current_rust_offset.is_some() && (types_meta.debug || types_meta.display) {
-            let mut fields = vec![];
-            for member in &rust_members {
-                if !member.dummy {
-                    let name = &member.name;
-                    let name_string = LitStr::new(name.to_string().as_ref(), name.span());
+    let (debug_impl, display_impl) = if current_rust_offset.is_some()
+        && (types_meta.debug || types_meta.display)
+    {
+        let mut fields = vec![];
+        for member in &rust_members {
+            if !member.dummy {
+                let name = &member.name;
+                let name_string = LitStr::new(name.to_string().as_ref(), name.span());
 
-                    fields.push(quote! {.field(#name_string, &self.#name)});
-                }
+                fields.push(quote! {.field(#name_string, &self.#name)});
             }
+        }
 
-            let name_string = LitStr::new(name.to_string().as_ref(), name.span());
+        let name_string = LitStr::new(name.to_string().as_ref(), name.span());
 
-            (
-                if types_meta.debug {
-                    quote! {
-                        impl std::fmt::Debug for #name {
-                            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                                formatter
-                                    .debug_struct(#name_string)
-                                    #( #fields )*
-                                    .finish()
-                            }
+        (
+            if types_meta.debug {
+                quote! {
+                    impl std::fmt::Debug for #name {
+                        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                            formatter
+                                .debug_struct(#name_string)
+                                #( #fields )*
+                                .finish()
                         }
                     }
-                } else {
-                    quote! {}
-                },
-                if types_meta.display {
-                    quote! {
-                        impl std::fmt::Display for #name {
-                            fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-                                formatter
-                                    .debug_struct(#name_string)
-                                    #( #fields )*
-                                    .finish()
-                            }
+                }
+            } else {
+                quote! {}
+            },
+            if types_meta.display {
+                quote! {
+                    impl std::fmt::Display for #name {
+                        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                            formatter
+                                .debug_struct(#name_string)
+                                #( #fields )*
+                                .finish()
                         }
                     }
-                } else {
-                    quote! {}
-                },
-            )
-        } else {
-            (quote! {}, quote! {})
-        };
+                }
+            } else {
+                quote! {}
+            },
+        )
+    } else {
+        (quote! {}, quote! {})
+    };
 
     let default_impl = if current_rust_offset.is_some() && types_meta.default {
         quote! {
@@ -298,13 +299,12 @@ fn write_struct(
     };
 
     // If the struct has unsized members none of custom derives applied.
-    let custom_derives =
-        if current_rust_offset.is_some() && !types_meta.custom_derives.is_empty() {
-            let derive_list = &types_meta.custom_derives;
-            quote! { #[derive(#( #derive_list ),*)] }
-        } else {
-            quote! {}
-        };
+    let custom_derives = if current_rust_offset.is_some() && !types_meta.custom_derives.is_empty() {
+        let derive_list = &types_meta.custom_derives;
+        quote! { #[derive(#( #derive_list ),*)] }
+    } else {
+        quote! {}
+    };
 
     let mut members = vec![];
     for member in &rust_members {
@@ -343,7 +343,7 @@ fn write_struct(
 pub(super) fn type_from_id(
     doc: &Spirv,
     searched: u32,
-    types_meta: &TypesMeta
+    types_meta: &TypesMeta,
 ) -> (TokenStream, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
@@ -553,12 +553,7 @@ pub(super) fn type_from_id(
                     Span::call_site(),
                 );
                 let ty = quote! { #name };
-                let (_, size) = write_struct(
-                    doc,
-                    result_id,
-                    member_types,
-                    types_meta,
-                );
+                let (_, size) = write_struct(doc, result_id, member_types, types_meta);
                 let align = member_types
                     .iter()
                     .map(|&t| type_from_id(doc, t, types_meta).2)

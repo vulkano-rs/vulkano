@@ -14,8 +14,8 @@ use syn::Ident;
 
 use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
-use crate::{spirv_search, TypesMeta};
 use crate::structs;
+use crate::{spirv_search, TypesMeta};
 
 /// Returns true if the document has specialization constants.
 pub fn has_specialization_constants(doc: &Spirv) -> bool {
@@ -81,7 +81,8 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
             _ => continue,
         };
 
-        let (rust_ty, rust_size, rust_alignment) = spec_const_type_from_id(doc, type_id, types_meta);
+        let (rust_ty, rust_size, rust_alignment) =
+            spec_const_type_from_id(doc, type_id, types_meta);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
         let constant_id = doc.get_decoration_params(result_id, Decoration::DecorationSpecId);
@@ -171,7 +172,7 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
 fn spec_const_type_from_id(
     doc: &Spirv,
     searched: u32,
-    types_meta: &TypesMeta
+    types_meta: &TypesMeta,
 ) -> (TokenStream, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
