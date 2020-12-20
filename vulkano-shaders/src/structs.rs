@@ -14,17 +14,18 @@ use syn::Ident;
 
 use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
-use crate::spirv_search;
+use crate::{spirv_search, TypesMeta};
+use syn::LitStr;
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub fn write_structs(doc: &Spirv) -> TokenStream {
+pub(super) fn write_structs(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
     let mut structs = vec![];
     for instruction in &doc.instructions {
         match *instruction {
             Instruction::TypeStruct {
                 result_id,
                 ref member_types,
-            } => structs.push(write_struct(doc, result_id, member_types).0),
+            } => structs.push(write_struct(doc, result_id, member_types, types_meta).0),
             _ => (),
         }
     }
@@ -35,7 +36,12 @@ pub fn write_structs(doc: &Spirv) -> TokenStream {
 }
 
 /// Analyzes a single struct, returns a string containing its Rust definition, plus its size.
-fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, Option<usize>) {
+fn write_struct(
+    doc: &Spirv,
+    struct_id: u32,
+    members: &[u32],
+    types_meta: &TypesMeta,
+) -> (TokenStream, Option<usize>) {
     let name = Ident::new(
         &spirv_search::name_from_id(doc, struct_id),
         Span::call_site(),
@@ -44,6 +50,7 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
     // The members of this struct.
     struct Member {
         pub name: Ident,
+        pub dummy: bool,
         pub ty: TokenStream,
     }
     let mut rust_members = Vec::with_capacity(members.len());
@@ -57,7 +64,7 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
 
     for (num, &member) in members.iter().enumerate() {
         // Compute infos about the member.
-        let (ty, rust_size, rust_align) = type_from_id(doc, member);
+        let (ty, rust_size, rust_align) = type_from_id(doc, member, types_meta);
         let member_name = spirv_search::member_name_from_id(doc, struct_id, num as u32);
 
         // Ignore the whole struct is a member is built in, which includes
@@ -100,6 +107,7 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
                 next_padding_num += 1;
                 rust_members.push(Member {
                     name: Ident::new(&format!("_dummy{}", padding_num), Span::call_site()),
+                    dummy: true,
                     ty: quote! { [u8; #diff] },
                 });
                 *current_rust_offset += diff;
@@ -115,6 +123,7 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
 
         rust_members.push(Member {
             name: Ident::new(&member_name, Span::call_site()),
+            dummy: false,
             ty,
         });
     }
@@ -149,34 +158,152 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
         if diff >= 1 {
             rust_members.push(Member {
                 name: Ident::new(&format!("_dummy{}", next_padding_num), Span::call_site()),
+                dummy: true,
                 ty: quote! { [u8; #diff as usize] },
             });
         }
     }
 
     // We can only implement Clone if there's no unsized member in the struct.
-    let (clone_impl, copy_derive) = if current_rust_offset.is_some() {
-        let mut copies = vec![];
+    let (clone_impl, copy_derive) =
+        if current_rust_offset.is_some() && (types_meta.clone || types_meta.copy) {
+            (
+                if types_meta.clone {
+                    let mut copies = vec![];
+                    for member in &rust_members {
+                        let name = &member.name;
+                        copies.push(quote! { #name: self.#name, });
+                    }
+
+                    // Clone is implemented manually because members can be large arrays
+                    // that do not implement Clone, but do implement Copy
+                    quote! {
+                        impl Clone for #name {
+                            fn clone(&self) -> Self {
+                                #name {
+                                    #( #copies )*
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    quote! {}
+                },
+                if types_meta.copy {
+                    quote! { #[derive(Copy)] }
+                } else {
+                    quote! {}
+                },
+            )
+        } else {
+            (quote! {}, quote! {})
+        };
+
+    let partial_eq_impl = if current_rust_offset.is_some() && types_meta.partial_eq {
+        let mut fields = vec![];
         for member in &rust_members {
-            let name = &member.name;
-            copies.push(quote! { #name: self.#name, });
+            if !member.dummy {
+                let name = &member.name;
+                fields.push(quote! {
+                    if self.#name != other.#name {
+                        return false
+                    }
+                });
+            }
         }
+
+        quote! {
+            impl PartialEq for #name {
+                fn eq(&self, other: &Self) -> bool {
+                    #( #fields )*
+                    true
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    let (debug_impl, display_impl) = if current_rust_offset.is_some()
+        && (types_meta.debug || types_meta.display)
+    {
+        let mut fields = vec![];
+        for member in &rust_members {
+            if !member.dummy {
+                let name = &member.name;
+                let name_string = LitStr::new(name.to_string().as_ref(), name.span());
+
+                fields.push(quote! {.field(#name_string, &self.#name)});
+            }
+        }
+
+        let name_string = LitStr::new(name.to_string().as_ref(), name.span());
+
         (
-            // Clone is implemented manually because members can be large arrays
-            // that do not implement Clone, but do implement Copy
-            quote! {
-                impl Clone for #name {
-                    fn clone(&self) -> Self {
-                        #name {
-                            #( #copies )*
+            if types_meta.debug {
+                quote! {
+                    impl std::fmt::Debug for #name {
+                        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                            formatter
+                                .debug_struct(#name_string)
+                                #( #fields )*
+                                .finish()
                         }
                     }
                 }
+            } else {
+                quote! {}
             },
-            quote! { #[derive(Copy)] },
+            if types_meta.display {
+                quote! {
+                    impl std::fmt::Display for #name {
+                        fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+                            formatter
+                                .debug_struct(#name_string)
+                                #( #fields )*
+                                .finish()
+                        }
+                    }
+                }
+            } else {
+                quote! {}
+            },
         )
     } else {
         (quote! {}, quote! {})
+    };
+
+    let default_impl = if current_rust_offset.is_some() && types_meta.default {
+        quote! {
+            impl Default for #name {
+                fn default() -> Self {
+                    unsafe {
+                        std::mem::MaybeUninit::<Self>::zeroed().assume_init()
+                    }
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+
+    // If the struct has unsized members none of custom impls applied.
+    let custom_impls = if current_rust_offset.is_some() {
+        let impls = &types_meta.impls;
+
+        quote! {
+            #( #impls for #name {} )*
+        }
+    } else {
+        quote! {}
+    };
+
+    // If the struct has unsized members none of custom derives applied.
+    let custom_derives = if current_rust_offset.is_some() && !types_meta.custom_derives.is_empty() {
+        let derive_list = &types_meta.custom_derives;
+        quote! { #[derive(#( #derive_list ),*)] }
+    } else {
+        quote! {}
     };
 
     let mut members = vec![];
@@ -189,11 +316,17 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
     let ast = quote! {
         #[repr(C)]
         #copy_derive
+        #custom_derives
         #[allow(non_snake_case)]
         pub struct #name {
             #( #members )*
         }
         #clone_impl
+        #partial_eq_impl
+        #debug_impl
+        #display_impl
+        #default_impl
+        #custom_impls
     };
 
     (
@@ -207,7 +340,11 @@ fn write_struct(doc: &Spirv, struct_id: u32, members: &[u32]) -> (TokenStream, O
 /// Returns the type name to put in the Rust struct, and its size and alignment.
 ///
 /// The size can be `None` if it's only known at runtime.
-pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, usize) {
+pub(super) fn type_from_id(
+    doc: &Spirv,
+    searched: u32,
+    types_meta: &TypesMeta,
+) -> (TokenStream, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
             &Instruction::TypeBool { result_id } if result_id == searched => {
@@ -349,7 +486,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                 count,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id(doc, component_id);
+                let (ty, t_size, t_align) = type_from_id(doc, component_id, types_meta);
                 let array_length = count as usize;
                 let size = t_size.map(|s| s * count as usize);
                 return (quote! { [#ty; #array_length] }, size, t_align);
@@ -361,7 +498,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
             } if result_id == searched => {
                 // FIXME: row-major or column-major
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id(doc, column_type_id);
+                let (ty, t_size, t_align) = type_from_id(doc, column_type_id, types_meta);
                 let array_length = column_count as usize;
                 let size = t_size.map(|s| s * column_count as usize);
                 return (quote! { [#ty; #array_length] }, size, t_align);
@@ -372,7 +509,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                 length_id,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id(doc, type_id);
+                let (ty, t_size, t_align) = type_from_id(doc, type_id, types_meta);
                 let t_size = t_size.expect("array components must be sized");
                 let len = doc
                     .instructions
@@ -403,7 +540,7 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
             }
             &Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, _, t_align) = type_from_id(doc, type_id);
+                let (ty, _, t_align) = type_from_id(doc, type_id, types_meta);
                 return (quote! { [#ty] }, None, t_align);
             }
             &Instruction::TypeStruct {
@@ -416,10 +553,10 @@ pub fn type_from_id(doc: &Spirv, searched: u32) -> (TokenStream, Option<usize>, 
                     Span::call_site(),
                 );
                 let ty = quote! { #name };
-                let (_, size) = write_struct(doc, result_id, member_types);
+                let (_, size) = write_struct(doc, result_id, member_types, types_meta);
                 let align = member_types
                     .iter()
-                    .map(|&t| type_from_id(doc, t).2)
+                    .map(|&t| type_from_id(doc, t, types_meta).2)
                     .max()
                     .unwrap_or(1);
                 return (ty, size, align);
