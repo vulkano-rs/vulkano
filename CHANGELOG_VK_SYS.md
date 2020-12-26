@@ -1,12 +1,13 @@
 # Unreleased
 
+# Version 0.5.3 (2020-12-26)
+
 - Added support for:
     + `PhysicalDeviceVariablePointersFeatures`
     + `PhysicalDeviceShaderAtomicInt64Features`
     + `PhysicalDevice8BitStorageFeatures`
     + `PhysicalDevice16BitStorageFeatures`
     + `PhysicalDeviceShaderFloat16Int8Features`
-
 - Fix feature name in `PhysicalDeviceFeatures`:
   + Rename `shaderf3264` to `shaderFloat64`
 
