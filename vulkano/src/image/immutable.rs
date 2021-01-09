@@ -66,7 +66,6 @@ pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc
     layout: ImageLayout,
 }
 
-
 /// Image whose purpose is to access only a part of one image, for any kind of access
 /// We define a part of one image here by a level of mipmap, or a layer of an array
 /// The image attribute must be an implementation of ImageAccess
@@ -80,8 +79,7 @@ pub struct SubImage {
     layout: ImageLayout,
 }
 
-impl SubImage
-{
+impl SubImage {
     pub fn new(
         image: Arc<dyn ImageAccess + Sync + Send>,
         mip_level: u32,
@@ -120,7 +118,7 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     match mipmaps {
         MipmapsCount::One => false,
         MipmapsCount::Log2 => true,
-        MipmapsCount::Specific(x) => x > 1
+        MipmapsCount::Specific(x) => x > 1,
     }
 }
 
@@ -422,7 +420,7 @@ impl<F> ImmutableImage<F> {
 
         let future = match cb.execute(queue) {
             Ok(f) => f,
-            Err(e) => unreachable!("{:?}", e)
+            Err(e) => unreachable!("{:?}", e),
         };
 
         image.initialized.store(true, Ordering::Relaxed);
@@ -583,8 +581,7 @@ where
     }
 }
 
-unsafe impl ImageAccess for SubImage
-{
+unsafe impl ImageAccess for SubImage {
     #[inline]
     fn inner(&self) -> ImageInner {
         self.image.inner()

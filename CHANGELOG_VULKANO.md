@@ -1,5 +1,8 @@
 # Unreleased
 
+- Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
+- Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.
+
 # Version 0.20.0 (2020-12-26)
 
 - **Breaking** The `ImmutableImage::from_iter` and `ImmutableImage::from_buffer` can build Mipmaps

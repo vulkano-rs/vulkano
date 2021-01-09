@@ -119,6 +119,9 @@ device_extensions! {
     ext_debug_utils => b"VK_EXT_debug_utils",
     khr_multiview => b"VK_KHR_multiview",
     ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
+    khr_external_memory => b"VK_KHR_external_memory",
+    khr_external_memory_fd => b"VK_KHR_external_memory_fd",
+    ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
 }
 
 /// This helper type can only be instantiated inside this module.

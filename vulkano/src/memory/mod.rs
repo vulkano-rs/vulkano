@@ -96,10 +96,13 @@ use vk;
 pub use self::device_memory::CpuAccess;
 pub use self::device_memory::DeviceMemory;
 pub use self::device_memory::DeviceMemoryAllocError;
+pub use self::device_memory::DeviceMemoryBuilder;
 pub use self::device_memory::MappedDeviceMemory;
+pub use self::external_memory_handle_type::ExternalMemoryHandleType;
 pub use self::pool::MemoryPool;
 
 mod device_memory;
+mod external_memory_handle_type;
 pub mod pool;
 
 /// Represents requirements expressed by the Vulkan implementation when it comes to binding memory

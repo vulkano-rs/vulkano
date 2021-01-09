@@ -27,6 +27,8 @@ use std::sync::Arc;
 use device::Device;
 use format::Format;
 use format::FormatTy;
+use format::PossibleYcbcrFormatDesc;
+use image::ImageAspect;
 use image::ImageDimensions;
 use image::ImageUsage;
 use image::MipmapsCount;
@@ -286,6 +288,14 @@ impl UnsafeImage {
                             .limits()
                             .sampled_image_stencil_sample_counts();
                     }
+                    FormatTy::Ycbcr => {
+                        /*
+                         * VUID-VkImageCreateInfo-format-02562:  If the image format is one of
+                         * those formats requiring sampler ycbcr conversion, samples *must* be
+                         * VK_SAMPLE_COUNT_1_BIT
+                         */
+                        supported_samples &= vk::SAMPLE_COUNT_1_BIT;
+                    }
                 }
             }
 
@@ -329,6 +339,13 @@ impl UnsafeImage {
                             .physical_device()
                             .limits()
                             .framebuffer_stencil_sample_counts();
+                    }
+                    FormatTy::Ycbcr => {
+                        /*
+                         * It's generally not possible to use a Ycbcr image as a framebuffer color
+                         * attachment.
+                         */
+                        return Err(ImageCreationError::UnsupportedUsage);
                     }
                 }
             }
@@ -737,6 +754,43 @@ impl UnsafeImage {
         self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_STENCIL_BIT)
     }
 
+    /// Same as `color_linear_layout`, except that it retrieves layout for the requested ycbcr
+    /// component too if the format is a YcbCr format.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if plane aspect is out of range.
+    /// - Panics if the aspect is not a color or planar aspect.
+    /// - Panics if the number of mipmaps is not 1.
+    #[inline]
+    pub unsafe fn multiplane_color_layout(&self, aspect: ImageAspect) -> LinearLayout {
+        // This function only supports color and planar aspects currently.
+        let bits = aspect.to_aspect_bits();
+        let unsupported = bits
+            & !(vk::IMAGE_ASPECT_COLOR_BIT
+                | vk::IMAGE_ASPECT_PLANE_0_BIT
+                | vk::IMAGE_ASPECT_PLANE_1_BIT
+                | vk::IMAGE_ASPECT_PLANE_2_BIT);
+
+        assert!(unsupported == 0);
+        assert!(self.mipmaps == 1);
+
+        if bits
+            & (vk::IMAGE_ASPECT_PLANE_0_BIT
+                | vk::IMAGE_ASPECT_PLANE_1_BIT
+                | vk::IMAGE_ASPECT_PLANE_2_BIT)
+            != 0
+        {
+            assert!(self.format.is_ycbcr());
+            if bits & vk::IMAGE_ASPECT_PLANE_2_BIT != 0 {
+                // Vulkano only supports NV12 and YV12 currently.  If that changes, this will too.
+                assert!(self.format == Format::G8B8R8_3PLANE420Unorm);
+            }
+        }
+
+        self.linear_layout_impl(0, bits)
+    }
+
     // Implementation of the `*_layout` functions.
     unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: u32) -> LinearLayout {
         let vk = self.device.pointers();
@@ -1037,6 +1091,8 @@ impl UnsafeImageView {
             FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
             FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
             FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
+            // Not yet supported --> would require changes to ImmutableImage API :-)
+            FormatTy::Ycbcr => panic!(),
         };
 
         let view_type = match (
@@ -1132,7 +1188,8 @@ impl UnsafeImageView {
     /// - Panics if trying to create a cubemap array with a number of array layers not a multiple
     ///   of 6.
     /// - Panics if the device or host ran out of memory.
-    ///
+    /// - Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
+    ///   specify the aspect of image.
     #[inline]
     pub unsafe fn new(
         image: &UnsafeImage,

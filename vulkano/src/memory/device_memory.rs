@@ -17,12 +17,18 @@ use std::os::raw::c_void;
 use std::ptr;
 use std::sync::Arc;
 
+#[cfg(target_os = "linux")]
+use std::fs::File;
+#[cfg(target_os = "linux")]
+use std::os::unix::io::FromRawFd;
+
 use check_errors;
 use device::Device;
 use device::DeviceOwned;
 use instance::MemoryType;
 use memory::Content;
 use memory::DedicatedAlloc;
+use memory::ExternalMemoryHandleType;
 use vk;
 use Error;
 use OomError;
@@ -48,6 +54,206 @@ pub struct DeviceMemory {
     device: Arc<Device>,
     size: usize,
     memory_type_index: u32,
+    handle_types: ExternalMemoryHandleType,
+}
+
+/// Represents a builder for the device memory object.
+///
+/// # Example
+///
+/// ```
+/// use vulkano::memory::DeviceMemoryBuilder;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let mem_ty = device.physical_device().memory_types().next().unwrap();
+///
+/// // Allocates 1KB of memory.
+/// let memory = DeviceMemoryBuilder::new(device, mem_ty, 1024).build().unwrap();
+/// ```
+pub struct DeviceMemoryBuilder<'a> {
+    device: Arc<Device>,
+    memory_type: MemoryType<'a>,
+    allocate: vk::MemoryAllocateInfo,
+    dedicated_info: Option<vk::MemoryDedicatedAllocateInfoKHR>,
+    export_info: Option<vk::ExportMemoryAllocateInfo>,
+    import_info: Option<vk::ImportMemoryFdInfoKHR>,
+    handle_types: ExternalMemoryHandleType,
+}
+
+impl<'a> DeviceMemoryBuilder<'a> {
+    /// Returns a new `DeviceMemoryBuilder` given the required device, memory type and size fields.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if `size` is 0.
+    /// - Panics if `memory_type` doesn't belong to the same physical device as `device`.
+    pub fn new(device: Arc<Device>, memory_type: MemoryType, size: usize) -> DeviceMemoryBuilder {
+        assert!(size > 0);
+        assert_eq!(
+            device.physical_device().internal_object(),
+            memory_type.physical_device().internal_object()
+        );
+
+        let allocate = vk::MemoryAllocateInfo {
+            sType: vk::STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+            pNext: ptr::null(),
+            allocationSize: size as u64,
+            memoryTypeIndex: memory_type.id(),
+        };
+
+        DeviceMemoryBuilder {
+            device,
+            memory_type,
+            allocate,
+            dedicated_info: None,
+            export_info: None,
+            import_info: None,
+            handle_types: ExternalMemoryHandleType::none(),
+        }
+    }
+
+    /// Sets an optional field for dedicated allocations in the `DeviceMemoryBuilder`.  To maintain
+    /// backwards compatibility, this function does nothing when dedicated allocation has not been
+    /// enabled on the device.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the dedicated allocation info has already been set.
+    pub fn dedicated_info(mut self, dedicated: DedicatedAlloc<'a>) -> DeviceMemoryBuilder {
+        assert!(self.dedicated_info.is_none());
+
+        if self.device.loaded_extensions().khr_dedicated_allocation {
+            self.dedicated_info = match dedicated {
+                DedicatedAlloc::Buffer(buffer) => Some(vk::MemoryDedicatedAllocateInfoKHR {
+                    sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                    pNext: ptr::null(),
+                    image: 0,
+                    buffer: buffer.internal_object(),
+                }),
+                DedicatedAlloc::Image(image) => Some(vk::MemoryDedicatedAllocateInfoKHR {
+                    sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+                    pNext: ptr::null(),
+                    image: image.internal_object(),
+                    buffer: 0,
+                }),
+                DedicatedAlloc::None => return self,
+            };
+
+            let ptr = self
+                .dedicated_info
+                .as_ref()
+                .map(|i| i as *const vk::MemoryDedicatedAllocateInfoKHR)
+                .unwrap_or(ptr::null()) as *const _;
+
+            if let Some(ref mut export_info) = self.export_info {
+                export_info.pNext = ptr;
+            } else {
+                self.allocate.pNext = ptr;
+            }
+        }
+
+        self
+    }
+
+    /// Sets an optional field for exportable allocations in the `DeviceMemoryBuilder`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the export info has already been set.
+    /// - Panics if the extensions associated with `handle_types` have not been loaded by the
+    ///   by the device.
+    pub fn export_info(
+        mut self,
+        handle_types: ExternalMemoryHandleType,
+    ) -> DeviceMemoryBuilder<'a> {
+        assert!(self.export_info.is_none());
+        // TODO: check exportFromImportedHandleTypes instead.
+        assert!(self.import_info.is_none());
+
+        // Only extensions tested with Vulkano so far.
+        assert!(self.device.loaded_extensions().khr_external_memory);
+        assert!(self.device.loaded_extensions().khr_external_memory_fd);
+
+        let handle_bits = handle_types.to_bits();
+        if handle_bits & vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT == 0 {
+            assert!(self.device.loaded_extensions().ext_external_memory_dmabuf);
+        }
+
+        let unsupported = handle_bits
+            & !(vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
+                | vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT);
+        assert!(unsupported == 0);
+
+        let export_info = vk::ExportMemoryAllocateInfo {
+            sType: vk::STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
+            pNext: ptr::null(),
+            handleTypes: handle_bits,
+        };
+
+        self.export_info = Some(export_info);
+        let ptr = self
+            .export_info
+            .as_ref()
+            .map(|i| i as *const vk::ExportMemoryAllocateInfo)
+            .unwrap_or(ptr::null()) as *const _;
+
+        if let Some(ref mut dedicated_info) = self.dedicated_info {
+            dedicated_info.pNext = ptr;
+        } else {
+            self.allocate.pNext = ptr;
+        }
+
+        self.handle_types = handle_types;
+        self
+    }
+
+    /// Creates a `DeviceMemory` object on success, consuming the `DeviceMemoryBuilder`.  An error
+    /// is returned if the requested allocation is too large or if the total number of allocations
+    /// would exceed per-device limits.
+    pub fn build(self) -> Result<DeviceMemory, DeviceMemoryAllocError> {
+        // Note: This check is disabled because MoltenVK doesn't report correct heap sizes yet.
+        // This check was re-enabled because Mesa aborts if `size` is Very Large.
+        //
+        // Conversions won't panic since it's based on `vkDeviceSize`, which is a u64 in the VK
+        // header.  Not sure why we bother with usizes.
+        let reported_heap_size = self.memory_type.heap().size() as u64;
+        if reported_heap_size != 0 && self.allocate.allocationSize > reported_heap_size {
+            return Err(DeviceMemoryAllocError::OomError(
+                OomError::OutOfDeviceMemory,
+            ));
+        }
+
+        let memory = unsafe {
+            let physical_device = self.device.physical_device();
+            let mut allocation_count = self
+                .device
+                .allocation_count()
+                .lock()
+                .expect("Poisoned mutex");
+            if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
+                return Err(DeviceMemoryAllocError::TooManyObjects);
+            }
+            let vk = self.device.pointers();
+
+            let mut output = MaybeUninit::uninit();
+            check_errors(vk.AllocateMemory(
+                self.device.internal_object(),
+                &self.allocate,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            *allocation_count += 1;
+            output.assume_init()
+        };
+
+        Ok(DeviceMemory {
+            memory: memory,
+            device: self.device,
+            size: self.allocate.allocationSize as usize,
+            memory_type_index: self.memory_type.id(),
+            handle_types: self.handle_types,
+        })
+    }
 }
 
 impl DeviceMemory {
@@ -67,7 +273,7 @@ impl DeviceMemory {
         memory_type: MemoryType,
         size: usize,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
-        DeviceMemory::dedicated_alloc(device, memory_type, size, DedicatedAlloc::None)
+        DeviceMemoryBuilder::new(device, memory_type, size).build()
     }
 
     /// Same as `alloc`, but allows specifying a resource that will be bound to the memory.
@@ -84,77 +290,9 @@ impl DeviceMemory {
         size: usize,
         resource: DedicatedAlloc,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
-        assert!(size >= 1);
-        assert_eq!(
-            device.physical_device().internal_object(),
-            memory_type.physical_device().internal_object()
-        );
-
-        // Note: This check is disabled because MoltenVK doesn't report correct heap sizes yet.
-        // This check was re-enabled because Mesa aborts if `size` is Very Large.
-        let reported_heap_size = memory_type.heap().size();
-        if reported_heap_size != 0 && size > reported_heap_size {
-            return Err(DeviceMemoryAllocError::OomError(
-                OomError::OutOfDeviceMemory,
-            ));
-        }
-
-        let memory = unsafe {
-            let physical_device = device.physical_device();
-            let mut allocation_count = device.allocation_count().lock().expect("Poisoned mutex");
-            if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
-                return Err(DeviceMemoryAllocError::TooManyObjects);
-            }
-            let vk = device.pointers();
-
-            // Decide whether we are going to pass a `vkMemoryDedicatedAllocateInfoKHR`.
-            let dedicated_alloc_info = if device.loaded_extensions().khr_dedicated_allocation {
-                match resource {
-                    DedicatedAlloc::Buffer(buffer) => Some(vk::MemoryDedicatedAllocateInfoKHR {
-                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
-                        pNext: ptr::null(),
-                        image: 0,
-                        buffer: buffer.internal_object(),
-                    }),
-                    DedicatedAlloc::Image(image) => Some(vk::MemoryDedicatedAllocateInfoKHR {
-                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
-                        pNext: ptr::null(),
-                        image: image.internal_object(),
-                        buffer: 0,
-                    }),
-                    DedicatedAlloc::None => None,
-                }
-            } else {
-                None
-            };
-
-            let infos = vk::MemoryAllocateInfo {
-                sType: vk::STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-                pNext: dedicated_alloc_info
-                    .as_ref()
-                    .map(|i| i as *const vk::MemoryDedicatedAllocateInfoKHR)
-                    .unwrap_or(ptr::null()) as *const _,
-                allocationSize: size as u64,
-                memoryTypeIndex: memory_type.id(),
-            };
-
-            let mut output = MaybeUninit::uninit();
-            check_errors(vk.AllocateMemory(
-                device.internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            *allocation_count += 1;
-            output.assume_init()
-        };
-
-        Ok(DeviceMemory {
-            memory: memory,
-            device: device,
-            size: size,
-            memory_type_index: memory_type.id(),
-        })
+        DeviceMemoryBuilder::new(device, memory_type, size)
+            .dedicated_info(resource)
+            .build()
     }
 
     /// Allocates a chunk of memory and maps it.
@@ -220,6 +358,48 @@ impl DeviceMemory {
     #[inline]
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    /// Exports the device memory into a Unix file descriptor.  The caller retains ownership of the
+    /// file, as per the Vulkan spec.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the user requests an invalid handle type for this device memory object.
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn export_fd(
+        &self,
+        handle_type: ExternalMemoryHandleType,
+    ) -> Result<File, DeviceMemoryAllocError> {
+        let vk = self.device.pointers();
+
+        let bits = handle_type.to_bits();
+        assert!(
+            bits == vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
+                || bits == vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT
+        );
+        assert!(handle_type.to_bits() & self.handle_types.to_bits() != 0);
+
+        let fd = unsafe {
+            let info = vk::MemoryGetFdInfoKHR {
+                sType: vk::STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
+                pNext: ptr::null(),
+                memory: self.memory,
+                handleType: handle_type.to_bits(),
+            };
+
+            let mut output = MaybeUninit::uninit();
+            check_errors(vk.GetMemoryFdKHR(
+                self.device.internal_object(),
+                &info,
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        let file = unsafe { File::from_raw_fd(fd) };
+        Ok(file)
     }
 }
 
