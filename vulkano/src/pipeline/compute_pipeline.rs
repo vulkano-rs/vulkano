@@ -163,7 +163,7 @@ impl<Pl> ComputePipeline<Pl> {
             };
 
             let cache_handle = match cache {
-                Some(cache) => cache.internal_object(),
+                Some(ref cache) => cache.internal_object(),
                 None => vk::NULL_HANDLE,
             };
 
