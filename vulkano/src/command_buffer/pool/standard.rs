@@ -9,7 +9,6 @@
 
 use crossbeam::queue::SegQueue;
 use fnv::FnvHashMap;
-use std::collections::hash_map::Entry;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;
 use std::ptr;
@@ -94,24 +93,22 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
         // TODO: meh for iterating everything every time
         hashmap.retain(|_, w| w.upgrade().is_some());
 
-        // Get an appropriate `Arc<StandardCommandPoolPerThread>`.
-        let per_thread = match hashmap.entry(thread::current().id()) {
-            Entry::Occupied(entry) => {
-                // The `unwrap()` can't fail, since we retained only valid members earlier.
-                entry.get().upgrade().unwrap()
-            }
-            Entry::Vacant(entry) => {
-                let new_pool =
-                    UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
-                let pt = Arc::new(StandardCommandPoolPerThread {
-                    pool: Mutex::new(new_pool),
-                    available_primary_command_buffers: SegQueue::new(),
-                    available_secondary_command_buffers: SegQueue::new(),
-                });
+        let this_thread = thread::current().id();
 
-                entry.insert(Arc::downgrade(&pt));
-                pt
-            }
+        // Get an appropriate `Arc<StandardCommandPoolPerThread>`.
+        let per_thread = if let Some(entry) = hashmap.get(&this_thread).and_then(Weak::upgrade) {
+            entry
+        } else {
+            let new_pool =
+                UnsafeCommandPool::new(self.device.clone(), self.queue_family(), false, true)?;
+            let pt = Arc::new(StandardCommandPoolPerThread {
+                pool: Mutex::new(new_pool),
+                available_primary_command_buffers: SegQueue::new(),
+                available_secondary_command_buffers: SegQueue::new(),
+            });
+
+            hashmap.insert(this_thread, Arc::downgrade(&pt));
+            pt
         };
 
         // The final output.
