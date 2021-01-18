@@ -308,11 +308,11 @@ pub(super) fn reflect(
                         -> Result<#struct_name, ::vulkano::OomError>
             {
                 #( #cap_checks )*
-                let words = [ #( #spirv ),* ];
+                static WORDS: &[u32] = &[ #( #spirv ),* ];
 
                 unsafe {
                     Ok(#struct_name {
-                        shader: ::vulkano::pipeline::shader::ShaderModule::from_words(device, &words)?
+                        shader: ::vulkano::pipeline::shader::ShaderModule::from_words(device, WORDS)?
                     })
                 }
             }
