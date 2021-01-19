@@ -175,7 +175,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         assert!(self.device.loaded_extensions().khr_external_memory_fd);
 
         let handle_bits = handle_types.to_bits();
-        if handle_bits & vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT == 0 {
+        if handle_bits & vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT != 0 {
             assert!(self.device.loaded_extensions().ext_external_memory_dmabuf);
         }
 
