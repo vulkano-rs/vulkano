@@ -221,7 +221,7 @@ fn descriptor_infos(
 
                     let desc = quote! {
                         DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: Some(false),
+                            dynamic: None,
                             storage: #is_ssbo,
                         })
                     };
