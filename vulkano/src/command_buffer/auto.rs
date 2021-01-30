@@ -70,14 +70,14 @@ use pipeline::ComputePipelineAbstract;
 use pipeline::GraphicsPipelineAbstract;
 use query::QueryPipelineStatisticFlags;
 use sampler::Filter;
+use smallvec::SmallVec;
 use std::ffi::CStr;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
-use {OomError, SafeDeref};
 use VulkanObject;
-use smallvec::SmallVec;
+use {OomError, SafeDeref};
 
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
@@ -1873,7 +1873,7 @@ unsafe fn descriptor_sets<P, Pl, S, Do, Doi>(
     gfx: bool,
     pipeline: Pl,
     sets: S,
-    dynamic_offsets: Do
+    dynamic_offsets: Do,
 ) -> Result<(), SyncCommandBufferBuilderError>
 where
     Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
@@ -1901,7 +1901,12 @@ where
     for set in sets.into_iter().skip(first_binding as usize) {
         sets_binder.add(set);
     }
-    sets_binder.submit(gfx, pipeline.clone(), first_binding, dynamic_offsets.into_iter())?;
+    sets_binder.submit(
+        gfx,
+        pipeline.clone(),
+        first_binding,
+        dynamic_offsets.into_iter(),
+    )?;
     Ok(())
 }
 
