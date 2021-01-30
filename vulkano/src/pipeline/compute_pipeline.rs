@@ -558,7 +558,8 @@ mod tests {
         let mut cbb =
             AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
                 .unwrap();
-        cbb.dispatch([1, 1, 1], pipeline.clone(), set, ()).unwrap();
+        cbb.dispatch([1, 1, 1], pipeline.clone(), set, (), vec![])
+            .unwrap();
         let cb = cbb.build().unwrap();
 
         let future = now(device.clone())

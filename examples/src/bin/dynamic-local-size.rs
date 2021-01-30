@@ -204,6 +204,7 @@ fn main() {
             pipeline.clone(),
             set.clone(),
             (),
+            vec![],
         )
         .unwrap()
         .copy_image_to_buffer(image.clone(), buf.clone())

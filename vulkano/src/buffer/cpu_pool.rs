@@ -91,7 +91,7 @@ use OomError;
 ///         .unwrap()
 ///         // For the sake of the example we just call `update_buffer` on the buffer, even though
 ///         // it is pointless to do that.
-///         .update_buffer(sub_buffer.clone(), [0.2, 0.3, 0.4, 0.5])
+///         .update_buffer(sub_buffer.clone(), &[0.2, 0.3, 0.4, 0.5])
 ///         .unwrap()
 ///         .build().unwrap()
 ///         .execute(queue.clone())

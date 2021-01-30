@@ -102,7 +102,7 @@ fn main() {
     let mut builder =
         AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
     builder
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), (), vec![])
         .unwrap();
     let command_buffer = builder.build().unwrap();
 
