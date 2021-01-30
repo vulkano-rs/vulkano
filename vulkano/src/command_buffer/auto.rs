@@ -75,7 +75,7 @@ use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
 use sync::PipelineStages;
-use OomError;
+use {OomError, SafeDeref};
 use VulkanObject;
 use smallvec::SmallVec;
 
@@ -1739,22 +1739,22 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
     /// buffer is larger than `data`, only the start of the buffer is written.
-    // TODO: allow unsized values
     #[inline]
-    pub fn update_buffer<B, D>(
+    pub fn update_buffer<B, D, Dd>(
         &mut self,
         buffer: B,
-        data: D,
+        data: Dd,
     ) -> Result<&mut Self, UpdateBufferError>
     where
         B: TypedBufferAccess<Content = D> + Send + Sync + 'static,
-        D: Send + Sync + 'static,
+        D: ?Sized,
+        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
-            check_update_buffer(self.device(), &buffer, &data)?;
+            check_update_buffer(self.device(), &buffer, data.deref())?;
 
-            let size_of_data = mem::size_of_val(&data);
+            let size_of_data = mem::size_of_val(data.deref());
             if buffer.size() >= size_of_data {
                 self.inner.update_buffer(buffer, data);
             } else {

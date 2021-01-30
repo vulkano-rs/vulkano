@@ -49,6 +49,7 @@ use std::ffi::CStr;
 use sync::AccessFlagBits;
 use sync::Event;
 use sync::PipelineStages;
+use SafeDeref;
 
 impl<P> SyncCommandBufferBuilder<P> {
     /// Calls `vkBeginRenderPass` on the builder.
@@ -2097,27 +2098,29 @@ impl<P> SyncCommandBufferBuilder<P> {
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
     #[inline]
-    pub unsafe fn update_buffer<B, D>(&mut self, buffer: B, data: D)
+    pub unsafe fn update_buffer<B, D, Dd>(&mut self, buffer: B, data: Dd)
     where
         B: BufferAccess + Send + Sync + 'static,
-        D: Send + Sync + 'static,
+        D: ?Sized,
+        Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
-        struct Cmd<B, D> {
+        struct Cmd<B, Dd> {
             buffer: B,
-            data: D,
+            data: Dd,
         }
 
-        impl<P, B, D> Command<P> for Cmd<B, D>
+        impl<P, B, D, Dd> Command<P> for Cmd<B, Dd>
         where
             B: BufferAccess + Send + Sync + 'static,
-            D: Send + Sync + 'static,
+            D: ?Sized,
+            Dd: SafeDeref<Target = D> + Send + Sync + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdUpdateBuffer"
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>) {
-                out.update_buffer(&self.buffer, &self.data);
+                out.update_buffer(&self.buffer, self.data.deref());
             }
 
             fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
