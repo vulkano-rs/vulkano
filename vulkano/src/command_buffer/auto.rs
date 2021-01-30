@@ -43,7 +43,8 @@ use command_buffer::KindSecondaryRenderPass;
 use command_buffer::StateCacher;
 use command_buffer::StateCacherOutcome;
 use command_buffer::SubpassContents;
-use descriptor::descriptor_set::DescriptorSetsCollection;
+use descriptor::descriptor::{DescriptorBufferDesc, DescriptorDescTy};
+use descriptor::descriptor_set::{DescriptorSetDesc, DescriptorSetsCollection};
 use descriptor::pipeline_layout::PipelineLayoutAbstract;
 use device::Device;
 use device::DeviceOwned;
@@ -1883,6 +1884,56 @@ where
 {
     let sets = sets.into_vec();
     let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.into_iter().collect();
+
+    // Ensure that the number of dynamic_offsets is correct and that each
+    // dynamic offset is a multiple of the minimum offset alignment specified
+    // by the physical device.
+    let limits = pipeline.device().physical_device().limits();
+    let min_uniform_off_align = limits.min_uniform_buffer_offset_alignment() as u32;
+    let min_storage_off_align = limits.min_storage_buffer_offset_alignment() as u32;
+    let mut dynamic_offset_index = 0;
+    for set in &sets {
+        for desc_index in 0..set.num_bindings() {
+            let desc = DescriptorSetDesc::descriptor(&set, desc_index).unwrap();
+            if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                dynamic: Some(true),
+                storage,
+            }) = desc.ty
+            {
+                // Don't check alignment if there are not enough offsets anyway
+                if dynamic_offsets.len() > dynamic_offset_index {
+                    if storage {
+                        assert!(
+                            dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
+                            "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            dynamic_offsets[dynamic_offset_index],
+                            min_storage_off_align
+                        );
+                    } else {
+                        assert!(
+                            dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
+                            "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            dynamic_offsets[dynamic_offset_index],
+                            min_uniform_off_align
+                        );
+                    }
+                }
+                dynamic_offset_index += 1;
+            }
+        }
+    }
+    assert!(
+        !(dynamic_offsets.len() < dynamic_offset_index),
+        "Too few dynamic offsets: got {}, expected {}",
+        dynamic_offsets.len(),
+        dynamic_offset_index
+    );
+    assert!(
+        !(dynamic_offsets.len() > dynamic_offset_index),
+        "Too many dynamic offsets: got {}, expected {}",
+        dynamic_offsets.len(),
+        dynamic_offset_index
+    );
 
     let first_binding = {
         let mut compare = state_cacher.bind_descriptor_sets(gfx);

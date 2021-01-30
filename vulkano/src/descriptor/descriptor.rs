@@ -254,8 +254,6 @@ pub enum DescriptorDescTy {
 
 impl DescriptorDescTy {
     /// Returns the type of descriptor.
-    ///
-    /// Returns `None` if there's not enough info to determine the type.
     // TODO: add example
     pub fn ty(&self) -> DescriptorType {
         match *self {
