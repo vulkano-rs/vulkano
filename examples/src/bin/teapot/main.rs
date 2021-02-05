@@ -208,7 +208,7 @@ fn main() {
                         0.01,
                         100.0,
                     );
-                    let view = Matrix4::look_at(
+                    let view = Matrix4::look_at_rh(
                         Point3::new(0.3, 0.3, 1.0),
                         Point3::new(0.0, 0.0, 0.0),
                         Vector3::new(0.0, -1.0, 0.0),

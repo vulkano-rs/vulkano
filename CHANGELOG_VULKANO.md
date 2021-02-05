@@ -10,6 +10,14 @@
 - Fixed potential stack overflow error in loading large shaders by storing the bytecode as static.
 - Fixed descriptor set layouts with arrays containing more than one element triggering unreachable code.
 - Added basic support and safety checks for dynamic uniform/storage buffers
+- Updated dependencies:
+  - `crossbeam` 0.7 -> 0.8
+  - `half` 1.6 -> 1.7
+  - `shaderc` 0.6 -> 0.7
+  - `smallvec` 1.4 -> 1.6
+  - `cgmath` 0.17 -> 0.18 (for examples)
+  - `png` 0.15 -> 0.16 (for examples)
+  - `time` 0.1 -> 0.2 (for examples)
 
 # Version 0.20.0 (2020-12-26)
 
