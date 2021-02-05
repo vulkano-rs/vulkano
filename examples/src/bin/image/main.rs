@@ -286,6 +286,7 @@ fn main() {
                     vertex_buffer.clone(),
                     set.clone(),
                     (),
+                    vec![],
                 )
                 .unwrap()
                 .end_render_pass()

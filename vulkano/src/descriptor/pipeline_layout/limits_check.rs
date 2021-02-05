@@ -50,7 +50,7 @@ where
 
             num_resources.increment(descriptor.array_count, &descriptor.stages);
 
-            match descriptor.ty.ty().expect("Not implemented yet") {
+            match descriptor.ty.ty() {
                 // TODO:
                 DescriptorType::Sampler => {
                     num_samplers.increment(descriptor.array_count, &descriptor.stages);

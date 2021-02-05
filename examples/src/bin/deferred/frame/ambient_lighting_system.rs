@@ -156,6 +156,7 @@ impl AmbientLightingSystem {
                 vec![self.vertex_buffer.clone()],
                 descriptor_set,
                 push_constants,
+                vec![],
             )
             .unwrap();
         builder.build().unwrap()

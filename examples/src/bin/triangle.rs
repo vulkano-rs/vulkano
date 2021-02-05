@@ -477,6 +477,7 @@ fn main() {
                         vertex_buffer.clone(),
                         (),
                         (),
+                        vec![],
                     )
                     .unwrap()
                     // We leave the render pass by calling `draw_end`. Note that if we had multiple

@@ -266,7 +266,7 @@ impl<R> PersistentDescriptorSetBuilder<R> {
             None => (),
             Some(desc) => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: desc.ty.ty().unwrap(),
+                    expected: desc.ty.ty(),
                 })
             }
         }
@@ -484,18 +484,28 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                         ));
                     }
 
-                    unsafe {
-                        DescriptorWrite::uniform_buffer(
-                            self.builder.binding_id as u32,
-                            self.array_element as u32,
-                            &buffer,
-                        )
+                    if buffer_desc.dynamic.unwrap_or(false) {
+                        unsafe {
+                            DescriptorWrite::dynamic_uniform_buffer(
+                                self.builder.binding_id as u32,
+                                self.array_element as u32,
+                                &buffer,
+                            )
+                        }
+                    } else {
+                        unsafe {
+                            DescriptorWrite::uniform_buffer(
+                                self.builder.binding_id as u32,
+                                self.array_element as u32,
+                                &buffer,
+                            )
+                        }
                     }
                 }
             }
             ref d => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: d.ty().unwrap(),
+                    expected: d.ty(),
                 });
             }
         });
@@ -577,7 +587,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             }
             ref d => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: d.ty().unwrap(),
+                    expected: d.ty(),
                 });
             }
         });
@@ -699,7 +709,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             }
             ty => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: ty.ty().unwrap(),
+                    expected: ty.ty(),
                 });
             }
         });
@@ -778,7 +788,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             }
             ty => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: ty.ty().unwrap(),
+                    expected: ty.ty(),
                 });
             }
         });
@@ -841,7 +851,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             ),
             ty => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: ty.ty().unwrap(),
+                    expected: ty.ty(),
                 });
             }
         });
