@@ -254,11 +254,9 @@ pub enum DescriptorDescTy {
 
 impl DescriptorDescTy {
     /// Returns the type of descriptor.
-    ///
-    /// Returns `None` if there's not enough info to determine the type.
     // TODO: add example
-    pub fn ty(&self) -> Option<DescriptorType> {
-        Some(match *self {
+    pub fn ty(&self) -> DescriptorType {
+        match *self {
             DescriptorDescTy::Sampler => DescriptorType::Sampler,
             DescriptorDescTy::CombinedImageSampler(_) => DescriptorType::CombinedImageSampler,
             DescriptorDescTy::Image(ref desc) => {
@@ -270,10 +268,7 @@ impl DescriptorDescTy {
             }
             DescriptorDescTy::InputAttachment { .. } => DescriptorType::InputAttachment,
             DescriptorDescTy::Buffer(ref desc) => {
-                let dynamic = match desc.dynamic {
-                    Some(d) => d,
-                    None => return None,
-                };
+                let dynamic = desc.dynamic.unwrap_or(false);
                 match (desc.storage, dynamic) {
                     (false, false) => DescriptorType::UniformBuffer,
                     (true, false) => DescriptorType::StorageBuffer,
@@ -288,7 +283,7 @@ impl DescriptorDescTy {
                     DescriptorType::UniformTexelBuffer
                 }
             }
-        })
+        }
     }
 
     /// Checks whether we are a superset of another descriptor type.
@@ -529,10 +524,12 @@ impl DescriptorImageDescDimensions {
     }
 }
 
-// TODO: documentation
+/// Additional description for descriptors that contain buffers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DescriptorBufferDesc {
+    /// If `true`, this buffer is a dynamic buffer. Assumes false if `None`.
     pub dynamic: Option<bool>,
+    /// If `true`, this buffer is a storage buffer.
     pub storage: bool,
 }
 

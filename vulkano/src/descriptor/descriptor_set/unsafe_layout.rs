@@ -68,7 +68,7 @@ impl UnsafeDescriptorSetLayout {
                 // FIXME: it is not legal to pass eg. the TESSELLATION_SHADER bit when the device
                 //        doesn't have tess shaders enabled
 
-                let ty = desc.ty.ty().unwrap(); // TODO: shouldn't panic
+                let ty = desc.ty.ty();
                 descriptors_count.add_num(ty, desc.array_count);
 
                 Some(vk::DescriptorSetLayoutBinding {

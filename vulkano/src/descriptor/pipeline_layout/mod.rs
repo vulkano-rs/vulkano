@@ -63,9 +63,8 @@ pub use self::traits::PipelineLayoutNotSupersetError;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutSuperset;
+pub use self::tweaks::PipelineLayoutDescTweaks;
 pub use self::union::PipelineLayoutDescUnion;
-
-pub(crate) use self::tweaks::PipelineLayoutDescTweaks;
 
 mod empty;
 mod limits_check;

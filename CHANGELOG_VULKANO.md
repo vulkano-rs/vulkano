@@ -1,11 +1,15 @@
 # Unreleased
 
+- **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
+- **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
+- **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.
 - Fixed potential segmentation fault in `ComputePipeline` when referencing `PipelineCache` objects.
 - Fixed race condition in `StandardCommandPool` when allocating buffers.
 - Fixed potential stack overflow error in loading large shaders by storing the bytecode as static.
 - Fixed descriptor set layouts with arrays containing more than one element triggering unreachable code.
+- Added basic support and safety checks for dynamic uniform/storage buffers
 
 # Version 0.20.0 (2020-12-26)
 

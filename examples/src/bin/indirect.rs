@@ -349,6 +349,7 @@ fn main() {
                         compute_pipeline.clone(),
                         cs_desciptor_set.clone(),
                         (),
+                        vec![],
                     )
                     .unwrap()
                     .begin_render_pass(
@@ -366,6 +367,7 @@ fn main() {
                         indirect_args.clone(),
                         (),
                         (),
+                        vec![],
                     )
                     .unwrap()
                     .end_render_pass()

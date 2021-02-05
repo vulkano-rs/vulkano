@@ -31,9 +31,9 @@ pub struct StateCacher {
     // The graphics pipeline currently bound. 0 if nothing bound.
     graphics_pipeline: vk::Pipeline,
     // The descriptor sets for the compute pipeline.
-    compute_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
+    compute_descriptor_sets: SmallVec<[(vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
     // The descriptor sets for the graphics pipeline.
-    graphics_descriptor_sets: SmallVec<[vk::DescriptorSet; 12]>,
+    graphics_descriptor_sets: SmallVec<[(vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
     // If the user starts comparing descriptor sets, but drops the helper struct in the middle of
     // the processing then we will end up in a weird state. This bool is true when we start
     // comparing sets, and is set to false when we end up comparing. If it was true when we start
@@ -241,7 +241,7 @@ pub struct StateCacherDescriptorSets<'s> {
     // Reference to the parent's `poisoned_descriptor_sets`.
     poisoned: &'s mut bool,
     // Reference to the descriptor sets list to compare to.
-    state: &'s mut SmallVec<[vk::DescriptorSet; 12]>,
+    state: &'s mut SmallVec<[(vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
     // Next offset within the list to compare to.
     offset: usize,
     // Contains the return value of `compare`.
@@ -251,21 +251,21 @@ pub struct StateCacherDescriptorSets<'s> {
 impl<'s> StateCacherDescriptorSets<'s> {
     /// Adds a descriptor set to the list to compare.
     #[inline]
-    pub fn add<S>(&mut self, set: &S)
+    pub fn add<S>(&mut self, set: &S, dynamic_offsets: &SmallVec<[u32; 32]>)
     where
         S: ?Sized + DescriptorSet,
     {
         let raw = set.inner().internal_object();
 
         if self.offset < self.state.len() {
-            if self.state[self.offset] == raw {
+            if (&self.state[self.offset].0, &self.state[self.offset].1) == (&raw, dynamic_offsets) {
                 self.offset += 1;
                 return;
             }
 
-            self.state[self.offset] = raw;
+            self.state[self.offset] = (raw, dynamic_offsets.clone());
         } else {
-            self.state.push(raw);
+            self.state.push((raw, dynamic_offsets.clone()));
         }
 
         if self.found_diff.is_none() {
