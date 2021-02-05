@@ -17,8 +17,8 @@ winit = "0.24"
 # and winit doesn't know about vulkano, so import a crate that will provide a link between the two.
 vulkano-win = { path = "../vulkano-win" }
 
-cgmath = "0.17"
-png = "0.15.0"
-time = "0.1.38"
-serde = { version="1.0.114", features = ["derive"] }
-ron = "0.6.0"
+cgmath = "0.18"
+png = "0.16"
+time = "0.2"
+serde = { version = "1.0", features = ["derive"] }
+ron = "0.6"

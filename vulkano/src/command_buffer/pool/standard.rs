@@ -123,7 +123,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             };
 
             for _ in 0..count as usize {
-                if let Ok(cmd) = existing.pop() {
+                if let Some(cmd) = existing.pop() {
                     output.push(StandardCommandPoolBuilder {
                         inner: StandardCommandPoolAlloc {
                             cmd: ManuallyDrop::new(cmd),
