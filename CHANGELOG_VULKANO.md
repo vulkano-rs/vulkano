@@ -5,6 +5,7 @@
 - Fixed potential segmentation fault in `ComputePipeline` when referencing `PipelineCache` objects.
 - Fixed race condition in `StandardCommandPool` when allocating buffers.
 - Fixed potential stack overflow error in loading large shaders by storing the bytecode as static.
+- Fixed descriptor set layouts with arrays containing more than one element triggering unreachable code.
 
 # Version 0.20.0 (2020-12-26)
 

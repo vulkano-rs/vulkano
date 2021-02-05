@@ -88,22 +88,27 @@ macro_rules! descriptors_count {
                     )+
                 }
             }
-
             /// Adds one descriptor of the given type to the count.
             #[inline]
             pub fn add_one(&mut self, ty: DescriptorType) {
+                self.add_num(ty, 1);
+            }
+
+            /// Adds `num` descriptors of the given type to the count.
+            #[inline]
+            pub fn add_num(&mut self, ty: DescriptorType, num: u32) {
                 match ty {
-                    DescriptorType::Sampler => self.sampler += 1,
-                    DescriptorType::CombinedImageSampler => self.combined_image_sampler += 1,
-                    DescriptorType::SampledImage => self.sampled_image += 1,
-                    DescriptorType::StorageImage => self.storage_image += 1,
-                    DescriptorType::UniformTexelBuffer => self.uniform_texel_buffer += 1,
-                    DescriptorType::StorageTexelBuffer => self.storage_texel_buffer += 1,
-                    DescriptorType::UniformBuffer => self.uniform_buffer += 1,
-                    DescriptorType::StorageBuffer => self.storage_buffer += 1,
-                    DescriptorType::UniformBufferDynamic => self.uniform_buffer_dynamic += 1,
-                    DescriptorType::StorageBufferDynamic => self.storage_buffer_dynamic += 1,
-                    DescriptorType::InputAttachment => self.input_attachment += 1,
+                    DescriptorType::Sampler => self.sampler += num,
+                    DescriptorType::CombinedImageSampler => self.combined_image_sampler += num,
+                    DescriptorType::SampledImage => self.sampled_image += num,
+                    DescriptorType::StorageImage => self.storage_image += num,
+                    DescriptorType::UniformTexelBuffer => self.uniform_texel_buffer += num,
+                    DescriptorType::StorageTexelBuffer => self.storage_texel_buffer += num,
+                    DescriptorType::UniformBuffer => self.uniform_buffer += num,
+                    DescriptorType::StorageBuffer => self.storage_buffer += num,
+                    DescriptorType::UniformBufferDynamic => self.uniform_buffer_dynamic += num,
+                    DescriptorType::StorageBufferDynamic => self.storage_buffer_dynamic += num,
+                    DescriptorType::InputAttachment => self.input_attachment += num,
                 };
             }
         }

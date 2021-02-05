@@ -69,7 +69,7 @@ impl UnsafeDescriptorSetLayout {
                 //        doesn't have tess shaders enabled
 
                 let ty = desc.ty.ty().unwrap(); // TODO: shouldn't panic
-                descriptors_count.add_one(ty);
+                descriptors_count.add_num(ty, desc.array_count);
 
                 Some(vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
