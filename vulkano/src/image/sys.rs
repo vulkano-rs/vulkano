@@ -194,6 +194,11 @@ impl UnsafeImage {
             features
         };
 
+        //  VUID-VkImageCreateInfo-usage-requiredbitmask: usage must not be 0
+        if usage == ImageUsage::none() {
+            return Err(ImageCreationError::UnsupportedUsage);
+        }
+
         // If `transient_attachment` is true, then only `color_attachment`,
         // `depth_stencil_attachment` and `input_attachment` can be true as well.
         if usage.transient_attachment {
