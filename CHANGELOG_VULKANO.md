@@ -9,6 +9,7 @@
 - Fixed race condition in `StandardCommandPool` when allocating buffers.
 - Fixed potential stack overflow error in loading large shaders by storing the bytecode as static.
 - Fixed descriptor set layouts with arrays containing more than one element triggering unreachable code.
+- Fixed panic on some machines when calling `Surface::capabilities`
 - Added basic support and safety checks for dynamic uniform/storage buffers
 - Updated dependencies:
   - `crossbeam` 0.7 -> 0.8
