@@ -634,11 +634,13 @@ impl<W> Surface<W> {
                 },
                 supported_formats: formats
                     .into_iter()
-                    .map(|f| {
-                        (
-                            Format::from_vulkan_num(f.format).unwrap(),
-                            capabilities::color_space_from_num(f.colorSpace),
-                        )
+                    .filter_map(|f| {
+                        Format::from_vulkan_num(f.format).map(|format| {
+                            (
+                                format,
+                                capabilities::color_space_from_num(f.colorSpace),
+                            )
+                        })
                     })
                     .collect(),
                 present_modes: modes,
