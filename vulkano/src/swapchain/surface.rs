@@ -636,10 +636,7 @@ impl<W> Surface<W> {
                     .into_iter()
                     .filter_map(|f| {
                         Format::from_vulkan_num(f.format).map(|format| {
-                            (
-                                format,
-                                capabilities::color_space_from_num(f.colorSpace),
-                            )
+                            (format, capabilities::color_space_from_num(f.colorSpace))
                         })
                     })
                     .collect(),
