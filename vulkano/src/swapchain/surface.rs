@@ -528,6 +528,10 @@ impl<W> Surface<W> {
     }
 
     /// Retrieves the capabilities of a surface when used by a certain device.
+    /// 
+    /// # Notes
+    /// 
+    /// - Capabilities that are not supported in `vk-sys` are silently dropped
     ///
     /// # Panic
     ///
@@ -634,7 +638,7 @@ impl<W> Surface<W> {
                 },
                 supported_formats: formats
                     .into_iter()
-                    .filter_map(|f| {
+                    .filter_map(|f| { // TODO: Change the way capabilities not supported in vk-sys are handled
                         Format::from_vulkan_num(f.format).map(|format| {
                             (format, capabilities::color_space_from_num(f.colorSpace))
                         })
