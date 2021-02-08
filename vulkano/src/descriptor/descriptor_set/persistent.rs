@@ -504,9 +504,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 }
             }
             ref d => {
-                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: d.ty(),
-                });
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: d.ty() });
             }
         });
 
@@ -586,9 +584,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 }
             }
             ref d => {
-                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: d.ty(),
-                });
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: d.ty() });
             }
         });
 
@@ -708,9 +704,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 )
             }
             ty => {
-                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: ty.ty(),
-                });
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: ty.ty() });
             }
         });
 
@@ -787,9 +781,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 )
             }
             ty => {
-                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: ty.ty(),
-                });
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: ty.ty() });
             }
         });
 
@@ -850,9 +842,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 &sampler,
             ),
             ty => {
-                return Err(PersistentDescriptorSetError::WrongDescriptorTy {
-                    expected: ty.ty(),
-                });
+                return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: ty.ty() });
             }
         });
 
