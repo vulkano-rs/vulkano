@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value
 - **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
 - **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
 - **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
