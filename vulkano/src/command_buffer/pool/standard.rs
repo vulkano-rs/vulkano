@@ -285,6 +285,8 @@ mod tests {
         let queue_family = device.physical_device().queue_families().next().unwrap();
 
         let pool = Device::standard_command_pool(&device, queue_family);
+        // Avoid the weak reference to StandardCommandPoolPerThread expiring.
+        let cb_hold_weakref = pool.alloc(false, 1).unwrap().next().unwrap();
 
         let cb = pool.alloc(false, 1).unwrap().next().unwrap();
         let raw = cb.inner().internal_object();
