@@ -122,6 +122,7 @@ device_extensions! {
     khr_external_memory => b"VK_KHR_external_memory",
     khr_external_memory_fd => b"VK_KHR_external_memory_fd",
     ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
+    khr_portability_subset => b"VK_KHR_portability_subset",
 }
 
 /// This helper type can only be instantiated inside this module.
