@@ -19,6 +19,8 @@
   - `cgmath` 0.17 -> 0.18 (for examples)
   - `png` 0.15 -> 0.16 (for examples)
   - `time` 0.1 -> 0.2 (for examples)
+- Added `VK_KHR_portability_subset` device extension.
+- Added `DeviceExtensions::required_extensions` function that returns a set of available extensions required to create `Device` on this platform.
 
 # Version 0.20.0 (2020-12-26)
 
