@@ -118,7 +118,7 @@ fn main() {
     let (_, mut queues) = Device::new(
         physical,
         physical.supported_features(),
-        &DeviceExtensions::none(),
+        &DeviceExtensions::required_extensions(physical),
         vec![(queue_family, 0.5)],
     )
     .expect("failed to create device");

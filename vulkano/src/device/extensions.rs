@@ -21,7 +21,7 @@ use vk;
 use VulkanObject;
 
 macro_rules! device_extensions {
-    ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
+    ($sname:ident, $rawname:ident, [$($ext_req_if_supported:ident,)*], $($ext:ident => $s:expr,)*) => (
         extensions! {
             $sname, $rawname,
             $( $ext => $s,)*
@@ -99,6 +99,24 @@ macro_rules! device_extensions {
                     Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
                 }
             }
+
+            /// Returns an `Extensions` object with extensions required as well as supported by the `PhysicalDevice`.
+            /// They are needed to be passed to `Device::new(...)`.
+            pub fn required_extensions(physical_device: PhysicalDevice) -> Self {
+                let supported = Self::supported_by_device(physical_device);
+                let required_if_supported = Self::required_if_supported_extensions();
+
+                required_if_supported.intersection(&supported)
+            }
+
+            fn required_if_supported_extensions() -> Self {
+                Self {
+                    $(
+                        $ext_req_if_supported: true,
+                    )*
+                    ..Self::none()
+                }
+            }
         }
     );
 }
@@ -106,6 +124,10 @@ macro_rules! device_extensions {
 device_extensions! {
     DeviceExtensions,
     RawDeviceExtensions,
+    [ // required if supported extensions
+        // https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451
+        khr_portability_subset,
+    ],
     khr_swapchain => b"VK_KHR_swapchain",
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
@@ -122,6 +144,7 @@ device_extensions! {
     khr_external_memory => b"VK_KHR_external_memory",
     khr_external_memory_fd => b"VK_KHR_external_memory_fd",
     ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
+    khr_portability_subset => b"VK_KHR_portability_subset",
 }
 
 /// This helper type can only be instantiated inside this module.
@@ -138,5 +161,16 @@ mod tests {
     fn empty_extensions() {
         let d: RawDeviceExtensions = (&DeviceExtensions::none()).into();
         assert!(d.iter().next().is_none());
+    }
+
+    #[test]
+    fn required_if_supported_extensions() {
+        assert_eq!(
+            DeviceExtensions::required_if_supported_extensions(),
+            DeviceExtensions {
+                khr_portability_subset: true,
+                ..DeviceExtensions::none()
+            }
+        )
     }
 }
