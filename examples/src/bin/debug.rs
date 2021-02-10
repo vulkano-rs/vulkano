@@ -99,7 +99,10 @@ fn main() {
 
         println!(
             "{} {} {}: {}",
-            msg.layer_prefix, ty, severity, msg.description
+            msg.layer_prefix.unwrap_or("unknown"),
+            ty,
+            severity,
+            msg.description
         );
     })
     .ok();

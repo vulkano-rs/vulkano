@@ -96,14 +96,11 @@ impl DebugCallback {
                 let user_callback = user_data as *mut Box<dyn Fn()> as *const _;
                 let user_callback: &Box<dyn Fn(&Message)> = &*user_callback;
 
-                let message_id_name = (*callback_data).pMessageIdName;
-                let layer_prefix = if !message_id_name.is_null() {
-                    CStr::from_ptr(message_id_name)
+                let layer_prefix = (*callback_data).pMessageIdName.as_ref().map(|msg_id_name| {
+                    CStr::from_ptr(msg_id_name)
                         .to_str()
                         .expect("debug callback message not utf-8")
-                } else {
-                    "Unknown Layer"
-                };
+                });
 
                 let description = CStr::from_ptr((*callback_data).pMessage)
                     .to_str()
@@ -237,8 +234,8 @@ pub struct Message<'a> {
     pub severity: MessageSeverity,
     /// Type of message,
     pub ty: MessageType,
-    /// Prefix of the layer that reported this message.
-    pub layer_prefix: &'a str,
+    /// Prefix of the layer that reported this message or `None` if unknown.
+    pub layer_prefix: Option<&'a str>,
     /// Description of the message.
     pub description: &'a str,
 }
