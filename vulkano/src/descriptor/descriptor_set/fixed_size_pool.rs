@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam::queue::SegQueue;
+use crossbeam_queue::SegQueue;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
