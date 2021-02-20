@@ -26,7 +26,7 @@ use crate::parse;
 use crate::read_file_to_string;
 use crate::spec_consts;
 use crate::structs;
-use crate::{descriptor_sets, TypesMeta};
+use crate::TypesMeta;
 
 fn include_callback(
     requested_source_path_raw: &str,
@@ -247,14 +247,15 @@ pub(super) fn reflect(
     let mut entry_points_outside_impl: Vec<TokenStream> = vec![];
     for instruction in doc.instructions.iter() {
         if let &Instruction::EntryPoint { .. } = instruction {
-            let (outside, entry_point) = entry_point::write_entry_point(&doc, instruction);
+            let (outside, entry_point, descriptor_sets) =
+                entry_point::write_entry_point(&doc, instruction, &types_meta);
             entry_points_inside_impl.push(entry_point);
             entry_points_outside_impl.push(outside);
+            entry_points_outside_impl.push(descriptor_sets);
         }
     }
 
     let structs = structs::write_structs(&doc, &types_meta);
-    let descriptor_sets = descriptor_sets::write_descriptor_sets(&doc, &types_meta);
     let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);
     let uses = &types_meta.uses;
     let ast = quote! {
@@ -334,7 +335,6 @@ pub(super) fn reflect(
             #structs
         }
 
-        #descriptor_sets
         #specialization_constants
     };
 

@@ -9,14 +9,19 @@
 
 use std::cmp;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream};
 
 use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 
-pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
-    // TODO: not implemented correctly
+pub(super) fn write_descriptor_sets(
+    doc: &Spirv,
+    entry_point_layout_name: &Ident,
+    interface: &[u32],
+    types_meta: &TypesMeta,
+) -> TokenStream {
+    // TODO: somewhat implemented correctly
 
     // Finding all the descriptors.
     let mut descriptors = Vec::new();
@@ -28,9 +33,16 @@ pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> Toke
         readonly: bool,
     }
 
-    // Looping to find all the elements that have the `DescriptorSet` decoration.
+    let interface = interface.to_vec();
+
+    // Looping to find all the interface elements that have the `DescriptorSet` decoration.
     for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
         let variable_id = set_decoration.target_id;
+
+        if !interface.contains(&variable_id) {
+            continue;
+        }
+
         let set = set_decoration.params[0];
 
         // Find which type is pointed to by this variable.
@@ -127,10 +139,10 @@ pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> Toke
 
     quote! {
         #[derive(Debug, Clone)]
-        pub struct Layout(pub ShaderStages);
+        pub struct #entry_point_layout_name(pub ShaderStages);
 
         #[allow(unsafe_code)]
-        unsafe impl PipelineLayoutDesc for Layout {
+        unsafe impl PipelineLayoutDesc for #entry_point_layout_name {
             fn num_sets(&self) -> usize {
                 #num_sets
             }

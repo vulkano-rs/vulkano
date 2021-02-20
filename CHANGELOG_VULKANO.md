@@ -12,6 +12,7 @@
 - Fixed descriptor set layouts with arrays containing more than one element triggering unreachable code.
 - Fixed panic on some machines when calling `Surface::capabilities`
 - Added basic support and safety checks for dynamic uniform/storage buffers
+- Fixed generated descriptor set layouts for shader modules with multiple entrypoints
 - Updated dependencies:
   - `crossbeam` 0.7 -> 0.8
   - `half` 1.6 -> 1.7
