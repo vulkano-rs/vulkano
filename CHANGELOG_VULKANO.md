@@ -4,6 +4,7 @@
 - **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
 - **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
 - **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
+- **Breaking** `ImageDimensions` no longer has the `cubemap_compatible` member. Instead, `UnsafeImage` receives `ImageCreateFlags` which specifies this aspect.
 - **Breaking** Changes to view-related type names:
   - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
   - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.

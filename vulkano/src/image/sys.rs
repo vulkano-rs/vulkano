@@ -29,6 +29,7 @@ use format::Format;
 use format::FormatTy;
 use format::PossibleYcbcrFormatDesc;
 use image::ImageAspect;
+use image::ImageCreateFlags;
 use image::ImageDimensions;
 use image::ImageUsage;
 use image::ImageViewType;
@@ -62,6 +63,7 @@ pub struct UnsafeImage {
     device: Arc<Device>,
     usage: vk::ImageUsageFlagBits,
     format: Format,
+    flags: ImageCreateFlags,
 
     dimensions: ImageDimensions,
     samples: u32,
@@ -89,6 +91,7 @@ impl UnsafeImage {
         device: Arc<Device>,
         usage: ImageUsage,
         format: Format,
+        flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         num_samples: u32,
         mipmaps: Mi,
@@ -109,6 +112,7 @@ impl UnsafeImage {
             device,
             usage,
             format,
+            flags,
             dimensions,
             num_samples,
             mipmaps.into(),
@@ -123,6 +127,7 @@ impl UnsafeImage {
         device: Arc<Device>,
         usage: ImageUsage,
         format: Format,
+        flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         num_samples: u32,
         mipmaps: MipmapsCount,
@@ -372,7 +377,7 @@ impl UnsafeImage {
         }
 
         // Decoding the dimensions.
-        let (ty, extent, array_layers, flags) = match dimensions {
+        let (ty, extent, array_layers) = match dimensions {
             ImageDimensions::Dim1d {
                 width,
                 array_layers,
@@ -385,18 +390,14 @@ impl UnsafeImage {
                     height: 1,
                     depth: 1,
                 };
-                (vk::IMAGE_TYPE_1D, extent, array_layers, 0)
+                (vk::IMAGE_TYPE_1D, extent, array_layers)
             }
             ImageDimensions::Dim2d {
                 width,
                 height,
                 array_layers,
-                cubemap_compatible,
             } => {
                 if width == 0 || height == 0 || array_layers == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions { dimensions });
-                }
-                if cubemap_compatible && width != height {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
                 let extent = vk::Extent3D {
@@ -404,12 +405,7 @@ impl UnsafeImage {
                     height,
                     depth: 1,
                 };
-                let flags = if cubemap_compatible {
-                    vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT
-                } else {
-                    0
-                };
-                (vk::IMAGE_TYPE_2D, extent, array_layers, flags)
+                (vk::IMAGE_TYPE_2D, extent, array_layers)
             }
             ImageDimensions::Dim3d {
                 width,
@@ -424,9 +420,22 @@ impl UnsafeImage {
                     height,
                     depth,
                 };
-                (vk::IMAGE_TYPE_3D, extent, 1, 0)
+                (vk::IMAGE_TYPE_3D, extent, 1)
             }
         };
+
+        // Checking flags requirements.
+        if flags.cube_compatible {
+            if !(ty == vk::IMAGE_TYPE_2D && extent.width == extent.height && array_layers >= 6) {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+        }
+
+        if flags.array_2d_compatible {
+            if !(ty == vk::IMAGE_TYPE_3D) {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+        }
 
         // Checking the dimensions against the limits.
         if array_layers > device.physical_device().limits().max_image_array_layers() {
@@ -447,9 +456,8 @@ impl UnsafeImage {
                     capabilities_error = Some(err);
                 }
 
-                if (flags & vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT) != 0 {
+                if flags.cube_compatible {
                     let limit = device.physical_device().limits().max_image_dimension_cube();
-                    debug_assert_eq!(extent.width, extent.height); // checked above
                     if extent.width > limit {
                         let err = ImageCreationError::UnsupportedDimensions { dimensions };
                         capabilities_error = Some(err);
@@ -515,7 +523,7 @@ impl UnsafeImage {
             let infos = vk::ImageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags,
+                flags: flags.into(),
                 imageType: ty,
                 format: format as u32,
                 extent,
@@ -597,6 +605,7 @@ impl UnsafeImage {
             image,
             usage,
             format,
+            flags,
             dimensions,
             samples: num_samples,
             mipmaps,
@@ -616,6 +625,7 @@ impl UnsafeImage {
         handle: u64,
         usage: u32,
         format: Format,
+        flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         samples: u32,
         mipmaps: u32,
@@ -633,6 +643,7 @@ impl UnsafeImage {
             image: handle,
             usage,
             format,
+            flags,
             dimensions,
             samples,
             mipmaps,
@@ -677,6 +688,10 @@ impl UnsafeImage {
     #[inline]
     pub fn format(&self) -> Format {
         self.format
+    }
+
+    pub fn create_flags(&self) -> ImageCreateFlags {
+        self.flags
     }
 
     #[inline]
@@ -944,7 +959,11 @@ impl Hash for UnsafeImage {
 pub enum ImageCreationError {
     /// Allocating memory failed.
     AllocError(DeviceMemoryAllocError),
+    /// The specified creation flags have requirements (e.g. specific dimension) that were not met.
+    CreationFlagRequirementsNotMet,
     /// A wrong number of mipmaps was provided.
+    FormatNotSupported,
+    /// The format is supported, but at least one of the requested usages is not supported.
     InvalidMipmapsCount {
         obtained: u32,
         valid_range: Range<u32>,
@@ -954,8 +973,6 @@ pub enum ImageCreationError {
     /// The dimensions are too large, or one of the dimensions is 0.
     UnsupportedDimensions { dimensions: ImageDimensions },
     /// The requested format is not supported by the Vulkan implementation.
-    FormatNotSupported,
-    /// The format is supported, but at least one of the requested usages is not supported.
     UnsupportedUsage,
     /// The `shader_storage_image_multisample` feature must be enabled to create such an image.
     ShaderStorageImageMultisampleFeatureNotEnabled,
@@ -979,6 +996,12 @@ impl fmt::Display for ImageCreationError {
             "{}",
             match *self {
                 ImageCreationError::AllocError(_) => "allocating memory failed",
+                ImageCreationError::CreationFlagRequirementsNotMet => {
+                    "the requested creation flags have additional requirements that were not met"
+                }
+                ImageCreationError::FormatNotSupported => {
+                    "the requested format is not supported by the Vulkan implementation"
+                }
                 ImageCreationError::InvalidMipmapsCount { .. } => {
                     "a wrong number of mipmaps was provided"
                 }
@@ -987,9 +1010,6 @@ impl fmt::Display for ImageCreationError {
                 }
                 ImageCreationError::UnsupportedDimensions { .. } => {
                     "the dimensions are too large, or one of the dimensions is 0"
-                }
-                ImageCreationError::FormatNotSupported => {
-                    "the requested format is not supported by the Vulkan implementation"
                 }
                 ImageCreationError::UnsupportedUsage => {
                     "the format is supported, but at least one of the requested usages is not \
@@ -1102,38 +1122,26 @@ impl UnsafeImageView {
 
         let view_type = match (
             image.dimensions(),
+            image.create_flags().cube_compatible,
             ty,
             array_layers.end - array_layers.start,
         ) {
-            (ImageDimensions::Dim1d { .. }, ImageViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
-            (ImageDimensions::Dim1d { .. }, ImageViewType::Dim1dArray, _) => {
+            (ImageDimensions::Dim1d { .. }, _, ImageViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
+            (ImageDimensions::Dim1d { .. }, _, ImageViewType::Dim1dArray, _) => {
                 vk::IMAGE_VIEW_TYPE_1D_ARRAY
             }
-            (ImageDimensions::Dim2d { .. }, ImageViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
-            (ImageDimensions::Dim2d { .. }, ImageViewType::Dim2dArray, _) => {
+            (ImageDimensions::Dim2d { .. }, _, ImageViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
+            (ImageDimensions::Dim2d { .. }, _, ImageViewType::Dim2dArray, _) => {
                 vk::IMAGE_VIEW_TYPE_2D_ARRAY
             }
-            (
-                ImageDimensions::Dim2d {
-                    cubemap_compatible, ..
-                },
-                ImageViewType::Cubemap,
-                n,
-            ) if cubemap_compatible => {
-                assert_eq!(n, 6);
+            (ImageDimensions::Dim2d { .. }, true, ImageViewType::Cubemap, 6) => {
                 vk::IMAGE_VIEW_TYPE_CUBE
             }
-            (
-                ImageDimensions::Dim2d {
-                    cubemap_compatible, ..
-                },
-                ImageViewType::CubemapArray,
-                n,
-            ) if cubemap_compatible => {
+            (ImageDimensions::Dim2d { .. }, true, ImageViewType::CubemapArray, n) => {
                 assert_eq!(n % 6, 0);
                 vk::IMAGE_VIEW_TYPE_CUBE_ARRAY
             }
-            (ImageDimensions::Dim3d { .. }, ImageViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
+            (ImageDimensions::Dim3d { .. }, _, ImageViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
             _ => panic!(),
         };
 
@@ -1301,6 +1309,7 @@ mod tests {
     use std::iter::Empty;
     use std::u32;
 
+    use super::ImageCreateFlags;
     use super::ImageCreationError;
     use super::ImageUsage;
     use super::UnsafeImage;
@@ -1323,11 +1332,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 1,
@@ -1354,11 +1363,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 1,
@@ -1384,11 +1393,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 0,
                 1,
@@ -1418,11 +1427,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 5,
                 1,
@@ -1452,11 +1461,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 0,
@@ -1487,11 +1496,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 u32::MAX,
@@ -1527,11 +1536,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 2,
                 1,
@@ -1562,11 +1571,11 @@ mod tests {
                 device,
                 usage,
                 Format::ASTC_5x4UnormBlock,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 u32::MAX,
@@ -1598,11 +1607,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 1,
@@ -1632,11 +1641,14 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags {
+                    cube_compatible: true,
+                    ..ImageCreateFlags::none()
+                },
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 64,
                     array_layers: 1,
-                    cubemap_compatible: true,
                 },
                 1,
                 1,
@@ -1647,7 +1659,7 @@ mod tests {
         };
 
         match res {
-            Err(ImageCreationError::UnsupportedDimensions { .. }) => (),
+            Err(ImageCreationError::CreationFlagRequirementsNotMet) => (),
             _ => panic!(),
         };
     }

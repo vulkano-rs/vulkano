@@ -28,6 +28,7 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use image::ImageCreateFlags;
 use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
@@ -424,13 +425,13 @@ impl<F> AttachmentImage<F> {
                 width: dimensions[0],
                 height: dimensions[1],
                 array_layers: 1,
-                cubemap_compatible: false,
             };
 
             UnsafeImage::new(
                 device.clone(),
                 usage,
                 format.format(),
+                ImageCreateFlags::none(),
                 dims,
                 samples,
                 1,
@@ -440,7 +441,7 @@ impl<F> AttachmentImage<F> {
             )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Optimal,
@@ -454,18 +455,18 @@ impl<F> AttachmentImage<F> {
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
-            image.bind_memory(mem.memory(), mem.offset())?;
+            image.bind_memory(memory.memory(), memory.offset())?;
         }
 
         let view = unsafe { UnsafeImageView::raw(&image, ImageViewType::Dim2d, 0..1, 0..1)? };
 
         Ok(Arc::new(AttachmentImage {
-            image: image,
-            view: view,
-            memory: mem,
-            format: format,
+            image,
+            view,
+            memory,
+            format,
             attachment_layout: if is_depth {
                 ImageLayout::DepthStencilAttachmentOptimal
             } else {

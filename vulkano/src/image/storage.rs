@@ -26,6 +26,7 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
+use image::ImageCreateFlags;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -123,6 +124,14 @@ impl<F> StorageImage<F> {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
+        let mut flags = ImageCreateFlags::none();
+
+        if let ImageViewDimensions::Cubemap { .. } | ImageViewDimensions::CubemapArray { .. } =
+            dimensions
+        {
+            flags.cube_compatible = true;
+        }
+
         let (image, mem_reqs) = unsafe {
             let sharing = if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
@@ -134,6 +143,7 @@ impl<F> StorageImage<F> {
                 device.clone(),
                 usage,
                 format.format(),
+                flags,
                 dimensions.to_image_dimensions(),
                 1,
                 1,
@@ -143,7 +153,7 @@ impl<F> StorageImage<F> {
             )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Optimal,
@@ -157,9 +167,9 @@ impl<F> StorageImage<F> {
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
-            image.bind_memory(mem.memory(), mem.offset())?;
+            image.bind_memory(memory.memory(), memory.offset())?;
         }
 
         let view = unsafe {
@@ -172,12 +182,12 @@ impl<F> StorageImage<F> {
         };
 
         Ok(Arc::new(StorageImage {
-            image: image,
-            view: view,
-            memory: mem,
-            dimensions: dimensions,
-            format: format,
-            queue_families: queue_families,
+            image,
+            view,
+            memory,
+            dimensions,
+            format,
+            queue_families,
             gpu_lock: AtomicUsize::new(0),
         }))
     }
