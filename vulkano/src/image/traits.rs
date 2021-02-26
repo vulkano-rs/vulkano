@@ -21,11 +21,8 @@ use format::PossibleSintFormatDesc;
 use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
 use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use image::ImageDimensions;
 use image::ImageLayout;
-use image::ImageViewDimensions;
-use sampler::Sampler;
 use sync::AccessError;
 
 use SafeDeref;
@@ -462,121 +459,4 @@ pub unsafe trait ImageClearValue<T>: ImageAccess {
 pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
-}
-
-/// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAccess {
-    fn parent(&self) -> &dyn ImageAccess;
-
-    /// Returns the dimensions of the image view.
-    fn dimensions(&self) -> ImageViewDimensions;
-
-    /// Returns the inner unsafe image view object used by this image view.
-    fn inner(&self) -> &UnsafeImageView;
-
-    /// Returns the format of this view. This can be different from the parent's format.
-    #[inline]
-    fn format(&self) -> Format {
-        // TODO: remove this default impl
-        self.inner().format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.parent().samples()
-    }
-
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout;
-
-    /// Returns true if the view doesn't use components swizzling.
-    ///
-    /// Must be true when the view is used as a framebuffer attachment or TODO: I don't remember
-    /// the other thing.
-    fn identity_swizzle(&self) -> bool;
-
-    /// Returns true if the given sampler can be used with this image view.
-    ///
-    /// This method should check whether the sampler's configuration can be used with the format
-    /// of the view.
-    // TODO: return a Result and propagate it when binding to a descriptor set
-    fn can_be_sampled(&self, _sampler: &Sampler) -> bool {
-        true /* FIXME */
-    }
-
-    //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
-}
-
-unsafe impl<T> ImageViewAccess for T
-where
-    T: SafeDeref,
-    T::Target: ImageViewAccess,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        (**self).parent()
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageViewDimensions {
-        (**self).dimensions()
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_storage_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_combined_image_sampler_layout()
-    }
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_sampled_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_input_attachment_layout()
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        (**self).identity_swizzle()
-    }
-
-    #[inline]
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
-        (**self).can_be_sampled(sampler)
-    }
-}
-
-impl PartialEq for dyn ImageViewAccess + Send + Sync {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
-    }
-}
-
-impl Eq for dyn ImageViewAccess + Send + Sync {}
-
-impl Hash for dyn ImageViewAccess + Send + Sync {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().hash(state);
-    }
-}
-
-pub unsafe trait AttachmentImageView: ImageViewAccess {
-    fn accept(&self, initial_layout: ImageLayout, final_layout: ImageLayout) -> bool;
 }

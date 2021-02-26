@@ -24,7 +24,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::{ImageViewDimensions, StorageImage};
+use vulkano::image::{view::ImageViewDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;

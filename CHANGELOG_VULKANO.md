@@ -9,6 +9,7 @@
 - **Breaking** Changes to view-related type names:
   - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
   - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.
+- **Breaking** Created a new `image::view` module for all image view related things. It holds the `UnsafeImageView`, `ImageViewType`, `ImageViewDimensions` types and the `ImageViewAccess` trait.
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.
 - Fixed potential segmentation fault in `ComputePipeline` when referencing `PipelineCache` objects.
@@ -28,6 +29,7 @@
 - Added `VK_KHR_portability_subset` device extension.
 - Added `DeviceExtensions::required_extensions` function that returns a set of available extensions required to create `Device` on this platform.
 - `FormatFeatures` now implements `Copy`.
+- Removed the `AttachmentImageView` trait, which didn't appear to be used for anything anyway.
 
 # Version 0.20.0 (2020-12-26)
 

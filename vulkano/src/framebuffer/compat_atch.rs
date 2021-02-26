@@ -12,7 +12,7 @@
 
 use format::Format;
 use framebuffer::RenderPassDesc;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use std::error;
 use std::fmt;
 

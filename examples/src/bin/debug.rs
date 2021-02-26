@@ -9,7 +9,7 @@
 
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::ImageViewDimensions;
+use vulkano::image::view::ImageViewDimensions;
 use vulkano::image::ImmutableImage;
 use vulkano::image::MipmapsCount;
 use vulkano::instance;

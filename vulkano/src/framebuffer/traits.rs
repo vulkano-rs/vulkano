@@ -12,7 +12,7 @@ use format::ClearValue;
 use framebuffer::FramebufferSys;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use pipeline::shader::ShaderInterfaceDef;
 
 use SafeDeref;
@@ -136,7 +136,7 @@ pub unsafe trait RenderPassDescClearValues<C> {
     /// that matches the attachment.
     ///
     // TODO: meh for boxing
-    fn convert_clear_values(&self, C) -> Box<dyn Iterator<Item = ClearValue>>;
+    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>>;
 }
 
 unsafe impl<T, C> RenderPassDescClearValues<C> for T
@@ -272,7 +272,7 @@ where
     pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
         if (id as usize) < render_pass.num_subpasses() {
             Some(Subpass {
-                render_pass: render_pass,
+                render_pass,
                 subpass_id: id,
             })
         } else {

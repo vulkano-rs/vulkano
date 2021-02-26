@@ -24,7 +24,7 @@ use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use sampler::Sampler;
 
 use check_errors;
@@ -330,7 +330,7 @@ impl UnsafeDescriptorPool {
         };
 
         Ok(UnsafeDescriptorPool {
-            pool: pool,
+            pool,
             device: device.clone(),
         })
     }
@@ -679,7 +679,7 @@ impl UnsafeDescriptorSet {
                     DescriptorWriteInner::UniformBuffer(buffer, offset, size)
                     | DescriptorWriteInner::DynamicUniformBuffer(buffer, offset, size) => {
                         buffer_descriptors.push(vk::DescriptorBufferInfo {
-                            buffer: buffer,
+                            buffer,
                             offset: offset as u64,
                             range: size as u64,
                         });
@@ -687,21 +687,21 @@ impl UnsafeDescriptorSet {
                     DescriptorWriteInner::StorageBuffer(buffer, offset, size)
                     | DescriptorWriteInner::DynamicStorageBuffer(buffer, offset, size) => {
                         buffer_descriptors.push(vk::DescriptorBufferInfo {
-                            buffer: buffer,
+                            buffer,
                             offset: offset as u64,
                             range: size as u64,
                         });
                     }
                     DescriptorWriteInner::Sampler(sampler) => {
                         image_descriptors.push(vk::DescriptorImageInfo {
-                            sampler: sampler,
+                            sampler,
                             imageView: 0,
                             imageLayout: 0,
                         });
                     }
                     DescriptorWriteInner::CombinedImageSampler(sampler, view, layout) => {
                         image_descriptors.push(vk::DescriptorImageInfo {
-                            sampler: sampler,
+                            sampler,
                             imageView: view,
                             imageLayout: layout,
                         });
@@ -826,7 +826,7 @@ impl DescriptorWrite {
         I: ImageViewAccess,
     {
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_storage_image_layout() as u32;
@@ -838,7 +838,7 @@ impl DescriptorWrite {
     #[inline]
     pub fn sampler(binding: u32, array_element: u32, sampler: &Arc<Sampler>) -> DescriptorWrite {
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::Sampler(sampler.internal_object())),
         }
@@ -850,7 +850,7 @@ impl DescriptorWrite {
         I: ImageViewAccess,
     {
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_sampled_image_layout() as u32;
@@ -870,7 +870,7 @@ impl DescriptorWrite {
         I: ImageViewAccess,
     {
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_combined_image_sampler_layout() as u32;
@@ -895,7 +895,7 @@ impl DescriptorWrite {
         assert!(view.uniform_texel_buffer());
 
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::UniformTexelBuffer(
                 view.internal_object()
@@ -915,7 +915,7 @@ impl DescriptorWrite {
         assert!(view.storage_texel_buffer());
 
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::StorageTexelBuffer(
                 view.internal_object()
@@ -949,7 +949,7 @@ impl DescriptorWrite {
         );
 
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!({
                 DescriptorWriteInner::UniformBuffer(buffer.internal_object(), offset, size)
@@ -983,7 +983,7 @@ impl DescriptorWrite {
         );
 
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!({
                 DescriptorWriteInner::StorageBuffer(buffer.internal_object(), offset, size)
@@ -1021,7 +1021,7 @@ impl DescriptorWrite {
         );
 
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::DynamicUniformBuffer(
                 buffer.internal_object(),
@@ -1061,7 +1061,7 @@ impl DescriptorWrite {
         );
 
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!(DescriptorWriteInner::DynamicStorageBuffer(
                 buffer.internal_object(),
@@ -1077,7 +1077,7 @@ impl DescriptorWrite {
         I: ImageViewAccess,
     {
         DescriptorWrite {
-            binding: binding,
+            binding,
             first_array_element: array_element,
             inner: smallvec!({
                 let layout = image.descriptor_set_input_attachment_layout() as u32;

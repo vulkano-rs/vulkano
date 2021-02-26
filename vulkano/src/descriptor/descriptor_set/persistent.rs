@@ -32,7 +32,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
 use format::Format;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use sampler::Sampler;
 use OomError;
 use VulkanObject;

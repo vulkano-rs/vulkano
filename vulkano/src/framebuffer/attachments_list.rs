@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use std::sync::Arc;
 use SafeDeref;
 //use sync::AccessFlagBits;

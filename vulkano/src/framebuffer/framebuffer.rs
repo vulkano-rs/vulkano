@@ -30,7 +30,7 @@ use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 
 use check_errors;
 use vk;
@@ -92,7 +92,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     /// Starts building a framebuffer.
     pub fn start(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
-            render_pass: render_pass,
+            render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoIdentical(None),
             attachments: (),
@@ -103,7 +103,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     /// the intersection of the dimensions of all the attachments.
     pub fn with_intersecting_dimensions(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
-            render_pass: render_pass,
+            render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoSmaller(None),
             attachments: (),
@@ -113,7 +113,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     /// Starts building a framebuffer.
     pub fn with_dimensions(render_pass: Rp, dimensions: [u32; 3]) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
-            render_pass: render_pass,
+            render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::Specific(dimensions),
             attachments: (),
@@ -236,8 +236,8 @@ where
 
         Ok(FramebufferBuilder {
             render_pass: self.render_pass,
-            raw_ids: raw_ids,
-            dimensions: dimensions,
+            raw_ids,
+            dimensions,
             attachments: (self.attachments, attachment),
         })
     }
@@ -324,10 +324,10 @@ where
         };
 
         Ok(Framebuffer {
-            device: device,
+            device,
             render_pass: self.render_pass,
-            framebuffer: framebuffer,
-            dimensions: dimensions,
+            framebuffer,
+            dimensions,
             resources: self.attachments,
         })
     }

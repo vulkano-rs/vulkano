@@ -14,7 +14,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{
-    ImageUsage, ImageViewDimensions, ImmutableImage, MipmapsCount, SwapchainImage,
+    view::ImageViewDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;

@@ -26,7 +26,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use sampler::Sampler;
 use OomError;
 use VulkanObject;
@@ -87,7 +87,7 @@ impl FixedSizeDescriptorSetsPool {
         FixedSizeDescriptorSetsPool {
             layout,
             pool: LocalPool {
-                device: device,
+                device,
                 next_capacity: 3,
                 current_pool: None,
             },
@@ -101,10 +101,7 @@ impl FixedSizeDescriptorSetsPool {
     pub fn next(&mut self) -> FixedSizeDescriptorSetBuilder<()> {
         let inner = PersistentDescriptorSet::start(self.layout.clone());
 
-        FixedSizeDescriptorSetBuilder {
-            pool: self,
-            inner: inner,
-        }
+        FixedSizeDescriptorSetBuilder { pool: self, inner }
     }
 }
 
@@ -314,7 +311,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R> {
     #[inline]
     pub fn build(self) -> Result<FixedSizeDescriptorSet<R>, PersistentDescriptorSetBuildError> {
         let inner = self.inner.build_with_pool(&mut self.pool.pool)?;
-        Ok(FixedSizeDescriptorSet { inner: inner })
+        Ok(FixedSizeDescriptorSet { inner })
     }
 
     /// Call this function if the next element of the set is an array in order to set the value of

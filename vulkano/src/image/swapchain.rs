@@ -15,15 +15,15 @@ use buffer::BufferAccess;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
-use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageViewAccess;
+use image::view::ImageViewAccess;
+use image::view::ImageViewDimensions;
+use image::view::ImageViewType;
+use image::view::UnsafeImageView;
 use image::ImageInner;
 use image::ImageLayout;
-use image::ImageViewDimensions;
-use image::ImageViewType;
 use swapchain::Swapchain;
 use sync::AccessError;
 
@@ -63,7 +63,7 @@ impl<W> SwapchainImage<W> {
         Ok(Arc::new(SwapchainImage {
             swapchain: swapchain.clone(),
             image_offset: id,
-            view: view,
+            view,
         }))
     }
 

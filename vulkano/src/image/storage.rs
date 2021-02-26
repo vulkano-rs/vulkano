@@ -21,16 +21,16 @@ use format::FormatDesc;
 use format::FormatTy;
 use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageViewAccess;
+use image::view::ImageViewAccess;
+use image::view::ImageViewDimensions;
+use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
-use image::ImageViewDimensions;
 use instance::QueueFamily;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
@@ -387,7 +387,7 @@ where
 mod tests {
     use super::StorageImage;
     use format::Format;
-    use image::ImageViewDimensions;
+    use image::view::ImageViewDimensions;
 
     #[test]
     fn create() {

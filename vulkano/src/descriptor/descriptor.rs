@@ -42,7 +42,7 @@
 //!
 
 use format::Format;
-use image::ImageViewDimensions;
+use image::view::ImageViewDimensions;
 use std::cmp;
 use std::error;
 use std::fmt;

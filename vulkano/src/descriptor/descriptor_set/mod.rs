@@ -41,7 +41,7 @@ use std::hash::Hasher;
 use buffer::BufferAccess;
 use descriptor::descriptor::DescriptorDesc;
 use device::DeviceOwned;
-use image::ImageViewAccess;
+use image::view::ImageViewAccess;
 use SafeDeref;
 use VulkanObject;
 
