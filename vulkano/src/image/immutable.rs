@@ -33,10 +33,10 @@ use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::Dimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
+use image::ImageViewDimensions;
 use image::MipmapsCount;
 use instance::QueueFamily;
 use memory::pool::AllocFromRequirementsFilter;
@@ -59,7 +59,7 @@ use sync::Sharing;
 pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
     view: UnsafeImageView,
-    dimensions: Dimensions,
+    dimensions: ImageViewDimensions,
     memory: A,
     format: F,
     initialized: AtomicBool,
@@ -125,7 +125,7 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
 fn generate_mipmaps<Img>(
     cbb: &mut AutoCommandBufferBuilder,
     image: Arc<Img>,
-    dimensions: Dimensions,
+    dimensions: ImageViewDimensions,
     layout: ImageLayout,
 ) where
     Img: ImageAccess + Send + Sync + 'static,
@@ -175,7 +175,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         format: F,
         queue_families: I,
     ) -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
@@ -197,7 +197,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn with_mipmaps<'a, I, M>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         format: F,
         mipmaps: M,
         queue_families: I,
@@ -232,7 +232,7 @@ impl<F> ImmutableImage<F> {
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
     pub fn uninitialized<'a, I, M>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         format: F,
         mipmaps: M,
         usage: ImageUsage,
@@ -291,7 +291,7 @@ impl<F> ImmutableImage<F> {
         let view = unsafe {
             UnsafeImageView::raw(
                 &image,
-                dimensions.to_view_type(),
+                dimensions.to_image_view_type(),
                 0..image.mipmap_levels(),
                 0..image.dimensions().array_layers(),
             )?
@@ -321,7 +321,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn from_iter<P, I>(
         iter: I,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         mipmaps: MipmapsCount,
         format: F,
         queue: Arc<Queue>,
@@ -350,7 +350,7 @@ impl<F> ImmutableImage<F> {
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     pub fn from_buffer<B, P>(
         source: B,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         mipmaps: MipmapsCount,
         format: F,
         queue: Arc<Queue>,
@@ -432,7 +432,7 @@ impl<F> ImmutableImage<F> {
 impl<F, A> ImmutableImage<F, A> {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
+    pub fn dimensions(&self) -> ImageViewDimensions {
         self.dimensions
     }
 
@@ -546,7 +546,7 @@ where
     }
 
     #[inline]
-    fn dimensions(&self) -> Dimensions {
+    fn dimensions(&self) -> ImageViewDimensions {
         self.dimensions
     }
 

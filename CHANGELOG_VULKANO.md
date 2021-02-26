@@ -4,6 +4,9 @@
 - **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
 - **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
 - **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
+- **Breaking** Changes to view-related type names:
+  - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
+  - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.
 - Fixed potential segmentation fault in `ComputePipeline` when referencing `PipelineCache` objects.

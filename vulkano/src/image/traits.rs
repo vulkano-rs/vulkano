@@ -22,9 +22,9 @@ use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
 use image::sys::UnsafeImage;
 use image::sys::UnsafeImageView;
-use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageLayout;
+use image::ImageViewDimensions;
 use sampler::Sampler;
 use sync::AccessError;
 
@@ -456,7 +456,7 @@ where
 /// given image.
 // TODO: isn't that for image views instead?
 pub unsafe trait ImageClearValue<T>: ImageAccess {
-    fn decode(&self, T) -> Option<ClearValue>;
+    fn decode(&self, value: T) -> Option<ClearValue>;
 }
 
 pub unsafe trait ImageContent<P>: ImageAccess {
@@ -469,7 +469,7 @@ pub unsafe trait ImageViewAccess {
     fn parent(&self) -> &dyn ImageAccess;
 
     /// Returns the dimensions of the image view.
-    fn dimensions(&self) -> Dimensions;
+    fn dimensions(&self) -> ImageViewDimensions;
 
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;
@@ -529,7 +529,7 @@ where
     }
 
     #[inline]
-    fn dimensions(&self) -> Dimensions {
+    fn dimensions(&self) -> ImageViewDimensions {
         (**self).dimensions()
     }
 

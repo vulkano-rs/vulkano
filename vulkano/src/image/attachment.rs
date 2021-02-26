@@ -28,12 +28,12 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::Dimensions;
 use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
-use image::ViewType;
+use image::ImageViewDimensions;
+use image::ImageViewType;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
@@ -459,7 +459,7 @@ impl<F> AttachmentImage<F> {
             image.bind_memory(mem.memory(), mem.offset())?;
         }
 
-        let view = unsafe { UnsafeImageView::raw(&image, ViewType::Dim2d, 0..1, 0..1)? };
+        let view = unsafe { UnsafeImageView::raw(&image, ImageViewType::Dim2d, 0..1, 0..1)? };
 
         Ok(Arc::new(AttachmentImage {
             image: image,
@@ -625,9 +625,9 @@ where
     }
 
     #[inline]
-    fn dimensions(&self) -> Dimensions {
+    fn dimensions(&self) -> ImageViewDimensions {
         let dims = self.image.dimensions();
-        Dimensions::Dim2d {
+        ImageViewDimensions::Dim2d {
             width: dims.width(),
             height: dims.height(),
         }

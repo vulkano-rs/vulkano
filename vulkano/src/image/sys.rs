@@ -31,8 +31,8 @@ use format::PossibleYcbcrFormatDesc;
 use image::ImageAspect;
 use image::ImageDimensions;
 use image::ImageUsage;
+use image::ImageViewType;
 use image::MipmapsCount;
-use image::ViewType;
 use memory::DeviceMemory;
 use memory::DeviceMemoryAllocError;
 use memory::MemoryRequirements;
@@ -1065,7 +1065,7 @@ impl UnsafeImageView {
     /// See the docs of new().
     pub unsafe fn raw(
         image: &UnsafeImage,
-        ty: ViewType,
+        ty: ImageViewType,
         mipmap_levels: Range<u32>,
         array_layers: Range<u32>,
     ) -> Result<UnsafeImageView, OomError> {
@@ -1105,19 +1105,19 @@ impl UnsafeImageView {
             ty,
             array_layers.end - array_layers.start,
         ) {
-            (ImageDimensions::Dim1d { .. }, ViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
-            (ImageDimensions::Dim1d { .. }, ViewType::Dim1dArray, _) => {
+            (ImageDimensions::Dim1d { .. }, ImageViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
+            (ImageDimensions::Dim1d { .. }, ImageViewType::Dim1dArray, _) => {
                 vk::IMAGE_VIEW_TYPE_1D_ARRAY
             }
-            (ImageDimensions::Dim2d { .. }, ViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
-            (ImageDimensions::Dim2d { .. }, ViewType::Dim2dArray, _) => {
+            (ImageDimensions::Dim2d { .. }, ImageViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
+            (ImageDimensions::Dim2d { .. }, ImageViewType::Dim2dArray, _) => {
                 vk::IMAGE_VIEW_TYPE_2D_ARRAY
             }
             (
                 ImageDimensions::Dim2d {
                     cubemap_compatible, ..
                 },
-                ViewType::Cubemap,
+                ImageViewType::Cubemap,
                 n,
             ) if cubemap_compatible => {
                 assert_eq!(n, 6);
@@ -1127,13 +1127,13 @@ impl UnsafeImageView {
                 ImageDimensions::Dim2d {
                     cubemap_compatible, ..
                 },
-                ViewType::CubemapArray,
+                ImageViewType::CubemapArray,
                 n,
             ) if cubemap_compatible => {
                 assert_eq!(n % 6, 0);
                 vk::IMAGE_VIEW_TYPE_CUBE_ARRAY
             }
-            (ImageDimensions::Dim3d { .. }, ViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
+            (ImageDimensions::Dim3d { .. }, ImageViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
             _ => panic!(),
         };
 
@@ -1198,7 +1198,7 @@ impl UnsafeImageView {
     #[inline]
     pub unsafe fn new(
         image: &UnsafeImage,
-        ty: ViewType,
+        ty: ImageViewType,
         mipmap_levels: Range<u32>,
         array_layers: Range<u32>,
     ) -> UnsafeImageView {

@@ -26,10 +26,10 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::Dimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
+use image::ImageViewDimensions;
 use instance::QueueFamily;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
@@ -59,7 +59,7 @@ where
     memory: PotentialDedicatedAllocation<A::Alloc>,
 
     // Dimensions of the image view.
-    dimensions: Dimensions,
+    dimensions: ImageViewDimensions,
 
     // Format.
     format: F,
@@ -76,7 +76,7 @@ impl<F> StorageImage<F> {
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         format: F,
         queue_families: I,
     ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
@@ -109,7 +109,7 @@ impl<F> StorageImage<F> {
     /// Same as `new`, but allows specifying the usage.
     pub fn with_usage<'a, I>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageViewDimensions,
         format: F,
         usage: ImageUsage,
         queue_families: I,
@@ -165,7 +165,7 @@ impl<F> StorageImage<F> {
         let view = unsafe {
             UnsafeImageView::raw(
                 &image,
-                dimensions.to_view_type(),
+                dimensions.to_image_view_type(),
                 0..image.mipmap_levels(),
                 0..image.dimensions().array_layers(),
             )?
@@ -189,7 +189,7 @@ where
 {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
+    pub fn dimensions(&self) -> ImageViewDimensions {
         self.dimensions
     }
 }
@@ -309,7 +309,7 @@ where
     }
 
     #[inline]
-    fn dimensions(&self) -> Dimensions {
+    fn dimensions(&self) -> ImageViewDimensions {
         self.dimensions
     }
 
@@ -377,14 +377,14 @@ where
 mod tests {
     use super::StorageImage;
     use format::Format;
-    use image::Dimensions;
+    use image::ImageViewDimensions;
 
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
         let _img = StorageImage::new(
             device,
-            Dimensions::Dim2d {
+            ImageViewDimensions::Dim2d {
                 width: 32,
                 height: 32,
             },

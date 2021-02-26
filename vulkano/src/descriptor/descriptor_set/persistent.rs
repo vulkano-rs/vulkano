@@ -880,7 +880,8 @@ where
         ));
     }
 
-    let image_view_ty = DescriptorImageDescDimensions::from_dimensions(image_view.dimensions());
+    let image_view_ty =
+        DescriptorImageDescDimensions::from_image_view_dimensions(image_view.dimensions());
     if image_view_ty != desc.dimensions {
         return Err(PersistentDescriptorSetError::ImageViewTypeMismatch {
             expected: desc.dimensions,

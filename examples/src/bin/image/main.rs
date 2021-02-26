@@ -13,7 +13,9 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::{Dimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage};
+use vulkano::image::{
+    ImageUsage, ImageViewDimensions, ImmutableImage, MipmapsCount, SwapchainImage,
+};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -152,7 +154,7 @@ fn main() {
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
         let (info, mut reader) = decoder.read_info().unwrap();
-        let dimensions = Dimensions::Dim2d {
+        let dimensions = ImageViewDimensions::Dim2d {
             width: info.width,
             height: info.height,
         };

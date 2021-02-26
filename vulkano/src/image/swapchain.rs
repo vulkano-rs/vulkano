@@ -20,10 +20,10 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::traits::ImageViewAccess;
-use image::Dimensions;
 use image::ImageInner;
 use image::ImageLayout;
-use image::ViewType;
+use image::ImageViewDimensions;
+use image::ImageViewType;
 use swapchain::Swapchain;
 use sync::AccessError;
 
@@ -58,7 +58,7 @@ impl<W> SwapchainImage<W> {
         id: usize,
     ) -> Result<Arc<SwapchainImage<W>>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = UnsafeImageView::raw(&image.image, ViewType::Dim2d, 0..1, 0..1)?;
+        let view = UnsafeImageView::raw(&image.image, ImageViewType::Dim2d, 0..1, 0..1)?;
 
         Ok(Arc::new(SwapchainImage {
             swapchain: swapchain.clone(),
@@ -190,9 +190,9 @@ unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn dimensions(&self) -> Dimensions {
+    fn dimensions(&self) -> ImageViewDimensions {
         let dims = self.swapchain.dimensions();
-        Dimensions::Dim2d {
+        ImageViewDimensions::Dim2d {
             width: dims[0],
             height: dims[1],
         }

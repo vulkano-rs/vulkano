@@ -213,8 +213,11 @@ impl Default for ComponentSwizzle {
     }
 }
 
+/// The geometry type of an image view, along with its dimensions.
+///
+/// This is essentially a combination of [`ImageViewType`] and [`ImageDimensions`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Dimensions {
+pub enum ImageViewDimensions {
     Dim1d {
         width: u32,
     },
@@ -245,30 +248,30 @@ pub enum Dimensions {
     },
 }
 
-impl Dimensions {
+impl ImageViewDimensions {
     #[inline]
     pub fn width(&self) -> u32 {
         match *self {
-            Dimensions::Dim1d { width } => width,
-            Dimensions::Dim1dArray { width, .. } => width,
-            Dimensions::Dim2d { width, .. } => width,
-            Dimensions::Dim2dArray { width, .. } => width,
-            Dimensions::Dim3d { width, .. } => width,
-            Dimensions::Cubemap { size } => size,
-            Dimensions::CubemapArray { size, .. } => size,
+            ImageViewDimensions::Dim1d { width } => width,
+            ImageViewDimensions::Dim1dArray { width, .. } => width,
+            ImageViewDimensions::Dim2d { width, .. } => width,
+            ImageViewDimensions::Dim2dArray { width, .. } => width,
+            ImageViewDimensions::Dim3d { width, .. } => width,
+            ImageViewDimensions::Cubemap { size } => size,
+            ImageViewDimensions::CubemapArray { size, .. } => size,
         }
     }
 
     #[inline]
     pub fn height(&self) -> u32 {
         match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { .. } => 1,
-            Dimensions::Dim2d { height, .. } => height,
-            Dimensions::Dim2dArray { height, .. } => height,
-            Dimensions::Dim3d { height, .. } => height,
-            Dimensions::Cubemap { size } => size,
-            Dimensions::CubemapArray { size, .. } => size,
+            ImageViewDimensions::Dim1d { .. } => 1,
+            ImageViewDimensions::Dim1dArray { .. } => 1,
+            ImageViewDimensions::Dim2d { height, .. } => height,
+            ImageViewDimensions::Dim2dArray { height, .. } => height,
+            ImageViewDimensions::Dim3d { height, .. } => height,
+            ImageViewDimensions::Cubemap { size } => size,
+            ImageViewDimensions::CubemapArray { size, .. } => size,
         }
     }
 
@@ -280,13 +283,13 @@ impl Dimensions {
     #[inline]
     pub fn depth(&self) -> u32 {
         match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { .. } => 1,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { .. } => 1,
-            Dimensions::Dim3d { depth, .. } => depth,
-            Dimensions::Cubemap { .. } => 1,
-            Dimensions::CubemapArray { .. } => 1,
+            ImageViewDimensions::Dim1d { .. } => 1,
+            ImageViewDimensions::Dim1dArray { .. } => 1,
+            ImageViewDimensions::Dim2d { .. } => 1,
+            ImageViewDimensions::Dim2dArray { .. } => 1,
+            ImageViewDimensions::Dim3d { depth, .. } => depth,
+            ImageViewDimensions::Cubemap { .. } => 1,
+            ImageViewDimensions::CubemapArray { .. } => 1,
         }
     }
 
@@ -298,26 +301,26 @@ impl Dimensions {
     #[inline]
     pub fn array_layers(&self) -> u32 {
         match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. } => 1,
-            Dimensions::Cubemap { .. } => 1,
-            Dimensions::CubemapArray { array_layers, .. } => array_layers,
+            ImageViewDimensions::Dim1d { .. } => 1,
+            ImageViewDimensions::Dim1dArray { array_layers, .. } => array_layers,
+            ImageViewDimensions::Dim2d { .. } => 1,
+            ImageViewDimensions::Dim2dArray { array_layers, .. } => array_layers,
+            ImageViewDimensions::Dim3d { .. } => 1,
+            ImageViewDimensions::Cubemap { .. } => 1,
+            ImageViewDimensions::CubemapArray { array_layers, .. } => array_layers,
         }
     }
 
     #[inline]
     pub fn array_layers_with_cube(&self) -> u32 {
         match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. } => 1,
-            Dimensions::Cubemap { .. } => 6,
-            Dimensions::CubemapArray { array_layers, .. } => array_layers * 6,
+            ImageViewDimensions::Dim1d { .. } => 1,
+            ImageViewDimensions::Dim1dArray { array_layers, .. } => array_layers,
+            ImageViewDimensions::Dim2d { .. } => 1,
+            ImageViewDimensions::Dim2dArray { array_layers, .. } => array_layers,
+            ImageViewDimensions::Dim3d { .. } => 1,
+            ImageViewDimensions::Cubemap { .. } => 6,
+            ImageViewDimensions::CubemapArray { array_layers, .. } => array_layers * 6,
         }
     }
 
@@ -325,24 +328,24 @@ impl Dimensions {
     #[inline]
     pub fn to_image_dimensions(&self) -> ImageDimensions {
         match *self {
-            Dimensions::Dim1d { width } => ImageDimensions::Dim1d {
+            ImageViewDimensions::Dim1d { width } => ImageDimensions::Dim1d {
                 width: width,
                 array_layers: 1,
             },
-            Dimensions::Dim1dArray {
+            ImageViewDimensions::Dim1dArray {
                 width,
                 array_layers,
             } => ImageDimensions::Dim1d {
                 width: width,
                 array_layers: array_layers,
             },
-            Dimensions::Dim2d { width, height } => ImageDimensions::Dim2d {
+            ImageViewDimensions::Dim2d { width, height } => ImageDimensions::Dim2d {
                 width: width,
                 height: height,
                 array_layers: 1,
                 cubemap_compatible: false,
             },
-            Dimensions::Dim2dArray {
+            ImageViewDimensions::Dim2dArray {
                 width,
                 height,
                 array_layers,
@@ -352,7 +355,7 @@ impl Dimensions {
                 array_layers: array_layers,
                 cubemap_compatible: false,
             },
-            Dimensions::Dim3d {
+            ImageViewDimensions::Dim3d {
                 width,
                 height,
                 depth,
@@ -361,13 +364,13 @@ impl Dimensions {
                 height: height,
                 depth: depth,
             },
-            Dimensions::Cubemap { size } => ImageDimensions::Dim2d {
+            ImageViewDimensions::Cubemap { size } => ImageDimensions::Dim2d {
                 width: size,
                 height: size,
                 array_layers: 6,
                 cubemap_compatible: true,
             },
-            Dimensions::CubemapArray { size, array_layers } => ImageDimensions::Dim2d {
+            ImageViewDimensions::CubemapArray { size, array_layers } => ImageDimensions::Dim2d {
                 width: size,
                 height: size,
                 array_layers: array_layers * 6,
@@ -376,17 +379,17 @@ impl Dimensions {
         }
     }
 
-    /// Builds the corresponding `ViewType`.
+    /// Builds the corresponding `ImageViewType`.
     #[inline]
-    pub fn to_view_type(&self) -> ViewType {
+    pub fn to_image_view_type(&self) -> ImageViewType {
         match *self {
-            Dimensions::Dim1d { .. } => ViewType::Dim1d,
-            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray,
-            Dimensions::Dim2d { .. } => ViewType::Dim2d,
-            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray,
-            Dimensions::Dim3d { .. } => ViewType::Dim3d,
-            Dimensions::Cubemap { .. } => ViewType::Cubemap,
-            Dimensions::CubemapArray { .. } => ViewType::CubemapArray,
+            ImageViewDimensions::Dim1d { .. } => ImageViewType::Dim1d,
+            ImageViewDimensions::Dim1dArray { .. } => ImageViewType::Dim1dArray,
+            ImageViewDimensions::Dim2d { .. } => ImageViewType::Dim2d,
+            ImageViewDimensions::Dim2dArray { .. } => ImageViewType::Dim2dArray,
+            ImageViewDimensions::Dim3d { .. } => ImageViewType::Dim3d,
+            ImageViewDimensions::Cubemap { .. } => ImageViewType::Cubemap,
+            ImageViewDimensions::CubemapArray { .. } => ImageViewType::CubemapArray,
         }
     }
 
@@ -480,8 +483,9 @@ impl From<ImageTiling> for vk::ImageTiling {
     }
 }
 
+/// The geometry type of an image view.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ViewType {
+pub enum ImageViewType {
     Dim1d,
     Dim1dArray,
     Dim2d,
@@ -491,6 +495,7 @@ pub enum ViewType {
     CubemapArray,
 }
 
+/// The dimensions of an image.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ImageDimensions {
     Dim1d {
@@ -687,8 +692,8 @@ impl ImageDimensions {
 #[cfg(test)]
 mod tests {
     use format;
-    use image::Dimensions;
     use image::ImageDimensions;
+    use image::ImageViewDimensions;
     use image::ImmutableImage;
     use image::MipmapsCount;
 
@@ -808,7 +813,7 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let dimensions = Dimensions::Dim2d {
+        let dimensions = ImageViewDimensions::Dim2d {
             width: 512,
             height: 512,
         };
