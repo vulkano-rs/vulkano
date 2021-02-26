@@ -66,7 +66,7 @@ where
             .any(|&(n, _)| n == attachment_num)
         {
             debug_assert!(image.parent().has_color()); // Was normally checked by the render pass.
-            if !image.parent().inner().image.usage_color_attachment() {
+            if !image.parent().inner().image.usage().color_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage);
             }
         }
@@ -79,7 +79,8 @@ where
                     .parent()
                     .inner()
                     .image
-                    .usage_depth_stencil_attachment()
+                    .usage()
+                    .depth_stencil_attachment
                 {
                     return Err(
                         IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage,
@@ -93,7 +94,7 @@ where
             .iter()
             .any(|&(n, _)| n == attachment_num)
         {
-            if !image.parent().inner().image.usage_input_attachment() {
+            if !image.parent().inner().image.usage().input_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage);
             }
         }

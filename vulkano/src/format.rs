@@ -679,7 +679,7 @@ pub unsafe trait FormatDesc {
 
     fn format(&self) -> Format;
 
-    fn decode_clear_value(&self, Self::ClearValue) -> ClearValue;
+    fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue;
 }
 
 unsafe impl FormatDesc for Format {
@@ -1050,7 +1050,7 @@ pub struct FormatProperties {
 }
 
 /// The features supported by images with a particular format.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[allow(missing_docs)]
 pub struct FormatFeatures {
     pub sampled_image: bool,

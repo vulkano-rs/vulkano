@@ -72,7 +72,7 @@ impl PersistentDescriptorSet<()> {
         let cap = layout.num_bindings();
 
         PersistentDescriptorSetBuilder {
-            layout: layout,
+            layout,
             binding_id: 0,
             writes: Vec::with_capacity(cap),
             resources: (),
@@ -516,7 +516,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 resources: (
                     self.builder.resources,
                     PersistentDescriptorSetBuf {
-                        buffer: buffer,
+                        buffer,
                         descriptor_num: self.builder.binding_id as u32,
                     },
                 ),
@@ -596,7 +596,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 resources: (
                     self.builder.resources,
                     PersistentDescriptorSetBufView {
-                        view: view,
+                        view,
                         descriptor_num: self.builder.binding_id as u32,
                     },
                 ),
@@ -660,7 +660,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 multisampled,
                 array_layers,
             } => {
-                if !image_view.parent().inner().image.usage_input_attachment() {
+                if !image_view.parent().inner().image.usage().input_attachment {
                     return Err(PersistentDescriptorSetError::MissingImageUsage(
                         MissingImageUsage::InputAttachment,
                     ));
@@ -798,7 +798,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                             descriptor_num: self.builder.binding_id as u32,
                         },
                     ),
-                    PersistentDescriptorSetSampler { sampler: sampler },
+                    PersistentDescriptorSetSampler { sampler },
                 ),
             },
             desc: self.desc,
@@ -853,7 +853,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 writes: self.builder.writes,
                 resources: (
                     self.builder.resources,
-                    PersistentDescriptorSetSampler { sampler: sampler },
+                    PersistentDescriptorSetSampler { sampler },
                 ),
             },
             desc: self.desc,
@@ -870,11 +870,11 @@ fn image_match_desc<I>(
 where
     I: ?Sized + ImageViewAccess,
 {
-    if desc.sampled && !image_view.parent().inner().image.usage_sampled() {
+    if desc.sampled && !image_view.parent().inner().image.usage().sampled {
         return Err(PersistentDescriptorSetError::MissingImageUsage(
             MissingImageUsage::Sampled,
         ));
-    } else if !desc.sampled && !image_view.parent().inner().image.usage_storage() {
+    } else if !desc.sampled && !image_view.parent().inner().image.usage().storage {
         return Err(PersistentDescriptorSetError::MissingImageUsage(
             MissingImageUsage::Storage,
         ));

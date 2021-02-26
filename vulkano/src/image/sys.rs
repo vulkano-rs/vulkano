@@ -26,6 +26,7 @@ use std::sync::Arc;
 
 use device::Device;
 use format::Format;
+use format::FormatFeatures;
 use format::FormatTy;
 use format::PossibleYcbcrFormatDesc;
 use image::ImageAspect;
@@ -61,7 +62,7 @@ use VulkanObject;
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
-    usage: vk::ImageUsageFlagBits,
+    usage: ImageUsage,
     format: Format,
     flags: ImageCreateFlags,
 
@@ -70,7 +71,7 @@ pub struct UnsafeImage {
     mipmaps: u32,
 
     // Features that are supported for this particular format.
-    format_features: vk::FormatFeatureFlagBits,
+    format_features: FormatFeatures,
 
     // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
@@ -142,56 +143,40 @@ impl UnsafeImage {
 
         // Checking if image usage conforms to what is supported.
         let format_features = {
-            let physical_device = device.physical_device().internal_object();
-
-            let mut output = MaybeUninit::uninit();
-            vk_i.GetPhysicalDeviceFormatProperties(
-                physical_device,
-                format as u32,
-                output.as_mut_ptr(),
-            );
+            let format_properties = format.properties(device.physical_device());
 
             let features = if linear_tiling {
-                output.assume_init().linearTilingFeatures
+                format_properties.linear_tiling_features
             } else {
-                output.assume_init().optimalTilingFeatures
+                format_properties.optimal_tiling_features
             };
 
-            if features == 0 {
+            if features == FormatFeatures::default() {
                 return Err(ImageCreationError::FormatNotSupported);
             }
 
-            if usage.sampled && (features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_BIT == 0) {
+            if usage.sampled && !features.sampled_image {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if usage.storage && (features & vk::FORMAT_FEATURE_STORAGE_IMAGE_BIT == 0) {
+            if usage.storage && !features.storage_image {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if usage.color_attachment && (features & vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT == 0) {
+            if usage.color_attachment && !features.color_attachment {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if usage.depth_stencil_attachment
-                && (features & vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT == 0)
-            {
+            if usage.depth_stencil_attachment && !features.depth_stencil_attachment {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
             if usage.input_attachment
-                && (features
-                    & (vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
-                        | vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
-                    == 0)
+                && !(features.color_attachment || features.depth_stencil_attachment)
             {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
             if device.loaded_extensions().khr_maintenance1 {
-                if usage.transfer_source
-                    && (features & vk::FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR == 0)
-                {
+                if usage.transfer_source && !features.transfer_src {
                     return Err(ImageCreationError::UnsupportedUsage);
                 }
-                if usage.transfer_destination
-                    && (features & vk::FORMAT_FEATURE_TRANSFER_DST_BIT_KHR == 0)
-                {
+                if usage.transfer_destination && !features.transfer_dst {
                     return Err(ImageCreationError::UnsupportedUsage);
                 }
             }
@@ -474,7 +459,7 @@ impl UnsafeImage {
             _ => unreachable!(),
         };
 
-        let usage = usage.to_usage_bits();
+        let usage_bits = usage.to_usage_bits();
 
         // Now that all checks have been performed, if any of the check failed we query the Vulkan
         // implementation for additional image capabilities.
@@ -492,7 +477,7 @@ impl UnsafeImage {
                 format as u32,
                 ty,
                 tiling,
-                usage,
+                usage_bits,
                 0, /* TODO */
                 output.as_mut_ptr(),
             );
@@ -535,7 +520,7 @@ impl UnsafeImage {
                 } else {
                     vk::IMAGE_TILING_OPTIMAL
                 },
-                usage,
+                usage: usage_bits,
                 sharingMode: sh_mode,
                 queueFamilyIndexCount: sh_indices.len() as u32,
                 pQueueFamilyIndices: sh_indices.as_ptr(),
@@ -623,18 +608,14 @@ impl UnsafeImage {
     pub unsafe fn from_raw(
         device: Arc<Device>,
         handle: u64,
-        usage: u32,
+        usage: ImageUsage,
         format: Format,
         flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         samples: u32,
         mipmaps: u32,
     ) -> UnsafeImage {
-        let vk_i = device.instance().pointers();
-        let physical_device = device.physical_device().internal_object();
-
-        let mut output = MaybeUninit::uninit();
-        vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, output.as_mut_ptr());
+        let format_properties = format.properties(device.physical_device());
 
         // TODO: check that usage is correct in regard to `output`?
 
@@ -647,7 +628,7 @@ impl UnsafeImage {
             dimensions,
             samples,
             mipmaps,
-            format_features: output.assume_init().optimalTilingFeatures,
+            format_features: format_properties.optimal_tiling_features,
             needs_destruction: false,     // TODO: pass as parameter
             preinitialized_layout: false, // TODO: Maybe this should be passed in?
         }
@@ -841,62 +822,22 @@ impl UnsafeImage {
         }
     }
 
-    /// Returns true if the image can be used as a source for blits.
+    /// Returns the flags the image was created with.
     #[inline]
-    pub fn supports_blit_source(&self) -> bool {
-        (self.format_features & vk::FORMAT_FEATURE_BLIT_SRC_BIT) != 0
+    pub fn flags(&self) -> ImageCreateFlags {
+        self.flags
     }
 
-    /// Returns true if the image can be used as a destination for blits.
+    /// Returns the features supported by the image's format.
     #[inline]
-    pub fn supports_blit_destination(&self) -> bool {
-        (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
+    pub fn format_features(&self) -> FormatFeatures {
+        self.format_features
     }
 
-    /// Returns true if the image can be sampled with a linear filtering.
+    /// Returns the usage the image was created with.
     #[inline]
-    pub fn supports_linear_filtering(&self) -> bool {
-        (self.format_features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_source(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_destination(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_sampled(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_storage(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_color_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_depth_stencil_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transient_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_input_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    pub fn usage(&self) -> ImageUsage {
+        self.usage
     }
 
     #[inline]
@@ -1105,7 +1046,7 @@ impl UnsafeImageView {
                     | vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT
                 // TODO | vk::IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
                 // TODO | vk::IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT
-            ) & image.usage
+            ) & image.usage.to_usage_bits()
                 != 0
         );
 
@@ -1181,7 +1122,7 @@ impl UnsafeImageView {
         Ok(UnsafeImageView {
             view,
             device: image.device.clone(),
-            usage: image.usage,
+            usage: image.usage.to_usage_bits(),
             identity_swizzle: true, // FIXME:
             format: image.format,
         })

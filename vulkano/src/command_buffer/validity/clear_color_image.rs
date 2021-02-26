@@ -36,7 +36,7 @@ where
         device.internal_object()
     );
 
-    if !image.inner().image.usage_transfer_destination() {
+    if !image.inner().image.usage().transfer_destination {
         return Err(CheckClearColorImageError::MissingTransferUsage);
     }
 

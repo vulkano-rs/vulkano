@@ -87,13 +87,13 @@ pub unsafe trait ImageAccess {
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     fn supports_blit_source(&self) -> bool {
-        self.inner().image.supports_blit_source()
+        self.inner().image.format_features().blit_src
     }
 
     /// Returns true if the image can be used as a destination for blits.
     #[inline]
     fn supports_blit_destination(&self) -> bool {
-        self.inner().image.supports_blit_destination()
+        self.inner().image.format_features().blit_dst
     }
 
     /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
@@ -151,7 +151,7 @@ pub unsafe trait ImageAccess {
     {
         ImageAccessFromUndefinedLayout {
             image: self,
-            preinitialized: preinitialized,
+            preinitialized,
         }
     }
 

@@ -5,6 +5,7 @@
 - **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
 - **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
 - **Breaking** `ImageDimensions` no longer has the `cubemap_compatible` member. Instead, `UnsafeImage` receives `ImageCreateFlags` which specifies this aspect.
+- **Breaking** Replaced the various functions of `UnsafeImage` to query format features and usage with two that simply return `Formatfeatures` and `ImageUsage`.
 - **Breaking** Changes to view-related type names:
   - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
   - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.
@@ -26,6 +27,7 @@
   - `time` 0.1 -> 0.2 (for examples)
 - Added `VK_KHR_portability_subset` device extension.
 - Added `DeviceExtensions::required_extensions` function that returns a set of available extensions required to create `Device` on this platform.
+- `FormatFeatures` now implements `Copy`.
 
 # Version 0.20.0 (2020-12-26)
 

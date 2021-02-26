@@ -644,16 +644,8 @@ impl<W> Swapchain<W> {
                     array_layers: layers,
                 };
 
-                let img = UnsafeImage::from_raw(
-                    device.clone(),
-                    image,
-                    usage.to_usage_bits(),
-                    format,
-                    flags,
-                    dims,
-                    1,
-                    1,
-                );
+                let img =
+                    UnsafeImage::from_raw(device.clone(), image, usage, format, flags, dims, 1, 1);
 
                 ImageEntry {
                     image: img,

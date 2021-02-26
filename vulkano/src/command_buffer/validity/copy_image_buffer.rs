@@ -66,12 +66,12 @@ where
             if !buffer_inner.buffer.usage_transfer_source() {
                 return Err(CheckCopyBufferImageError::SourceMissingTransferUsage);
             }
-            if !image_inner.image.usage_transfer_destination() {
+            if !image_inner.image.usage().transfer_destination {
                 return Err(CheckCopyBufferImageError::DestinationMissingTransferUsage);
             }
         }
         CheckCopyBufferImageTy::ImageToBuffer => {
-            if !image_inner.image.usage_transfer_source() {
+            if !image_inner.image.usage().transfer_source {
                 return Err(CheckCopyBufferImageError::SourceMissingTransferUsage);
             }
             if !buffer_inner.buffer.usage_transfer_destination() {
@@ -111,7 +111,7 @@ where
         let required_len = required_len_for_format(image.format(), image_size, image_num_layers);
         if required_len > buffer.len() {
             return Err(CheckCopyBufferImageError::BufferTooSmall {
-                required_len: required_len,
+                required_len,
                 actual_len: buffer.len(),
             });
         }
