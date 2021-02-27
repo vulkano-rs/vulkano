@@ -9,7 +9,9 @@
 
 //! Image views.
 //!
-//! This module contains wrappers around the Vulkan image view types.
+//! This module contains types related to image views. An image view wraps around
+//! an image and describes how the GPU should interpret the data. It is needed when an image is
+//! to be used in a shader descriptor or as a framebuffer attachment.
 
 use std::fmt;
 use std::hash::Hash;
@@ -25,7 +27,6 @@ use format::FormatTy;
 use image::sys::UnsafeImage;
 use image::ImageAccess;
 use image::ImageDimensions;
-use image::ImageLayout;
 use sampler::Sampler;
 
 use check_errors;
@@ -34,7 +35,7 @@ use OomError;
 use SafeDeref;
 use VulkanObject;
 
-/// A wrapper around an image that describes how the GPU should interpret the data.
+/// A safe image view that checks for validity and keeps its attached image alive.
 pub struct ImageView {
     image: Arc<dyn ImageAccess>,
     inner: UnsafeImageView,
@@ -170,8 +171,8 @@ impl UnsafeImageView {
     /// - `array_layers` must not be empty, must be within the range of layers of the image, and be compatible with the requested `ty`.
     ///
     /// # Panics
-    /// - Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
-    ///   specify the aspect of image.
+    /// Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
+    /// specify the aspect of image.
     pub unsafe fn new(
         image: &UnsafeImage,
         ty: ImageViewType,
@@ -193,7 +194,7 @@ impl UnsafeImageView {
             FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
             FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
             // Not yet supported --> would require changes to ImmutableImage API :-)
-            FormatTy::Ycbcr => panic!(),
+            FormatTy::Ycbcr => unimplemented!(),
         };
 
         let view = {
@@ -521,20 +522,6 @@ pub unsafe trait ImageViewAccess {
         self.inner().format()
     }
 
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.parent().samples()
-    }
-
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout;
-
     /// Returns true if the view doesn't use components swizzling.
     ///
     /// Must be true when the view is used as a framebuffer attachment or TODO: I don't remember
@@ -571,23 +558,6 @@ where
     #[inline]
     fn dimensions(&self) -> ImageViewDimensions {
         (**self).dimensions()
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_storage_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_combined_image_sampler_layout()
-    }
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_sampled_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_input_attachment_layout()
     }
 
     #[inline]

@@ -22,6 +22,7 @@ use image::view::ImageViewAccess;
 use image::view::ImageViewDimensions;
 use image::view::ImageViewType;
 use image::view::UnsafeImageView;
+use image::ImageDescriptorLayouts;
 use image::ImageInner;
 use image::ImageLayout;
 use swapchain::Swapchain;
@@ -116,6 +117,16 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: ImageLayout::ShaderReadOnlyOptimal,
+            combined_image_sampler: ImageLayout::ShaderReadOnlyOptimal,
+            sampled_image: ImageLayout::ShaderReadOnlyOptimal,
+            input_attachment: ImageLayout::ShaderReadOnlyOptimal,
+        })
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
@@ -201,26 +212,6 @@ unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     #[inline]
     fn inner(&self) -> &UnsafeImageView {
         &self.view
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
     }
 
     #[inline]

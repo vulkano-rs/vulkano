@@ -954,7 +954,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         self.append_command(Cmd {
             source: Some(source),
             destination: Some(destination),
-            destination_layout: destination_layout,
+            destination_layout,
             regions: Some(regions),
         });
         self.prev_cmd_resource(
@@ -1093,7 +1093,7 @@ impl<P> SyncCommandBufferBuilder<P> {
         self.append_command(Cmd {
             source: Some(source),
             destination: Some(destination),
-            source_layout: source_layout,
+            source_layout,
             regions: Some(regions),
         });
         self.prev_cmd_resource(
@@ -2352,15 +2352,17 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     let write = !desc.readonly;
                     let (stages, access) = desc.pipeline_stages_and_access();
                     let mut ignore_me_hack = false;
+                    let layouts = image_view
+                        .parent()
+                        .descriptor_layouts()
+                        .expect("descriptor_layouts must return Some when used in an image view");
                     let layout = match desc.ty {
-                        DescriptorDescTy::CombinedImageSampler(_) => {
-                            image_view.descriptor_set_combined_image_sampler_layout()
-                        }
+                        DescriptorDescTy::CombinedImageSampler(_) => layouts.combined_image_sampler,
                         DescriptorDescTy::Image(ref img) => {
                             if img.sampled {
-                                image_view.descriptor_set_sampled_image_layout()
+                                layouts.sampled_image
                             } else {
-                                image_view.descriptor_set_storage_image_layout()
+                                layouts.storage_image
                             }
                         }
                         DescriptorDescTy::InputAttachment { .. } => {
@@ -2370,7 +2372,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                             // return a `Conflict` error. For now as a work-around we simply ignore
                             // input attachments.
                             ignore_me_hack = true;
-                            image_view.descriptor_set_input_attachment_layout()
+                            layouts.input_attachment
                         }
                         _ => panic!("Tried to bind an image to a non-image descriptor"),
                     };

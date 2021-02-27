@@ -28,6 +28,7 @@ use image::view::ImageViewAccess;
 use image::view::ImageViewDimensions;
 use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
+use image::ImageDescriptorLayouts;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -231,6 +232,16 @@ where
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: ImageLayout::General,
+            combined_image_sampler: ImageLayout::General,
+            sampled_image: ImageLayout::General,
+            input_attachment: ImageLayout::General,
+        })
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
@@ -326,26 +337,6 @@ where
     #[inline]
     fn inner(&self) -> &UnsafeImageView {
         &self.view
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        ImageLayout::General
     }
 
     #[inline]

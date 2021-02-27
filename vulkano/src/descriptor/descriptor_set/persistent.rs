@@ -666,9 +666,9 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                     ));
                 }
 
-                if multisampled && image_view.samples() == 1 {
+                if multisampled && image_view.parent().samples() == 1 {
                     return Err(PersistentDescriptorSetError::ExpectedMultisampled);
-                } else if !multisampled && image_view.samples() != 1 {
+                } else if !multisampled && image_view.parent().samples() != 1 {
                     return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
                 }
 
@@ -898,9 +898,9 @@ where
         }
     }
 
-    if desc.multisampled && image_view.samples() == 1 {
+    if desc.multisampled && image_view.parent().samples() == 1 {
         return Err(PersistentDescriptorSetError::ExpectedMultisampled);
-    } else if !desc.multisampled && image_view.samples() != 1 {
+    } else if !desc.multisampled && image_view.parent().samples() != 1 {
         return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
     }
 

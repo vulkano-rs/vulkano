@@ -35,6 +35,7 @@ use image::view::ImageViewAccess;
 use image::view::ImageViewDimensions;
 use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
+use image::ImageDescriptorLayouts;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -479,6 +480,16 @@ where
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: self.layout,
+            combined_image_sampler: self.layout,
+            sampled_image: self.layout,
+            input_attachment: self.layout,
+        })
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
@@ -566,26 +577,6 @@ where
     }
 
     #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
     fn identity_swizzle(&self) -> bool {
         true
     }
@@ -605,6 +596,11 @@ unsafe impl ImageAccess for SubImage {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        None
     }
 
     #[inline]
@@ -698,6 +694,11 @@ where
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.layout
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        None
     }
 
     #[inline]

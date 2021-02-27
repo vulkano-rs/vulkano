@@ -21,6 +21,7 @@ use format::PossibleSintFormatDesc;
 use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
 use image::sys::UnsafeImage;
+use image::ImageDescriptorLayouts;
 use image::ImageDimensions;
 use image::ImageLayout;
 use sync::AccessError;
@@ -151,6 +152,12 @@ pub unsafe trait ImageAccess {
             preinitialized,
         }
     }
+
+    /// Returns an [`ImageDescriptorLayouts`] structure specifying the image layout to use
+    /// in descriptors of various kinds.
+    ///
+    /// This must return `Some` if the image is to be used to create an image view.
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
 
     /// Returns true if an access to `self` potentially overlaps the same memory as an
     /// access to `other`.
@@ -285,6 +292,11 @@ where
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        (**self).descriptor_layouts()
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         (**self).conflicts_buffer(other)
     }
@@ -382,6 +394,11 @@ where
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        self.image.descriptor_layouts()
     }
 
     #[inline]

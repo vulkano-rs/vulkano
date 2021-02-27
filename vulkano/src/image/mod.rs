@@ -52,6 +52,7 @@ use std::convert::TryFrom;
 pub use self::aspect::ImageAspect;
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
+pub use self::layout::ImageDescriptorLayouts;
 pub use self::layout::ImageLayout;
 pub use self::storage::StorageImage;
 pub use self::swapchain::SwapchainImage;

@@ -821,16 +821,21 @@ macro_rules! smallvec {
 
 impl DescriptorWrite {
     #[inline]
-    pub fn storage_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
+    pub fn storage_image<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
     where
         I: ImageViewAccess,
     {
+        let layouts = image_view
+            .parent()
+            .descriptor_layouts()
+            .expect("descriptor_layouts must return Some when used in an image view");
+
         DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = image.descriptor_set_storage_image_layout() as u32;
-                DescriptorWriteInner::StorageImage(image.inner().internal_object(), layout)
+                let layout = layouts.storage_image as u32;
+                DescriptorWriteInner::StorageImage(image_view.inner().internal_object(), layout)
             }),
         }
     }
@@ -845,16 +850,21 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn sampled_image<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
+    pub fn sampled_image<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
     where
         I: ImageViewAccess,
     {
+        let layouts = image_view
+            .parent()
+            .descriptor_layouts()
+            .expect("descriptor_layouts must return Some when used in an image view");
+
         DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = image.descriptor_set_sampled_image_layout() as u32;
-                DescriptorWriteInner::SampledImage(image.inner().internal_object(), layout)
+                let layout = layouts.sampled_image as u32;
+                DescriptorWriteInner::SampledImage(image_view.inner().internal_object(), layout)
             }),
         }
     }
@@ -864,19 +874,24 @@ impl DescriptorWrite {
         binding: u32,
         array_element: u32,
         sampler: &Arc<Sampler>,
-        image: &I,
+        image_view: &I,
     ) -> DescriptorWrite
     where
         I: ImageViewAccess,
     {
+        let layouts = image_view
+            .parent()
+            .descriptor_layouts()
+            .expect("descriptor_layouts must return Some when used in an image view");
+
         DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = image.descriptor_set_combined_image_sampler_layout() as u32;
+                let layout = layouts.combined_image_sampler as u32;
                 DescriptorWriteInner::CombinedImageSampler(
                     sampler.internal_object(),
-                    image.inner().internal_object(),
+                    image_view.inner().internal_object(),
                     layout,
                 )
             }),
@@ -1072,16 +1087,21 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn input_attachment<I>(binding: u32, array_element: u32, image: &I) -> DescriptorWrite
+    pub fn input_attachment<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
     where
         I: ImageViewAccess,
     {
+        let layouts = image_view
+            .parent()
+            .descriptor_layouts()
+            .expect("descriptor_layouts must return Some when used in an image view");
+
         DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = image.descriptor_set_input_attachment_layout() as u32;
-                DescriptorWriteInner::InputAttachment(image.inner().internal_object(), layout)
+                let layout = layouts.input_attachment as u32;
+                DescriptorWriteInner::InputAttachment(image_view.inner().internal_object(), layout)
             }),
         }
     }
