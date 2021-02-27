@@ -173,7 +173,7 @@ impl<F> StorageImage<F> {
         }
 
         let view = unsafe {
-            UnsafeImageView::raw(
+            UnsafeImageView::new(
                 &image,
                 dimensions.to_image_view_type(),
                 0..image.mipmap_levels(),

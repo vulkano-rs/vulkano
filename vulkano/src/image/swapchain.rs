@@ -58,7 +58,7 @@ impl<W> SwapchainImage<W> {
         id: usize,
     ) -> Result<Arc<SwapchainImage<W>>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = UnsafeImageView::raw(&image.image, ImageViewType::Dim2d, 0..1, 0..1)?;
+        let view = UnsafeImageView::new(&image.image, ImageViewType::Dim2d, 0..1, 0..1)?;
 
         Ok(Arc::new(SwapchainImage {
             swapchain: swapchain.clone(),

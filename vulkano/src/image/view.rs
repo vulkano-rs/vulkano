@@ -34,17 +34,145 @@ use OomError;
 use SafeDeref;
 use VulkanObject;
 
+/// A wrapper around an image that describes how the GPU should interpret the data.
+pub struct ImageView {
+    image: Arc<dyn ImageAccess>,
+    inner: UnsafeImageView,
+}
+
+impl ImageView {
+    /// Creates a new image view spanning all mipmap levels and array layers in the image.
+    #[inline]
+    pub fn new(
+        image: Arc<dyn ImageAccess>,
+        ty: ImageViewType,
+    ) -> Result<ImageView, ImageViewCreationError> {
+        let mipmap_levels = 0..image.mipmap_levels();
+        let array_layers = 0..image.dimensions().array_layers();
+        Self::with_ranges(image, ty, mipmap_levels, array_layers)
+    }
+
+    /// Creates a new image view with the specified mipmap levels and array layers.
+    pub fn with_ranges(
+        image: Arc<dyn ImageAccess>,
+        ty: ImageViewType,
+        mipmap_levels: Range<u32>,
+        array_layers: Range<u32>,
+    ) -> Result<ImageView, ImageViewCreationError> {
+        let image_inner = image.inner().image;
+        let dimensions = image.dimensions();
+        let usage = image_inner.usage();
+        let flags = image_inner.flags();
+
+        if mipmap_levels.end <= mipmap_levels.start
+            || mipmap_levels.end > image_inner.mipmap_levels()
+        {
+            return Err(ImageViewCreationError::MipMapLevelsOutOfRange);
+        }
+
+        if array_layers.end <= array_layers.start || array_layers.end > dimensions.array_layers() {
+            return Err(ImageViewCreationError::ArrayLayersOutOfRange);
+        }
+
+        if !(usage.sampled
+            || usage.storage
+            || usage.color_attachment
+            || usage.depth_stencil_attachment
+            || usage.input_attachment
+            || usage.transient_attachment)
+        {
+            return Err(ImageViewCreationError::InvalidImageUsage);
+        }
+
+        // Check for compatibility with the image
+        match (
+            ty,
+            image.dimensions(),
+            array_layers.end - array_layers.start,
+            mipmap_levels.end - mipmap_levels.start,
+        ) {
+            (ImageViewType::Dim1d, ImageDimensions::Dim1d { .. }, 1, _) => (),
+            (ImageViewType::Dim1dArray, ImageDimensions::Dim1d { .. }, _, _) => (),
+            (ImageViewType::Dim2d, ImageDimensions::Dim2d { .. }, 1, _) => (),
+            (ImageViewType::Dim2dArray, ImageDimensions::Dim2d { .. }, _, _) => (),
+            (ImageViewType::Cubemap, ImageDimensions::Dim2d { .. }, 6, _)
+                if flags.cube_compatible =>
+            {
+                ()
+            }
+            (ImageViewType::CubemapArray, ImageDimensions::Dim2d { .. }, n, _)
+                if flags.cube_compatible && n % 6 == 0 =>
+            {
+                ()
+            }
+            (ImageViewType::Dim3d, ImageDimensions::Dim3d { .. }, 1, _) => (),
+            (ImageViewType::Dim2d, ImageDimensions::Dim3d { .. }, 1, 1)
+                if flags.array_2d_compatible =>
+            {
+                ()
+            }
+            (ImageViewType::Dim2dArray, ImageDimensions::Dim3d { .. }, _, 1)
+                if flags.array_2d_compatible =>
+            {
+                ()
+            }
+            _ => return Err(ImageViewCreationError::IncompatibleType),
+        }
+
+        let inner = unsafe { UnsafeImageView::new(image_inner, ty, mipmap_levels, array_layers)? };
+
+        Ok(ImageView { image, inner })
+    }
+}
+
+/// Error that can happen when creating an image view.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ImageViewCreationError {
+    /// The specified range of array layers was out of range for the image.
+    ArrayLayersOutOfRange,
+    /// The specified range of mipmap levels was out of range for the image.
+    MipMapLevelsOutOfRange,
+    /// The requested [`ImageViewType`] was not compatible with the image, or with the specified ranges of array layers and mipmap levels.
+    IncompatibleType,
+    /// The image was not created with
+    /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
+    /// for image views.
+    InvalidImageUsage,
+    /// Out of memory.
+    OomError(OomError),
+}
+
+impl From<OomError> for ImageViewCreationError {
+    #[inline]
+    fn from(err: OomError) -> ImageViewCreationError {
+        ImageViewCreationError::OomError(err)
+    }
+}
+
+/// A low-level wrapper around a `vkImageView`.
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
     usage: vk::ImageUsageFlagBits,
     identity_swizzle: bool,
     format: Format,
+    ty: ImageViewType,
 }
 
 impl UnsafeImageView {
-    /// See the docs of new().
-    pub unsafe fn raw(
+    /// Creates a new view from an image.
+    ///
+    /// # Safety
+    /// - The returned `UnsafeImageView` must not outlive `image`.
+    /// - `image` must have a usage that is compatible with image views.
+    /// - `ty` must be compatible with the dimensions and flags of the image.
+    /// - `mipmap_levels` must not be empty, must be within the range of levels of the image, and be compatible with the requested `ty`.
+    /// - `array_layers` must not be empty, must be within the range of layers of the image, and be compatible with the requested `ty`.
+    ///
+    /// # Panics
+    /// - Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
+    ///   specify the aspect of image.
+    pub unsafe fn new(
         image: &UnsafeImage,
         ty: ImageViewType,
         mipmap_levels: Range<u32>,
@@ -52,23 +180,10 @@ impl UnsafeImageView {
     ) -> Result<UnsafeImageView, OomError> {
         let vk = image.device().pointers();
 
-        assert!(mipmap_levels.end > mipmap_levels.start);
-        assert!(mipmap_levels.end <= image.mipmap_levels());
-        assert!(array_layers.end > array_layers.start);
-        assert!(array_layers.end <= image.dimensions().array_layers());
-        assert!(
-            (
-                vk::IMAGE_USAGE_SAMPLED_BIT
-                    | vk::IMAGE_USAGE_STORAGE_BIT
-                    | vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                    | vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-                    | vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT
-                    | vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT
-                // TODO | vk::IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
-                // TODO | vk::IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT
-            ) & image.usage().to_usage_bits()
-                != 0
-        );
+        debug_assert!(mipmap_levels.end > mipmap_levels.start);
+        debug_assert!(mipmap_levels.end <= image.mipmap_levels());
+        debug_assert!(array_layers.end > array_layers.start);
+        debug_assert!(array_layers.end <= image.dimensions().array_layers());
 
         let aspect_mask = match image.format().ty() {
             FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
@@ -81,38 +196,13 @@ impl UnsafeImageView {
             FormatTy::Ycbcr => panic!(),
         };
 
-        let view_type = match (
-            image.dimensions(),
-            image.create_flags().cube_compatible,
-            ty,
-            array_layers.end - array_layers.start,
-        ) {
-            (ImageDimensions::Dim1d { .. }, _, ImageViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
-            (ImageDimensions::Dim1d { .. }, _, ImageViewType::Dim1dArray, _) => {
-                vk::IMAGE_VIEW_TYPE_1D_ARRAY
-            }
-            (ImageDimensions::Dim2d { .. }, _, ImageViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
-            (ImageDimensions::Dim2d { .. }, _, ImageViewType::Dim2dArray, _) => {
-                vk::IMAGE_VIEW_TYPE_2D_ARRAY
-            }
-            (ImageDimensions::Dim2d { .. }, true, ImageViewType::Cubemap, 6) => {
-                vk::IMAGE_VIEW_TYPE_CUBE
-            }
-            (ImageDimensions::Dim2d { .. }, true, ImageViewType::CubemapArray, n) => {
-                assert_eq!(n % 6, 0);
-                vk::IMAGE_VIEW_TYPE_CUBE_ARRAY
-            }
-            (ImageDimensions::Dim3d { .. }, _, ImageViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
-            _ => panic!(),
-        };
-
         let view = {
             let infos = vk::ImageViewCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0, // reserved
                 image: image.internal_object(),
-                viewType: view_type,
+                viewType: ty.into(),
                 format: image.format() as u32,
                 components: vk::ComponentMapping {
                     r: 0,
@@ -145,33 +235,8 @@ impl UnsafeImageView {
             usage: image.usage().to_usage_bits(),
             identity_swizzle: true, // FIXME:
             format: image.format(),
+            ty,
         })
-    }
-
-    /// Creates a new view from an image.
-    ///
-    /// Note that you must create the view with identity swizzling if you want to use this view
-    /// as a framebuffer attachment.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if `mipmap_levels` or `array_layers` is out of range of the image.
-    /// - Panics if the view types doesn't match the dimensions of the image (for example a 2D
-    ///   view from a 3D image).
-    /// - Panics if trying to create a cubemap with a number of array layers different from 6.
-    /// - Panics if trying to create a cubemap array with a number of array layers not a multiple
-    ///   of 6.
-    /// - Panics if the device or host ran out of memory.
-    /// - Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
-    ///   specify the aspect of image.
-    #[inline]
-    pub unsafe fn new(
-        image: &UnsafeImage,
-        ty: ImageViewType,
-        mipmap_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> UnsafeImageView {
-        UnsafeImageView::raw(image, ty, mipmap_levels, array_layers).unwrap()
     }
 
     #[inline]
@@ -180,43 +245,8 @@ impl UnsafeImageView {
     }
 
     #[inline]
-    pub fn usage_transfer_source(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_destination(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_sampled(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_storage(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_color_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_depth_stencil_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transient_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_input_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    pub fn ty(&self) -> ImageViewType {
+        self.ty
     }
 }
 
@@ -275,6 +305,20 @@ pub enum ImageViewType {
     Dim3d,
     Cubemap,
     CubemapArray,
+}
+
+impl From<ImageViewType> for vk::ImageViewType {
+    fn from(image_view_type: ImageViewType) -> Self {
+        match image_view_type {
+            ImageViewType::Dim1d => vk::IMAGE_VIEW_TYPE_1D,
+            ImageViewType::Dim1dArray => vk::IMAGE_VIEW_TYPE_1D_ARRAY,
+            ImageViewType::Dim2d => vk::IMAGE_VIEW_TYPE_2D,
+            ImageViewType::Dim2dArray => vk::IMAGE_VIEW_TYPE_2D_ARRAY,
+            ImageViewType::Dim3d => vk::IMAGE_VIEW_TYPE_3D,
+            ImageViewType::Cubemap => vk::IMAGE_VIEW_TYPE_CUBE,
+            ImageViewType::CubemapArray => vk::IMAGE_VIEW_TYPE_CUBE_ARRAY,
+        }
+    }
 }
 
 /// The geometry type of an image view, along with its dimensions.

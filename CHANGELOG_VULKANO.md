@@ -9,7 +9,10 @@
 - **Breaking** Changes to view-related type names:
   - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
   - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.
-- **Breaking** Created a new `image::view` module for all image view related things. It holds the `UnsafeImageView`, `ImageViewType`, `ImageViewDimensions` types and the `ImageViewAccess` trait.
+- **Breaking** Changes to how image views are handled:
+  - Created a new `image::view` module for all image view related things. It holds the `UnsafeImageView`, `ImageViewType`, `ImageViewDimensions` types and the `ImageViewAccess` trait.
+  - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
+  - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.
 - Fixed potential segmentation fault in `ComputePipeline` when referencing `PipelineCache` objects.
