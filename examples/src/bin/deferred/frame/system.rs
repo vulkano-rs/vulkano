@@ -20,8 +20,8 @@ use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::FramebufferAbstract;
 use vulkano::framebuffer::RenderPassAbstract;
 use vulkano::framebuffer::Subpass;
+use vulkano::image::view::ImageView;
 use vulkano::image::AttachmentImage;
-use vulkano::image::ImageAccess;
 use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAccess;
 use vulkano::sync::GpuFuture;
@@ -41,14 +41,14 @@ pub struct FrameSystem {
     render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
-    diffuse_buffer: Arc<AttachmentImage>,
+    diffuse_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     // Intermediate render target that will contain the normal vector in world coordinates of each
     // pixel of the scene.
     // The normal vector is the vector perpendicular to the surface of the object at this point.
-    normals_buffer: Arc<AttachmentImage>,
+    normals_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
     // Intermediate render target that will contain the depth of each pixel of the scene.
     // This is a traditional depth buffer. `0.0` means "near", and `1.0` means "far".
-    depth_buffer: Arc<AttachmentImage>,
+    depth_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
 
     // Will allow us to add an ambient lighting to a scene during the second subpass.
     ambient_lighting_system: AmbientLightingSystem,
@@ -154,25 +154,34 @@ impl FrameSystem {
             input_attachment: true,
             ..ImageUsage::none()
         };
-        let diffuse_buffer = AttachmentImage::with_usage(
-            gfx_queue.device().clone(),
-            [1, 1],
-            Format::A2B10G10R10UnormPack32,
-            atch_usage,
+        let diffuse_buffer = ImageView::new(
+            AttachmentImage::with_usage(
+                gfx_queue.device().clone(),
+                [1, 1],
+                Format::A2B10G10R10UnormPack32,
+                atch_usage,
+            )
+            .unwrap(),
         )
         .unwrap();
-        let normals_buffer = AttachmentImage::with_usage(
-            gfx_queue.device().clone(),
-            [1, 1],
-            Format::R16G16B16A16Sfloat,
-            atch_usage,
+        let normals_buffer = ImageView::new(
+            AttachmentImage::with_usage(
+                gfx_queue.device().clone(),
+                [1, 1],
+                Format::R16G16B16A16Sfloat,
+                atch_usage,
+            )
+            .unwrap(),
         )
         .unwrap();
-        let depth_buffer = AttachmentImage::with_usage(
-            gfx_queue.device().clone(),
-            [1, 1],
-            Format::D16Unorm,
-            atch_usage,
+        let depth_buffer = ImageView::new(
+            AttachmentImage::with_usage(
+                gfx_queue.device().clone(),
+                [1, 1],
+                Format::D16Unorm,
+                atch_usage,
+            )
+            .unwrap(),
         )
         .unwrap();
 
@@ -224,12 +233,12 @@ impl FrameSystem {
     ) -> Frame
     where
         F: GpuFuture + 'static,
-        I: ImageAccess + ImageViewAccess + Clone + Send + Sync + 'static,
+        I: ImageViewAccess + Clone + Send + Sync + 'static,
     {
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
-        let img_dims = ImageAccess::dimensions(&final_image).width_height();
-        if ImageAccess::dimensions(&self.diffuse_buffer).width_height() != img_dims {
+        let img_dims = final_image.parent().dimensions().width_height();
+        if self.diffuse_buffer.parent().dimensions().width_height() != img_dims {
             // TODO: use shortcut provided in vulkano 0.6
             let atch_usage = ImageUsage {
                 transient_attachment: true,
@@ -241,25 +250,34 @@ impl FrameSystem {
             // image is only defined when within a render pass. In other words you can draw to
             // them in a subpass then read them in another subpass, but as soon as you leave the
             // render pass their content becomes undefined.
-            self.diffuse_buffer = AttachmentImage::with_usage(
-                self.gfx_queue.device().clone(),
-                img_dims,
-                Format::A2B10G10R10UnormPack32,
-                atch_usage,
+            self.diffuse_buffer = ImageView::new(
+                AttachmentImage::with_usage(
+                    self.gfx_queue.device().clone(),
+                    img_dims,
+                    Format::A2B10G10R10UnormPack32,
+                    atch_usage,
+                )
+                .unwrap(),
             )
             .unwrap();
-            self.normals_buffer = AttachmentImage::with_usage(
-                self.gfx_queue.device().clone(),
-                img_dims,
-                Format::R16G16B16A16Sfloat,
-                atch_usage,
+            self.normals_buffer = ImageView::new(
+                AttachmentImage::with_usage(
+                    self.gfx_queue.device().clone(),
+                    img_dims,
+                    Format::R16G16B16A16Sfloat,
+                    atch_usage,
+                )
+                .unwrap(),
             )
             .unwrap();
-            self.depth_buffer = AttachmentImage::with_usage(
-                self.gfx_queue.device().clone(),
-                img_dims,
-                Format::D16Unorm,
-                atch_usage,
+            self.depth_buffer = ImageView::new(
+                AttachmentImage::with_usage(
+                    self.gfx_queue.device().clone(),
+                    img_dims,
+                    Format::D16Unorm,
+                    atch_usage,
+                )
+                .unwrap(),
             )
             .unwrap();
         }

@@ -184,6 +184,7 @@ mod tests {
     use format::Format;
     use framebuffer::EmptySinglePassRenderPassDesc;
     use image::AttachmentImage;
+    use image::view::ImageView;
 
     #[test]
     fn basic_ok() {
@@ -205,9 +206,11 @@ mod tests {
         )
         .unwrap();
 
-        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+        ).unwrap();
 
-        ensure_image_view_compatible(&rp, 0, &img).unwrap();
+        ensure_image_view_compatible(&rp, 0, &view).unwrap();
     }
 
     #[test]
@@ -230,9 +233,11 @@ mod tests {
         )
         .unwrap();
 
-        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+        ).unwrap();
 
-        match ensure_image_view_compatible(&rp, 0, &img) {
+        match ensure_image_view_compatible(&rp, 0, &view) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
                 expected: Format::R16G16Sfloat,
                 obtained: Format::R8G8B8A8Unorm,
@@ -246,10 +251,12 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let rp = EmptySinglePassRenderPassDesc;
-        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+        ).unwrap();
 
         assert_should_panic!("Attachment num out of range", {
-            let _ = ensure_image_view_compatible(&rp, 0, &img);
+            let _ = ensure_image_view_compatible(&rp, 0, &view);
         });
     }
 

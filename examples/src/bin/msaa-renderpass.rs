@@ -77,7 +77,10 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, Subpass};
-use vulkano::image::{view::ImageViewDimensions, AttachmentImage, StorageImage};
+use vulkano::image::{
+    view::{ImageView, ImageViewDimensions},
+    AttachmentImage, StorageImage,
+};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -105,11 +108,14 @@ fn main() {
     //
     // As explained in the introduction, we pass the same dimensions and format as for the final
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
-    let intermediary = AttachmentImage::transient_multisampled(
-        device.clone(),
-        [1024, 1024],
-        4,
-        Format::R8G8B8A8Unorm,
+    let intermediary = ImageView::new(
+        AttachmentImage::transient_multisampled(
+            device.clone(),
+            [1024, 1024],
+            4,
+            Format::R8G8B8A8Unorm,
+        )
+        .unwrap(),
     )
     .unwrap();
 
@@ -124,6 +130,7 @@ fn main() {
         Some(queue.family()),
     )
     .unwrap();
+    let view = ImageView::new(image.clone()).unwrap();
 
     // In this example, we are going to perform the *resolve* (ie. turning a multisampled image
     // into a non-multisampled one) as part of the render pass. This is the preferred method of
@@ -168,7 +175,7 @@ fn main() {
         Framebuffer::start(render_pass.clone())
             .add(intermediary.clone())
             .unwrap()
-            .add(image.clone())
+            .add(view.clone())
             .unwrap()
             .build()
             .unwrap(),

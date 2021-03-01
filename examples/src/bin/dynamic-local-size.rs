@@ -24,7 +24,10 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::{view::ImageViewDimensions, StorageImage};
+use vulkano::image::{
+    view::{ImageView, ImageViewDimensions},
+    StorageImage,
+};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
@@ -174,11 +177,12 @@ fn main() {
         Some(queue.family()),
     )
     .unwrap();
+    let view = ImageView::new(image.clone()).unwrap();
 
     let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
     let set = Arc::new(
         PersistentDescriptorSet::start(layout.clone())
-            .add_image(image.clone())
+            .add_image(view.clone())
             .unwrap()
             .build()
             .unwrap(),

@@ -14,7 +14,8 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{
-    view::ImageViewDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+    view::{ImageView, ImageViewDimensions},
+    ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
@@ -162,14 +163,15 @@ fn main() {
         image_data.resize((info.width * info.height * 4) as usize, 0);
         reader.next_frame(&mut image_data).unwrap();
 
-        ImmutableImage::from_iter(
+        let (image, future) = ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8Srgb,
             queue.clone(),
         )
-        .unwrap()
+        .unwrap();
+        (ImageView::new(image).unwrap(), future)
     };
 
     let sampler = Sampler::new(
@@ -340,9 +342,10 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
             Arc::new(
                 Framebuffer::start(render_pass.clone())
-                    .add(image.clone())
+                    .add(view)
                     .unwrap()
                     .build()
                     .unwrap(),

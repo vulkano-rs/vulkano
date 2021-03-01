@@ -26,9 +26,6 @@ use image::sys::UnsafeImage;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::view::ImageViewAccess;
-use image::view::ImageViewType;
-use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
 use image::ImageDescriptorLayouts;
 use image::ImageDimensions;
@@ -79,9 +76,6 @@ use sync::Sharing;
 pub struct AttachmentImage<F = Format, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner implementation.
     image: UnsafeImage,
-
-    // We maintain a view of the whole image since we will need it when rendering.
-    view: UnsafeImageView,
 
     // Memory used to back the image.
     memory: A,
@@ -460,11 +454,8 @@ impl<F> AttachmentImage<F> {
             image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        let view = unsafe { UnsafeImageView::new(&image, ImageViewType::Dim2d, 0..1, 0..1)? };
-
         Ok(Arc::new(AttachmentImage {
             image,
-            view,
             memory,
             format,
             attachment_layout: if is_depth {
@@ -623,26 +614,6 @@ where
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
-    }
-}
-
-unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
     }
 }
 

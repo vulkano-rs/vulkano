@@ -54,10 +54,10 @@ use VulkanObject;
 /// use vulkano::framebuffer::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
-/// # let my_image: Arc<vulkano::image::AttachmentImage<vulkano::format::Format>> = return;
+/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage<vulkano::format::Format>>>> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::start(render_pass.clone())
-///     .add(my_image).unwrap()
+///     .add(view).unwrap()
 ///     .build().unwrap();
 /// ```
 ///
@@ -565,6 +565,7 @@ mod tests {
     use framebuffer::FramebufferCreationError;
     use framebuffer::RenderPassDesc;
     use image::attachment::AttachmentImage;
+    use image::view::ImageView;
     use std::sync::Arc;
 
     #[test]
@@ -589,10 +590,12 @@ mod tests {
             .unwrap(),
         );
 
-        let image =
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
         let _ = Framebuffer::start(render_pass)
-            .add(image.clone())
+            .add(view)
             .unwrap()
             .build()
             .unwrap();
@@ -634,9 +637,12 @@ mod tests {
             .unwrap(),
         );
 
-        let image = AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap(),
+        )
+        .unwrap();
 
-        match Framebuffer::start(render_pass).add(image.clone()) {
+        match Framebuffer::start(render_pass).add(view) {
             Err(FramebufferCreationError::IncompatibleAttachment(_)) => (),
             _ => panic!(),
         }
@@ -666,10 +672,13 @@ mod tests {
             .unwrap(),
         );
 
-        let img = AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let _ = Framebuffer::with_dimensions(render_pass, [512, 512, 1])
-            .add(img)
+            .add(view)
             .unwrap()
             .build()
             .unwrap();
@@ -697,9 +706,12 @@ mod tests {
             .unwrap(),
         );
 
-        let img = AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
-        match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(img) {
+        match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(view) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                 expected,
                 obtained,
@@ -739,8 +751,14 @@ mod tests {
             .unwrap(),
         );
 
-        let a = AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap();
-        let b = AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap();
+        let a = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
+        let b = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         match Framebuffer::start(render_pass).add(a).unwrap().add(b) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
@@ -782,8 +800,14 @@ mod tests {
             .unwrap(),
         );
 
-        let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
-        let b = AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap();
+        let a = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
+        let b = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let fb = Framebuffer::with_intersecting_dimensions(render_pass)
             .add(a)
@@ -827,10 +851,13 @@ mod tests {
             .unwrap(),
         );
 
-        let img = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
-            .add(img)
+            .add(view)
             .unwrap()
             .build();
 
@@ -865,8 +892,14 @@ mod tests {
             .unwrap(),
         );
 
-        let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
-        let b = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
+        let a = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
+        let b = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
             .add(a)

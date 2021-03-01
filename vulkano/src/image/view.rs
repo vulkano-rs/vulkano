@@ -36,30 +36,55 @@ use SafeDeref;
 use VulkanObject;
 
 /// A safe image view that checks for validity and keeps its attached image alive.
-pub struct ImageView {
-    image: Arc<dyn ImageAccess>,
+pub struct ImageView<I>
+where
+    I: ImageAccess,
+{
+    image: I,
     inner: UnsafeImageView,
 }
 
-impl ImageView {
+impl<I> ImageView<I>
+where
+    I: ImageAccess,
+{
     /// Creates a new image view spanning all mipmap levels and array layers in the image.
+    ///
+    /// The view type is automatically determined from the image, based on its dimensions and
+    /// number of layers.
     #[inline]
-    pub fn new(
-        image: Arc<dyn ImageAccess>,
-        ty: ImageViewType,
-    ) -> Result<ImageView, ImageViewCreationError> {
-        let mipmap_levels = 0..image.mipmap_levels();
-        let array_layers = 0..image.dimensions().array_layers();
-        Self::with_ranges(image, ty, mipmap_levels, array_layers)
+    pub fn new(image: I) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+        let ty = match image.dimensions() {
+            ImageDimensions::Dim1d {
+                array_layers: 1, ..
+            } => ImageViewType::Dim1d,
+            ImageDimensions::Dim1d { .. } => ImageViewType::Dim1dArray,
+            ImageDimensions::Dim2d {
+                array_layers: 1, ..
+            } => ImageViewType::Dim2d,
+            ImageDimensions::Dim2d { .. } => ImageViewType::Dim2dArray,
+            ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
+        };
+        Self::with_type(image, ty)
     }
 
-    /// Creates a new image view with the specified mipmap levels and array layers.
-    pub fn with_ranges(
-        image: Arc<dyn ImageAccess>,
+    /// Crates a new image view with a custom type.
+    pub fn with_type(
+        image: I,
+        ty: ImageViewType,
+    ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+        let mipmap_levels = 0..image.mipmap_levels();
+        let array_layers = 0..image.dimensions().array_layers();
+        Self::with_type_ranges(image, ty, mipmap_levels, array_layers)
+    }
+
+    /// Creates a new image view with a custom type and ranges of mipmap levels and array layers.
+    pub fn with_type_ranges(
+        image: I,
         ty: ImageViewType,
         mipmap_levels: Range<u32>,
         array_layers: Range<u32>,
-    ) -> Result<ImageView, ImageViewCreationError> {
+    ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         let image_inner = image.inner().image;
         let dimensions = image.dimensions();
         let usage = image_inner.usage();
@@ -122,7 +147,7 @@ impl ImageView {
 
         let inner = unsafe { UnsafeImageView::new(image_inner, ty, mipmap_levels, array_layers)? };
 
-        Ok(ImageView { image, inner })
+        Ok(Arc::new(ImageView { image, inner }))
     }
 }
 
@@ -544,6 +569,26 @@ pub unsafe trait ImageViewAccess {
     }
 
     //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
+}
+
+unsafe impl<I> ImageViewAccess for ImageView<I>
+where
+    I: ImageAccess,
+{
+    #[inline]
+    fn parent(&self) -> &dyn ImageAccess {
+        &self.image
+    }
+
+    #[inline]
+    fn inner(&self) -> &UnsafeImageView {
+        &self.inner
+    }
+
+    #[inline]
+    fn identity_swizzle(&self) -> bool {
+        true
+    }
 }
 
 unsafe impl<T> ImageViewAccess for T

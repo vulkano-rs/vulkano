@@ -24,9 +24,7 @@ use image::sys::UnsafeImage;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::view::ImageViewAccess;
 use image::view::ImageViewDimensions;
-use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
 use image::ImageDescriptorLayouts;
 use image::ImageInner;
@@ -53,9 +51,6 @@ where
 {
     // Inner implementation.
     image: UnsafeImage,
-
-    // We maintain a view of the whole image.
-    view: UnsafeImageView,
 
     // Memory used to back the image.
     memory: PotentialDedicatedAllocation<A::Alloc>,
@@ -173,18 +168,8 @@ impl<F> StorageImage<F> {
             image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        let view = unsafe {
-            UnsafeImageView::new(
-                &image,
-                dimensions.to_image_view_type(),
-                0..image.mipmap_levels(),
-                0..image.dimensions().array_layers(),
-            )?
-        };
-
         Ok(Arc::new(StorageImage {
             image,
-            view,
             memory,
             dimensions,
             format,
@@ -316,27 +301,6 @@ where
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
-    }
-}
-
-unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
-where
-    F: 'static + Send + Sync,
-    A: MemoryPool,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
     }
 }
 

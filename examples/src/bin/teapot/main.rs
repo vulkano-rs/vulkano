@@ -15,6 +15,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::attachment::AttachmentImage;
+use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::instance::PhysicalDevice;
@@ -314,15 +315,18 @@ fn window_size_dependent_setup(
 ) {
     let dimensions = images[0].dimensions();
 
-    let depth_buffer =
-        AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap();
+    let depth_buffer = ImageView::new(
+        AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap(),
+    )
+    .unwrap();
 
     let framebuffers = images
         .iter()
         .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
             Arc::new(
                 Framebuffer::start(render_pass.clone())
-                    .add(image.clone())
+                    .add(view)
                     .unwrap()
                     .add(depth_buffer.clone())
                     .unwrap()

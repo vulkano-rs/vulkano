@@ -26,6 +26,7 @@
 // drawn after the lighting, and that the whole process consumes more memory.
 
 use vulkano::device::{Device, DeviceExtensions};
+use vulkano::image::view::ImageView;
 use vulkano::image::ImageUsage;
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::swapchain;
@@ -87,7 +88,7 @@ fn main() {
         let format = caps.supported_formats[0].0;
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
-        Swapchain::new(
+        let (swapchain, images) = Swapchain::new(
             device.clone(),
             surface.clone(),
             caps.min_image_count,
@@ -103,7 +104,12 @@ fn main() {
             true,
             ColorSpace::SrgbNonLinear,
         )
-        .unwrap()
+        .unwrap();
+        let images = images
+            .into_iter()
+            .map(|image| ImageView::new(image.clone()).unwrap())
+            .collect::<Vec<_>>();
+        (swapchain, images)
     };
 
     // Here is the basic initialization for the deferred system.
@@ -138,6 +144,10 @@ fn main() {
                         Err(SwapchainCreationError::UnsupportedDimensions) => return,
                         Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                     };
+                let new_images = new_images
+                    .into_iter()
+                    .map(|image| ImageView::new(image.clone()).unwrap())
+                    .collect::<Vec<_>>();
 
                 swapchain = new_swapchain;
                 images = new_images;

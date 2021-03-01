@@ -31,9 +31,7 @@ use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
-use image::view::ImageViewAccess;
 use image::view::ImageViewDimensions;
-use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
 use image::ImageDescriptorLayouts;
 use image::ImageInner;
@@ -60,7 +58,6 @@ use sync::Sharing;
 #[derive(Debug)]
 pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
-    view: UnsafeImageView,
     dimensions: ImageViewDimensions,
     memory: A,
     format: F,
@@ -299,18 +296,8 @@ impl<F> ImmutableImage<F> {
             image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        let view = unsafe {
-            UnsafeImageView::new(
-                &image,
-                dimensions.to_image_view_type(),
-                0..image.mipmap_levels(),
-                0..image.dimensions().array_layers(),
-            )?
-        };
-
         let image = Arc::new(ImmutableImage {
             image,
-            view,
             memory,
             dimensions,
             format,
@@ -554,26 +541,6 @@ where
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
-    }
-}
-
-unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
     }
 }
 

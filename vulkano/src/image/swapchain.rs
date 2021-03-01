@@ -18,9 +18,6 @@ use format::FormatDesc;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::view::ImageViewAccess;
-use image::view::ImageViewType;
-use image::view::UnsafeImageView;
 use image::ImageDescriptorLayouts;
 use image::ImageInner;
 use image::ImageLayout;
@@ -46,7 +43,6 @@ use OomError;
 pub struct SwapchainImage<W> {
     swapchain: Arc<Swapchain<W>>,
     image_offset: usize,
-    view: UnsafeImageView,
 }
 
 impl<W> SwapchainImage<W> {
@@ -58,12 +54,10 @@ impl<W> SwapchainImage<W> {
         id: usize,
     ) -> Result<Arc<SwapchainImage<W>>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = UnsafeImageView::new(&image.image, ImageViewType::Dim2d, 0..1, 0..1)?;
 
         Ok(Arc::new(SwapchainImage {
             swapchain: swapchain.clone(),
             image_offset: id,
-            view,
         }))
     }
 
@@ -190,23 +184,6 @@ unsafe impl<P, W> ImageContent<P> for SwapchainImage<W> {
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
-    }
-}
-
-unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
     }
 }
 
