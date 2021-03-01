@@ -14,8 +14,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
 use vulkano::image::{
-    view::{ImageView, ImageViewDimensions},
-    ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+    view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
@@ -155,9 +154,10 @@ fn main() {
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
         let (info, mut reader) = decoder.read_info().unwrap();
-        let dimensions = ImageViewDimensions::Dim2d {
+        let dimensions = ImageDimensions::Dim2d {
             width: info.width,
             height: info.height,
+            array_layers: 1,
         };
         let mut image_data = Vec::new();
         image_data.resize((info.width * info.height * 4) as usize, 0);

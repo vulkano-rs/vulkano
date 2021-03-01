@@ -487,7 +487,6 @@ impl ImageDimensions {
 #[cfg(test)]
 mod tests {
     use format;
-    use image::view::ImageViewDimensions;
     use image::ImageDimensions;
     use image::ImmutableImage;
     use image::MipmapsCount;
@@ -596,9 +595,10 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let dimensions = ImageViewDimensions::Dim2d {
+        let dimensions = ImageDimensions::Dim2d {
             width: 512,
             height: 512,
+            array_layers: 1,
         };
         {
             let mut vec = Vec::new();

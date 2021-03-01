@@ -4,15 +4,15 @@
 - **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
 - **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
 - **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
-- **Breaking** `ImageDimensions` no longer has the `cubemap_compatible` member. Instead, `UnsafeImage` receives `ImageCreateFlags` which specifies this aspect.
-- **Breaking** Replaced the various functions of `UnsafeImage` to query format features and usage with two that simply return `Formatfeatures` and `ImageUsage`.
-- **Breaking** Changes to view-related type names:
-  - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
-  - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.
-- **Breaking** Changes to how image views are handled:
-  - Created a new `image::view` module for all image view related things. It holds the `UnsafeImageView`, `ImageViewType`, `ImageViewDimensions` types and the `ImageViewAbstract` trait.
+- **Breaking** Changes to image types:
+  - Image types no longer implement `ImageViewAccess`.
+  - `Dimensions` is removed. Image constructors now take `ImageDimensions`.
+  - `ImageDimensions` no longer has the `cubemap_compatible` member. Instead, several image constructors take `ImageCreateFlags` which specifies this aspect.
+  - Replaced the various functions of `UnsafeImage` to query format features and usage with two that simply return `Formatfeatures` and `ImageUsage`.
+- **Breaking** Changes to image view handling:
+  - Created a new `image::view` module for all image view related things.
   - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
-  - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. The plain image types no longer implement this trait, but `ImageView` does.
+  - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. `ImageView` implements this trait.
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.

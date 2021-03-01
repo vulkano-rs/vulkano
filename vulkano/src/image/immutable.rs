@@ -31,9 +31,9 @@ use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
-use image::view::ImageViewDimensions;
 use image::ImageCreateFlags;
 use image::ImageDescriptorLayouts;
+use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -58,7 +58,7 @@ use sync::Sharing;
 #[derive(Debug)]
 pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
-    dimensions: ImageViewDimensions,
+    dimensions: ImageDimensions,
     memory: A,
     format: F,
     initialized: AtomicBool,
@@ -124,18 +124,17 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
 fn generate_mipmaps<Img>(
     cbb: &mut AutoCommandBufferBuilder,
     image: Arc<Img>,
-    dimensions: ImageViewDimensions,
+    dimensions: ImageDimensions,
     layout: ImageLayout,
 ) where
     Img: ImageAccess + Send + Sync + 'static,
 {
-    let img_dim = dimensions.to_image_dimensions();
     for level in 1..image.mipmap_levels() {
-        let [xs, ys, ds] = img_dim
+        let [xs, ys, ds] = dimensions
             .mipmap_dimensions(level - 1)
             .unwrap()
             .width_height_depth();
-        let [xd, yd, dd] = img_dim
+        let [xd, yd, dd] = dimensions
             .mipmap_dimensions(level)
             .unwrap()
             .width_height_depth();
@@ -145,11 +144,18 @@ fn generate_mipmaps<Img>(
             level - 1,
             1,
             0,
-            img_dim.array_layers(),
+            dimensions.array_layers(),
             layout,
         );
 
-        let dst = SubImage::new(image.clone(), level, 1, 0, img_dim.array_layers(), layout);
+        let dst = SubImage::new(
+            image.clone(),
+            level,
+            1,
+            0,
+            dimensions.array_layers(),
+            layout,
+        );
 
         cbb.blit_image(
             src,                               //source
@@ -174,7 +180,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         format: F,
         queue_families: I,
     ) -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
@@ -196,7 +202,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn with_mipmaps<'a, I, M>(
         device: Arc<Device>,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         format: F,
         mipmaps: M,
         queue_families: I,
@@ -213,12 +219,15 @@ impl<F> ImmutableImage<F> {
             ..ImageUsage::none()
         };
 
+        let flags = ImageCreateFlags::none();
+
         let (image, _) = ImmutableImage::uninitialized(
             device,
             dimensions,
             format,
             mipmaps,
             usage,
+            flags,
             ImageLayout::ShaderReadOnlyOptimal,
             queue_families,
         )?;
@@ -231,10 +240,11 @@ impl<F> ImmutableImage<F> {
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
     pub fn uninitialized<'a, I, M>(
         device: Arc<Device>,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         format: F,
         mipmaps: M,
         usage: ImageUsage,
+        flags: ImageCreateFlags,
         layout: ImageLayout,
         queue_families: I,
     ) -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
@@ -248,14 +258,6 @@ impl<F> ImmutableImage<F> {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let mut flags = ImageCreateFlags::none();
-
-        if let ImageViewDimensions::Cubemap { .. } | ImageViewDimensions::CubemapArray { .. } =
-            dimensions
-        {
-            flags.cube_compatible = true;
-        }
-
         let (image, mem_reqs) = unsafe {
             let sharing = if queue_families.len() >= 2 {
                 Sharing::Concurrent(queue_families.iter().cloned())
@@ -268,7 +270,7 @@ impl<F> ImmutableImage<F> {
                 usage,
                 format.format(),
                 flags,
-                dimensions.to_image_dimensions(),
+                dimensions,
                 1,
                 mipmaps,
                 sharing,
@@ -319,7 +321,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn from_iter<P, I>(
         iter: I,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
         format: F,
         queue: Arc<Queue>,
@@ -348,7 +350,7 @@ impl<F> ImmutableImage<F> {
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     pub fn from_buffer<B, P>(
         source: B,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
         format: F,
         queue: Arc<Queue>,
@@ -372,6 +374,7 @@ impl<F> ImmutableImage<F> {
             sampled: true,
             ..ImageUsage::none()
         };
+        let flags = ImageCreateFlags::none();
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 
         let (image, initializer) = ImmutableImage::uninitialized(
@@ -380,6 +383,7 @@ impl<F> ImmutableImage<F> {
             format,
             mipmaps,
             usage,
+            flags,
             layout,
             source.device().active_queue_families(),
         )?;
@@ -400,7 +404,7 @@ impl<F> ImmutableImage<F> {
             [0, 0, 0],
             dimensions.width_height_depth(),
             0,
-            dimensions.array_layers_with_cube(),
+            dimensions.array_layers(),
             0,
         )
         .unwrap();
@@ -430,7 +434,7 @@ impl<F> ImmutableImage<F> {
 impl<F, A> ImmutableImage<F, A> {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> ImageViewDimensions {
+    pub fn dimensions(&self) -> ImageDimensions {
         self.dimensions
     }
 

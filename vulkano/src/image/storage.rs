@@ -24,9 +24,9 @@ use image::sys::UnsafeImage;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::view::ImageViewDimensions;
 use image::ImageCreateFlags;
 use image::ImageDescriptorLayouts;
+use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -55,8 +55,8 @@ where
     // Memory used to back the image.
     memory: PotentialDedicatedAllocation<A::Alloc>,
 
-    // Dimensions of the image view.
-    dimensions: ImageViewDimensions,
+    // Dimensions of the image.
+    dimensions: ImageDimensions,
 
     // Format.
     format: F,
@@ -73,7 +73,7 @@ impl<F> StorageImage<F> {
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         format: F,
         queue_families: I,
     ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
@@ -99,16 +99,18 @@ impl<F> StorageImage<F> {
             input_attachment: true,
             transient_attachment: false,
         };
+        let flags = ImageCreateFlags::none();
 
-        StorageImage::with_usage(device, dimensions, format, usage, queue_families)
+        StorageImage::with_usage(device, dimensions, format, usage, flags, queue_families)
     }
 
     /// Same as `new`, but allows specifying the usage.
     pub fn with_usage<'a, I>(
         device: Arc<Device>,
-        dimensions: ImageViewDimensions,
+        dimensions: ImageDimensions,
         format: F,
         usage: ImageUsage,
+        flags: ImageCreateFlags,
         queue_families: I,
     ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
     where
@@ -119,14 +121,6 @@ impl<F> StorageImage<F> {
             .into_iter()
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
-
-        let mut flags = ImageCreateFlags::none();
-
-        if let ImageViewDimensions::Cubemap { .. } | ImageViewDimensions::CubemapArray { .. } =
-            dimensions
-        {
-            flags.cube_compatible = true;
-        }
 
         let (image, mem_reqs) = unsafe {
             let sharing = if queue_families.len() >= 2 {
@@ -140,7 +134,7 @@ impl<F> StorageImage<F> {
                 usage,
                 format.format(),
                 flags,
-                dimensions.to_image_dimensions(),
+                dimensions,
                 1,
                 1,
                 sharing,
@@ -185,7 +179,7 @@ where
 {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> ImageViewDimensions {
+    pub fn dimensions(&self) -> ImageDimensions {
         self.dimensions
     }
 }
@@ -337,16 +331,17 @@ where
 mod tests {
     use super::StorageImage;
     use format::Format;
-    use image::view::ImageViewDimensions;
+    use image::ImageDimensions;
 
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
         let _img = StorageImage::new(
             device,
-            ImageViewDimensions::Dim2d {
+            ImageDimensions::Dim2d {
                 width: 32,
                 height: 32,
+                array_layers: 1,
             },
             Format::R8G8B8A8Unorm,
             Some(queue.family()),

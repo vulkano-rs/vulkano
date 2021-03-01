@@ -77,10 +77,7 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, Subpass};
-use vulkano::image::{
-    view::{ImageView, ImageViewDimensions},
-    AttachmentImage, StorageImage,
-};
+use vulkano::image::{view::ImageView, AttachmentImage, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -122,9 +119,10 @@ fn main() {
     // This is the final image that will receive the anti-aliased triangle.
     let image = StorageImage::new(
         device.clone(),
-        ImageViewDimensions::Dim2d {
+        ImageDimensions::Dim2d {
             width: 1024,
             height: 1024,
+            array_layers: 1,
         },
         Format::R8G8B8A8Unorm,
         Some(queue.family()),

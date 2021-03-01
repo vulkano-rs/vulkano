@@ -24,10 +24,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::{
-    view::{ImageView, ImageViewDimensions},
-    StorageImage,
-};
+use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
@@ -169,9 +166,10 @@ fn main() {
 
     let image = StorageImage::new(
         device.clone(),
-        ImageViewDimensions::Dim2d {
+        ImageDimensions::Dim2d {
             width: 1024,
             height: 1024,
+            array_layers: 1,
         },
         Format::R8G8B8A8Unorm,
         Some(queue.family()),
