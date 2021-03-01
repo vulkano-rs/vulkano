@@ -337,9 +337,12 @@ fn descriptor_infos(
                     let decoration_block = doc
                         .get_decoration_params(pointed_ty, Decoration::DecorationBlock)
                         .is_some();
+                    let decoration_buffer_block = doc
+                        .get_decoration_params(pointed_ty, Decoration::DecorationBufferBlock)
+                        .is_some();
                     assert!(
-                        decoration_block,
-                        "Structs in shader interface are expected to be decorated with Block"
+                        decoration_block ^ decoration_buffer_block,
+                        "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
                     let is_ssbo = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
