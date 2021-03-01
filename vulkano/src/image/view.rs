@@ -13,6 +13,7 @@
 //! an image and describes how the GPU should interpret the data. It is needed when an image is
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
+use std::error;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -27,6 +28,7 @@ use format::FormatTy;
 use image::sys::UnsafeImage;
 use image::ImageAccess;
 use image::ImageDimensions;
+use memory::DeviceMemoryAllocError;
 use sampler::Sampler;
 
 use check_errors;
@@ -173,6 +175,8 @@ where
 /// Error that can happen when creating an image view.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ImageViewCreationError {
+    /// Allocating memory failed.
+    AllocError(DeviceMemoryAllocError),
     /// The specified range of array layers was out of range for the image.
     ArrayLayersOutOfRange,
     /// The specified range of mipmap levels was out of range for the image.
@@ -183,14 +187,41 @@ pub enum ImageViewCreationError {
     /// [one of the required usages](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/vkspec.html#valid-imageview-imageusage)
     /// for image views.
     InvalidImageUsage,
-    /// Out of memory.
-    OomError(OomError),
+}
+
+impl error::Error for ImageViewCreationError {
+    #[inline]
+    fn cause(&self) -> Option<&dyn error::Error> {
+        match *self {
+            ImageViewCreationError::AllocError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for ImageViewCreationError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ImageViewCreationError::AllocError(err) => "allocating memory failed",
+                ImageViewCreationError::ArrayLayersOutOfRange => "array layers are out of ramge",
+                ImageViewCreationError::MipMapLevelsOutOfRange => "mipmap levels are out of ramge",
+                ImageViewCreationError::IncompatibleType =>
+                    "image view type is not compatible with image, array layers or mipmap levels",
+                ImageViewCreationError::InvalidImageUsage =>
+                    "the usage of the image is not compatible with image views",
+            }
+        )
+    }
 }
 
 impl From<OomError> for ImageViewCreationError {
     #[inline]
     fn from(err: OomError) -> ImageViewCreationError {
-        ImageViewCreationError::OomError(err)
+        ImageViewCreationError::AllocError(DeviceMemoryAllocError::OomError(err))
     }
 }
 
