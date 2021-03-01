@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Image storage (1D, 2D, 3D, arrays, etc.).
+//! Image storage (1D, 2D, 3D, arrays, etc.) and image views.
 //!
 //! An *image* is a region of memory whose purpose is to store multi-dimensional data. Its
 //! most common use is to store a 2D array of color pixels (in other words an *image* in
@@ -30,12 +30,12 @@
 //!
 //! # High-level wrappers
 //!
-//! In the vulkano library, an image is any object that implements the `Image` trait and an image
-//! view is any object that implements the `ImageView` trait.
+//! In the vulkano library, an image is any object that implements the [`ImageAccess`] trait. You
+//! can create a view by wrapping them in an [`ImageView`].
 //!
-//! Since these traits are low-level, you are encouraged to not implement them yourself but instead
-//! use one of the provided implementations that are specialized depending on the way you are going
-//! to use the image:
+//! Since the `ImageAccess` trait is low-level, you are encouraged to not implement it yourself but
+//! instead use one of the provided implementations that are specialized depending on the way you
+//! are going to use the image:
 //!
 //! - An `AttachmentImage` can be used when you want to draw to an image.
 //! - An `ImmutableImage` stores data which never need be changed after the initial upload,
