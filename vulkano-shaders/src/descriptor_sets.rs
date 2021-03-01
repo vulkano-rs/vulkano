@@ -14,10 +14,12 @@ use proc_macro2::{Ident, TokenStream};
 use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
+use std::collections::HashSet;
 
 pub(super) fn write_descriptor_sets(
     doc: &Spirv,
     entry_point_layout_name: &Ident,
+    entrypoint_id: u32,
     interface: &[u32],
     types_meta: &TypesMeta,
 ) -> TokenStream {
@@ -33,13 +35,22 @@ pub(super) fn write_descriptor_sets(
         readonly: bool,
     }
 
-    let interface = interface.to_vec();
+    // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
+    // and most tools will put all used variables in the entrypoint interface. However,
+    // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
+    // and instead the function itself must be inspected.
+    let variables = {
+        let mut found_variables: HashSet<u32> = interface.iter().cloned().collect();
+        let mut inspected_functions: HashSet<u32> = HashSet::new();
+        find_variables_in_function(&doc, entrypoint_id, &mut inspected_functions, &mut found_variables);
+        found_variables
+    };
 
     // Looping to find all the interface elements that have the `DescriptorSet` decoration.
     for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
         let variable_id = set_decoration.target_id;
 
-        if !interface.contains(&variable_id) {
+        if !variables.contains(&variable_id) {
             continue;
         }
 
@@ -167,6 +178,99 @@ pub(super) fn write_descriptor_sets(
 
             fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
                 #push_constants_range_body
+            }
+        }
+    }
+}
+
+// Recursively finds every pointer variable used in the execution of a function.
+fn find_variables_in_function(
+    doc: &Spirv,
+    function: u32,
+    inspected_functions: &mut HashSet<u32>,
+    found_variables: &mut HashSet<u32>,
+) {
+    inspected_functions.insert(function);
+    let mut in_function = false;
+    for instruction in &doc.instructions {
+        if !in_function {
+            match instruction {
+                Instruction::Function {
+                    result_id,
+                    ..
+                } if result_id == &function => {
+                    in_function = true;
+                },
+                _ => {},
+            }
+        } else {
+            // We only care about instructions that accept pointers.
+            // https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_universal_validation_rules
+            match instruction {
+                Instruction::Load { pointer, .. }
+                | Instruction::Store { pointer, .. } => {
+                    found_variables.insert(*pointer);
+                },
+                Instruction::AccessChain { base_id, .. }
+                | Instruction::InBoundsAccessChain { base_id, .. } => {
+                    found_variables.insert(*base_id);
+                },
+                Instruction::FunctionCall { function_id, args, .. } => {
+                    args.iter().for_each(|&x| {
+                        found_variables.insert(x);
+                    });
+                    if !inspected_functions.contains(function_id) {
+                        find_variables_in_function(doc, *function_id, inspected_functions, found_variables);
+                    }
+                },
+                Instruction::ImageTexelPointer { image, coordinate, sample, .. } => {
+                    found_variables.insert(*image);
+                    found_variables.insert(*coordinate);
+                    found_variables.insert(*sample);
+                },
+                Instruction::CopyMemory { target_id, source_id, .. } => {
+                    found_variables.insert(*target_id);
+                    found_variables.insert(*source_id);
+                },
+                Instruction::CopyObject { operand_id, .. } => {
+                    found_variables.insert(*operand_id);
+                },
+                Instruction::AtomicLoad { pointer, .. }
+                | Instruction::AtomicIIncrement { pointer, .. }
+                | Instruction::AtomicIDecrement { pointer, .. }
+                | Instruction::AtomicFlagTestAndSet { pointer, .. }
+                | Instruction::AtomicFlagClear { pointer, .. } => {
+                    found_variables.insert(*pointer);
+                },
+                Instruction::AtomicStore { pointer, value_id, .. }
+                | Instruction::AtomicExchange { pointer, value_id, .. }
+                | Instruction::AtomicIAdd { pointer, value_id, .. }
+                | Instruction::AtomicISub { pointer, value_id, .. }
+                | Instruction::AtomicSMin { pointer, value_id, .. }
+                | Instruction::AtomicUMin { pointer, value_id, .. }
+                | Instruction::AtomicSMax { pointer, value_id, .. }
+                | Instruction::AtomicUMax { pointer, value_id, .. }
+                | Instruction::AtomicAnd { pointer, value_id, .. }
+                | Instruction::AtomicOr { pointer, value_id, .. }
+                | Instruction::AtomicXor { pointer, value_id, .. } => {
+                    found_variables.insert(*pointer);
+                    found_variables.insert(*value_id);
+                },
+                Instruction::AtomicCompareExchange { pointer, value_id, comparator_id, .. }
+                | Instruction::AtomicCompareExchangeWeak { pointer, value_id, comparator_id, .. } => {
+                    found_variables.insert(*pointer);
+                    found_variables.insert(*value_id);
+                    found_variables.insert(*comparator_id);
+                },
+                Instruction::ExtInst { operands, .. } => {
+                    // We don't know which extended instructions take pointers,
+                    // so we must interpret every operand as a pointer.
+                    operands.iter().for_each(|&o| {
+                        found_variables.insert(o);
+                    });
+                },
+                Instruction::FunctionEnd => return,
+                _ => {},
             }
         }
     }
