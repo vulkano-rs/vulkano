@@ -24,7 +24,7 @@ use descriptor::descriptor::DescriptorType;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::view::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use sampler::Sampler;
 
 use check_errors;
@@ -823,10 +823,10 @@ impl DescriptorWrite {
     #[inline]
     pub fn storage_image<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
     where
-        I: ImageViewAccess,
+        I: ImageViewAbstract,
     {
         let layouts = image_view
-            .parent()
+            .image()
             .descriptor_layouts()
             .expect("descriptor_layouts must return Some when used in an image view");
 
@@ -852,10 +852,10 @@ impl DescriptorWrite {
     #[inline]
     pub fn sampled_image<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
     where
-        I: ImageViewAccess,
+        I: ImageViewAbstract,
     {
         let layouts = image_view
-            .parent()
+            .image()
             .descriptor_layouts()
             .expect("descriptor_layouts must return Some when used in an image view");
 
@@ -877,10 +877,10 @@ impl DescriptorWrite {
         image_view: &I,
     ) -> DescriptorWrite
     where
-        I: ImageViewAccess,
+        I: ImageViewAbstract,
     {
         let layouts = image_view
-            .parent()
+            .image()
             .descriptor_layouts()
             .expect("descriptor_layouts must return Some when used in an image view");
 
@@ -1089,10 +1089,10 @@ impl DescriptorWrite {
     #[inline]
     pub fn input_attachment<I>(binding: u32, array_element: u32, image_view: &I) -> DescriptorWrite
     where
-        I: ImageViewAccess,
+        I: ImageViewAbstract,
     {
         let layouts = image_view
-            .parent()
+            .image()
             .descriptor_layouts()
             .expect("descriptor_layouts must return Some when used in an image view");
 

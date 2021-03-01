@@ -30,7 +30,7 @@ use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
-use image::view::ImageViewAccess;
+use image::view::ImageViewAbstract;
 
 use check_errors;
 use vk;
@@ -164,7 +164,7 @@ where
         attachment: T,
     ) -> Result<FramebufferBuilder<Rp, (A, T)>, FramebufferCreationError>
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         if self.raw_ids.len() >= self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
@@ -178,8 +178,8 @@ where
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
 
-        let image_dimensions = attachment.parent().dimensions();
-        let array_layers = attachment.inner().array_layers();
+        let image_dimensions = attachment.image().dimensions();
+        let array_layers = attachment.array_layers();
         debug_assert_eq!(image_dimensions.depth(), 1);
 
         let view_dimensions = [
@@ -385,7 +385,7 @@ where
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         self.resources.as_image_view_access(index)
     }
 }

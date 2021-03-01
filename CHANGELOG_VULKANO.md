@@ -10,9 +10,9 @@
   - `Dimensions` is renamed to `ImageViewDimensions`. Also renamed `DescriptorImageDescDimensions::from_dimensions` to `DescriptorImageDescDimensions::from_image_view_dimensions`.
   - `ViewType` is renamed to `ImageViewType`. Also renamed `Dimensions::to_view_type` to `Dimensions::to_image_view_type`.
 - **Breaking** Changes to how image views are handled:
-  - Created a new `image::view` module for all image view related things. It holds the `UnsafeImageView`, `ImageViewType`, `ImageViewDimensions` types and the `ImageViewAccess` trait.
+  - Created a new `image::view` module for all image view related things. It holds the `UnsafeImageView`, `ImageViewType`, `ImageViewDimensions` types and the `ImageViewAbstract` trait.
   - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
-  - The existing image types no longer implement the `ImageViewAccess` trait.
+  - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. The plain image types no longer implement this trait, but `ImageView` does.
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.

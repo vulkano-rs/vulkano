@@ -100,7 +100,7 @@ impl<P> SyncCommandBufferBuilder<P> {
                         "vkCmdBeginRenderPass"
                     }
                     fn image(&self, num: usize) -> &dyn ImageAccess {
-                        self.0.attached_image_view(num).unwrap().parent()
+                        self.0.attached_image_view(num).unwrap().image()
                     }
                     fn image_name(&self, num: usize) -> Cow<'static, str> {
                         format!("attachment {}", num).into()
@@ -110,7 +110,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             }
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
-                self.framebuffer.attached_image_view(num).unwrap().parent()
+                self.framebuffer.attached_image_view(num).unwrap().image()
             }
 
             fn image_name(&self, num: usize) -> Cow<'static, str> {
@@ -2262,7 +2262,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     fn image(&self, mut num: usize) -> &dyn ImageAccess {
                         for set in self.0.iter() {
                             if let Some(img) = set.image(num) {
-                                return img.0.parent();
+                                return img.0.image();
                             }
                             num -= set.num_images();
                         }
@@ -2309,7 +2309,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
             fn image(&self, mut num: usize) -> &dyn ImageAccess {
                 for set in self.inner.iter() {
                     if let Some(img) = set.image(num) {
-                        return img.0.parent();
+                        return img.0.image();
                     }
                     num -= set.num_images();
                 }
@@ -2353,7 +2353,7 @@ impl<'b, P> SyncCommandBufferBuilderBindDescriptorSets<'b, P> {
                     let (stages, access) = desc.pipeline_stages_and_access();
                     let mut ignore_me_hack = false;
                     let layouts = image_view
-                        .parent()
+                        .image()
                         .descriptor_layouts()
                         .expect("descriptor_layouts must return Some when used in an image view");
                     let layout = match desc.ty {

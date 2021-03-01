@@ -26,7 +26,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::view::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use sampler::Sampler;
 use OomError;
 use VulkanObject;
@@ -135,7 +135,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.inner.image(index)
     }
 }
@@ -408,7 +408,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilder {
             pool: self.pool,
@@ -440,7 +440,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilder {
             pool: self.pool,
@@ -552,7 +552,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
             pool: self.pool,
@@ -583,7 +583,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
             pool: self.pool,

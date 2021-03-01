@@ -16,7 +16,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::framebuffer::RenderPassAbstract;
 use vulkano::framebuffer::Subpass;
-use vulkano::image::ImageViewAccess;
+use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;
 use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
@@ -121,7 +121,7 @@ impl AmbientLightingSystem {
         ambient_color: [f32; 3],
     ) -> AutoCommandBuffer
     where
-        C: ImageViewAccess + Send + Sync + 'static,
+        C: ImageViewAbstract + Send + Sync + 'static,
     {
         let push_constants = fs::ty::PushConstants {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],

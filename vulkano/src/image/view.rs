@@ -42,6 +42,11 @@ where
 {
     image: I,
     inner: UnsafeImageView,
+
+    array_layers: Range<u32>,
+    format: Format,
+    identity_swizzle: bool,
+    ty: ImageViewType,
 }
 
 impl<I> ImageView<I>
@@ -85,8 +90,9 @@ where
         mipmap_levels: Range<u32>,
         array_layers: Range<u32>,
     ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
-        let image_inner = image.inner().image;
         let dimensions = image.dimensions();
+        let format = image.format();
+        let image_inner = image.inner().image;
         let usage = image_inner.usage();
         let flags = image_inner.flags();
 
@@ -145,9 +151,22 @@ where
             _ => return Err(ImageViewCreationError::IncompatibleType),
         }
 
-        let inner = unsafe { UnsafeImageView::new(image_inner, ty, mipmap_levels, array_layers)? };
+        let inner =
+            unsafe { UnsafeImageView::new(image_inner, ty, mipmap_levels, array_layers.clone())? };
 
-        Ok(Arc::new(ImageView { image, inner }))
+        Ok(Arc::new(ImageView {
+            image,
+            inner,
+            array_layers,
+            format,
+            identity_swizzle: true, // FIXME:
+            ty,
+        }))
+    }
+
+    /// Returns the wrapped image that this image view was created from.
+    fn image(&self) -> &I {
+        &self.image
     }
 }
 
@@ -179,12 +198,6 @@ impl From<OomError> for ImageViewCreationError {
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
-
-    array_layers: Range<u32>,
-    format: Format,
-    identity_swizzle: bool,
-    ty: ImageViewType,
-    usage: vk::ImageUsageFlagBits,
 }
 
 impl UnsafeImageView {
@@ -260,28 +273,7 @@ impl UnsafeImageView {
         Ok(UnsafeImageView {
             view,
             device: image.device().clone(),
-
-            array_layers,
-            format: image.format(),
-            identity_swizzle: true, // FIXME:
-            ty,
-            usage: image.usage().to_usage_bits(),
         })
-    }
-
-    #[inline]
-    pub fn array_layers(&self) -> Range<u32> {
-        self.array_layers.clone()
-    }
-
-    #[inline]
-    pub fn format(&self) -> Format {
-        self.format
-    }
-
-    #[inline]
-    pub fn ty(&self) -> ImageViewType {
-        self.ty
     }
 }
 
@@ -540,24 +532,27 @@ impl ImageViewDimensions {
 }
 
 /// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAccess {
-    fn parent(&self) -> &dyn ImageAccess;
+pub unsafe trait ImageViewAbstract {
+    /// Returns the wrapped image that this image view was created from.
+    fn image(&self) -> &dyn ImageAccess;
 
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;
 
+    /// Returns the range of array layers of the wrapped image that this view exposes.
+    fn array_layers(&self) -> Range<u32>;
+
     /// Returns the format of this view. This can be different from the parent's format.
-    #[inline]
-    fn format(&self) -> Format {
-        // TODO: remove this default impl
-        self.inner().format()
-    }
+    fn format(&self) -> Format;
 
     /// Returns true if the view doesn't use components swizzling.
     ///
     /// Must be true when the view is used as a framebuffer attachment or TODO: I don't remember
     /// the other thing.
     fn identity_swizzle(&self) -> bool;
+
+    /// Returns the [`ImageViewType`] of this image view.
+    fn ty(&self) -> ImageViewType;
 
     /// Returns true if the given sampler can be used with this image view.
     ///
@@ -567,16 +562,14 @@ pub unsafe trait ImageViewAccess {
     fn can_be_sampled(&self, _sampler: &Sampler) -> bool {
         true /* FIXME */
     }
-
-    //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
 }
 
-unsafe impl<I> ImageViewAccess for ImageView<I>
+unsafe impl<I> ImageViewAbstract for ImageView<I>
 where
     I: ImageAccess,
 {
     #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
+    fn image(&self) -> &dyn ImageAccess {
         &self.image
     }
 
@@ -586,19 +579,35 @@ where
     }
 
     #[inline]
+    fn array_layers(&self) -> Range<u32> {
+        self.array_layers.clone()
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        // TODO: remove this default impl
+        self.format
+    }
+
+    #[inline]
     fn identity_swizzle(&self) -> bool {
-        true
+        self.identity_swizzle
+    }
+
+    #[inline]
+    fn ty(&self) -> ImageViewType {
+        self.ty
     }
 }
 
-unsafe impl<T> ImageViewAccess for T
+unsafe impl<T> ImageViewAbstract for T
 where
     T: SafeDeref,
-    T::Target: ImageViewAccess,
+    T::Target: ImageViewAbstract,
 {
     #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        (**self).parent()
+    fn image(&self) -> &dyn ImageAccess {
+        (**self).image()
     }
 
     #[inline]
@@ -607,8 +616,23 @@ where
     }
 
     #[inline]
+    fn array_layers(&self) -> Range<u32> {
+        (**self).array_layers()
+    }
+
+    #[inline]
+    fn format(&self) -> Format {
+        (**self).format()
+    }
+
+    #[inline]
     fn identity_swizzle(&self) -> bool {
         (**self).identity_swizzle()
+    }
+
+    #[inline]
+    fn ty(&self) -> ImageViewType {
+        (**self).ty()
     }
 
     #[inline]
@@ -617,16 +641,16 @@ where
     }
 }
 
-impl PartialEq for dyn ImageViewAccess + Send + Sync {
+impl PartialEq for dyn ImageViewAbstract + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner()
     }
 }
 
-impl Eq for dyn ImageViewAccess + Send + Sync {}
+impl Eq for dyn ImageViewAbstract + Send + Sync {}
 
-impl Hash for dyn ImageViewAccess + Send + Sync {
+impl Hash for dyn ImageViewAbstract + Send + Sync {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

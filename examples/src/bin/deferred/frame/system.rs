@@ -23,7 +23,7 @@ use vulkano::framebuffer::Subpass;
 use vulkano::image::view::ImageView;
 use vulkano::image::AttachmentImage;
 use vulkano::image::ImageUsage;
-use vulkano::image::ImageViewAccess;
+use vulkano::image::ImageViewAbstract;
 use vulkano::sync::GpuFuture;
 
 use crate::frame::ambient_lighting_system::AmbientLightingSystem;
@@ -233,12 +233,12 @@ impl FrameSystem {
     ) -> Frame
     where
         F: GpuFuture + 'static,
-        I: ImageViewAccess + Clone + Send + Sync + 'static,
+        I: ImageViewAbstract + Clone + Send + Sync + 'static,
     {
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.
-        let img_dims = final_image.parent().dimensions().width_height();
-        if self.diffuse_buffer.parent().dimensions().width_height() != img_dims {
+        let img_dims = final_image.image().dimensions().width_height();
+        if self.diffuse_buffer.image().dimensions().width_height() != img_dims {
             // TODO: use shortcut provided in vulkano 0.6
             let atch_usage = ImageUsage {
                 transient_attachment: true,

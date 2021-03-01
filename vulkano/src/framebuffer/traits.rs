@@ -12,7 +12,7 @@ use format::ClearValue;
 use framebuffer::FramebufferSys;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassSys;
-use image::view::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use pipeline::shader::ShaderInterfaceDef;
 
 use SafeDeref;
@@ -31,7 +31,7 @@ pub unsafe trait FramebufferAbstract: RenderPassAbstract {
     /// Returns the attachment of the framebuffer with the given index.
     ///
     /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess>;
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract>;
 
     /// Returns the width of the framebuffer in pixels.
     #[inline]
@@ -68,7 +68,7 @@ where
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         (**self).attached_image_view(index)
     }
 }
