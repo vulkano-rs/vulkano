@@ -207,8 +207,8 @@ impl fmt::Display for ImageViewCreationError {
             "{}",
             match *self {
                 ImageViewCreationError::AllocError(err) => "allocating memory failed",
-                ImageViewCreationError::ArrayLayersOutOfRange => "array layers are out of ramge",
-                ImageViewCreationError::MipMapLevelsOutOfRange => "mipmap levels are out of ramge",
+                ImageViewCreationError::ArrayLayersOutOfRange => "array layers are out of range",
+                ImageViewCreationError::MipMapLevelsOutOfRange => "mipmap levels are out of range",
                 ImageViewCreationError::IncompatibleType =>
                     "image view type is not compatible with image, array layers or mipmap levels",
                 ImageViewCreationError::InvalidImageUsage =>
