@@ -137,11 +137,7 @@ pub(super) fn write_descriptor_sets(
     }
 }
 
-fn find_descriptors(
-    doc: &Spirv,
-    entrypoint_id: u32,
-    interface: &[u32],
-) -> Vec<Descriptor> {
+fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<Descriptor> {
     let mut descriptors = Vec::new();
 
     // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
@@ -151,7 +147,12 @@ fn find_descriptors(
     let variables = {
         let mut found_variables: HashSet<u32> = interface.iter().cloned().collect();
         let mut inspected_functions: HashSet<u32> = HashSet::new();
-        find_variables_in_function(&doc, entrypoint_id, &mut inspected_functions, &mut found_variables);
+        find_variables_in_function(
+            &doc,
+            entrypoint_id,
+            &mut inspected_functions,
+            &mut found_variables,
+        );
         found_variables
     };
 
@@ -206,82 +207,126 @@ fn find_variables_in_function(
     for instruction in &doc.instructions {
         if !in_function {
             match instruction {
-                Instruction::Function {
-                    result_id,
-                    ..
-                } if result_id == &function => {
+                Instruction::Function { result_id, .. } if result_id == &function => {
                     in_function = true;
-                },
-                _ => {},
+                }
+                _ => {}
             }
         } else {
             // We only care about instructions that accept pointers.
             // https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_universal_validation_rules
             match instruction {
-                Instruction::Load { pointer, .. }
-                | Instruction::Store { pointer, .. } => {
+                Instruction::Load { pointer, .. } | Instruction::Store { pointer, .. } => {
                     found_variables.insert(*pointer);
-                },
+                }
                 Instruction::AccessChain { base_id, .. }
                 | Instruction::InBoundsAccessChain { base_id, .. } => {
                     found_variables.insert(*base_id);
-                },
-                Instruction::FunctionCall { function_id, args, .. } => {
+                }
+                Instruction::FunctionCall {
+                    function_id, args, ..
+                } => {
                     args.iter().for_each(|&x| {
                         found_variables.insert(x);
                     });
                     if !inspected_functions.contains(function_id) {
-                        find_variables_in_function(doc, *function_id, inspected_functions, found_variables);
+                        find_variables_in_function(
+                            doc,
+                            *function_id,
+                            inspected_functions,
+                            found_variables,
+                        );
                     }
-                },
-                Instruction::ImageTexelPointer { image, coordinate, sample, .. } => {
+                }
+                Instruction::ImageTexelPointer {
+                    image,
+                    coordinate,
+                    sample,
+                    ..
+                } => {
                     found_variables.insert(*image);
                     found_variables.insert(*coordinate);
                     found_variables.insert(*sample);
-                },
-                Instruction::CopyMemory { target_id, source_id, .. } => {
+                }
+                Instruction::CopyMemory {
+                    target_id,
+                    source_id,
+                    ..
+                } => {
                     found_variables.insert(*target_id);
                     found_variables.insert(*source_id);
-                },
+                }
                 Instruction::CopyObject { operand_id, .. } => {
                     found_variables.insert(*operand_id);
-                },
+                }
                 Instruction::AtomicLoad { pointer, .. }
                 | Instruction::AtomicIIncrement { pointer, .. }
                 | Instruction::AtomicIDecrement { pointer, .. }
                 | Instruction::AtomicFlagTestAndSet { pointer, .. }
                 | Instruction::AtomicFlagClear { pointer, .. } => {
                     found_variables.insert(*pointer);
-                },
-                Instruction::AtomicStore { pointer, value_id, .. }
-                | Instruction::AtomicExchange { pointer, value_id, .. }
-                | Instruction::AtomicIAdd { pointer, value_id, .. }
-                | Instruction::AtomicISub { pointer, value_id, .. }
-                | Instruction::AtomicSMin { pointer, value_id, .. }
-                | Instruction::AtomicUMin { pointer, value_id, .. }
-                | Instruction::AtomicSMax { pointer, value_id, .. }
-                | Instruction::AtomicUMax { pointer, value_id, .. }
-                | Instruction::AtomicAnd { pointer, value_id, .. }
-                | Instruction::AtomicOr { pointer, value_id, .. }
-                | Instruction::AtomicXor { pointer, value_id, .. } => {
+                }
+                Instruction::AtomicStore {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicExchange {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicIAdd {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicISub {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicSMin {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicUMin {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicSMax {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicUMax {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicAnd {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicOr {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicXor {
+                    pointer, value_id, ..
+                } => {
                     found_variables.insert(*pointer);
                     found_variables.insert(*value_id);
-                },
-                Instruction::AtomicCompareExchange { pointer, value_id, comparator_id, .. }
-                | Instruction::AtomicCompareExchangeWeak { pointer, value_id, comparator_id, .. } => {
+                }
+                Instruction::AtomicCompareExchange {
+                    pointer,
+                    value_id,
+                    comparator_id,
+                    ..
+                }
+                | Instruction::AtomicCompareExchangeWeak {
+                    pointer,
+                    value_id,
+                    comparator_id,
+                    ..
+                } => {
                     found_variables.insert(*pointer);
                     found_variables.insert(*value_id);
                     found_variables.insert(*comparator_id);
-                },
+                }
                 Instruction::ExtInst { operands, .. } => {
                     // We don't know which extended instructions take pointers,
                     // so we must interpret every operand as a pointer.
                     operands.iter().for_each(|&o| {
                         found_variables.insert(o);
                     });
-                },
+                }
                 Instruction::FunctionEnd => return,
-                _ => {},
+                _ => {}
             }
         }
     }
@@ -501,9 +546,9 @@ fn descriptor_infos(
 mod tests {
     use super::*;
     use crate::codegen::compile;
-    use std::path::{PathBuf, Path};
-    use shaderc::ShaderKind;
     use crate::parse;
+    use shaderc::ShaderKind;
+    use std::path::{Path, PathBuf};
 
     /// `entrypoint1.frag.glsl`:
     /// ```glsl
@@ -582,10 +627,9 @@ mod tests {
         let mut descriptors = Vec::new();
         for instruction in doc.instructions.iter() {
             if let &Instruction::EntryPoint {
-                id,
-                ref interface,
-                ..
-            } = instruction {
+                id, ref interface, ..
+            } = instruction
+            {
                 descriptors.push(find_descriptors(&doc, id, interface));
             }
         }
@@ -657,10 +701,9 @@ mod tests {
 
         for instruction in doc.instructions.iter() {
             if let &Instruction::EntryPoint {
-                id,
-                ref interface,
-                ..
-            } = instruction {
+                id, ref interface, ..
+            } = instruction
+            {
                 let descriptors = find_descriptors(&doc, id, interface);
                 let mut bindings = Vec::new();
                 for d in descriptors {

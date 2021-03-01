@@ -61,8 +61,13 @@ pub(super) fn write_entry_point(
         format!("{}Layout", capitalized_ep_name).as_str(),
         Span::call_site(),
     );
-    let descriptor_sets_layout_struct =
-        write_descriptor_sets(&doc, &descriptor_sets_layout_name, id, interface,  &types_meta);
+    let descriptor_sets_layout_struct = write_descriptor_sets(
+        &doc,
+        &descriptor_sets_layout_name,
+        id,
+        interface,
+        &types_meta,
+    );
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         quote! { SpecializationConstants }
