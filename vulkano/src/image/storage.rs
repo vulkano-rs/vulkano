@@ -330,11 +330,6 @@ where
     }
 
     #[inline]
-    fn dimensions(&self) -> ImageViewDimensions {
-        self.dimensions
-    }
-
-    #[inline]
     fn inner(&self) -> &UnsafeImageView {
         &self.view
     }

@@ -19,7 +19,6 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::view::ImageViewAccess;
-use image::view::ImageViewDimensions;
 use image::view::ImageViewType;
 use image::view::UnsafeImageView;
 use image::ImageDescriptorLayouts;
@@ -198,15 +197,6 @@ unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
     #[inline]
     fn parent(&self) -> &dyn ImageAccess {
         self
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageViewDimensions {
-        let dims = self.swapchain.dimensions();
-        ImageViewDimensions::Dim2d {
-            width: dims[0],
-            height: dims[1],
-        }
     }
 
     #[inline]

@@ -42,7 +42,7 @@
 //!
 
 use format::Format;
-use image::view::ImageViewDimensions;
+use image::view::ImageViewType;
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -509,17 +509,17 @@ pub enum DescriptorImageDescDimensions {
 }
 
 impl DescriptorImageDescDimensions {
-    /// Builds the `DescriptorImageDescDimensions` that corresponds to actual dimensions.
+    /// Builds the `DescriptorImageDescDimensions` that corresponds to the view type.
     #[inline]
-    pub fn from_image_view_dimensions(dims: ImageViewDimensions) -> DescriptorImageDescDimensions {
-        match dims {
-            ImageViewDimensions::Dim1d { .. } => DescriptorImageDescDimensions::OneDimensional,
-            ImageViewDimensions::Dim1dArray { .. } => DescriptorImageDescDimensions::OneDimensional,
-            ImageViewDimensions::Dim2d { .. } => DescriptorImageDescDimensions::TwoDimensional,
-            ImageViewDimensions::Dim2dArray { .. } => DescriptorImageDescDimensions::TwoDimensional,
-            ImageViewDimensions::Dim3d { .. } => DescriptorImageDescDimensions::ThreeDimensional,
-            ImageViewDimensions::Cubemap { .. } => DescriptorImageDescDimensions::Cube,
-            ImageViewDimensions::CubemapArray { .. } => DescriptorImageDescDimensions::Cube,
+    pub fn from_image_view_type(ty: ImageViewType) -> DescriptorImageDescDimensions {
+        match ty {
+            ImageViewType::Dim1d => DescriptorImageDescDimensions::OneDimensional,
+            ImageViewType::Dim1dArray => DescriptorImageDescDimensions::OneDimensional,
+            ImageViewType::Dim2d => DescriptorImageDescDimensions::TwoDimensional,
+            ImageViewType::Dim2dArray => DescriptorImageDescDimensions::TwoDimensional,
+            ImageViewType::Dim3d => DescriptorImageDescDimensions::ThreeDimensional,
+            ImageViewType::Cubemap => DescriptorImageDescDimensions::Cube,
+            ImageViewType::CubemapArray => DescriptorImageDescDimensions::Cube,
         }
     }
 }

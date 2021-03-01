@@ -27,7 +27,6 @@ use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
 use image::view::ImageViewAccess;
-use image::view::ImageViewDimensions;
 use image::view::ImageViewType;
 use image::view::UnsafeImageView;
 use image::ImageCreateFlags;
@@ -634,15 +633,6 @@ where
     #[inline]
     fn parent(&self) -> &dyn ImageAccess {
         self
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageViewDimensions {
-        let dims = self.image.dimensions();
-        ImageViewDimensions::Dim2d {
-            width: dims.width(),
-            height: dims.height(),
-        }
     }
 
     #[inline]

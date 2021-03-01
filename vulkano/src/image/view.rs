@@ -154,10 +154,12 @@ impl From<OomError> for ImageViewCreationError {
 pub struct UnsafeImageView {
     view: vk::ImageView,
     device: Arc<Device>,
-    usage: vk::ImageUsageFlagBits,
-    identity_swizzle: bool,
+
+    array_layers: Range<u32>,
     format: Format,
+    identity_swizzle: bool,
     ty: ImageViewType,
+    usage: vk::ImageUsageFlagBits,
 }
 
 impl UnsafeImageView {
@@ -233,11 +235,18 @@ impl UnsafeImageView {
         Ok(UnsafeImageView {
             view,
             device: image.device().clone(),
-            usage: image.usage().to_usage_bits(),
-            identity_swizzle: true, // FIXME:
+
+            array_layers,
             format: image.format(),
+            identity_swizzle: true, // FIXME:
             ty,
+            usage: image.usage().to_usage_bits(),
         })
+    }
+
+    #[inline]
+    pub fn array_layers(&self) -> Range<u32> {
+        self.array_layers.clone()
     }
 
     #[inline]
@@ -509,9 +518,6 @@ impl ImageViewDimensions {
 pub unsafe trait ImageViewAccess {
     fn parent(&self) -> &dyn ImageAccess;
 
-    /// Returns the dimensions of the image view.
-    fn dimensions(&self) -> ImageViewDimensions;
-
     /// Returns the inner unsafe image view object used by this image view.
     fn inner(&self) -> &UnsafeImageView;
 
@@ -553,11 +559,6 @@ where
     #[inline]
     fn inner(&self) -> &UnsafeImageView {
         (**self).inner()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> ImageViewDimensions {
-        (**self).dimensions()
     }
 
     #[inline]

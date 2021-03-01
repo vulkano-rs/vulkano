@@ -178,56 +178,54 @@ where
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
 
-        let img_dims = attachment.dimensions().to_image_dimensions();
-        debug_assert_eq!(img_dims.depth(), 1);
+        let image_dimensions = attachment.parent().dimensions();
+        let array_layers = attachment.inner().array_layers();
+        debug_assert_eq!(image_dimensions.depth(), 1);
+
+        let view_dimensions = [
+            image_dimensions.width(),
+            image_dimensions.height(),
+            array_layers.end - array_layers.start,
+        ];
 
         let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::AutoIdentical(None) => {
-                let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
-                FramebufferBuilderDimensions::AutoIdentical(Some(dims))
+                FramebufferBuilderDimensions::AutoIdentical(Some(view_dimensions))
             }
             FramebufferBuilderDimensions::AutoIdentical(Some(current)) => {
-                if img_dims.width() != current[0]
-                    || img_dims.height() != current[1]
-                    || img_dims.array_layers() != current[2]
-                {
+                if view_dimensions != current {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
-                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()],
+                        obtained: view_dimensions,
                     });
                 }
 
                 FramebufferBuilderDimensions::AutoIdentical(Some(current))
             }
             FramebufferBuilderDimensions::AutoSmaller(None) => {
-                let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
-                FramebufferBuilderDimensions::AutoSmaller(Some(dims))
+                FramebufferBuilderDimensions::AutoSmaller(Some(view_dimensions))
             }
             FramebufferBuilderDimensions::AutoSmaller(Some(current)) => {
                 let new_dims = [
-                    cmp::min(current[0], img_dims.width()),
-                    cmp::min(current[1], img_dims.height()),
-                    cmp::min(current[2], img_dims.array_layers()),
+                    cmp::min(current[0], view_dimensions[0]),
+                    cmp::min(current[1], view_dimensions[1]),
+                    cmp::min(current[2], view_dimensions[2]),
                 ];
 
                 FramebufferBuilderDimensions::AutoSmaller(Some(new_dims))
             }
             FramebufferBuilderDimensions::Specific(current) => {
-                if img_dims.width() < current[0]
-                    || img_dims.height() < current[1]
-                    || img_dims.array_layers() < current[2]
+                if view_dimensions[0] < current[0]
+                    || view_dimensions[1] < current[1]
+                    || view_dimensions[2] < current[2]
                 {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
-                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()],
+                        obtained: view_dimensions,
                     });
                 }
 
-                FramebufferBuilderDimensions::Specific([
-                    img_dims.width(),
-                    img_dims.height(),
-                    img_dims.array_layers(),
-                ])
+                FramebufferBuilderDimensions::Specific(view_dimensions)
             }
         };
 

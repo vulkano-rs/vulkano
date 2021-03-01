@@ -672,25 +672,26 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                     return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
                 }
 
-                let image_layers = image_view.dimensions().array_layers();
+                let image_layers = image_view.inner().array_layers();
+                let num_layers = image_layers.end - image_layers.start;
 
                 match array_layers {
                     DescriptorImageDescArray::NonArrayed => {
-                        if image_layers != 1 {
+                        if num_layers != 1 {
                             return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                                 expected: 1,
-                                obtained: image_layers,
+                                obtained: num_layers,
                             });
                         }
                     }
                     DescriptorImageDescArray::Arrayed {
                         max_layers: Some(max_layers),
                     } => {
-                        if image_layers > max_layers {
+                        if num_layers > max_layers {
                             // TODO: is this correct? "max" layers? or is it in fact min layers?
                             return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                                 expected: max_layers,
-                                obtained: image_layers,
+                                obtained: num_layers,
                             });
                         }
                     }
@@ -881,7 +882,7 @@ where
     }
 
     let image_view_ty =
-        DescriptorImageDescDimensions::from_image_view_dimensions(image_view.dimensions());
+        DescriptorImageDescDimensions::from_image_view_type(image_view.inner().ty());
     if image_view_ty != desc.dimensions {
         return Err(PersistentDescriptorSetError::ImageViewTypeMismatch {
             expected: desc.dimensions,
@@ -904,27 +905,28 @@ where
         return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
     }
 
-    let image_layers = image_view.dimensions().array_layers();
+    let image_layers = image_view.inner().array_layers();
+    let num_layers = image_layers.end - image_layers.start;
 
     match desc.array_layers {
         DescriptorImageDescArray::NonArrayed => {
             // TODO: when a non-array is expected, can we pass an image view that is in fact an
             // array with one layer? need to check
-            if image_layers != 1 {
+            if num_layers != 1 {
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                     expected: 1,
-                    obtained: image_layers,
+                    obtained: num_layers,
                 });
             }
         }
         DescriptorImageDescArray::Arrayed {
             max_layers: Some(max_layers),
         } => {
-            if image_layers > max_layers {
+            if num_layers > max_layers {
                 // TODO: is this correct? "max" layers? or is it in fact min layers?
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                     expected: max_layers,
-                    obtained: image_layers,
+                    obtained: num_layers,
                 });
             }
         }
