@@ -1,5 +1,7 @@
 # Unreleased
 
+- Allow `const` usage of features and `BufferUsage`
+
 # Version 0.21.0 (2021-03-05)
 
 - **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value

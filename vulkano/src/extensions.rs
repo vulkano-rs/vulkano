@@ -34,7 +34,7 @@ macro_rules! extensions {
         impl $sname {
             /// Returns an `Extensions` object with all members set to `false`.
             #[inline]
-            pub fn none() -> $sname {
+            pub const fn none() -> $sname {
                 $sname {
                     $($ext: false,)*
                     _unbuildable: Unbuildable(())
@@ -43,7 +43,7 @@ macro_rules! extensions {
 
             /// Returns the union of this list and another list.
             #[inline]
-            pub fn union(&self, other: &$sname) -> $sname {
+            pub const fn union(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
                         $ext: self.$ext || other.$ext,
@@ -54,7 +54,7 @@ macro_rules! extensions {
 
             /// Returns the intersection of this list and another list.
             #[inline]
-            pub fn intersection(&self, other: &$sname) -> $sname {
+            pub const fn intersection(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
                         $ext: self.$ext && other.$ext,
@@ -65,7 +65,7 @@ macro_rules! extensions {
 
             /// Returns the difference of another list from this list.
             #[inline]
-            pub fn difference(&self, other: &$sname) -> $sname {
+            pub const fn difference(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
                         $ext: self.$ext && !other.$ext,
