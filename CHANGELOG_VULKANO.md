@@ -1,5 +1,8 @@
 # Unreleased
 
+- **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself). The `PoolAlloc` associated type on the `CommandBuffer` trait is also removed, as it's no longer needed.
+- `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
+
 # Version 0.21.0 (2021-03-05)
 
 - **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value

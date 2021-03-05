@@ -38,11 +38,8 @@ use SafeDeref;
 use VulkanObject;
 
 pub unsafe trait CommandBuffer: DeviceOwned {
-    /// The command pool of the command buffer.
-    type PoolAlloc;
-
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::PoolAlloc>;
+    fn inner(&self) -> &UnsafeCommandBuffer;
 
     /*/// Returns the queue family of the command buffer.
     #[inline]
@@ -177,10 +174,8 @@ where
     T: SafeDeref,
     T::Target: CommandBuffer,
 {
-    type PoolAlloc = <T::Target as CommandBuffer>::PoolAlloc;
-
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<Self::PoolAlloc> {
+    fn inner(&self) -> &UnsafeCommandBuffer {
         (**self).inner()
     }
 

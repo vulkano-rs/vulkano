@@ -11,6 +11,8 @@ use std::iter;
 
 use buffer::BufferUsage;
 use buffer::CpuAccessibleBuffer;
+use command_buffer::pool::CommandPool;
+use command_buffer::pool::CommandPoolBuilderAlloc;
 use command_buffer::synced::base::SyncCommandBufferBuilder;
 use command_buffer::synced::base::SyncCommandBufferBuilderError;
 use command_buffer::sys::Flags;
@@ -22,7 +24,9 @@ fn basic_creation() {
     unsafe {
         let (device, queue) = gfx_dev_and_queue!();
         let pool = Device::standard_command_pool(&device, queue.family());
-        SyncCommandBufferBuilder::new(&pool, Kind::primary(), Flags::None).unwrap();
+        let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+        SyncCommandBufferBuilder::new(&pool_builder_alloc.inner(), Kind::primary(), Flags::None)
+            .unwrap();
     }
 }
 
@@ -32,8 +36,13 @@ fn basic_conflict() {
         let (device, queue) = gfx_dev_and_queue!();
 
         let pool = Device::standard_command_pool(&device, queue.family());
-        let mut sync = SyncCommandBufferBuilder::new(&pool, Kind::primary(), Flags::None).unwrap();
-
+        let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+        let mut sync = SyncCommandBufferBuilder::new(
+            &pool_builder_alloc.inner(),
+            Kind::primary(),
+            Flags::None,
+        )
+        .unwrap();
         let buf = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
 
         match sync.copy_buffer(buf.clone(), buf.clone(), iter::once((0, 0, 4))) {

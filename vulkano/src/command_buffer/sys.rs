@@ -17,9 +17,7 @@ use std::sync::Arc;
 use buffer::BufferAccess;
 use buffer::BufferInner;
 use check_errors;
-use command_buffer::pool::CommandPool;
-use command_buffer::pool::CommandPoolAlloc;
-use command_buffer::pool::CommandPoolBuilderAlloc;
+use command_buffer::pool::UnsafeCommandPoolAlloc;
 use command_buffer::CommandBuffer;
 use command_buffer::Kind;
 use command_buffer::KindOcclusionQuery;
@@ -36,7 +34,6 @@ use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use image::ImageAccess;
 use image::ImageLayout;
-use instance::QueueFamily;
 use pipeline::depth_stencil::StencilFaceFlags;
 use pipeline::input_assembly::IndexType;
 use pipeline::viewport::Scissor;
@@ -78,48 +75,40 @@ pub enum Flags {
 ///
 /// When you are finished adding commands, you can use the `CommandBufferBuild` trait to turn this
 /// builder into an `UnsafeCommandBuffer`.
-pub struct UnsafeCommandBufferBuilder<P> {
-    // The command buffer obtained from the pool. Contains `None` if `build()` has been called.
-    cmd: Option<P>,
-
-    // The raw `cmd`. Avoids having to specify a trait bound on `P`.
-    cmd_raw: vk::CommandBuffer,
-
-    // Device that owns the command buffer.
-    // TODO: necessary?
+pub struct UnsafeCommandBufferBuilder {
+    command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
 }
 
-impl<P> fmt::Debug for UnsafeCommandBufferBuilder<P> {
+impl fmt::Debug for UnsafeCommandBufferBuilder {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<Vulkan command buffer builder #{}>", self.cmd_raw)
+        write!(
+            f,
+            "<Vulkan command buffer builder #{}>",
+            self.command_buffer
+        )
     }
 }
 
-impl<P> UnsafeCommandBufferBuilder<P> {
-    /// Creates a new builder.
+impl UnsafeCommandBufferBuilder {
+    /// Creates a new builder, for recording commands.
     ///
     /// # Safety
     ///
-    /// Creating and destroying an unsafe command buffer is not unsafe per se, but the commands
-    /// that you add to it are unchecked, do not have any synchronization, and are not kept alive.
-    ///
-    /// In other words, it is your job to make sure that the commands you add are valid, that they
-    /// don't use resources that have been destroyed, and that they do not introduce any race
-    /// condition.
+    /// - `pool_alloc` must outlive the returned builder and its created command buffer.
+    /// - `kind` must match how `pool_alloc` was created.
+    /// - All submitted commands must be valid and follow the requirements of the Vulkan specification.
+    /// - Any resources used by submitted commands must outlive the returned builder and its created command buffer. They must be protected against data races through manual synchronization.
     ///
     /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
     /// > submit invalid commands.
-    pub unsafe fn new<Pool, R, F, A>(
-        pool: &Pool,
+    pub unsafe fn new<R, F>(
+        pool_alloc: &UnsafeCommandPoolAlloc,
         kind: Kind<R, F>,
         flags: Flags,
-    ) -> Result<UnsafeCommandBufferBuilder<P>, OomError>
+    ) -> Result<UnsafeCommandBufferBuilder, OomError>
     where
-        Pool: CommandPool<Builder = P, Alloc = A>,
-        P: CommandPoolBuilderAlloc<Alloc = A>,
-        A: CommandPoolAlloc,
         R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
@@ -128,34 +117,8 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             Kind::Secondary { .. } => true,
         };
 
-        let cmd = pool
-            .alloc(secondary, 1)?
-            .next()
-            .expect("Requested one command buffer from the command pool, but got zero.");
-        UnsafeCommandBufferBuilder::already_allocated(cmd, kind, flags)
-    }
-
-    /// Creates a new command buffer builder from an already-allocated command buffer.
-    ///
-    /// # Safety
-    ///
-    /// See the `new` method.
-    ///
-    /// The kind must match how the command buffer was allocated.
-    ///
-    pub unsafe fn already_allocated<R, F>(
-        alloc: P,
-        kind: Kind<R, F>,
-        flags: Flags,
-    ) -> Result<UnsafeCommandBufferBuilder<P>, OomError>
-    where
-        R: RenderPassAbstract,
-        F: FramebufferAbstract,
-        P: CommandPoolBuilderAlloc,
-    {
-        let device = alloc.device().clone();
+        let device = pool_alloc.device().clone();
         let vk = device.pointers();
-        let cmd = alloc.inner().internal_object();
 
         let vk_flags = {
             let a = match flags {
@@ -201,15 +164,13 @@ impl<P> UnsafeCommandBufferBuilder<P> {
                 ..
             } => {
                 let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
-                debug_assert!(
-                    ps == 0 || alloc.device().enabled_features().pipeline_statistics_query
-                );
+                debug_assert!(ps == 0 || device.enabled_features().pipeline_statistics_query);
 
                 let (oqe, qf) = match occlusion_query {
                     KindOcclusionQuery::Allowed {
                         control_precise_allowed,
                     } => {
-                        debug_assert!(alloc.device().enabled_features().inherited_queries);
+                        debug_assert!(device.enabled_features().inherited_queries);
                         let qf = if control_precise_allowed {
                             vk::QUERY_CONTROL_PRECISE_BIT
                         } else {
@@ -243,39 +204,23 @@ impl<P> UnsafeCommandBufferBuilder<P> {
             pInheritanceInfo: &inheritance,
         };
 
-        check_errors(vk.BeginCommandBuffer(cmd, &infos))?;
+        check_errors(vk.BeginCommandBuffer(pool_alloc.internal_object(), &infos))?;
 
         Ok(UnsafeCommandBufferBuilder {
-            cmd: Some(alloc),
-            cmd_raw: cmd,
+            command_buffer: pool_alloc.internal_object(),
             device: device.clone(),
         })
     }
 
-    /// Returns the queue family of the builder.
-    #[inline]
-    pub fn queue_family(&self) -> QueueFamily
-    where
-        P: CommandPoolBuilderAlloc,
-    {
-        self.cmd.as_ref().unwrap().queue_family()
-    }
-
     /// Turns the builder into an actual command buffer.
     #[inline]
-    pub fn build(mut self) -> Result<UnsafeCommandBuffer<P::Alloc>, OomError>
-    where
-        P: CommandPoolBuilderAlloc,
-    {
+    pub fn build(self) -> Result<UnsafeCommandBuffer, OomError> {
         unsafe {
-            let cmd = self.cmd.take().unwrap();
             let vk = self.device.pointers();
-            check_errors(vk.EndCommandBuffer(cmd.inner().internal_object()))?;
-            let cmd_raw = cmd.inner().internal_object();
+            check_errors(vk.EndCommandBuffer(self.command_buffer))?;
 
             Ok(UnsafeCommandBuffer {
-                cmd: cmd.into_alloc(),
-                cmd_raw,
+                command_buffer: self.command_buffer,
                 device: self.device.clone(),
             })
         }
@@ -1590,22 +1535,21 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     }
 }
 
-unsafe impl<P> DeviceOwned for UnsafeCommandBufferBuilder<P> {
+unsafe impl DeviceOwned for UnsafeCommandBufferBuilder {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-unsafe impl<P> VulkanObject for UnsafeCommandBufferBuilder<P> {
+unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
     type Object = vk::CommandBuffer;
 
     const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
-        debug_assert!(self.cmd.is_some());
-        self.cmd_raw
+        self.command_buffer
     }
 }
 
@@ -2011,33 +1955,29 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 
 /// Command buffer that has been built.
 ///
-/// Doesn't perform any synchronization and doesn't keep the object it uses alive.
-pub struct UnsafeCommandBuffer<P> {
-    // The Vulkan command buffer.
-    cmd: P,
-
-    // The raw version of `cmd`. Avoids having to require a trait on `P`.
-    cmd_raw: vk::CommandBuffer,
-
-    // Device that owns the command buffer.
-    // TODO: necessary?
+/// # Safety
+///
+/// The command buffer must not outlive the command pool that it was created from,
+/// nor the resources used by the recorded commands.
+pub struct UnsafeCommandBuffer {
+    command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
 }
 
-unsafe impl<P> DeviceOwned for UnsafeCommandBuffer<P> {
+unsafe impl DeviceOwned for UnsafeCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-unsafe impl<P> VulkanObject for UnsafeCommandBuffer<P> {
+unsafe impl VulkanObject for UnsafeCommandBuffer {
     type Object = vk::CommandBuffer;
 
     const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
-        self.cmd_raw
+        self.command_buffer
     }
 }

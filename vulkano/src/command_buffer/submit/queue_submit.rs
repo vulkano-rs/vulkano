@@ -166,7 +166,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// TODO: more here
     ///
     #[inline]
-    pub unsafe fn add_command_buffer<P>(&mut self, command_buffer: &'a UnsafeCommandBuffer<P>) {
+    pub unsafe fn add_command_buffer(&mut self, command_buffer: &'a UnsafeCommandBuffer) {
         self.command_buffers.push(command_buffer.internal_object());
     }
 

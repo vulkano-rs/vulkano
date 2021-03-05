@@ -17,9 +17,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use buffer::BufferAccess;
-use command_buffer::pool::CommandPool;
-use command_buffer::pool::CommandPoolAlloc;
-use command_buffer::pool::CommandPoolBuilderAlloc;
+use command_buffer::pool::UnsafeCommandPoolAlloc;
 use command_buffer::sys::Flags;
 use command_buffer::sys::UnsafeCommandBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
@@ -56,15 +54,13 @@ use OomError;
 /// Note that all methods are still unsafe, because this builder doesn't check the validity of
 /// the commands except for synchronization purposes. The builder may panic if you pass invalid
 /// commands.
-///
-/// The `P` generic is the same as `UnsafeCommandBufferBuilder`.
-pub struct SyncCommandBufferBuilder<P> {
+pub struct SyncCommandBufferBuilder {
     // The actual Vulkan command buffer builder.
-    inner: UnsafeCommandBufferBuilder<P>,
+    inner: UnsafeCommandBufferBuilder,
 
     // Stores the current state of all resources (buffers and images) that are in use by the
     // command buffer.
-    resources: FnvHashMap<BuilderKey<P>, ResourceState>,
+    resources: FnvHashMap<BuilderKey, ResourceState>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -72,7 +68,7 @@ pub struct SyncCommandBufferBuilder<P> {
 
     // Stores all the commands that were added to the sync builder. Some of them are maybe not
     // submitted to the inner builder yet. A copy of this `Arc` is stored in each `BuilderKey`.
-    commands: Arc<Mutex<Commands<P>>>,
+    commands: Arc<Mutex<Commands>>,
 
     // True if we're a secondary command buffer.
     is_secondary: bool,
@@ -133,7 +129,7 @@ pub struct SyncCommandBufferBuilder<P> {
 // queue. If not possible, the queue will be entirely flushed and the command added to a fresh new
 // queue with a fresh new barrier prototype.
 
-impl<P> fmt::Debug for SyncCommandBufferBuilder<P> {
+impl fmt::Debug for SyncCommandBufferBuilder {
     #[inline]
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&self.inner, f)
@@ -171,7 +167,7 @@ impl fmt::Display for SyncCommandBufferBuilderError {
 }
 
 // List of commands stored inside a `SyncCommandBufferBuilder`.
-struct Commands<P> {
+struct Commands {
     // Only the commands before `first_unflushed` have already been sent to the inner
     // `UnsafeCommandBufferBuilder`.
     first_unflushed: usize,
@@ -181,17 +177,17 @@ struct Commands<P> {
     latest_render_pass_enter: Option<usize>,
 
     // The actual list.
-    commands: Vec<Box<dyn Command<P> + Send + Sync>>,
+    commands: Vec<Box<dyn Command + Send + Sync>>,
 }
 
 // Trait for single commands within the list of commands.
-pub trait Command<P> {
+pub trait Command {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
 
     // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
     // object will likely lead to a panic.
-    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder<P>);
+    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder);
 
     // Turns this command into a `FinalCommand`.
     fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync>;
@@ -231,9 +227,9 @@ pub enum KeyTy {
 //
 // This works by holding an Arc to the list of commands and the index of the command that holds
 // the resource.
-struct BuilderKey<P> {
+struct BuilderKey {
     // Same `Arc` as in the `SyncCommandBufferBuilder`.
-    commands: Arc<Mutex<Commands<P>>>,
+    commands: Arc<Mutex<Commands>>,
     // Index of the command that holds the resource within `commands`.
     command_ids: RefCell<Vec<usize>>,
     // Type of the resource.
@@ -242,7 +238,7 @@ struct BuilderKey<P> {
     resource_index: usize,
 }
 
-impl<P> BuilderKey<P> {
+impl BuilderKey {
     // Turns this key used by the builder into a key used by the final command buffer.
     // Called when the command buffer is being built.
     fn into_cb_key(
@@ -258,7 +254,7 @@ impl<P> BuilderKey<P> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, commands_lock: &Commands<P>, buf: &dyn BufferAccess) -> bool {
+    fn conflicts_buffer(&self, commands_lock: &Commands, buf: &dyn BufferAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => self.command_ids.borrow().iter().any(|command_id| {
@@ -273,7 +269,7 @@ impl<P> BuilderKey<P> {
     }
 
     #[inline]
-    fn conflicts_image(&self, commands_lock: &Commands<P>, img: &dyn ImageAccess) -> bool {
+    fn conflicts_image(&self, commands_lock: &Commands, img: &dyn ImageAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => self.command_ids.borrow().iter().any(|command_id| {
@@ -288,9 +284,9 @@ impl<P> BuilderKey<P> {
     }
 }
 
-impl<P> PartialEq for BuilderKey<P> {
+impl PartialEq for BuilderKey {
     #[inline]
-    fn eq(&self, other: &BuilderKey<P>) -> bool {
+    fn eq(&self, other: &BuilderKey) -> bool {
         debug_assert!(Arc::ptr_eq(&self.commands, &other.commands));
         let commands_lock = self.commands.lock().unwrap();
 
@@ -307,9 +303,9 @@ impl<P> PartialEq for BuilderKey<P> {
     }
 }
 
-impl<P> Eq for BuilderKey<P> {}
+impl Eq for BuilderKey {}
 
-impl<P> Hash for BuilderKey<P> {
+impl Hash for BuilderKey {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         let commands_lock = self.commands.lock().unwrap();
@@ -371,22 +367,19 @@ impl ResourceState {
     }
 }
 
-impl<P> SyncCommandBufferBuilder<P> {
+impl SyncCommandBufferBuilder {
     /// Builds a new `SyncCommandBufferBuilder`. The parameters are the same as the
     /// `UnsafeCommandBufferBuilder::new` function.
     ///
     /// # Safety
     ///
-    /// See `UnsafeCommandBufferBuilder::new()` and `SyncCommandBufferBuilder`.
-    pub unsafe fn new<Pool, R, F, A>(
-        pool: &Pool,
+    /// See `UnsafeCommandBufferBuilder::new()`.
+    pub unsafe fn new<R, F>(
+        pool_alloc: &UnsafeCommandPoolAlloc,
         kind: Kind<R, F>,
         flags: Flags,
-    ) -> Result<SyncCommandBufferBuilder<P>, OomError>
+    ) -> Result<SyncCommandBufferBuilder, OomError>
     where
-        Pool: CommandPool<Builder = P, Alloc = A>,
-        P: CommandPoolBuilderAlloc<Alloc = A>,
-        A: CommandPoolAlloc,
         R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
@@ -397,7 +390,7 @@ impl<P> SyncCommandBufferBuilder<P> {
             } => (true, render_pass.is_some()),
         };
 
-        let cmd = UnsafeCommandBufferBuilder::new(pool, kind, flags)?;
+        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, kind, flags)?;
         Ok(SyncCommandBufferBuilder::from_unsafe_cmd(
             cmd,
             is_secondary,
@@ -409,17 +402,17 @@ impl<P> SyncCommandBufferBuilder<P> {
     ///
     /// # Safety
     ///
-    /// See `UnsafeCommandBufferBuilder::new()` and `SyncCommandBufferBuilder`.
+    /// See `UnsafeCommandBufferBuilder::new()`.
     ///
     /// In addition to this, the `UnsafeCommandBufferBuilder` should be empty. If it isn't, then
     /// you must take into account the fact that the `SyncCommandBufferBuilder` won't be aware of
     /// any existing resource usage.
     #[inline]
     pub unsafe fn from_unsafe_cmd(
-        cmd: UnsafeCommandBufferBuilder<P>,
+        cmd: UnsafeCommandBufferBuilder,
         is_secondary: bool,
         inside_render_pass: bool,
-    ) -> SyncCommandBufferBuilder<P> {
+    ) -> SyncCommandBufferBuilder {
         let latest_render_pass_enter = if inside_render_pass { Some(0) } else { None };
 
         SyncCommandBufferBuilder {
@@ -442,7 +435,7 @@ impl<P> SyncCommandBufferBuilder<P> {
     #[inline]
     pub(super) fn append_command<C>(&mut self, command: C)
     where
-        C: Command<P> + Send + Sync + 'static,
+        C: Command + Send + Sync + 'static,
     {
         // Note that we don't submit the command to the inner command buffer yet.
         self.commands
@@ -743,10 +736,7 @@ impl<P> SyncCommandBufferBuilder<P> {
 
     /// Builds the command buffer and turns it into a `SyncCommandBuffer`.
     #[inline]
-    pub fn build(mut self) -> Result<SyncCommandBuffer<P::Alloc>, OomError>
-    where
-        P: CommandPoolBuilderAlloc,
-    {
+    pub fn build(mut self) -> Result<SyncCommandBuffer, OomError> {
         let mut commands_lock = self.commands.lock().unwrap();
         debug_assert!(
             commands_lock.latest_render_pass_enter.is_none() || self.pending_barrier.is_empty()
@@ -834,7 +824,7 @@ impl<P> SyncCommandBufferBuilder<P> {
     }
 }
 
-unsafe impl<P> DeviceOwned for SyncCommandBufferBuilder<P> {
+unsafe impl DeviceOwned for SyncCommandBufferBuilder {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
@@ -843,9 +833,9 @@ unsafe impl<P> DeviceOwned for SyncCommandBufferBuilder<P> {
 
 /// Command buffer built from a `SyncCommandBufferBuilder` that provides utilities to handle
 /// synchronization.
-pub struct SyncCommandBuffer<P> {
+pub struct SyncCommandBuffer {
     // The actual Vulkan command buffer.
-    inner: UnsafeCommandBuffer<P>,
+    inner: UnsafeCommandBuffer,
 
     // State of all the resources used by this command buffer.
     resources: FnvHashMap<CbKey<'static>, ResourceFinalState>,
@@ -1087,14 +1077,14 @@ impl<'a> Hash for CbKey<'a> {
     }
 }
 
-impl<P> AsRef<UnsafeCommandBuffer<P>> for SyncCommandBuffer<P> {
+impl AsRef<UnsafeCommandBuffer> for SyncCommandBuffer {
     #[inline]
-    fn as_ref(&self) -> &UnsafeCommandBuffer<P> {
+    fn as_ref(&self) -> &UnsafeCommandBuffer {
         &self.inner
     }
 }
 
-impl<P> SyncCommandBuffer<P> {
+impl SyncCommandBuffer {
     /// Tries to lock the resources used by the command buffer.
     ///
     /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
@@ -1342,7 +1332,7 @@ impl<P> SyncCommandBuffer<P> {
     }
 }
 
-unsafe impl<P> DeviceOwned for SyncCommandBuffer<P> {
+unsafe impl DeviceOwned for SyncCommandBuffer {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
