@@ -389,3 +389,55 @@ where
         self.size().hash(state);
     }
 }
+
+#[cfg(test)]
+#[cfg(target_os = "linux")]
+mod tests {
+    use buffer::{BufferUsage, DeviceLocalBuffer};
+    use device::{Device, DeviceExtensions, Queue};
+    use instance::{Instance, InstanceExtensions, PhysicalDevice};
+    use memory::ExternalMemoryHandleType;
+    use std::os::unix::io::IntoRawFd;
+    use std::sync::Arc;
+
+    fn device_and_queue_with_supported_features() -> (Arc<Device>, Arc<Queue>) {
+        let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+        let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+        let queue_family = physical.queue_families().next().unwrap();
+        let (device, mut queues) = Device::new(
+            physical,
+            physical.supported_features(),
+            &DeviceExtensions::supported_by_device(physical),
+            [(queue_family, 0.5)].iter().cloned(),
+        )
+        .unwrap();
+        let queue = queues.next().unwrap();
+        (device, queue)
+    }
+
+    #[test]
+    fn creates_buffer_with_exportable_fd_if_features_supported() {
+        let (device, queue) = device_and_queue_with_supported_features();
+        // Perhaps there is a better way
+        if device.loaded_extensions().khr_external_memory
+            && device.loaded_extensions().khr_external_memory_fd
+        {
+            let buffer = unsafe {
+                DeviceLocalBuffer::<[u8]>::raw_with_exportable_fd(
+                    device.clone(),
+                    1024,
+                    BufferUsage::all(),
+                    vec![],
+                )
+            };
+            assert!(buffer.is_ok());
+            let handle_type = ExternalMemoryHandleType {
+                opaque_fd: true,
+                ..ExternalMemoryHandleType::none()
+            };
+            let fd = buffer.unwrap().memory().export_fd(handle_type);
+            assert!(fd.is_ok());
+            assert_ne!(fd.unwrap().into_raw_fd(), 0);
+        }
+    }
+}
