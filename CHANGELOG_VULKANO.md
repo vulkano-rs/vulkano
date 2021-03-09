@@ -1,4 +1,5 @@
 # Unreleased
+- Added external memory support for `DeviceLocalBuffer` for `Linux`
 
 # Version 0.21.0 (2021-03-05)
 

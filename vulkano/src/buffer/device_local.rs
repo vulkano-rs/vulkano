@@ -40,8 +40,9 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
-use memory::DeviceMemoryAllocError;
-use memory::{DedicatedAlloc, DeviceMemory, MemoryRequirements};
+use memory::{DedicatedAlloc, MemoryRequirements};
+use memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
+use std::fs::File;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -230,10 +231,14 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         Ok((buffer, mem_reqs))
     }
 
-    /// Returns a reference to the bound device memory. Useful in some special cases, e.g. with
-    /// [`vulkano::memory::device_memory::DeviceMemory::export_fd`]
-    pub fn memory(&self) -> &DeviceMemory {
-        self.memory.memory()
+    /// Exports posix file descriptor for the allocated memory
+    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Only works on Linux.
+    #[cfg(target_os = "linux")]
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+        self.memory
+            .memory()
+            .export_fd(ExternalMemoryHandleType::posix())
     }
 }
 
@@ -431,8 +436,7 @@ mod tests {
                 )
             };
             assert!(buffer.is_ok());
-            let handle_type = ExternalMemoryHandleType::posix();
-            let fd = buffer.unwrap().memory().export_fd(handle_type);
+            let fd = buffer.unwrap().export_posix_fd();
             assert!(fd.is_ok());
             assert_ne!(fd.unwrap().into_raw_fd(), 0);
         }
