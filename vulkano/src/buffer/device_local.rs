@@ -40,7 +40,7 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
-use memory::DedicatedAlloc;
+use memory::{DedicatedAlloc, DeviceMemory};
 use memory::DeviceMemoryAllocError;
 use sync::AccessError;
 use sync::Sharing;
@@ -171,6 +171,12 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             gpu_lock: Mutex::new(GpuAccess::None),
             marker: PhantomData,
         }))
+    }
+
+    /// Returns a reference to the bound device memory. Useful in some special cases, e.g. with
+    /// [`vulkano::memory::device_memory::DeviceMemory::export_fd`]
+    pub fn memory(&self) -> &DeviceMemory {
+        self.memory.memory()
     }
 }
 
