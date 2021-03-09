@@ -431,10 +431,7 @@ mod tests {
                 )
             };
             assert!(buffer.is_ok());
-            let handle_type = ExternalMemoryHandleType {
-                opaque_fd: true,
-                ..ExternalMemoryHandleType::none()
-            };
+            let handle_type = ExternalMemoryHandleType::posix();
             let fd = buffer.unwrap().memory().export_fd(handle_type);
             assert!(fd.is_ok());
             assert_ne!(fd.unwrap().into_raw_fd(), 0);
