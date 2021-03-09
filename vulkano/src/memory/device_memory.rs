@@ -323,8 +323,77 @@ impl DeviceMemory {
         assert!(memory_type.is_host_visible());
         let mem = DeviceMemory::dedicated_alloc(device.clone(), memory_type, size, resource)?;
 
-        let coherent = memory_type.is_host_coherent();
+        Self::map_allocation(device.clone(), mem)
+    }
 
+    /// Same as `alloc`, but allows exportable file descriptor on Linux.
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn alloc_exportable(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+    ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
+        DeviceMemoryBuilder::new(device, memory_type, size)
+            .export_info(ExternalMemoryHandleType {
+                opaque_fd: true,
+                ..ExternalMemoryHandleType::none()
+            })
+            .build()
+    }
+
+    /// Same as `dedicated_alloc`, but allows exportable file descriptor on Linux.
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn dedicated_alloc_exportable(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+        resource: DedicatedAlloc,
+    ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
+        DeviceMemoryBuilder::new(device, memory_type, size)
+            .export_info(ExternalMemoryHandleType {
+                opaque_fd: true,
+                ..ExternalMemoryHandleType::none()
+            })
+            .dedicated_info(resource)
+            .build()
+    }
+
+    /// Same as `alloc_and_map`, but allows exportable file descriptor on Linux.
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn alloc_and_map_exportable(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+    ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
+        DeviceMemory::dedicated_alloc_and_map(device, memory_type, size, DedicatedAlloc::None)
+    }
+
+    /// Same as `dedicated_alloc_and_map`, but allows exportable file descriptor on Linux.
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn dedicated_alloc_and_map_exportable(
+        device: Arc<Device>,
+        memory_type: MemoryType,
+        size: usize,
+        resource: DedicatedAlloc,
+    ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
+        let vk = device.pointers();
+
+        assert!(memory_type.is_host_visible());
+        let mem = DeviceMemory::dedicated_alloc_exportable(device.clone(), memory_type, size, resource)?;
+
+        Self::map_allocation(device.clone(), mem)
+    }
+
+    fn map_allocation(
+        device: Arc<Device>,
+        mem: DeviceMemory,
+    ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
+        let vk = device.pointers();
+        let coherent = mem.memory_type().is_host_coherent();
         let ptr = unsafe {
             let mut output = MaybeUninit::uninit();
             check_errors(vk.MapMemory(
@@ -341,7 +410,7 @@ impl DeviceMemory {
         Ok(MappedDeviceMemory {
             memory: mem,
             pointer: ptr,
-            coherent: coherent,
+            coherent,
         })
     }
 

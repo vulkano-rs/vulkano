@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use device::DeviceOwned;
+use device::{Device, DeviceOwned};
 use instance::MemoryType;
 use memory::DedicatedAlloc;
 use memory::DeviceMemory;
@@ -21,10 +21,46 @@ pub use self::non_host_visible::StdNonHostVisibleMemoryTypePool;
 pub use self::non_host_visible::StdNonHostVisibleMemoryTypePoolAlloc;
 pub use self::pool::StdMemoryPool;
 pub use self::pool::StdMemoryPoolAlloc;
+use std::sync::Arc;
 
 mod host_visible;
 mod non_host_visible;
 mod pool;
+
+fn choose_allocation_memory_type<'s, F>(
+    device: &'s Arc<Device>,
+    requirements: &MemoryRequirements,
+    mut filter: F,
+    map: MappingRequirement,
+) -> MemoryType<'s>
+where
+    F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+{
+    let mem_ty = {
+        let mut filter = |ty: MemoryType| {
+            if map == MappingRequirement::Map && !ty.is_host_visible() {
+                return AllocFromRequirementsFilter::Forbidden;
+            }
+            filter(ty)
+        };
+        let first_loop = device
+            .physical_device()
+            .memory_types()
+            .map(|t| (t, AllocFromRequirementsFilter::Preferred));
+        let second_loop = device
+            .physical_device()
+            .memory_types()
+            .map(|t| (t, AllocFromRequirementsFilter::Allowed));
+        first_loop
+            .chain(second_loop)
+            .filter(|&(t, _)| (requirements.memory_type_bits & (1 << t.id())) != 0)
+            .filter(|&(t, rq)| filter(t) == rq)
+            .next()
+            .expect("Couldn't find a memory type to allocate from")
+            .0
+    };
+    mem_ty
+}
 
 /// Pool of GPU-visible memory that can be allocated from.
 pub unsafe trait MemoryPool: DeviceOwned {
@@ -53,6 +89,17 @@ pub unsafe trait MemoryPool: DeviceOwned {
     /// - Panics if `alignment` is 0.
     ///
     fn alloc_generic(
+        &self,
+        ty: MemoryType,
+        size: usize,
+        alignment: usize,
+        layout: AllocLayout,
+        map: MappingRequirement,
+    ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
+
+    /// Same as `alloc_generic` but with exportable memory option.
+    #[cfg(target_os = "linux")]
+    fn alloc_generic_exportable(
         &self,
         ty: MemoryType,
         size: usize,
@@ -96,37 +143,13 @@ pub unsafe trait MemoryPool: DeviceOwned {
         layout: AllocLayout,
         map: MappingRequirement,
         dedicated: DedicatedAlloc,
-        mut filter: F,
+        filter: F,
     ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
     where
         F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
     {
         // Choose a suitable memory type.
-        let mem_ty = {
-            let mut filter = |ty: MemoryType| {
-                if map == MappingRequirement::Map && !ty.is_host_visible() {
-                    return AllocFromRequirementsFilter::Forbidden;
-                }
-                filter(ty)
-            };
-            let first_loop = self
-                .device()
-                .physical_device()
-                .memory_types()
-                .map(|t| (t, AllocFromRequirementsFilter::Preferred));
-            let second_loop = self
-                .device()
-                .physical_device()
-                .memory_types()
-                .map(|t| (t, AllocFromRequirementsFilter::Allowed));
-            first_loop
-                .chain(second_loop)
-                .filter(|&(t, _)| (requirements.memory_type_bits & (1 << t.id())) != 0)
-                .filter(|&(t, rq)| filter(t) == rq)
-                .next()
-                .expect("Couldn't find a memory type to allocate from")
-                .0
-        };
+        let mem_ty = choose_allocation_memory_type(self.device(), requirements, filter, map);
 
         // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
         if !requirements.prefer_dedicated
@@ -165,6 +188,69 @@ pub unsafe trait MemoryPool: DeviceOwned {
             }
             MappingRequirement::DoNotMap => {
                 let mem = DeviceMemory::dedicated_alloc(
+                    self.device().clone(),
+                    mem_ty,
+                    requirements.size,
+                    dedicated,
+                )?;
+                Ok(PotentialDedicatedAllocation::Dedicated(mem))
+            }
+        }
+    }
+
+    /// Same as `alloc_from_requirements` but with exportable memory option.
+    #[cfg(target_os = "linux")]
+    fn alloc_exportable_from_requirements<F>(
+        &self,
+        requirements: &MemoryRequirements,
+        layout: AllocLayout,
+        map: MappingRequirement,
+        dedicated: DedicatedAlloc,
+        filter: F,
+    ) -> Result<PotentialDedicatedAllocation<Self::Alloc>, DeviceMemoryAllocError>
+    where
+        F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
+    {
+        assert!(self.device().loaded_extensions().khr_external_memory_fd);
+        assert!(self.device().loaded_extensions().khr_external_memory);
+
+        let mem_ty = choose_allocation_memory_type(self.device(), requirements, filter, map);
+
+        if !requirements.prefer_dedicated
+            || !self.device().loaded_extensions().khr_dedicated_allocation
+        {
+            let alloc = self.alloc_generic_exportable(
+                mem_ty,
+                requirements.size,
+                requirements.alignment,
+                layout,
+                map,
+            )?;
+            return Ok(alloc.into());
+        }
+        if let DedicatedAlloc::None = dedicated {
+            let alloc = self.alloc_generic_exportable(
+                mem_ty,
+                requirements.size,
+                requirements.alignment,
+                layout,
+                map,
+            )?;
+            return Ok(alloc.into());
+        }
+
+        match map {
+            MappingRequirement::Map => {
+                let mem = DeviceMemory::dedicated_alloc_and_map_exportable(
+                    self.device().clone(),
+                    mem_ty,
+                    requirements.size,
+                    dedicated,
+                )?;
+                Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
+            }
+            MappingRequirement::DoNotMap => {
+                let mem = DeviceMemory::dedicated_alloc_exportable(
                     self.device().clone(),
                     mem_ty,
                     requirements.size,

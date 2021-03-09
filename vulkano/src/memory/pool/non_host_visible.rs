@@ -126,6 +126,73 @@ impl StdNonHostVisibleMemoryTypePool {
         })
     }
 
+    /// Same as `alloc` but with exportable memory option.
+    #[cfg(target_os = "linux")]
+    pub fn alloc_exportable(
+        me: &Arc<Self>,
+        size: usize,
+        alignment: usize,
+    ) -> Result<StdNonHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocError> {
+        assert!(size != 0);
+        assert!(alignment != 0);
+
+        #[inline]
+        fn align(val: usize, al: usize) -> usize {
+            al * (1 + (val - 1) / al)
+        }
+
+        // Find a location.
+        let mut occupied = me.occupied.lock().unwrap();
+
+        // Try finding an entry in already-allocated chunks.
+        for &mut (ref dev_mem, ref mut entries) in occupied.iter_mut() {
+            // Try find some free space in-between two entries.
+            for i in 0..entries.len().saturating_sub(1) {
+                let entry1 = entries[i].clone();
+                let entry1_end = align(entry1.end, alignment);
+                let entry2 = entries[i + 1].clone();
+                if entry1_end + size <= entry2.start {
+                    entries.insert(i + 1, entry1_end..entry1_end + size);
+                    return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
+                        pool: me.clone(),
+                        memory: dev_mem.clone(),
+                        offset: entry1_end,
+                        size,
+                    });
+                }
+            }
+
+            // Try append at the end.
+            let last_end = entries.last().map(|e| align(e.end, alignment)).unwrap_or(0);
+            if last_end + size <= dev_mem.size() {
+                entries.push(last_end..last_end + size);
+                return Ok(StdNonHostVisibleMemoryTypePoolAlloc {
+                    pool: me.clone(),
+                    memory: dev_mem.clone(),
+                    offset: last_end,
+                    size,
+                });
+            }
+        }
+
+        // We need to allocate a new block.
+        let new_block = {
+            const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
+            let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
+            let new_block =
+                DeviceMemory::alloc_exportable(me.device.clone(), me.memory_type(), to_alloc)?;
+            Arc::new(new_block)
+        };
+
+        occupied.push((new_block.clone(), vec![0..size]));
+        Ok(StdNonHostVisibleMemoryTypePoolAlloc {
+            pool: me.clone(),
+            memory: new_block,
+            offset: 0,
+            size,
+        })
+    }
+
     /// Returns the device this pool operates on.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
