@@ -161,7 +161,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         }))
     }
 
-    /// Same as `raw` but with exportable fd option for the allocated memory
+    /// Same as `raw` but with exportable fd option for the allocated memory on Linux
     #[cfg(target_os = "linux")]
     pub unsafe fn raw_with_exportable_fd<'a, I>(
         device: Arc<Device>,
@@ -182,7 +182,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
 
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
-        let mem = MemoryPool::alloc_exportable_from_requirements(
+        let mem = MemoryPool::alloc_from_requirements_with_exportable_fd(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Linear,
@@ -401,7 +401,6 @@ mod tests {
     use buffer::{BufferUsage, DeviceLocalBuffer};
     use device::{Device, DeviceExtensions, Queue};
     use instance::{Instance, InstanceExtensions, PhysicalDevice};
-    use memory::ExternalMemoryHandleType;
     use std::os::unix::io::IntoRawFd;
     use std::sync::Arc;
 

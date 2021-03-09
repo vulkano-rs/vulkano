@@ -126,9 +126,9 @@ impl StdNonHostVisibleMemoryTypePool {
         })
     }
 
-    /// Same as `alloc` but with exportable memory option.
+    /// Same as `alloc` but with exportable memory fd on Linux.
     #[cfg(target_os = "linux")]
-    pub fn alloc_exportable(
+    pub fn alloc_with_exportable_fd(
         me: &Arc<Self>,
         size: usize,
         alignment: usize,
@@ -179,8 +179,11 @@ impl StdNonHostVisibleMemoryTypePool {
         let new_block = {
             const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
             let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
-            let new_block =
-                DeviceMemory::alloc_exportable(me.device.clone(), me.memory_type(), to_alloc)?;
+            let new_block = DeviceMemory::alloc_with_exportable_fd(
+                me.device.clone(),
+                me.memory_type(),
+                to_alloc,
+            )?;
             Arc::new(new_block)
         };
 

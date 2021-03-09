@@ -329,7 +329,7 @@ impl DeviceMemory {
     /// Same as `alloc`, but allows exportable file descriptor on Linux.
     #[inline]
     #[cfg(target_os = "linux")]
-    pub fn alloc_exportable(
+    pub fn alloc_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
         size: usize,
@@ -345,7 +345,7 @@ impl DeviceMemory {
     /// Same as `dedicated_alloc`, but allows exportable file descriptor on Linux.
     #[inline]
     #[cfg(target_os = "linux")]
-    pub fn dedicated_alloc_exportable(
+    pub fn dedicated_alloc_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
         size: usize,
@@ -363,18 +363,23 @@ impl DeviceMemory {
     /// Same as `alloc_and_map`, but allows exportable file descriptor on Linux.
     #[inline]
     #[cfg(target_os = "linux")]
-    pub fn alloc_and_map_exportable(
+    pub fn alloc_and_map_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
         size: usize,
     ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
-        DeviceMemory::dedicated_alloc_and_map(device, memory_type, size, DedicatedAlloc::None)
+        DeviceMemory::dedicated_alloc_and_map_with_exportable_fd(
+            device,
+            memory_type,
+            size,
+            DedicatedAlloc::None,
+        )
     }
 
     /// Same as `dedicated_alloc_and_map`, but allows exportable file descriptor on Linux.
     #[inline]
     #[cfg(target_os = "linux")]
-    pub fn dedicated_alloc_and_map_exportable(
+    pub fn dedicated_alloc_and_map_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
         size: usize,
@@ -383,7 +388,12 @@ impl DeviceMemory {
         let vk = device.pointers();
 
         assert!(memory_type.is_host_visible());
-        let mem = DeviceMemory::dedicated_alloc_exportable(device.clone(), memory_type, size, resource)?;
+        let mem = DeviceMemory::dedicated_alloc_with_exportable_fd(
+            device.clone(),
+            memory_type,
+            size,
+            resource,
+        )?;
 
         Self::map_allocation(device.clone(), mem)
     }

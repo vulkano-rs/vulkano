@@ -99,7 +99,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
 
     /// Same as `alloc_generic` but with exportable memory option.
     #[cfg(target_os = "linux")]
-    fn alloc_generic_exportable(
+    fn alloc_generic_with_exportable_fd(
         &self,
         ty: MemoryType,
         size: usize,
@@ -198,9 +198,9 @@ pub unsafe trait MemoryPool: DeviceOwned {
         }
     }
 
-    /// Same as `alloc_from_requirements` but with exportable memory option.
+    /// Same as `alloc_from_requirements` but with exportable fd option on Linux.
     #[cfg(target_os = "linux")]
-    fn alloc_exportable_from_requirements<F>(
+    fn alloc_from_requirements_with_exportable_fd<F>(
         &self,
         requirements: &MemoryRequirements,
         layout: AllocLayout,
@@ -219,7 +219,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         if !requirements.prefer_dedicated
             || !self.device().loaded_extensions().khr_dedicated_allocation
         {
-            let alloc = self.alloc_generic_exportable(
+            let alloc = self.alloc_generic_with_exportable_fd(
                 mem_ty,
                 requirements.size,
                 requirements.alignment,
@@ -229,7 +229,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
             return Ok(alloc.into());
         }
         if let DedicatedAlloc::None = dedicated {
-            let alloc = self.alloc_generic_exportable(
+            let alloc = self.alloc_generic_with_exportable_fd(
                 mem_ty,
                 requirements.size,
                 requirements.alignment,
@@ -241,7 +241,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
 
         match map {
             MappingRequirement::Map => {
-                let mem = DeviceMemory::dedicated_alloc_and_map_exportable(
+                let mem = DeviceMemory::dedicated_alloc_and_map_with_exportable_fd(
                     self.device().clone(),
                     mem_ty,
                     requirements.size,
@@ -250,7 +250,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
                 Ok(PotentialDedicatedAllocation::DedicatedMapped(mem))
             }
             MappingRequirement::DoNotMap => {
-                let mem = DeviceMemory::dedicated_alloc_exportable(
+                let mem = DeviceMemory::dedicated_alloc_with_exportable_fd(
                     self.device().clone(),
                     mem_ty,
                     requirements.size,

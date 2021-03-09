@@ -110,9 +110,9 @@ fn generic_allocation(
     }
 }
 
-/// Same as `generic_allocation` but with exportable memory option.
+/// Same as `generic_allocation` but with exportable memory fd on Linux.
 #[cfg(target_os = "linux")]
-fn generic_exportable_allocation(
+fn generit_allocation_with_exportable_fd(
     mem_pool: Arc<StdMemoryPool>,
     memory_type: MemoryType,
     size: usize,
@@ -128,7 +128,8 @@ fn generic_exportable_allocation(
     match pools.entry((memory_type.id(), layout, map)) {
         Entry::Occupied(entry) => match entry.get() {
             &Pool::HostVisible(ref pool) => {
-                let alloc = StdHostVisibleMemoryTypePool::alloc_exportable(&pool, size, alignment)?;
+                let alloc =
+                    StdHostVisibleMemoryTypePool::alloc_with_exportable_fd(&pool, size, alignment)?;
                 let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
                 Ok(StdMemoryPoolAlloc {
                     inner,
@@ -136,8 +137,9 @@ fn generic_exportable_allocation(
                 })
             }
             &Pool::NonHostVisible(ref pool) => {
-                let alloc =
-                    StdNonHostVisibleMemoryTypePool::alloc_exportable(&pool, size, alignment)?;
+                let alloc = StdNonHostVisibleMemoryTypePool::alloc_with_exportable_fd(
+                    &pool, size, alignment,
+                )?;
                 let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
                 Ok(StdMemoryPoolAlloc {
                     inner,
@@ -150,7 +152,8 @@ fn generic_exportable_allocation(
             if memory_type_host_visible {
                 let pool = StdHostVisibleMemoryTypePool::new(mem_pool.device.clone(), memory_type);
                 entry.insert(Pool::HostVisible(pool.clone()));
-                let alloc = StdHostVisibleMemoryTypePool::alloc_exportable(&pool, size, alignment)?;
+                let alloc =
+                    StdHostVisibleMemoryTypePool::alloc_with_exportable_fd(&pool, size, alignment)?;
                 let inner = StdMemoryPoolAllocInner::HostVisible(alloc);
                 Ok(StdMemoryPoolAlloc {
                     inner,
@@ -160,8 +163,9 @@ fn generic_exportable_allocation(
                 let pool =
                     StdNonHostVisibleMemoryTypePool::new(mem_pool.device.clone(), memory_type);
                 entry.insert(Pool::NonHostVisible(pool.clone()));
-                let alloc =
-                    StdNonHostVisibleMemoryTypePool::alloc_exportable(&pool, size, alignment)?;
+                let alloc = StdNonHostVisibleMemoryTypePool::alloc_with_exportable_fd(
+                    &pool, size, alignment,
+                )?;
                 let inner = StdMemoryPoolAllocInner::NonHostVisible(alloc);
                 Ok(StdMemoryPoolAlloc {
                     inner,
@@ -186,9 +190,9 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
         generic_allocation(self.clone(), memory_type, size, alignment, layout, map)
     }
 
-    /// Same as `alloc_generic` but with exportable memory option.
+    /// Same as `alloc_generic` but with exportable fd option on Linux.
     #[cfg(target_os = "linux")]
-    fn alloc_generic_exportable(
+    fn alloc_generic_with_exportable_fd(
         &self,
         memory_type: MemoryType,
         size: usize,
@@ -196,7 +200,14 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
         layout: AllocLayout,
         map: MappingRequirement,
     ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
-        generic_exportable_allocation(self.clone(), memory_type, size, alignment, layout, map)
+        generit_allocation_with_exportable_fd(
+            self.clone(),
+            memory_type,
+            size,
+            alignment,
+            layout,
+            map,
+        )
     }
 }
 
