@@ -60,6 +60,23 @@ impl ExternalMemoryHandleType {
         }
     }
 
+    /// Builds an `ExternalMemoryHandleType` for a posix file descriptor.
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use vulkano::memory::ExternalMemoryHandleType as ExternalMemoryHandleType;
+    ///
+    /// let _handle_type = ExternalMemoryHandleType::posix();
+    /// ```
+    #[inline]
+    pub fn posix() -> ExternalMemoryHandleType {
+        ExternalMemoryHandleType {
+            opaque_fd: true,
+            ..ExternalMemoryHandleType::none()
+        }
+    }
+
     #[inline]
     pub(crate) fn to_bits(&self) -> vk::ExternalMemoryHandleTypeFlagBits {
         let mut result = 0;

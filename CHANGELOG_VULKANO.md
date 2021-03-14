@@ -1,4 +1,5 @@
 # Unreleased
+- Added external memory support for `DeviceLocalBuffer` for `Linux`
 
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.

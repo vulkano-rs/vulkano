@@ -3,3 +3,4 @@ target
 .cargo
 examples/**/triangle.png
 examples/**/mandelbrot.png
+.idea

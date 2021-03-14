@@ -40,8 +40,9 @@ use memory::pool::MemoryPool;
 use memory::pool::MemoryPoolAlloc;
 use memory::pool::PotentialDedicatedAllocation;
 use memory::pool::StdMemoryPoolAlloc;
-use memory::DedicatedAlloc;
-use memory::DeviceMemoryAllocError;
+use memory::{DedicatedAlloc, MemoryRequirements};
+use memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
+use std::fs::File;
 use sync::AccessError;
 use sync::Sharing;
 
@@ -132,20 +133,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             .map(|f| f.id())
             .collect::<SmallVec<[u32; 4]>>();
 
-        let (buffer, mem_reqs) = {
-            let sharing = if queue_families.len() >= 2 {
-                Sharing::Concurrent(queue_families.iter().cloned())
-            } else {
-                Sharing::Exclusive
-            };
-
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
-                Ok(b) => b,
-                Err(BufferCreationError::AllocError(err)) => return Err(err),
-                Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
-                                          // errors can't happen
-            }
-        };
+        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
         let mem = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
@@ -171,6 +159,86 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
             gpu_lock: Mutex::new(GpuAccess::None),
             marker: PhantomData,
         }))
+    }
+
+    /// Same as `raw` but with exportable fd option for the allocated memory on Linux
+    #[cfg(target_os = "linux")]
+    pub unsafe fn raw_with_exportable_fd<'a, I>(
+        device: Arc<Device>,
+        size: usize,
+        usage: BufferUsage,
+        queue_families: I,
+    ) -> Result<Arc<DeviceLocalBuffer<T>>, DeviceMemoryAllocError>
+    where
+        I: IntoIterator<Item = QueueFamily<'a>>,
+    {
+        assert!(device.loaded_extensions().khr_external_memory_fd);
+        assert!(device.loaded_extensions().khr_external_memory);
+
+        let queue_families = queue_families
+            .into_iter()
+            .map(|f| f.id())
+            .collect::<SmallVec<[u32; 4]>>();
+
+        let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
+
+        let mem = MemoryPool::alloc_from_requirements_with_exportable_fd(
+            &Device::standard_pool(&device),
+            &mem_reqs,
+            AllocLayout::Linear,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Buffer(&buffer),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
+        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        buffer.bind_memory(mem.memory(), mem.offset())?;
+
+        Ok(Arc::new(DeviceLocalBuffer {
+            inner: buffer,
+            memory: mem,
+            queue_families: queue_families,
+            gpu_lock: Mutex::new(GpuAccess::None),
+            marker: PhantomData,
+        }))
+    }
+
+    unsafe fn build_buffer(
+        device: &Arc<Device>,
+        size: usize,
+        usage: BufferUsage,
+        queue_families: &SmallVec<[u32; 4]>,
+    ) -> Result<(UnsafeBuffer, MemoryRequirements), DeviceMemoryAllocError> {
+        let (buffer, mem_reqs) = {
+            let sharing = if queue_families.len() >= 2 {
+                Sharing::Concurrent(queue_families.iter().cloned())
+            } else {
+                Sharing::Exclusive
+            };
+
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
+                Ok(b) => b,
+                Err(BufferCreationError::AllocError(err)) => return Err(err),
+                Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
+                                          // errors can't happen
+            }
+        };
+        Ok((buffer, mem_reqs))
+    }
+
+    /// Exports posix file descriptor for the allocated memory
+    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Only works on Linux.
+    #[cfg(target_os = "linux")]
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+        self.memory
+            .memory()
+            .export_fd(ExternalMemoryHandleType::posix())
     }
 }
 
