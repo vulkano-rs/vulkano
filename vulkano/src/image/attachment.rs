@@ -550,7 +550,12 @@ where
             }
         }
 
-        if self.gpu_lock.compare_and_swap(0, 1, Ordering::SeqCst) == 0 {
+        if self
+            .gpu_lock
+            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
+            .unwrap_or_else(|e| e)
+            == 0
+        {
             Ok(())
         } else {
             Err(AccessError::AlreadyInUse)
