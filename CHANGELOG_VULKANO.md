@@ -1,9 +1,9 @@
 # Unreleased
 
-- **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value
-- **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
-- **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
-- **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
+- Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
+  - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
+  - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
+- **Breaking** `shader!` now accepts structs in shader interfaces decorated with `BufferBlock` rather than `Block`.
 - **Breaking** Changes to image types:
   - Image types no longer implement `ImageViewAccess`.
   - `Dimensions` is removed. Image constructors now take `ImageDimensions`.
@@ -14,6 +14,14 @@
   - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
   - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. `ImageView` implements this trait.
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
+- Replaced deprecated `compare_and_swap` with `compare_exchange`.
+
+# Version 0.21.0 (2021-03-05)
+
+- **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value
+- **Breaking** On `AutoCommandBufferBuilder`, methods that bind a descriptor set now take a `dynamic_offsets` parameter
+- **Breaking** On `AutoCommandBufferBuilder` and `SyncCommandBufferBuilder`, the `update_buffer` method now takes `data` by reference
+- **Breaking** Made `PipelineLayoutDescTweaks` public, for use with compute pipelines
 - Added support for `ImageAspect` and YV12/NV12 formats,  for use with the UnsafeImage API.
 - Added basic VK_KHR_external_memory, VK_KHR_external_memory_fd, and VK_EXT_external_memory_dma_buf support.
 - Fixed potential segmentation fault in `ComputePipeline` when referencing `PipelineCache` objects.

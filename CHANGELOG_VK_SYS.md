@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.6.0 (2020-03-05)
+
 - Added support for VK1.2 formats.
 - Added support for additional image aspect bits.
 - Updated the structure type enum to match VK1.2.

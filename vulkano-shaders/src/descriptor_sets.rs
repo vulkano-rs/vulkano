@@ -9,55 +9,32 @@
 
 use std::cmp;
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Ident, TokenStream};
 
 use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
+use std::collections::HashSet;
 
-pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
-    // TODO: not implemented correctly
+struct Descriptor {
+    set: u32,
+    binding: u32,
+    desc_ty: TokenStream,
+    array_count: u64,
+    readonly: bool,
+}
+
+pub(super) fn write_descriptor_sets(
+    doc: &Spirv,
+    entry_point_layout_name: &Ident,
+    entrypoint_id: u32,
+    interface: &[u32],
+    types_meta: &TypesMeta,
+) -> TokenStream {
+    // TODO: somewhat implemented correctly
 
     // Finding all the descriptors.
-    let mut descriptors = Vec::new();
-    struct Descriptor {
-        set: u32,
-        binding: u32,
-        desc_ty: TokenStream,
-        array_count: u64,
-        readonly: bool,
-    }
-
-    // Looping to find all the elements that have the `DescriptorSet` decoration.
-    for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
-        let variable_id = set_decoration.target_id;
-        let set = set_decoration.params[0];
-
-        // Find which type is pointed to by this variable.
-        let (pointed_ty, storage_class) = pointer_variable_ty(doc, variable_id);
-        // Name of the variable.
-        let name = spirv_search::name_from_id(doc, variable_id);
-
-        // Find the binding point of this descriptor.
-        // TODO: There was a previous todo here, I think it was asking for this to be implemented for member decorations? check git history
-        let binding = doc
-            .get_decoration_params(variable_id, Decoration::DecorationBinding)
-            .unwrap()[0];
-
-        // Find information about the kind of binding for this descriptor.
-        let (desc_ty, readonly, array_count) =
-            descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
-                "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
-                name, pointed_ty
-            ));
-        descriptors.push(Descriptor {
-            desc_ty,
-            set,
-            binding,
-            array_count,
-            readonly,
-        });
-    }
+    let descriptors = find_descriptors(doc, entrypoint_id, interface);
 
     // Looping to find all the push constant structs.
     let mut push_constants_size = 0;
@@ -127,10 +104,10 @@ pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> Toke
 
     quote! {
         #[derive(Debug, Clone)]
-        pub struct Layout(pub ShaderStages);
+        pub struct #entry_point_layout_name(pub ShaderStages);
 
         #[allow(unsafe_code)]
-        unsafe impl PipelineLayoutDesc for Layout {
+        unsafe impl PipelineLayoutDesc for #entry_point_layout_name {
             fn num_sets(&self) -> usize {
                 #num_sets
             }
@@ -155,6 +132,201 @@ pub(super) fn write_descriptor_sets(doc: &Spirv, types_meta: &TypesMeta) -> Toke
 
             fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
                 #push_constants_range_body
+            }
+        }
+    }
+}
+
+fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<Descriptor> {
+    let mut descriptors = Vec::new();
+
+    // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
+    // and most tools will put all used variables in the entrypoint interface. However,
+    // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
+    // and instead the function itself must be inspected.
+    let variables = {
+        let mut found_variables: HashSet<u32> = interface.iter().cloned().collect();
+        let mut inspected_functions: HashSet<u32> = HashSet::new();
+        find_variables_in_function(
+            &doc,
+            entrypoint_id,
+            &mut inspected_functions,
+            &mut found_variables,
+        );
+        found_variables
+    };
+
+    // Looping to find all the interface elements that have the `DescriptorSet` decoration.
+    for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
+        let variable_id = set_decoration.target_id;
+
+        if !variables.contains(&variable_id) {
+            continue;
+        }
+
+        let set = set_decoration.params[0];
+
+        // Find which type is pointed to by this variable.
+        let (pointed_ty, storage_class) = pointer_variable_ty(doc, variable_id);
+        // Name of the variable.
+        let name = spirv_search::name_from_id(doc, variable_id);
+
+        // Find the binding point of this descriptor.
+        // TODO: There was a previous todo here, I think it was asking for this to be implemented for member decorations? check git history
+        let binding = doc
+            .get_decoration_params(variable_id, Decoration::DecorationBinding)
+            .unwrap()[0];
+
+        // Find information about the kind of binding for this descriptor.
+        let (desc_ty, readonly, array_count) =
+            descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
+                "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
+                name, pointed_ty
+            ));
+        descriptors.push(Descriptor {
+            desc_ty,
+            set,
+            binding,
+            array_count,
+            readonly,
+        });
+    }
+
+    descriptors
+}
+
+// Recursively finds every pointer variable used in the execution of a function.
+fn find_variables_in_function(
+    doc: &Spirv,
+    function: u32,
+    inspected_functions: &mut HashSet<u32>,
+    found_variables: &mut HashSet<u32>,
+) {
+    inspected_functions.insert(function);
+    let mut in_function = false;
+    for instruction in &doc.instructions {
+        if !in_function {
+            match instruction {
+                Instruction::Function { result_id, .. } if result_id == &function => {
+                    in_function = true;
+                }
+                _ => {}
+            }
+        } else {
+            // We only care about instructions that accept pointers.
+            // https://www.khronos.org/registry/spir-v/specs/unified1/SPIRV.html#_universal_validation_rules
+            match instruction {
+                Instruction::Load { pointer, .. } | Instruction::Store { pointer, .. } => {
+                    found_variables.insert(*pointer);
+                }
+                Instruction::AccessChain { base_id, .. }
+                | Instruction::InBoundsAccessChain { base_id, .. } => {
+                    found_variables.insert(*base_id);
+                }
+                Instruction::FunctionCall {
+                    function_id, args, ..
+                } => {
+                    args.iter().for_each(|&x| {
+                        found_variables.insert(x);
+                    });
+                    if !inspected_functions.contains(function_id) {
+                        find_variables_in_function(
+                            doc,
+                            *function_id,
+                            inspected_functions,
+                            found_variables,
+                        );
+                    }
+                }
+                Instruction::ImageTexelPointer {
+                    image,
+                    coordinate,
+                    sample,
+                    ..
+                } => {
+                    found_variables.insert(*image);
+                    found_variables.insert(*coordinate);
+                    found_variables.insert(*sample);
+                }
+                Instruction::CopyMemory {
+                    target_id,
+                    source_id,
+                    ..
+                } => {
+                    found_variables.insert(*target_id);
+                    found_variables.insert(*source_id);
+                }
+                Instruction::CopyObject { operand_id, .. } => {
+                    found_variables.insert(*operand_id);
+                }
+                Instruction::AtomicLoad { pointer, .. }
+                | Instruction::AtomicIIncrement { pointer, .. }
+                | Instruction::AtomicIDecrement { pointer, .. }
+                | Instruction::AtomicFlagTestAndSet { pointer, .. }
+                | Instruction::AtomicFlagClear { pointer, .. } => {
+                    found_variables.insert(*pointer);
+                }
+                Instruction::AtomicStore {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicExchange {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicIAdd {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicISub {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicSMin {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicUMin {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicSMax {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicUMax {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicAnd {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicOr {
+                    pointer, value_id, ..
+                }
+                | Instruction::AtomicXor {
+                    pointer, value_id, ..
+                } => {
+                    found_variables.insert(*pointer);
+                    found_variables.insert(*value_id);
+                }
+                Instruction::AtomicCompareExchange {
+                    pointer,
+                    value_id,
+                    comparator_id,
+                    ..
+                }
+                | Instruction::AtomicCompareExchangeWeak {
+                    pointer,
+                    value_id,
+                    comparator_id,
+                    ..
+                } => {
+                    found_variables.insert(*pointer);
+                    found_variables.insert(*value_id);
+                    found_variables.insert(*comparator_id);
+                }
+                Instruction::ExtInst { operands, .. } => {
+                    // We don't know which extended instructions take pointers,
+                    // so we must interpret every operand as a pointer.
+                    operands.iter().for_each(|&o| {
+                        found_variables.insert(o);
+                    });
+                }
+                Instruction::FunctionEnd => return,
+                _ => {}
             }
         }
     }
@@ -210,9 +382,12 @@ fn descriptor_infos(
                     let decoration_block = doc
                         .get_decoration_params(pointed_ty, Decoration::DecorationBlock)
                         .is_some();
+                    let decoration_buffer_block = doc
+                        .get_decoration_params(pointed_ty, Decoration::DecorationBufferBlock)
+                        .is_some();
                     assert!(
-                        decoration_block,
-                        "Structs in shader interface are expected to be decorated with Block"
+                        decoration_block ^ decoration_buffer_block,
+                        "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
                     let is_ssbo = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
@@ -365,4 +540,184 @@ fn descriptor_infos(
             }
         })
         .next()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codegen::compile;
+    use crate::parse;
+    use shaderc::ShaderKind;
+    use std::path::{Path, PathBuf};
+
+    /// `entrypoint1.frag.glsl`:
+    /// ```glsl
+    /// #version 450
+    ///
+    /// layout(set = 0, binding = 0) uniform Uniform {
+    ///     uint data;
+    /// } ubo;
+    ///
+    /// layout(set = 0, binding = 1) buffer Buffer {
+    ///     uint data;
+    /// } bo;
+    ///
+    /// layout(set = 0, binding = 2) uniform sampler textureSampler;
+    /// layout(set = 0, binding = 3) uniform texture2D imageTexture;
+    ///
+    /// layout(push_constant) uniform PushConstant {
+    ///    uint data;
+    /// } push;
+    ///
+    /// layout(input_attachment_index = 0, set = 0, binding = 4) uniform subpassInput inputAttachment;
+    ///
+    /// layout(location = 0) out vec4 outColor;
+    ///
+    /// void entrypoint1() {
+    ///     bo.data = 12;
+    ///     outColor = vec4(
+    ///         float(ubo.data),
+    ///         float(push.data),
+    ///         texture(sampler2D(imageTexture, textureSampler), vec2(0.0, 0.0)).x,
+    ///         subpassLoad(inputAttachment).x
+    ///     );
+    /// }
+    /// ```
+    ///
+    /// `entrypoint2.frag.glsl`:
+    /// ```glsl
+    /// #version 450
+    ///
+    /// layout(input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput inputAttachment2;
+    ///
+    /// layout(set = 0, binding = 1) buffer Buffer {
+    ///     uint data;
+    /// } bo2;
+    ///
+    /// layout(set = 0, binding = 2) uniform Uniform {
+    ///     uint data;
+    /// } ubo2;
+    ///
+    /// layout(push_constant) uniform PushConstant {
+    ///    uint data;
+    /// } push2;
+    ///
+    /// void entrypoint2() {
+    ///     bo2.data = ubo2.data + push2.data + int(subpassLoad(inputAttachment2).y);
+    /// }
+    /// ```
+    ///
+    /// Compiled and linked with:
+    /// ```sh
+    /// glslangvalidator -e entrypoint1 --source-entrypoint entrypoint1 -V100 entrypoint1.frag.glsl -o entrypoint1.spv
+    /// glslangvalidator -e entrypoint2 --source-entrypoint entrypoint2 -V100 entrypoint2.frag.glsl -o entrypoint2.spv
+    /// spirv-link entrypoint1.spv entrypoint2.spv -o multiple_entrypoints.spv
+    /// ```
+    #[test]
+    fn test_descriptor_calculation_with_multiple_entrypoints() {
+        let data = include_bytes!("../tests/multiple_entrypoints.spv");
+        let instructions: Vec<u32> = data
+            .chunks(4)
+            .map(|c| {
+                ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
+            })
+            .collect();
+        let doc = parse::parse_spirv(&instructions).unwrap();
+
+        let mut descriptors = Vec::new();
+        for instruction in doc.instructions.iter() {
+            if let &Instruction::EntryPoint {
+                id, ref interface, ..
+            } = instruction
+            {
+                descriptors.push(find_descriptors(&doc, id, interface));
+            }
+        }
+
+        // Check first entrypoint
+        let e1_descriptors = descriptors.get(0).expect("Could not find entrypoint1");
+        let mut e1_bindings = Vec::new();
+        for d in e1_descriptors {
+            e1_bindings.push((d.set, d.binding));
+        }
+        assert_eq!(e1_bindings.len(), 5);
+        assert!(e1_bindings.contains(&(0, 0)));
+        assert!(e1_bindings.contains(&(0, 1)));
+        assert!(e1_bindings.contains(&(0, 2)));
+        assert!(e1_bindings.contains(&(0, 3)));
+        assert!(e1_bindings.contains(&(0, 4)));
+
+        // Check second entrypoint
+        let e2_descriptors = descriptors.get(1).expect("Could not find entrypoint2");
+        let mut e2_bindings = Vec::new();
+        for d in e2_descriptors {
+            e2_bindings.push((d.set, d.binding));
+        }
+        assert_eq!(e2_bindings.len(), 3);
+        assert!(e2_bindings.contains(&(0, 0)));
+        assert!(e2_bindings.contains(&(0, 1)));
+        assert!(e2_bindings.contains(&(0, 2)));
+    }
+
+    #[test]
+    fn test_descriptor_calculation_with_multiple_functions() {
+        let includes: [PathBuf; 0] = [];
+        let defines: [(String, String); 0] = [];
+        let comp = compile(
+            None,
+            &Path::new(""),
+            "
+        #version 450
+
+        layout(set = 1, binding = 0) buffer Buffer {
+            vec3 data;
+        } bo;
+
+        layout(set = 2, binding = 0) uniform Uniform {
+            float data;
+        } ubo;
+
+        layout(set = 3, binding = 1) uniform sampler textureSampler;
+        layout(set = 3, binding = 2) uniform texture2D imageTexture;
+
+        float withMagicSparkles(float data) {
+            return texture(sampler2D(imageTexture, textureSampler), vec2(data, data)).x;
+        }
+
+        vec3 makeSecretSauce() {
+            return vec3(withMagicSparkles(ubo.data));
+        }
+
+        void main() {
+            bo.data = makeSecretSauce();
+        }
+        ",
+            ShaderKind::Vertex,
+            &includes,
+            &defines,
+        )
+        .unwrap();
+        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+
+        for instruction in doc.instructions.iter() {
+            if let &Instruction::EntryPoint {
+                id, ref interface, ..
+            } = instruction
+            {
+                let descriptors = find_descriptors(&doc, id, interface);
+                let mut bindings = Vec::new();
+                for d in descriptors {
+                    bindings.push((d.set, d.binding));
+                }
+                assert_eq!(bindings.len(), 4);
+                assert!(bindings.contains(&(1, 0)));
+                assert!(bindings.contains(&(2, 0)));
+                assert!(bindings.contains(&(3, 1)));
+                assert!(bindings.contains(&(3, 2)));
+
+                return;
+            }
+        }
+        panic!("Could not find entrypoint");
+    }
 }
