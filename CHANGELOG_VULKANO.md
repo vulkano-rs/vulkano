@@ -1,6 +1,21 @@
 # Unreleased
 
+- Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
+  - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
+  - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
+- **Breaking** `shader!` now accepts structs in shader interfaces decorated with `BufferBlock` rather than `Block`.
+- **Breaking** Changes to image types:
+  - Image types no longer implement `ImageViewAccess`.
+  - `Dimensions` is removed. Image constructors now take `ImageDimensions`.
+  - `ImageDimensions` no longer has the `cubemap_compatible` member. Instead, several image constructors take `ImageCreateFlags` which specifies this aspect.
+  - Replaced the various functions of `UnsafeImage` to query format features and usage with two that simply return `Formatfeatures` and `ImageUsage`.
+- **Breaking** Changes to image view handling:
+  - Created a new `image::view` module for all image view related things.
+  - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
+  - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. `ImageView` implements this trait.
+  - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
 - **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself). The `PoolAlloc` associated type on the `CommandBuffer` trait is also removed, as it's no longer needed.
+- Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 
 # Version 0.21.0 (2021-03-05)
@@ -27,6 +42,8 @@
   - `time` 0.1 -> 0.2 (for examples)
 - Added `VK_KHR_portability_subset` device extension.
 - Added `DeviceExtensions::required_extensions` function that returns a set of available extensions required to create `Device` on this platform.
+- `FormatFeatures` now implements `Copy`.
+- Removed the `AttachmentImageView` trait, which didn't appear to be used for anything anyway.
 
 # Version 0.20.0 (2020-12-26)
 

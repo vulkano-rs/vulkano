@@ -9,7 +9,7 @@
 
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::image::Dimensions;
+use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
 use vulkano::image::MipmapsCount;
 use vulkano::instance;
@@ -129,9 +129,10 @@ fn main() {
 
     // Create an image in order to generate some additional logging:
     let pixel_format = Format::R8G8B8A8Uint;
-    let dimensions = Dimensions::Dim2d {
+    let dimensions = ImageDimensions::Dim2d {
         width: 4096,
         height: 4096,
+        array_layers: 1,
     };
     const DATA: [[u8; 4]; 4096 * 4096] = [[0; 4]; 4096 * 4096];
     let _ = ImmutableImage::from_iter(

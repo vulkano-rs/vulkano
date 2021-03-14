@@ -15,15 +15,12 @@ use buffer::BufferAccess;
 use format::ClearValue;
 use format::Format;
 use format::FormatDesc;
-use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageViewAccess;
-use image::Dimensions;
+use image::ImageDescriptorLayouts;
 use image::ImageInner;
 use image::ImageLayout;
-use image::ViewType;
 use swapchain::Swapchain;
 use sync::AccessError;
 
@@ -46,7 +43,6 @@ use OomError;
 pub struct SwapchainImage<W> {
     swapchain: Arc<Swapchain<W>>,
     image_offset: usize,
-    view: UnsafeImageView,
 }
 
 impl<W> SwapchainImage<W> {
@@ -58,12 +54,10 @@ impl<W> SwapchainImage<W> {
         id: usize,
     ) -> Result<Arc<SwapchainImage<W>>, OomError> {
         let image = swapchain.raw_image(id).unwrap();
-        let view = UnsafeImageView::raw(&image.image, ViewType::Dim2d, 0..1, 0..1)?;
 
         Ok(Arc::new(SwapchainImage {
             swapchain: swapchain.clone(),
             image_offset: id,
-            view: view,
         }))
     }
 
@@ -113,6 +107,16 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::PresentSrc
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: ImageLayout::ShaderReadOnlyOptimal,
+            combined_image_sampler: ImageLayout::ShaderReadOnlyOptimal,
+            sampled_image: ImageLayout::ShaderReadOnlyOptimal,
+            input_attachment: ImageLayout::ShaderReadOnlyOptimal,
+        })
     }
 
     #[inline]
@@ -180,52 +184,6 @@ unsafe impl<P, W> ImageContent<P> for SwapchainImage<W> {
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
-    }
-}
-
-unsafe impl<W> ImageViewAccess for SwapchainImage<W> {
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn dimensions(&self) -> Dimensions {
-        let dims = self.swapchain.dimensions();
-        Dimensions::Dim2d {
-            width: dims[0],
-            height: dims[1],
-        }
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
     }
 }
 

@@ -56,19 +56,19 @@ where
         device.internal_object()
     );
 
-    if !source_inner.image.usage_transfer_source() {
+    if !source_inner.image.usage().transfer_source {
         return Err(CheckBlitImageError::MissingTransferSourceUsage);
     }
 
-    if !destination_inner.image.usage_transfer_destination() {
+    if !destination_inner.image.usage().transfer_destination {
         return Err(CheckBlitImageError::MissingTransferDestinationUsage);
     }
 
-    if !source_inner.image.supports_blit_source() {
+    if !source_inner.image.format_features().blit_src {
         return Err(CheckBlitImageError::SourceFormatNotSupported);
     }
 
-    if !destination_inner.image.supports_blit_destination() {
+    if !destination_inner.image.format_features().blit_dst {
         return Err(CheckBlitImageError::DestinationFormatNotSupported);
     }
 

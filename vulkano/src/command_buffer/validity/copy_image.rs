@@ -54,11 +54,11 @@ where
         device.internal_object()
     );
 
-    if !source_inner.image.usage_transfer_source() {
+    if !source_inner.image.usage().transfer_source {
         return Err(CheckCopyImageError::MissingTransferSourceUsage);
     }
 
-    if !destination_inner.image.usage_transfer_destination() {
+    if !destination_inner.image.usage().transfer_destination {
         return Err(CheckCopyImageError::MissingTransferDestinationUsage);
     }
 

@@ -26,7 +26,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSet;
 use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
-use image::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use sampler::Sampler;
 use OomError;
 use VulkanObject;
@@ -87,7 +87,7 @@ impl FixedSizeDescriptorSetsPool {
         FixedSizeDescriptorSetsPool {
             layout,
             pool: LocalPool {
-                device: device,
+                device,
                 next_capacity: 3,
                 current_pool: None,
             },
@@ -101,10 +101,7 @@ impl FixedSizeDescriptorSetsPool {
     pub fn next(&mut self) -> FixedSizeDescriptorSetBuilder<()> {
         let inner = PersistentDescriptorSet::start(self.layout.clone());
 
-        FixedSizeDescriptorSetBuilder {
-            pool: self,
-            inner: inner,
-        }
+        FixedSizeDescriptorSetBuilder { pool: self, inner }
     }
 }
 
@@ -138,7 +135,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.inner.image(index)
     }
 }
@@ -314,7 +311,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R> {
     #[inline]
     pub fn build(self) -> Result<FixedSizeDescriptorSet<R>, PersistentDescriptorSetBuildError> {
         let inner = self.inner.build_with_pool(&mut self.pool.pool)?;
-        Ok(FixedSizeDescriptorSet { inner: inner })
+        Ok(FixedSizeDescriptorSet { inner })
     }
 
     /// Call this function if the next element of the set is an array in order to set the value of
@@ -411,7 +408,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilder {
             pool: self.pool,
@@ -443,7 +440,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilder<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilder {
             pool: self.pool,
@@ -555,7 +552,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
             pool: self.pool,
@@ -586,7 +583,7 @@ impl<'a, R> FixedSizeDescriptorSetBuilderArray<'a, R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         Ok(FixedSizeDescriptorSetBuilderArray {
             pool: self.pool,

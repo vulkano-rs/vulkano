@@ -30,7 +30,7 @@ use framebuffer::RenderPassAbstract;
 use framebuffer::RenderPassDesc;
 use framebuffer::RenderPassDescClearValues;
 use framebuffer::RenderPassSys;
-use image::ImageViewAccess;
+use image::view::ImageViewAbstract;
 
 use check_errors;
 use vk;
@@ -54,10 +54,10 @@ use VulkanObject;
 /// use vulkano::framebuffer::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
-/// # let my_image: Arc<vulkano::image::AttachmentImage<vulkano::format::Format>> = return;
+/// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage<vulkano::format::Format>>>> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::start(render_pass.clone())
-///     .add(my_image).unwrap()
+///     .add(view).unwrap()
 ///     .build().unwrap();
 /// ```
 ///
@@ -92,7 +92,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     /// Starts building a framebuffer.
     pub fn start(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
-            render_pass: render_pass,
+            render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoIdentical(None),
             attachments: (),
@@ -103,7 +103,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     /// the intersection of the dimensions of all the attachments.
     pub fn with_intersecting_dimensions(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
-            render_pass: render_pass,
+            render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::AutoSmaller(None),
             attachments: (),
@@ -113,7 +113,7 @@ impl<Rp> Framebuffer<Rp, ()> {
     /// Starts building a framebuffer.
     pub fn with_dimensions(render_pass: Rp, dimensions: [u32; 3]) -> FramebufferBuilder<Rp, ()> {
         FramebufferBuilder {
-            render_pass: render_pass,
+            render_pass,
             raw_ids: SmallVec::new(),
             dimensions: FramebufferBuilderDimensions::Specific(dimensions),
             attachments: (),
@@ -164,7 +164,7 @@ where
         attachment: T,
     ) -> Result<FramebufferBuilder<Rp, (A, T)>, FramebufferCreationError>
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         if self.raw_ids.len() >= self.render_pass.num_attachments() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
@@ -178,56 +178,54 @@ where
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
 
-        let img_dims = attachment.dimensions().to_image_dimensions();
-        debug_assert_eq!(img_dims.depth(), 1);
+        let image_dimensions = attachment.image().dimensions();
+        let array_layers = attachment.array_layers();
+        debug_assert_eq!(image_dimensions.depth(), 1);
+
+        let view_dimensions = [
+            image_dimensions.width(),
+            image_dimensions.height(),
+            array_layers.end - array_layers.start,
+        ];
 
         let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::AutoIdentical(None) => {
-                let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
-                FramebufferBuilderDimensions::AutoIdentical(Some(dims))
+                FramebufferBuilderDimensions::AutoIdentical(Some(view_dimensions))
             }
             FramebufferBuilderDimensions::AutoIdentical(Some(current)) => {
-                if img_dims.width() != current[0]
-                    || img_dims.height() != current[1]
-                    || img_dims.array_layers() != current[2]
-                {
+                if view_dimensions != current {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
-                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()],
+                        obtained: view_dimensions,
                     });
                 }
 
                 FramebufferBuilderDimensions::AutoIdentical(Some(current))
             }
             FramebufferBuilderDimensions::AutoSmaller(None) => {
-                let dims = [img_dims.width(), img_dims.height(), img_dims.array_layers()];
-                FramebufferBuilderDimensions::AutoSmaller(Some(dims))
+                FramebufferBuilderDimensions::AutoSmaller(Some(view_dimensions))
             }
             FramebufferBuilderDimensions::AutoSmaller(Some(current)) => {
                 let new_dims = [
-                    cmp::min(current[0], img_dims.width()),
-                    cmp::min(current[1], img_dims.height()),
-                    cmp::min(current[2], img_dims.array_layers()),
+                    cmp::min(current[0], view_dimensions[0]),
+                    cmp::min(current[1], view_dimensions[1]),
+                    cmp::min(current[2], view_dimensions[2]),
                 ];
 
                 FramebufferBuilderDimensions::AutoSmaller(Some(new_dims))
             }
             FramebufferBuilderDimensions::Specific(current) => {
-                if img_dims.width() < current[0]
-                    || img_dims.height() < current[1]
-                    || img_dims.array_layers() < current[2]
+                if view_dimensions[0] < current[0]
+                    || view_dimensions[1] < current[1]
+                    || view_dimensions[2] < current[2]
                 {
                     return Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                         expected: current,
-                        obtained: [img_dims.width(), img_dims.height(), img_dims.array_layers()],
+                        obtained: view_dimensions,
                     });
                 }
 
-                FramebufferBuilderDimensions::Specific([
-                    img_dims.width(),
-                    img_dims.height(),
-                    img_dims.array_layers(),
-                ])
+                FramebufferBuilderDimensions::Specific(view_dimensions)
             }
         };
 
@@ -236,8 +234,8 @@ where
 
         Ok(FramebufferBuilder {
             render_pass: self.render_pass,
-            raw_ids: raw_ids,
-            dimensions: dimensions,
+            raw_ids,
+            dimensions,
             attachments: (self.attachments, attachment),
         })
     }
@@ -324,10 +322,10 @@ where
         };
 
         Ok(Framebuffer {
-            device: device,
+            device,
             render_pass: self.render_pass,
-            framebuffer: framebuffer,
-            dimensions: dimensions,
+            framebuffer,
+            dimensions,
             resources: self.attachments,
         })
     }
@@ -387,7 +385,7 @@ where
     }
 
     #[inline]
-    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         self.resources.as_image_view_access(index)
     }
 }
@@ -567,6 +565,7 @@ mod tests {
     use framebuffer::FramebufferCreationError;
     use framebuffer::RenderPassDesc;
     use image::attachment::AttachmentImage;
+    use image::view::ImageView;
     use std::sync::Arc;
 
     #[test]
@@ -591,10 +590,12 @@ mod tests {
             .unwrap(),
         );
 
-        let image =
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
         let _ = Framebuffer::start(render_pass)
-            .add(image.clone())
+            .add(view)
             .unwrap()
             .build()
             .unwrap();
@@ -636,9 +637,12 @@ mod tests {
             .unwrap(),
         );
 
-        let image = AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap(),
+        )
+        .unwrap();
 
-        match Framebuffer::start(render_pass).add(image.clone()) {
+        match Framebuffer::start(render_pass).add(view) {
             Err(FramebufferCreationError::IncompatibleAttachment(_)) => (),
             _ => panic!(),
         }
@@ -668,10 +672,13 @@ mod tests {
             .unwrap(),
         );
 
-        let img = AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let _ = Framebuffer::with_dimensions(render_pass, [512, 512, 1])
-            .add(img)
+            .add(view)
             .unwrap()
             .build()
             .unwrap();
@@ -699,9 +706,12 @@ mod tests {
             .unwrap(),
         );
 
-        let img = AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
-        match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(img) {
+        match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(view) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
                 expected,
                 obtained,
@@ -741,8 +751,14 @@ mod tests {
             .unwrap(),
         );
 
-        let a = AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap();
-        let b = AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap();
+        let a = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
+        let b = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         match Framebuffer::start(render_pass).add(a).unwrap().add(b) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
@@ -784,8 +800,14 @@ mod tests {
             .unwrap(),
         );
 
-        let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
-        let b = AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap();
+        let a = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
+        let b = ImageView::new(
+            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let fb = Framebuffer::with_intersecting_dimensions(render_pass)
             .add(a)
@@ -829,10 +851,13 @@ mod tests {
             .unwrap(),
         );
 
-        let img = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
-            .add(img)
+            .add(view)
             .unwrap()
             .build();
 
@@ -867,8 +892,14 @@ mod tests {
             .unwrap(),
         );
 
-        let a = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
-        let b = AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap();
+        let a = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
+        let b = ImageView::new(
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
             .add(a)

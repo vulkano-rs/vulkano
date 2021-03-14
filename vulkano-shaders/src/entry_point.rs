@@ -10,11 +10,16 @@
 use proc_macro2::{Span, TokenStream};
 use syn::Ident;
 
+use crate::descriptor_sets::write_descriptor_sets;
 use crate::enums::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use crate::parse::{Instruction, Spirv};
-use crate::spirv_search;
+use crate::{spirv_search, TypesMeta};
 
-pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream, TokenStream) {
+pub(super) fn write_entry_point(
+    doc: &Spirv,
+    instruction: &Instruction,
+    types_meta: &TypesMeta,
+) -> (TokenStream, TokenStream, TokenStream) {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
             ref execution,
@@ -52,6 +57,18 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
         ignore_first_array_out,
     );
 
+    let descriptor_sets_layout_name = Ident::new(
+        format!("{}Layout", capitalized_ep_name).as_str(),
+        Span::call_site(),
+    );
+    let descriptor_sets_layout_struct = write_descriptor_sets(
+        &doc,
+        &descriptor_sets_layout_name,
+        id,
+        interface,
+        &types_meta,
+    );
+
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         quote! { SpecializationConstants }
     } else {
@@ -61,10 +78,10 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
     let (ty, f_call) = {
         if let ExecutionModel::ExecutionModelGLCompute = *execution {
             (
-                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, Layout> },
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, #descriptor_sets_layout_name> },
                 quote! { compute_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    Layout(ShaderStages { compute: true, .. ShaderStages::none() })
+                    #descriptor_sets_layout_name(ShaderStages { compute: true, .. ShaderStages::none() })
                 )},
             )
         } else {
@@ -171,14 +188,14 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
                     #spec_consts_struct,
                     #capitalized_ep_name_input,
                     #capitalized_ep_name_output,
-                    Layout>
+                    #descriptor_sets_layout_name>
             };
             let f_call = quote! {
                 graphics_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
                     #capitalized_ep_name_input,
                     #capitalized_ep_name_output,
-                    Layout(#stage),
+                    #descriptor_sets_layout_name(#stage),
                     #entry_ty
                 )
             };
@@ -207,7 +224,11 @@ pub fn write_entry_point(doc: &Spirv, instruction: &Instruction) -> (TokenStream
         }
     };
 
-    (interface_structs, entry_point)
+    (
+        interface_structs,
+        entry_point,
+        descriptor_sets_layout_struct,
+    )
 }
 
 struct Element {

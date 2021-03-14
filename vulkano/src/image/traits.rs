@@ -21,11 +21,9 @@ use format::PossibleSintFormatDesc;
 use format::PossibleStencilFormatDesc;
 use format::PossibleUintFormatDesc;
 use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
-use image::Dimensions;
+use image::ImageDescriptorLayouts;
 use image::ImageDimensions;
 use image::ImageLayout;
-use sampler::Sampler;
 use sync::AccessError;
 
 use SafeDeref;
@@ -87,13 +85,13 @@ pub unsafe trait ImageAccess {
     /// Returns true if the image can be used as a source for blits.
     #[inline]
     fn supports_blit_source(&self) -> bool {
-        self.inner().image.supports_blit_source()
+        self.inner().image.format_features().blit_src
     }
 
     /// Returns true if the image can be used as a destination for blits.
     #[inline]
     fn supports_blit_destination(&self) -> bool {
-        self.inner().image.supports_blit_destination()
+        self.inner().image.format_features().blit_dst
     }
 
     /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
@@ -151,9 +149,15 @@ pub unsafe trait ImageAccess {
     {
         ImageAccessFromUndefinedLayout {
             image: self,
-            preinitialized: preinitialized,
+            preinitialized,
         }
     }
+
+    /// Returns an [`ImageDescriptorLayouts`] structure specifying the image layout to use
+    /// in descriptors of various kinds.
+    ///
+    /// This must return `Some` if the image is to be used to create an image view.
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
 
     /// Returns true if an access to `self` potentially overlaps the same memory as an
     /// access to `other`.
@@ -288,6 +292,11 @@ where
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        (**self).descriptor_layouts()
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         (**self).conflicts_buffer(other)
     }
@@ -388,6 +397,11 @@ where
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        self.image.descriptor_layouts()
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         self.image.conflicts_buffer(other)
     }
@@ -456,127 +470,10 @@ where
 /// given image.
 // TODO: isn't that for image views instead?
 pub unsafe trait ImageClearValue<T>: ImageAccess {
-    fn decode(&self, T) -> Option<ClearValue>;
+    fn decode(&self, value: T) -> Option<ClearValue>;
 }
 
 pub unsafe trait ImageContent<P>: ImageAccess {
     /// Checks whether pixels of type `P` match the format of the image.
     fn matches_format(&self) -> bool;
-}
-
-/// Trait for types that represent the GPU can access an image view.
-pub unsafe trait ImageViewAccess {
-    fn parent(&self) -> &dyn ImageAccess;
-
-    /// Returns the dimensions of the image view.
-    fn dimensions(&self) -> Dimensions;
-
-    /// Returns the inner unsafe image view object used by this image view.
-    fn inner(&self) -> &UnsafeImageView;
-
-    /// Returns the format of this view. This can be different from the parent's format.
-    #[inline]
-    fn format(&self) -> Format {
-        // TODO: remove this default impl
-        self.inner().format()
-    }
-
-    #[inline]
-    fn samples(&self) -> u32 {
-        self.parent().samples()
-    }
-
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout;
-    /// Returns the image layout to use in a descriptor with the given subresource.
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout;
-
-    /// Returns true if the view doesn't use components swizzling.
-    ///
-    /// Must be true when the view is used as a framebuffer attachment or TODO: I don't remember
-    /// the other thing.
-    fn identity_swizzle(&self) -> bool;
-
-    /// Returns true if the given sampler can be used with this image view.
-    ///
-    /// This method should check whether the sampler's configuration can be used with the format
-    /// of the view.
-    // TODO: return a Result and propagate it when binding to a descriptor set
-    fn can_be_sampled(&self, _sampler: &Sampler) -> bool {
-        true /* FIXME */
-    }
-
-    //fn usable_as_render_pass_attachment(&self, ???) -> Result<(), ???>;
-}
-
-unsafe impl<T> ImageViewAccess for T
-where
-    T: SafeDeref,
-    T::Target: ImageViewAccess,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        (**self).parent()
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn dimensions(&self) -> Dimensions {
-        (**self).dimensions()
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_storage_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_combined_image_sampler_layout()
-    }
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_sampled_image_layout()
-    }
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        (**self).descriptor_set_input_attachment_layout()
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        (**self).identity_swizzle()
-    }
-
-    #[inline]
-    fn can_be_sampled(&self, sampler: &Sampler) -> bool {
-        (**self).can_be_sampled(sampler)
-    }
-}
-
-impl PartialEq for dyn ImageViewAccess + Send + Sync {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
-    }
-}
-
-impl Eq for dyn ImageViewAccess + Send + Sync {}
-
-impl Hash for dyn ImageViewAccess + Send + Sync {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().hash(state);
-    }
-}
-
-pub unsafe trait AttachmentImageView: ImageViewAccess {
-    fn accept(&self, initial_layout: ImageLayout, final_layout: ImageLayout) -> bool;
 }

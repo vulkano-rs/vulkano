@@ -29,11 +29,11 @@ use format::Format;
 use format::FormatDesc;
 use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageContent;
-use image::traits::ImageViewAccess;
-use image::Dimensions;
+use image::ImageCreateFlags;
+use image::ImageDescriptorLayouts;
+use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -58,8 +58,7 @@ use sync::Sharing;
 #[derive(Debug)]
 pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
-    view: UnsafeImageView,
-    dimensions: Dimensions,
+    dimensions: ImageDimensions,
     memory: A,
     format: F,
     initialized: AtomicBool,
@@ -125,18 +124,17 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
 fn generate_mipmaps<Img>(
     cbb: &mut AutoCommandBufferBuilder,
     image: Arc<Img>,
-    dimensions: Dimensions,
+    dimensions: ImageDimensions,
     layout: ImageLayout,
 ) where
     Img: ImageAccess + Send + Sync + 'static,
 {
-    let img_dim = dimensions.to_image_dimensions();
     for level in 1..image.mipmap_levels() {
-        let [xs, ys, ds] = img_dim
+        let [xs, ys, ds] = dimensions
             .mipmap_dimensions(level - 1)
             .unwrap()
             .width_height_depth();
-        let [xd, yd, dd] = img_dim
+        let [xd, yd, dd] = dimensions
             .mipmap_dimensions(level)
             .unwrap()
             .width_height_depth();
@@ -146,11 +144,18 @@ fn generate_mipmaps<Img>(
             level - 1,
             1,
             0,
-            img_dim.array_layers(),
+            dimensions.array_layers(),
             layout,
         );
 
-        let dst = SubImage::new(image.clone(), level, 1, 0, img_dim.array_layers(), layout);
+        let dst = SubImage::new(
+            image.clone(),
+            level,
+            1,
+            0,
+            dimensions.array_layers(),
+            layout,
+        );
 
         cbb.blit_image(
             src,                               //source
@@ -175,7 +180,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         format: F,
         queue_families: I,
     ) -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
@@ -197,7 +202,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn with_mipmaps<'a, I, M>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         format: F,
         mipmaps: M,
         queue_families: I,
@@ -214,12 +219,15 @@ impl<F> ImmutableImage<F> {
             ..ImageUsage::none()
         };
 
+        let flags = ImageCreateFlags::none();
+
         let (image, _) = ImmutableImage::uninitialized(
             device,
             dimensions,
             format,
             mipmaps,
             usage,
+            flags,
             ImageLayout::ShaderReadOnlyOptimal,
             queue_families,
         )?;
@@ -232,10 +240,11 @@ impl<F> ImmutableImage<F> {
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
     pub fn uninitialized<'a, I, M>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         format: F,
         mipmaps: M,
         usage: ImageUsage,
+        flags: ImageCreateFlags,
         layout: ImageLayout,
         queue_families: I,
     ) -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
@@ -260,7 +269,8 @@ impl<F> ImmutableImage<F> {
                 device.clone(),
                 usage,
                 format.format(),
-                dimensions.to_image_dimensions(),
+                flags,
+                dimensions,
                 1,
                 mipmaps,
                 sharing,
@@ -269,7 +279,7 @@ impl<F> ImmutableImage<F> {
             )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Optimal,
@@ -283,28 +293,18 @@ impl<F> ImmutableImage<F> {
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
-            image.bind_memory(mem.memory(), mem.offset())?;
+            image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        let view = unsafe {
-            UnsafeImageView::raw(
-                &image,
-                dimensions.to_view_type(),
-                0..image.mipmap_levels(),
-                0..image.dimensions().array_layers(),
-            )?
-        };
-
         let image = Arc::new(ImmutableImage {
-            image: image,
-            view: view,
-            memory: mem,
-            dimensions: dimensions,
-            format: format,
+            image,
+            memory,
+            dimensions,
+            format,
             initialized: AtomicBool::new(false),
-            layout: layout,
+            layout,
         });
 
         let init = ImmutableImageInitialization {
@@ -321,7 +321,7 @@ impl<F> ImmutableImage<F> {
     #[inline]
     pub fn from_iter<P, I>(
         iter: I,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
         format: F,
         queue: Arc<Queue>,
@@ -350,7 +350,7 @@ impl<F> ImmutableImage<F> {
     /// Construct an ImmutableImage containing a copy of the data in `source`.
     pub fn from_buffer<B, P>(
         source: B,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
         format: F,
         queue: Arc<Queue>,
@@ -374,6 +374,7 @@ impl<F> ImmutableImage<F> {
             sampled: true,
             ..ImageUsage::none()
         };
+        let flags = ImageCreateFlags::none();
         let layout = ImageLayout::ShaderReadOnlyOptimal;
 
         let (image, initializer) = ImmutableImage::uninitialized(
@@ -382,6 +383,7 @@ impl<F> ImmutableImage<F> {
             format,
             mipmaps,
             usage,
+            flags,
             layout,
             source.device().active_queue_families(),
         )?;
@@ -402,7 +404,7 @@ impl<F> ImmutableImage<F> {
             [0, 0, 0],
             dimensions.width_height_depth(),
             0,
-            dimensions.array_layers_with_cube(),
+            dimensions.array_layers(),
             0,
         )
         .unwrap();
@@ -432,7 +434,7 @@ impl<F> ImmutableImage<F> {
 impl<F, A> ImmutableImage<F, A> {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
+    pub fn dimensions(&self) -> ImageDimensions {
         self.dimensions
     }
 
@@ -466,6 +468,16 @@ where
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.layout
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: self.layout,
+            combined_image_sampler: self.layout,
+            sampled_image: self.layout,
+            input_attachment: self.layout,
+        })
     }
 
     #[inline]
@@ -536,51 +548,6 @@ where
     }
 }
 
-unsafe impl<F: 'static, A> ImageViewAccess for ImmutableImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn dimensions(&self) -> Dimensions {
-        self.dimensions
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
-    }
-}
-
 unsafe impl ImageAccess for SubImage {
     #[inline]
     fn inner(&self) -> ImageInner {
@@ -595,6 +562,11 @@ unsafe impl ImageAccess for SubImage {
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.image.final_layout_requirement()
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        None
     }
 
     #[inline]
@@ -691,6 +663,11 @@ where
     }
 
     #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        None
+    }
+
+    #[inline]
     fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
         false
     }
@@ -719,7 +696,11 @@ where
         }
 
         // FIXME: Mipmapped textures require multiple writes to initialize
-        if !self.used.compare_and_swap(false, true, Ordering::Relaxed) {
+        if !self
+            .used
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .unwrap_or_else(|e| e)
+        {
             Ok(())
         } else {
             Err(AccessError::AlreadyInUse)

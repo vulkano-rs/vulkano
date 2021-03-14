@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Image storage (1D, 2D, 3D, arrays, etc.).
+//! Image storage (1D, 2D, 3D, arrays, etc.) and image views.
 //!
 //! An *image* is a region of memory whose purpose is to store multi-dimensional data. Its
 //! most common use is to store a 2D array of color pixels (in other words an *image* in
@@ -30,12 +30,12 @@
 //!
 //! # High-level wrappers
 //!
-//! In the vulkano library, an image is any object that implements the `Image` trait and an image
-//! view is any object that implements the `ImageView` trait.
+//! In the vulkano library, an image is any object that implements the [`ImageAccess`] trait. You
+//! can create a view by wrapping them in an [`ImageView`].
 //!
-//! Since these traits are low-level, you are encouraged to not implement them yourself but instead
-//! use one of the provided implementations that are specialized depending on the way you are going
-//! to use the image:
+//! Since the `ImageAccess` trait is low-level, you are encouraged to not implement it yourself but
+//! instead use one of the provided implementations that are specialized depending on the way you
+//! are going to use the image:
 //!
 //! - An `AttachmentImage` can be used when you want to draw to an image.
 //! - An `ImmutableImage` stores data which never need be changed after the initial upload,
@@ -52,14 +52,15 @@ use std::convert::TryFrom;
 pub use self::aspect::ImageAspect;
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
+pub use self::layout::ImageDescriptorLayouts;
 pub use self::layout::ImageLayout;
 pub use self::storage::StorageImage;
 pub use self::swapchain::SwapchainImage;
 pub use self::sys::ImageCreationError;
 pub use self::traits::ImageAccess;
 pub use self::traits::ImageInner;
-pub use self::traits::ImageViewAccess;
 pub use self::usage::ImageUsage;
+pub use self::view::ImageViewAbstract;
 
 mod aspect;
 pub mod attachment; // TODO: make private
@@ -70,6 +71,7 @@ pub mod swapchain; // TODO: make private
 pub mod sys;
 pub mod traits;
 mod usage;
+pub mod view;
 
 /// Specifies how many mipmaps must be allocated.
 ///
@@ -213,190 +215,6 @@ impl Default for ComponentSwizzle {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Dimensions {
-    Dim1d {
-        width: u32,
-    },
-    Dim1dArray {
-        width: u32,
-        array_layers: u32,
-    },
-    Dim2d {
-        width: u32,
-        height: u32,
-    },
-    Dim2dArray {
-        width: u32,
-        height: u32,
-        array_layers: u32,
-    },
-    Dim3d {
-        width: u32,
-        height: u32,
-        depth: u32,
-    },
-    Cubemap {
-        size: u32,
-    },
-    CubemapArray {
-        size: u32,
-        array_layers: u32,
-    },
-}
-
-impl Dimensions {
-    #[inline]
-    pub fn width(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { width } => width,
-            Dimensions::Dim1dArray { width, .. } => width,
-            Dimensions::Dim2d { width, .. } => width,
-            Dimensions::Dim2dArray { width, .. } => width,
-            Dimensions::Dim3d { width, .. } => width,
-            Dimensions::Cubemap { size } => size,
-            Dimensions::CubemapArray { size, .. } => size,
-        }
-    }
-
-    #[inline]
-    pub fn height(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { .. } => 1,
-            Dimensions::Dim2d { height, .. } => height,
-            Dimensions::Dim2dArray { height, .. } => height,
-            Dimensions::Dim3d { height, .. } => height,
-            Dimensions::Cubemap { size } => size,
-            Dimensions::CubemapArray { size, .. } => size,
-        }
-    }
-
-    #[inline]
-    pub fn width_height(&self) -> [u32; 2] {
-        [self.width(), self.height()]
-    }
-
-    #[inline]
-    pub fn depth(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { .. } => 1,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { .. } => 1,
-            Dimensions::Dim3d { depth, .. } => depth,
-            Dimensions::Cubemap { .. } => 1,
-            Dimensions::CubemapArray { .. } => 1,
-        }
-    }
-
-    #[inline]
-    pub fn width_height_depth(&self) -> [u32; 3] {
-        [self.width(), self.height(), self.depth()]
-    }
-
-    #[inline]
-    pub fn array_layers(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. } => 1,
-            Dimensions::Cubemap { .. } => 1,
-            Dimensions::CubemapArray { array_layers, .. } => array_layers,
-        }
-    }
-
-    #[inline]
-    pub fn array_layers_with_cube(&self) -> u32 {
-        match *self {
-            Dimensions::Dim1d { .. } => 1,
-            Dimensions::Dim1dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim2d { .. } => 1,
-            Dimensions::Dim2dArray { array_layers, .. } => array_layers,
-            Dimensions::Dim3d { .. } => 1,
-            Dimensions::Cubemap { .. } => 6,
-            Dimensions::CubemapArray { array_layers, .. } => array_layers * 6,
-        }
-    }
-
-    /// Builds the corresponding `ImageDimensions`.
-    #[inline]
-    pub fn to_image_dimensions(&self) -> ImageDimensions {
-        match *self {
-            Dimensions::Dim1d { width } => ImageDimensions::Dim1d {
-                width: width,
-                array_layers: 1,
-            },
-            Dimensions::Dim1dArray {
-                width,
-                array_layers,
-            } => ImageDimensions::Dim1d {
-                width: width,
-                array_layers: array_layers,
-            },
-            Dimensions::Dim2d { width, height } => ImageDimensions::Dim2d {
-                width: width,
-                height: height,
-                array_layers: 1,
-                cubemap_compatible: false,
-            },
-            Dimensions::Dim2dArray {
-                width,
-                height,
-                array_layers,
-            } => ImageDimensions::Dim2d {
-                width: width,
-                height: height,
-                array_layers: array_layers,
-                cubemap_compatible: false,
-            },
-            Dimensions::Dim3d {
-                width,
-                height,
-                depth,
-            } => ImageDimensions::Dim3d {
-                width: width,
-                height: height,
-                depth: depth,
-            },
-            Dimensions::Cubemap { size } => ImageDimensions::Dim2d {
-                width: size,
-                height: size,
-                array_layers: 6,
-                cubemap_compatible: true,
-            },
-            Dimensions::CubemapArray { size, array_layers } => ImageDimensions::Dim2d {
-                width: size,
-                height: size,
-                array_layers: array_layers * 6,
-                cubemap_compatible: true,
-            },
-        }
-    }
-
-    /// Builds the corresponding `ViewType`.
-    #[inline]
-    pub fn to_view_type(&self) -> ViewType {
-        match *self {
-            Dimensions::Dim1d { .. } => ViewType::Dim1d,
-            Dimensions::Dim1dArray { .. } => ViewType::Dim1dArray,
-            Dimensions::Dim2d { .. } => ViewType::Dim2d,
-            Dimensions::Dim2dArray { .. } => ViewType::Dim2dArray,
-            Dimensions::Dim3d { .. } => ViewType::Dim3d,
-            Dimensions::Cubemap { .. } => ViewType::Cubemap,
-            Dimensions::CubemapArray { .. } => ViewType::CubemapArray,
-        }
-    }
-
-    /// Returns the total number of texels for an image of these dimensions.
-    #[inline]
-    pub fn num_texels(&self) -> u32 {
-        self.width() * self.height() * self.depth() * self.array_layers_with_cube()
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct ImageCreateFlags {
     pub sparse_binding: bool,
@@ -480,17 +298,7 @@ impl From<ImageTiling> for vk::ImageTiling {
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ViewType {
-    Dim1d,
-    Dim1dArray,
-    Dim2d,
-    Dim2dArray,
-    Dim3d,
-    Cubemap,
-    CubemapArray,
-}
-
+/// The dimensions of an image.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ImageDimensions {
     Dim1d {
@@ -501,7 +309,6 @@ pub enum ImageDimensions {
         width: u32,
         height: u32,
         array_layers: u32,
-        cubemap_compatible: bool,
     },
     Dim3d {
         width: u32,
@@ -575,7 +382,6 @@ impl ImageDimensions {
     /// let dims = ImageDimensions::Dim2d {
     ///     width: 32,
     ///     height: 50,
-    ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// };
     ///
@@ -599,7 +405,6 @@ impl ImageDimensions {
     /// let dims = ImageDimensions::Dim2d {
     ///     width: 963,
     ///     height: 256,
-    ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// };
     ///
@@ -607,19 +412,16 @@ impl ImageDimensions {
     /// assert_eq!(dims.mipmap_dimensions(1), Some(ImageDimensions::Dim2d {
     ///     width: 481,
     ///     height: 128,
-    ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(6), Some(ImageDimensions::Dim2d {
     ///     width: 15,
     ///     height: 4,
-    ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(9), Some(ImageDimensions::Dim2d {
     ///     width: 1,
     ///     height: 1,
-    ///     cubemap_compatible: false,
     ///     array_layers: 1,
     /// }));
     /// assert_eq!(dims.mipmap_dimensions(11), None);
@@ -646,7 +448,7 @@ impl ImageDimensions {
             } => {
                 debug_assert_ne!(width, 0);
                 ImageDimensions::Dim1d {
-                    array_layers: array_layers,
+                    array_layers,
                     width: cmp::max(1, width >> level),
                 }
             }
@@ -655,15 +457,13 @@ impl ImageDimensions {
                 width,
                 height,
                 array_layers,
-                cubemap_compatible,
             } => {
                 debug_assert_ne!(width, 0);
                 debug_assert_ne!(height, 0);
                 ImageDimensions::Dim2d {
                     width: cmp::max(1, width >> level),
                     height: cmp::max(1, height >> level),
-                    array_layers: array_layers,
-                    cubemap_compatible: cubemap_compatible,
+                    array_layers,
                 }
             }
 
@@ -687,7 +487,6 @@ impl ImageDimensions {
 #[cfg(test)]
 mod tests {
     use format;
-    use image::Dimensions;
     use image::ImageDimensions;
     use image::ImmutableImage;
     use image::MipmapsCount;
@@ -697,7 +496,6 @@ mod tests {
         let dims = ImageDimensions::Dim2d {
             width: 2,
             height: 1,
-            cubemap_compatible: false,
             array_layers: 1,
         };
         assert_eq!(dims.max_mipmaps(), 2);
@@ -705,7 +503,6 @@ mod tests {
         let dims = ImageDimensions::Dim2d {
             width: 2,
             height: 3,
-            cubemap_compatible: false,
             array_layers: 1,
         };
         assert_eq!(dims.max_mipmaps(), 2);
@@ -713,7 +510,6 @@ mod tests {
         let dims = ImageDimensions::Dim2d {
             width: 512,
             height: 512,
-            cubemap_compatible: false,
             array_layers: 1,
         };
         assert_eq!(dims.max_mipmaps(), 10);
@@ -724,7 +520,6 @@ mod tests {
         let dims = ImageDimensions::Dim2d {
             width: 283,
             height: 175,
-            cubemap_compatible: false,
             array_layers: 1,
         };
         assert_eq!(dims.mipmap_dimensions(0), Some(dims));
@@ -733,7 +528,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 141,
                 height: 87,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -742,7 +536,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 70,
                 height: 43,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -751,7 +544,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 35,
                 height: 21,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -761,7 +553,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 17,
                 height: 10,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -770,7 +561,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 8,
                 height: 5,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -779,7 +569,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 4,
                 height: 2,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -788,7 +577,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 2,
                 height: 1,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -797,7 +585,6 @@ mod tests {
             Some(ImageDimensions::Dim2d {
                 width: 1,
                 height: 1,
-                cubemap_compatible: false,
                 array_layers: 1,
             })
         );
@@ -808,9 +595,10 @@ mod tests {
     fn mipmap_working_immutable_image() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        let dimensions = Dimensions::Dim2d {
+        let dimensions = ImageDimensions::Dim2d {
             width: 512,
             height: 512,
+            array_layers: 1,
         };
         {
             let mut vec = Vec::new();
