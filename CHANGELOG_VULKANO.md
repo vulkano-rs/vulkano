@@ -17,6 +17,8 @@
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 
+- Allow `const` usage of features and `BufferUsage`
+
 # Version 0.21.0 (2021-03-05)
 
 - **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value

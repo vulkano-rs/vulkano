@@ -25,6 +25,16 @@ use vulkano::sync::GpuFuture;
 
 use std::sync::Arc;
 
+const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
+    khr_storage_buffer_storage_class: true,
+    ..DeviceExtensions::none()
+};
+
+const BUFFER_USAGE: BufferUsage = BufferUsage {
+    storage_buffer: true,
+    ..BufferUsage::none()
+};
+
 fn main() {
     // As with other examples, the first step is to create an instance.
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
@@ -45,10 +55,7 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical,
         physical.supported_features(),
-        &DeviceExtensions {
-            khr_storage_buffer_storage_class: true,
-            ..DeviceExtensions::none()
-        },
+        &DEVICE_EXTENSIONS,
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
@@ -107,8 +114,7 @@ fn main() {
         // Iterator that produces the data.
         let data_iter = (0..65536u32).map(|n| n);
         // Builds the buffer and fills it with this iterator.
-        CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
-            .unwrap()
+        CpuAccessibleBuffer::from_iter(device.clone(), BUFFER_USAGE, false, data_iter).unwrap()
     };
 
     // In order to let the shader access the buffer, we need to build a *descriptor set* that

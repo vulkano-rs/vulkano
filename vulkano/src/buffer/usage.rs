@@ -71,7 +71,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with all values set to false.
     #[inline]
-    pub fn none() -> BufferUsage {
+    pub const fn none() -> BufferUsage {
         BufferUsage {
             transfer_source: false,
             transfer_destination: false,
@@ -88,7 +88,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with all values set to true. Can be used for quick prototyping.
     #[inline]
-    pub fn all() -> BufferUsage {
+    pub const fn all() -> BufferUsage {
         BufferUsage {
             transfer_source: true,
             transfer_destination: true,
@@ -105,7 +105,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `transfer_source` set to true and the rest to false.
     #[inline]
-    pub fn transfer_source() -> BufferUsage {
+    pub const fn transfer_source() -> BufferUsage {
         BufferUsage {
             transfer_source: true,
             ..BufferUsage::none()
@@ -114,7 +114,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `transfer_destination` set to true and the rest to false.
     #[inline]
-    pub fn transfer_destination() -> BufferUsage {
+    pub const fn transfer_destination() -> BufferUsage {
         BufferUsage {
             transfer_destination: true,
             ..BufferUsage::none()
@@ -123,7 +123,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `vertex_buffer` set to true and the rest to false.
     #[inline]
-    pub fn vertex_buffer() -> BufferUsage {
+    pub const fn vertex_buffer() -> BufferUsage {
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::none()
@@ -133,7 +133,7 @@ impl BufferUsage {
     /// Builds a `BufferUsage` with `vertex_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]
-    pub fn vertex_buffer_transfer_destination() -> BufferUsage {
+    pub const fn vertex_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             vertex_buffer: true,
             transfer_destination: true,
@@ -143,7 +143,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `index_buffer` set to true and the rest to false.
     #[inline]
-    pub fn index_buffer() -> BufferUsage {
+    pub const fn index_buffer() -> BufferUsage {
         BufferUsage {
             index_buffer: true,
             ..BufferUsage::none()
@@ -152,7 +152,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `index_buffer` and `transfer_destination` set to true and the rest to false.
     #[inline]
-    pub fn index_buffer_transfer_destination() -> BufferUsage {
+    pub const fn index_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             index_buffer: true,
             transfer_destination: true,
@@ -162,7 +162,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `uniform_buffer` set to true and the rest to false.
     #[inline]
-    pub fn uniform_buffer() -> BufferUsage {
+    pub const fn uniform_buffer() -> BufferUsage {
         BufferUsage {
             uniform_buffer: true,
             ..BufferUsage::none()
@@ -172,7 +172,7 @@ impl BufferUsage {
     /// Builds a `BufferUsage` with `uniform_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]
-    pub fn uniform_buffer_transfer_destination() -> BufferUsage {
+    pub const fn uniform_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             uniform_buffer: true,
             transfer_destination: true,
@@ -182,7 +182,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `indirect_buffer` set to true and the rest to false.
     #[inline]
-    pub fn indirect_buffer() -> BufferUsage {
+    pub const fn indirect_buffer() -> BufferUsage {
         BufferUsage {
             indirect_buffer: true,
             ..BufferUsage::none()
@@ -192,7 +192,7 @@ impl BufferUsage {
     /// Builds a `BufferUsage` with `indirect_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]
-    pub fn indirect_buffer_transfer_destination() -> BufferUsage {
+    pub const fn indirect_buffer_transfer_destination() -> BufferUsage {
         BufferUsage {
             indirect_buffer: true,
             transfer_destination: true,
@@ -202,7 +202,7 @@ impl BufferUsage {
 
     /// Builds a `BufferUsage` with `device_address` set to true and the rest to false.
     #[inline]
-    pub fn device_address() -> BufferUsage {
+    pub const fn device_address() -> BufferUsage {
         BufferUsage {
             device_address: true,
             ..BufferUsage::none()
