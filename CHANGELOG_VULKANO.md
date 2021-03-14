@@ -1,5 +1,11 @@
 # Unreleased
 
+- Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
+  - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
+  - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
+- **Breaking** `shader!` now accepts structs in shader interfaces decorated with `BufferBlock` rather than `Block`.
+- Replaced deprecated `compare_and_swap` with `compare_exchange`.
+
 # Version 0.21.0 (2021-03-05)
 
 - **Breaking** `Message::layer_prefix` turned to Option to prevent segfaults when Vulkan message didn't provide `pMessageIdName` value
