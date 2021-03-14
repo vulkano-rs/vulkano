@@ -696,7 +696,11 @@ where
         }
 
         // FIXME: Mipmapped textures require multiple writes to initialize
-        if !self.used.compare_and_swap(false, true, Ordering::Relaxed) {
+        if !self
+            .used
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .unwrap_or_else(|e| e)
+        {
             Ok(())
         } else {
             Err(AccessError::AlreadyInUse)
