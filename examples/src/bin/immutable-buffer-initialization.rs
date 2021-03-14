@@ -73,7 +73,7 @@ void main() {
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &()).unwrap()
+        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), None).unwrap()
     });
 
     let data_buffer = {
@@ -101,7 +101,7 @@ void main() {
         // We can use copy_buffer(), fill_buffer() and some other functions that copies data to
         // buffer also.
         builder
-            .update_buffer(immutable_data_buffer_init, 3)
+            .update_buffer(immutable_data_buffer_init, &3)
             .unwrap();
 
         let command_buffer = builder.build().unwrap();
@@ -135,7 +135,7 @@ void main() {
         AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
 
     builder
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), (), vec![])
         .unwrap();
 
     let command_buffer = builder.build().unwrap();
