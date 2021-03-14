@@ -137,6 +137,14 @@ impl UnsafeImage {
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError> {
         // TODO: doesn't check that the proper features are enabled
 
+        if flags.sparse_binding
+            || flags.sparse_residency
+            || flags.sparse_aliased
+            || flags.mutable_format
+        {
+            unimplemented!();
+        }
+
         let vk = device.pointers();
         let vk_i = device.instance().pointers();
 
