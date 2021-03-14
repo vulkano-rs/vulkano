@@ -21,12 +21,12 @@ use format::FormatDesc;
 use format::FormatTy;
 use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageViewAccess;
-use image::Dimensions;
+use image::ImageCreateFlags;
+use image::ImageDescriptorLayouts;
+use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
@@ -52,14 +52,11 @@ where
     // Inner implementation.
     image: UnsafeImage,
 
-    // We maintain a view of the whole image.
-    view: UnsafeImageView,
-
     // Memory used to back the image.
     memory: PotentialDedicatedAllocation<A::Alloc>,
 
-    // Dimensions of the image view.
-    dimensions: Dimensions,
+    // Dimensions of the image.
+    dimensions: ImageDimensions,
 
     // Format.
     format: F,
@@ -76,7 +73,7 @@ impl<F> StorageImage<F> {
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         format: F,
         queue_families: I,
     ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
@@ -102,16 +99,18 @@ impl<F> StorageImage<F> {
             input_attachment: true,
             transient_attachment: false,
         };
+        let flags = ImageCreateFlags::none();
 
-        StorageImage::with_usage(device, dimensions, format, usage, queue_families)
+        StorageImage::with_usage(device, dimensions, format, usage, flags, queue_families)
     }
 
     /// Same as `new`, but allows specifying the usage.
     pub fn with_usage<'a, I>(
         device: Arc<Device>,
-        dimensions: Dimensions,
+        dimensions: ImageDimensions,
         format: F,
         usage: ImageUsage,
+        flags: ImageCreateFlags,
         queue_families: I,
     ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
     where
@@ -134,7 +133,8 @@ impl<F> StorageImage<F> {
                 device.clone(),
                 usage,
                 format.format(),
-                dimensions.to_image_dimensions(),
+                flags,
+                dimensions,
                 1,
                 1,
                 sharing,
@@ -143,7 +143,7 @@ impl<F> StorageImage<F> {
             )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Optimal,
@@ -157,27 +157,17 @@ impl<F> StorageImage<F> {
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
-            image.bind_memory(mem.memory(), mem.offset())?;
+            image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        let view = unsafe {
-            UnsafeImageView::raw(
-                &image,
-                dimensions.to_view_type(),
-                0..image.mipmap_levels(),
-                0..image.dimensions().array_layers(),
-            )?
-        };
-
         Ok(Arc::new(StorageImage {
-            image: image,
-            view: view,
-            memory: mem,
-            dimensions: dimensions,
-            format: format,
-            queue_families: queue_families,
+            image,
+            memory,
+            dimensions,
+            format,
+            queue_families,
             gpu_lock: AtomicUsize::new(0),
         }))
     }
@@ -189,7 +179,7 @@ where
 {
     /// Returns the dimensions of the image.
     #[inline]
-    pub fn dimensions(&self) -> Dimensions {
+    pub fn dimensions(&self) -> ImageDimensions {
         self.dimensions
     }
 }
@@ -218,6 +208,16 @@ where
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         ImageLayout::General
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: ImageLayout::General,
+            combined_image_sampler: ImageLayout::General,
+            sampled_image: ImageLayout::General,
+            input_attachment: ImageLayout::General,
+        })
     }
 
     #[inline]
@@ -301,52 +301,6 @@ where
     }
 }
 
-unsafe impl<F, A> ImageViewAccess for StorageImage<F, A>
-where
-    F: 'static + Send + Sync,
-    A: MemoryPool,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn dimensions(&self) -> Dimensions {
-        self.dimensions
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
-    }
-}
-
 impl<F, A> PartialEq for StorageImage<F, A>
 where
     F: 'static + Send + Sync,
@@ -380,16 +334,17 @@ where
 mod tests {
     use super::StorageImage;
     use format::Format;
-    use image::Dimensions;
+    use image::ImageDimensions;
 
     #[test]
     fn create() {
         let (device, queue) = gfx_dev_and_queue!();
         let _img = StorageImage::new(
             device,
-            Dimensions::Dim2d {
+            ImageDimensions::Dim2d {
                 width: 32,
                 height: 32,
+                array_layers: 1,
             },
             Format::R8G8B8A8Unorm,
             Some(queue.family()),

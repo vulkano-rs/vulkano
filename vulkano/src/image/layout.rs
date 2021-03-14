@@ -40,3 +40,16 @@ pub enum ImageLayout {
     Preinitialized = vk::IMAGE_LAYOUT_PREINITIALIZED,
     PresentSrc = vk::IMAGE_LAYOUT_PRESENT_SRC_KHR,
 }
+
+/// The set of layouts to use for an image when used in descriptor of various kinds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ImageDescriptorLayouts {
+    /// The image layout to use in a descriptor as a storage image.
+    pub storage_image: ImageLayout,
+    /// The image layout to use in a descriptor as a combined image sampler.
+    pub combined_image_sampler: ImageLayout,
+    /// The image layout to use in a descriptor as a sampled image.
+    pub sampled_image: ImageLayout,
+    /// The image layout to use in a descriptor as an input attachment.
+    pub input_attachment: ImageLayout,
+}

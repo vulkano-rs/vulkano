@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use image::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use std::sync::Arc;
 use SafeDeref;
 //use sync::AccessFlagBits;
@@ -18,7 +18,7 @@ use SafeDeref;
 pub unsafe trait AttachmentsList {
     fn num_attachments(&self) -> usize;
 
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess>;
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAbstract>;
 }
 
 unsafe impl<T> AttachmentsList for T
@@ -32,7 +32,7 @@ where
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         (**self).as_image_view_access(index)
     }
 }
@@ -44,19 +44,19 @@ unsafe impl AttachmentsList for () {
     }
 
     #[inline]
-    fn as_image_view_access(&self, _: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, _: usize) -> Option<&dyn ImageViewAbstract> {
         None
     }
 }
 
-unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAccess + Send + Sync>> {
+unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAbstract + Send + Sync>> {
     #[inline]
     fn num_attachments(&self) -> usize {
         self.len()
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         self.get(index).map(|v| &**v as &_)
     }
 }
@@ -64,7 +64,7 @@ unsafe impl AttachmentsList for Vec<Arc<dyn ImageViewAccess + Send + Sync>> {
 unsafe impl<A, B> AttachmentsList for (A, B)
 where
     A: AttachmentsList,
-    B: ImageViewAccess,
+    B: ImageViewAbstract,
 {
     #[inline]
     fn num_attachments(&self) -> usize {
@@ -72,7 +72,7 @@ where
     }
 
     #[inline]
-    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAccess> {
+    fn as_image_view_access(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         if index == self.0.num_attachments() {
             Some(&self.1)
         } else {

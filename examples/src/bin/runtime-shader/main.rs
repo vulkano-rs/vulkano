@@ -31,6 +31,7 @@ use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
+use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::shader::{
@@ -583,9 +584,10 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
             Arc::new(
                 Framebuffer::start(render_pass.clone())
-                    .add(image.clone())
+                    .add(view)
                     .unwrap()
                     .build()
                     .unwrap(),

@@ -138,7 +138,7 @@ pub fn acquire_next_image<W>(
         id,
         suboptimal,
         SwapchainAcquireFuture {
-            swapchain: swapchain,
+            swapchain,
             semaphore: Some(semaphore),
             fence: Some(fence),
             image_id: id,
@@ -174,8 +174,8 @@ where
 
     PresentFuture {
         previous: before,
-        queue: queue,
-        swapchain: swapchain,
+        queue,
+        swapchain,
         image_id: index,
         present_region: None,
         flushed: AtomicBool::new(false),
@@ -210,8 +210,8 @@ where
 
     PresentFuture {
         previous: before,
-        queue: queue,
-        swapchain: swapchain,
+        queue,
+        swapchain,
         image_id: index,
         present_region: Some(present_region),
         flushed: AtomicBool::new(false),
@@ -486,13 +486,15 @@ impl<W> Swapchain<W> {
             return Err(SwapchainCreationError::UnsupportedPresentMode);
         }
 
+        let flags = ImageCreateFlags::none();
+
         // check that the physical device supports the swapchain image configuration
         match device.image_format_properties(
             format,
             ImageType::Dim2d,
             ImageTiling::Optimal,
             usage,
-            ImageCreateFlags::none(),
+            flags,
         ) {
             Ok(_) => (),
             Err(e) => {
@@ -640,18 +642,10 @@ impl<W> Swapchain<W> {
                     width: dimensions[0],
                     height: dimensions[1],
                     array_layers: layers,
-                    cubemap_compatible: false,
                 };
 
-                let img = UnsafeImage::from_raw(
-                    device.clone(),
-                    image,
-                    usage.to_usage_bits(),
-                    format,
-                    dims,
-                    1,
-                    1,
-                );
+                let img =
+                    UnsafeImage::from_raw(device.clone(), image, usage, format, flags, dims, 1, 1);
 
                 ImageEntry {
                     image: img,
@@ -676,22 +670,22 @@ impl<W> Swapchain<W> {
         let swapchain = Arc::new(Swapchain {
             device: device.clone(),
             surface: surface.clone(),
-            swapchain: swapchain,
-            images: images,
+            swapchain,
+            images,
             stale: Mutex::new(false),
-            num_images: num_images,
-            format: format,
-            color_space: color_space,
-            dimensions: dimensions,
-            layers: layers,
+            num_images,
+            format,
+            color_space,
+            dimensions,
+            layers,
             usage: usage.clone(),
-            sharing: sharing,
-            transform: transform,
-            alpha: alpha,
-            mode: mode,
+            sharing,
+            transform,
+            alpha,
+            mode,
             fullscreen_exclusive,
             fullscreen_exclusive_held: AtomicBool::new(fullscreen_exclusive_held),
-            clipped: clipped,
+            clipped,
         });
 
         let swapchain_images = unsafe {

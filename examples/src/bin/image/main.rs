@@ -13,7 +13,9 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
-use vulkano::image::{Dimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage};
+use vulkano::image::{
+    view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
+};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -152,22 +154,24 @@ fn main() {
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
         let (info, mut reader) = decoder.read_info().unwrap();
-        let dimensions = Dimensions::Dim2d {
+        let dimensions = ImageDimensions::Dim2d {
             width: info.width,
             height: info.height,
+            array_layers: 1,
         };
         let mut image_data = Vec::new();
         image_data.resize((info.width * info.height * 4) as usize, 0);
         reader.next_frame(&mut image_data).unwrap();
 
-        ImmutableImage::from_iter(
+        let (image, future) = ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8Srgb,
             queue.clone(),
         )
-        .unwrap()
+        .unwrap();
+        (ImageView::new(image).unwrap(), future)
     };
 
     let sampler = Sampler::new(
@@ -338,9 +342,10 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
             Arc::new(
                 Framebuffer::start(render_pass.clone())
-                    .add(image.clone())
+                    .add(view)
                     .unwrap()
                     .build()
                     .unwrap(),

@@ -539,14 +539,14 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         debug_assert_eq!(source.samples(), destination.samples());
         let source = source.inner();
-        debug_assert!(source.image.usage_transfer_source());
+        debug_assert!(source.image.usage().transfer_source);
         debug_assert!(
             source_layout == ImageLayout::General
                 || source_layout == ImageLayout::TransferSrcOptimal
         );
 
         let destination = destination.inner();
-        debug_assert!(destination.image.usage_transfer_destination());
+        debug_assert!(destination.image.usage().transfer_destination);
         debug_assert!(
             destination_layout == ImageLayout::General
                 || destination_layout == ImageLayout::TransferDstOptimal
@@ -653,8 +653,8 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         debug_assert_eq!(source.samples(), 1);
         let source = source.inner();
-        debug_assert!(source.image.supports_blit_source());
-        debug_assert!(source.image.usage_transfer_source());
+        debug_assert!(source.image.format_features().blit_src);
+        debug_assert!(source.image.usage().transfer_source);
         debug_assert!(
             source_layout == ImageLayout::General
                 || source_layout == ImageLayout::TransferSrcOptimal
@@ -662,8 +662,8 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         debug_assert_eq!(destination.samples(), 1);
         let destination = destination.inner();
-        debug_assert!(destination.image.supports_blit_destination());
-        debug_assert!(destination.image.usage_transfer_destination());
+        debug_assert!(destination.image.format_features().blit_dst);
+        debug_assert!(destination.image.usage().transfer_destination);
         debug_assert!(
             destination_layout == ImageLayout::General
                 || destination_layout == ImageLayout::TransferDstOptimal
@@ -791,7 +791,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
         );
 
         let image = image.inner();
-        debug_assert!(image.image.usage_transfer_destination());
+        debug_assert!(image.image.usage().transfer_destination);
         debug_assert!(layout == ImageLayout::General || layout == ImageLayout::TransferDstOptimal);
 
         let color = match color {
@@ -906,7 +906,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
 
         debug_assert_eq!(destination.samples(), 1);
         let destination = destination.inner();
-        debug_assert!(destination.image.usage_transfer_destination());
+        debug_assert!(destination.image.usage().transfer_destination);
         debug_assert!(
             destination_layout == ImageLayout::General
                 || destination_layout == ImageLayout::TransferDstOptimal
@@ -976,7 +976,7 @@ impl<P> UnsafeCommandBufferBuilder<P> {
     {
         debug_assert_eq!(source.samples(), 1);
         let source = source.inner();
-        debug_assert!(source.image.usage_transfer_source());
+        debug_assert!(source.image.usage().transfer_source);
         debug_assert!(
             source_layout == ImageLayout::General
                 || source_layout == ImageLayout::TransferSrcOptimal

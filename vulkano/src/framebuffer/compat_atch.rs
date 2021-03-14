@@ -12,7 +12,7 @@
 
 use format::Format;
 use framebuffer::RenderPassDesc;
-use image::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use std::error;
 use std::fmt;
 
@@ -23,35 +23,35 @@ use std::fmt;
 ///
 /// Panics if the attachment number is out of range.
 // TODO: add a specializable trait instead, that uses this function
-// TODO: ImageView instead of ImageViewAccess?
+// TODO: ImageView instead of ImageViewAbstract?
 pub fn ensure_image_view_compatible<Rp, I>(
     render_pass: &Rp,
     attachment_num: usize,
-    image: &I,
+    image_view: &I,
 ) -> Result<(), IncompatibleRenderPassAttachmentError>
 where
     Rp: ?Sized + RenderPassDesc,
-    I: ?Sized + ImageViewAccess,
+    I: ?Sized + ImageViewAbstract,
 {
     let attachment_desc = render_pass
         .attachment_desc(attachment_num)
         .expect("Attachment num out of range");
 
-    if image.format() != attachment_desc.format {
+    if image_view.format() != attachment_desc.format {
         return Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
             expected: attachment_desc.format,
-            obtained: image.format(),
+            obtained: image_view.format(),
         });
     }
 
-    if image.samples() != attachment_desc.samples {
+    if image_view.image().samples() != attachment_desc.samples {
         return Err(IncompatibleRenderPassAttachmentError::SamplesMismatch {
             expected: attachment_desc.samples,
-            obtained: image.samples(),
+            obtained: image_view.image().samples(),
         });
     }
 
-    if !image.identity_swizzle() {
+    if !image_view.identity_swizzle() {
         return Err(IncompatibleRenderPassAttachmentError::NotIdentitySwizzled);
     }
 
@@ -65,8 +65,8 @@ where
             .iter()
             .any(|&(n, _)| n == attachment_num)
         {
-            debug_assert!(image.parent().has_color()); // Was normally checked by the render pass.
-            if !image.parent().inner().image.usage_color_attachment() {
+            debug_assert!(image_view.image().has_color()); // Was normally checked by the render pass.
+            if !image_view.image().inner().image.usage().color_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage);
             }
         }
@@ -74,12 +74,13 @@ where
         if let Some((ds, _)) = subpass.depth_stencil {
             if ds == attachment_num {
                 // Was normally checked by the render pass.
-                debug_assert!(image.parent().has_depth() || image.parent().has_stencil());
-                if !image
-                    .parent()
+                debug_assert!(image_view.image().has_depth() || image_view.image().has_stencil());
+                if !image_view
+                    .image()
                     .inner()
                     .image
-                    .usage_depth_stencil_attachment()
+                    .usage()
+                    .depth_stencil_attachment
                 {
                     return Err(
                         IncompatibleRenderPassAttachmentError::MissingDepthStencilAttachmentUsage,
@@ -93,7 +94,7 @@ where
             .iter()
             .any(|&(n, _)| n == attachment_num)
         {
-            if !image.parent().inner().image.usage_input_attachment() {
+            if !image_view.image().inner().image.usage().input_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingInputAttachmentUsage);
             }
         }
@@ -182,6 +183,7 @@ mod tests {
     use super::IncompatibleRenderPassAttachmentError;
     use format::Format;
     use framebuffer::EmptySinglePassRenderPassDesc;
+    use image::view::ImageView;
     use image::AttachmentImage;
 
     #[test]
@@ -204,9 +206,12 @@ mod tests {
         )
         .unwrap();
 
-        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
-        ensure_image_view_compatible(&rp, 0, &img).unwrap();
+        ensure_image_view_compatible(&rp, 0, &view).unwrap();
     }
 
     #[test]
@@ -229,9 +234,12 @@ mod tests {
         )
         .unwrap();
 
-        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
-        match ensure_image_view_compatible(&rp, 0, &img) {
+        match ensure_image_view_compatible(&rp, 0, &view) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
                 expected: Format::R16G16Sfloat,
                 obtained: Format::R8G8B8A8Unorm,
@@ -245,10 +253,13 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let rp = EmptySinglePassRenderPassDesc;
-        let img = AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap();
+        let view = ImageView::new(
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+        )
+        .unwrap();
 
         assert_should_panic!("Attachment num out of range", {
-            let _ = ensure_image_view_compatible(&rp, 0, &img);
+            let _ = ensure_image_view_compatible(&rp, 0, &view);
         });
     }
 

@@ -32,7 +32,7 @@ use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use device::Device;
 use device::DeviceOwned;
 use format::Format;
-use image::ImageViewAccess;
+use image::view::ImageViewAbstract;
 use sampler::Sampler;
 use OomError;
 use VulkanObject;
@@ -72,7 +72,7 @@ impl PersistentDescriptorSet<()> {
         let cap = layout.num_bindings();
 
         PersistentDescriptorSetBuilder {
-            layout: layout,
+            layout,
             binding_id: 0,
             writes: Vec::with_capacity(cap),
             resources: (),
@@ -106,7 +106,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.resources.image(index)
     }
 }
@@ -335,7 +335,7 @@ impl<R> PersistentDescriptorSetBuilder<R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         self.enter_array()?.add_image(image_view)?.leave_array()
     }
@@ -362,7 +362,7 @@ impl<R> PersistentDescriptorSetBuilder<R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         self.enter_array()?
             .add_sampled_image(image_view, sampler)?
@@ -516,7 +516,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 resources: (
                     self.builder.resources,
                     PersistentDescriptorSetBuf {
-                        buffer: buffer,
+                        buffer,
                         descriptor_num: self.builder.binding_id as u32,
                     },
                 ),
@@ -596,7 +596,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 resources: (
                     self.builder.resources,
                     PersistentDescriptorSetBufView {
-                        view: view,
+                        view,
                         descriptor_num: self.builder.binding_id as u32,
                     },
                 ),
@@ -622,11 +622,11 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         assert_eq!(
             self.builder.layout.device().internal_object(),
-            image_view.parent().inner().image.device().internal_object()
+            image_view.image().inner().image.device().internal_object()
         );
 
         if self.array_element as u32 >= self.desc.array_count {
@@ -660,37 +660,38 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 multisampled,
                 array_layers,
             } => {
-                if !image_view.parent().inner().image.usage_input_attachment() {
+                if !image_view.image().inner().image.usage().input_attachment {
                     return Err(PersistentDescriptorSetError::MissingImageUsage(
                         MissingImageUsage::InputAttachment,
                     ));
                 }
 
-                if multisampled && image_view.samples() == 1 {
+                if multisampled && image_view.image().samples() == 1 {
                     return Err(PersistentDescriptorSetError::ExpectedMultisampled);
-                } else if !multisampled && image_view.samples() != 1 {
+                } else if !multisampled && image_view.image().samples() != 1 {
                     return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
                 }
 
-                let image_layers = image_view.dimensions().array_layers();
+                let image_layers = image_view.array_layers();
+                let num_layers = image_layers.end - image_layers.start;
 
                 match array_layers {
                     DescriptorImageDescArray::NonArrayed => {
-                        if image_layers != 1 {
+                        if num_layers != 1 {
                             return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                                 expected: 1,
-                                obtained: image_layers,
+                                obtained: num_layers,
                             });
                         }
                     }
                     DescriptorImageDescArray::Arrayed {
                         max_layers: Some(max_layers),
                     } => {
-                        if image_layers > max_layers {
+                        if num_layers > max_layers {
                             // TODO: is this correct? "max" layers? or is it in fact min layers?
                             return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                                 expected: max_layers,
-                                obtained: image_layers,
+                                obtained: num_layers,
                             });
                         }
                     }
@@ -746,11 +747,11 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
         PersistentDescriptorSetError,
     >
     where
-        T: ImageViewAccess,
+        T: ImageViewAbstract,
     {
         assert_eq!(
             self.builder.layout.device().internal_object(),
-            image_view.parent().inner().image.device().internal_object()
+            image_view.image().inner().image.device().internal_object()
         );
         assert_eq!(
             self.builder.layout.device().internal_object(),
@@ -798,7 +799,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                             descriptor_num: self.builder.binding_id as u32,
                         },
                     ),
-                    PersistentDescriptorSetSampler { sampler: sampler },
+                    PersistentDescriptorSetSampler { sampler },
                 ),
             },
             desc: self.desc,
@@ -853,7 +854,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 writes: self.builder.writes,
                 resources: (
                     self.builder.resources,
-                    PersistentDescriptorSetSampler { sampler: sampler },
+                    PersistentDescriptorSetSampler { sampler },
                 ),
             },
             desc: self.desc,
@@ -868,19 +869,19 @@ fn image_match_desc<I>(
     desc: &DescriptorImageDesc,
 ) -> Result<(), PersistentDescriptorSetError>
 where
-    I: ?Sized + ImageViewAccess,
+    I: ?Sized + ImageViewAbstract,
 {
-    if desc.sampled && !image_view.parent().inner().image.usage_sampled() {
+    if desc.sampled && !image_view.image().inner().image.usage().sampled {
         return Err(PersistentDescriptorSetError::MissingImageUsage(
             MissingImageUsage::Sampled,
         ));
-    } else if !desc.sampled && !image_view.parent().inner().image.usage_storage() {
+    } else if !desc.sampled && !image_view.image().inner().image.usage().storage {
         return Err(PersistentDescriptorSetError::MissingImageUsage(
             MissingImageUsage::Storage,
         ));
     }
 
-    let image_view_ty = DescriptorImageDescDimensions::from_dimensions(image_view.dimensions());
+    let image_view_ty = DescriptorImageDescDimensions::from_image_view_type(image_view.ty());
     if image_view_ty != desc.dimensions {
         return Err(PersistentDescriptorSetError::ImageViewTypeMismatch {
             expected: desc.dimensions,
@@ -897,33 +898,34 @@ where
         }
     }
 
-    if desc.multisampled && image_view.samples() == 1 {
+    if desc.multisampled && image_view.image().samples() == 1 {
         return Err(PersistentDescriptorSetError::ExpectedMultisampled);
-    } else if !desc.multisampled && image_view.samples() != 1 {
+    } else if !desc.multisampled && image_view.image().samples() != 1 {
         return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
     }
 
-    let image_layers = image_view.dimensions().array_layers();
+    let image_layers = image_view.array_layers();
+    let num_layers = image_layers.end - image_layers.start;
 
     match desc.array_layers {
         DescriptorImageDescArray::NonArrayed => {
             // TODO: when a non-array is expected, can we pass an image view that is in fact an
             // array with one layer? need to check
-            if image_layers != 1 {
+            if num_layers != 1 {
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                     expected: 1,
-                    obtained: image_layers,
+                    obtained: num_layers,
                 });
             }
         }
         DescriptorImageDescArray::Arrayed {
             max_layers: Some(max_layers),
         } => {
-            if image_layers > max_layers {
+            if num_layers > max_layers {
                 // TODO: is this correct? "max" layers? or is it in fact min layers?
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                     expected: max_layers,
-                    obtained: image_layers,
+                    obtained: num_layers,
                 });
             }
         }
@@ -937,7 +939,7 @@ pub unsafe trait PersistentDescriptorSetResources {
     fn num_buffers(&self) -> usize;
     fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)>;
     fn num_images(&self) -> usize;
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)>;
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)>;
 }
 
 unsafe impl PersistentDescriptorSetResources for () {
@@ -957,7 +959,7 @@ unsafe impl PersistentDescriptorSetResources for () {
     }
 
     #[inline]
-    fn image(&self, _: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, _: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         None
     }
 }
@@ -995,7 +997,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.0.image(index)
     }
 }
@@ -1036,7 +1038,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.0.image(index)
     }
 }
@@ -1050,7 +1052,7 @@ pub struct PersistentDescriptorSetImg<I> {
 unsafe impl<R, I> PersistentDescriptorSetResources for (R, PersistentDescriptorSetImg<I>)
 where
     R: PersistentDescriptorSetResources,
-    I: ImageViewAccess,
+    I: ImageViewAbstract,
 {
     #[inline]
     fn num_buffers(&self) -> usize {
@@ -1068,7 +1070,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         if let Some(img) = self.0.image(index) {
             Some(img)
         } else if index == self.0.num_images() {
@@ -1104,7 +1106,7 @@ where
     }
 
     #[inline]
-    fn image(&self, index: usize) -> Option<(&dyn ImageViewAccess, u32)> {
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.0.image(index)
     }
 }

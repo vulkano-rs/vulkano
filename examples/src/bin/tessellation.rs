@@ -22,6 +22,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
+use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
@@ -413,9 +414,10 @@ fn window_size_dependent_setup(
     images
         .iter()
         .map(|image| {
+            let view = ImageView::new(image.clone()).unwrap();
             Arc::new(
                 Framebuffer::start(render_pass.clone())
-                    .add(image.clone())
+                    .add(view)
                     .unwrap()
                     .build()
                     .unwrap(),

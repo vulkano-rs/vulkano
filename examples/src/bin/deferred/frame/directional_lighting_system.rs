@@ -17,7 +17,7 @@ use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::framebuffer::RenderPassAbstract;
 use vulkano::framebuffer::Subpass;
-use vulkano::image::ImageViewAccess;
+use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;
 use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
@@ -131,8 +131,8 @@ impl DirectionalLightingSystem {
         color: [f32; 3],
     ) -> AutoCommandBuffer
     where
-        C: ImageViewAccess + Send + Sync + 'static,
-        N: ImageViewAccess + Send + Sync + 'static,
+        C: ImageViewAbstract + Send + Sync + 'static,
+        N: ImageViewAbstract + Send + Sync + 'static,
     {
         let push_constants = fs::ty::PushConstants {
             color: [color[0], color[1], color[2], 1.0],

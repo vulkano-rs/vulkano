@@ -23,17 +23,15 @@ use format::FormatDesc;
 use format::FormatTy;
 use image::sys::ImageCreationError;
 use image::sys::UnsafeImage;
-use image::sys::UnsafeImageView;
 use image::traits::ImageAccess;
 use image::traits::ImageClearValue;
 use image::traits::ImageContent;
-use image::traits::ImageViewAccess;
-use image::Dimensions;
+use image::ImageCreateFlags;
+use image::ImageDescriptorLayouts;
 use image::ImageDimensions;
 use image::ImageInner;
 use image::ImageLayout;
 use image::ImageUsage;
-use image::ViewType;
 use memory::pool::AllocFromRequirementsFilter;
 use memory::pool::AllocLayout;
 use memory::pool::MappingRequirement;
@@ -78,9 +76,6 @@ use sync::Sharing;
 pub struct AttachmentImage<F = Format, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     // Inner implementation.
     image: UnsafeImage,
-
-    // We maintain a view of the whole image since we will need it when rendering.
-    view: UnsafeImageView,
 
     // Memory used to back the image.
     memory: A,
@@ -424,13 +419,13 @@ impl<F> AttachmentImage<F> {
                 width: dimensions[0],
                 height: dimensions[1],
                 array_layers: 1,
-                cubemap_compatible: false,
             };
 
             UnsafeImage::new(
                 device.clone(),
                 usage,
                 format.format(),
+                ImageCreateFlags::none(),
                 dims,
                 samples,
                 1,
@@ -440,7 +435,7 @@ impl<F> AttachmentImage<F> {
             )?
         };
 
-        let mem = MemoryPool::alloc_from_requirements(
+        let memory = MemoryPool::alloc_from_requirements(
             &Device::standard_pool(&device),
             &mem_reqs,
             AllocLayout::Optimal,
@@ -454,18 +449,15 @@ impl<F> AttachmentImage<F> {
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
-            image.bind_memory(mem.memory(), mem.offset())?;
+            image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        let view = unsafe { UnsafeImageView::raw(&image, ViewType::Dim2d, 0..1, 0..1)? };
-
         Ok(Arc::new(AttachmentImage {
-            image: image,
-            view: view,
-            memory: mem,
-            format: format,
+            image,
+            memory,
+            format,
             attachment_layout: if is_depth {
                 ImageLayout::DepthStencilAttachmentOptimal
             } else {
@@ -509,6 +501,16 @@ where
     #[inline]
     fn final_layout_requirement(&self) -> ImageLayout {
         self.attachment_layout
+    }
+
+    #[inline]
+    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
+        Some(ImageDescriptorLayouts {
+            storage_image: ImageLayout::ShaderReadOnlyOptimal,
+            combined_image_sampler: ImageLayout::ShaderReadOnlyOptimal,
+            sampled_image: ImageLayout::ShaderReadOnlyOptimal,
+            input_attachment: ImageLayout::ShaderReadOnlyOptimal,
+        })
     }
 
     #[inline]
@@ -617,55 +619,6 @@ where
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
-    }
-}
-
-unsafe impl<F, A> ImageViewAccess for AttachmentImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
-    #[inline]
-    fn parent(&self) -> &dyn ImageAccess {
-        self
-    }
-
-    #[inline]
-    fn dimensions(&self) -> Dimensions {
-        let dims = self.image.dimensions();
-        Dimensions::Dim2d {
-            width: dims.width(),
-            height: dims.height(),
-        }
-    }
-
-    #[inline]
-    fn inner(&self) -> &UnsafeImageView {
-        &self.view
-    }
-
-    #[inline]
-    fn descriptor_set_storage_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_combined_image_sampler_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_sampled_image_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn descriptor_set_input_attachment_layout(&self) -> ImageLayout {
-        ImageLayout::ShaderReadOnlyOptimal
-    }
-
-    #[inline]
-    fn identity_swizzle(&self) -> bool {
-        true
     }
 }
 

@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Low-level implementation of images and images views.
+//! Low-level implementation of images.
 //!
-//! This module contains low-level wrappers around the Vulkan image and image view types. All
-//! other image or image view types of this library, and all custom image or image view types
+//! This module contains low-level wrappers around the Vulkan image types. All
+//! other image types of this library, and all custom image types
 //! that you create must wrap around the types in this module.
 
 use smallvec::SmallVec;
@@ -26,13 +26,14 @@ use std::sync::Arc;
 
 use device::Device;
 use format::Format;
+use format::FormatFeatures;
 use format::FormatTy;
 use format::PossibleYcbcrFormatDesc;
 use image::ImageAspect;
+use image::ImageCreateFlags;
 use image::ImageDimensions;
 use image::ImageUsage;
 use image::MipmapsCount;
-use image::ViewType;
 use memory::DeviceMemory;
 use memory::DeviceMemoryAllocError;
 use memory::MemoryRequirements;
@@ -60,15 +61,16 @@ use VulkanObject;
 pub struct UnsafeImage {
     image: vk::Image,
     device: Arc<Device>,
-    usage: vk::ImageUsageFlagBits,
+    usage: ImageUsage,
     format: Format,
+    flags: ImageCreateFlags,
 
     dimensions: ImageDimensions,
     samples: u32,
     mipmaps: u32,
 
     // Features that are supported for this particular format.
-    format_features: vk::FormatFeatureFlagBits,
+    format_features: FormatFeatures,
 
     // `vkDestroyImage` is called only if `needs_destruction` is true.
     needs_destruction: bool,
@@ -89,6 +91,7 @@ impl UnsafeImage {
         device: Arc<Device>,
         usage: ImageUsage,
         format: Format,
+        flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         num_samples: u32,
         mipmaps: Mi,
@@ -109,6 +112,7 @@ impl UnsafeImage {
             device,
             usage,
             format,
+            flags,
             dimensions,
             num_samples,
             mipmaps.into(),
@@ -123,6 +127,7 @@ impl UnsafeImage {
         device: Arc<Device>,
         usage: ImageUsage,
         format: Format,
+        flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         num_samples: u32,
         mipmaps: MipmapsCount,
@@ -132,61 +137,53 @@ impl UnsafeImage {
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError> {
         // TODO: doesn't check that the proper features are enabled
 
+        if flags.sparse_binding
+            || flags.sparse_residency
+            || flags.sparse_aliased
+            || flags.mutable_format
+        {
+            unimplemented!();
+        }
+
         let vk = device.pointers();
         let vk_i = device.instance().pointers();
 
         // Checking if image usage conforms to what is supported.
         let format_features = {
-            let physical_device = device.physical_device().internal_object();
-
-            let mut output = MaybeUninit::uninit();
-            vk_i.GetPhysicalDeviceFormatProperties(
-                physical_device,
-                format as u32,
-                output.as_mut_ptr(),
-            );
+            let format_properties = format.properties(device.physical_device());
 
             let features = if linear_tiling {
-                output.assume_init().linearTilingFeatures
+                format_properties.linear_tiling_features
             } else {
-                output.assume_init().optimalTilingFeatures
+                format_properties.optimal_tiling_features
             };
 
-            if features == 0 {
+            if features == FormatFeatures::default() {
                 return Err(ImageCreationError::FormatNotSupported);
             }
 
-            if usage.sampled && (features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_BIT == 0) {
+            if usage.sampled && !features.sampled_image {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if usage.storage && (features & vk::FORMAT_FEATURE_STORAGE_IMAGE_BIT == 0) {
+            if usage.storage && !features.storage_image {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if usage.color_attachment && (features & vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT == 0) {
+            if usage.color_attachment && !features.color_attachment {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if usage.depth_stencil_attachment
-                && (features & vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT == 0)
-            {
+            if usage.depth_stencil_attachment && !features.depth_stencil_attachment {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
             if usage.input_attachment
-                && (features
-                    & (vk::FORMAT_FEATURE_COLOR_ATTACHMENT_BIT
-                        | vk::FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
-                    == 0)
+                && !(features.color_attachment || features.depth_stencil_attachment)
             {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
             if device.loaded_extensions().khr_maintenance1 {
-                if usage.transfer_source
-                    && (features & vk::FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR == 0)
-                {
+                if usage.transfer_source && !features.transfer_src {
                     return Err(ImageCreationError::UnsupportedUsage);
                 }
-                if usage.transfer_destination
-                    && (features & vk::FORMAT_FEATURE_TRANSFER_DST_BIT_KHR == 0)
-                {
+                if usage.transfer_destination && !features.transfer_dst {
                     return Err(ImageCreationError::UnsupportedUsage);
                 }
             }
@@ -372,7 +369,7 @@ impl UnsafeImage {
         }
 
         // Decoding the dimensions.
-        let (ty, extent, array_layers, flags) = match dimensions {
+        let (ty, extent, array_layers) = match dimensions {
             ImageDimensions::Dim1d {
                 width,
                 array_layers,
@@ -385,18 +382,14 @@ impl UnsafeImage {
                     height: 1,
                     depth: 1,
                 };
-                (vk::IMAGE_TYPE_1D, extent, array_layers, 0)
+                (vk::IMAGE_TYPE_1D, extent, array_layers)
             }
             ImageDimensions::Dim2d {
                 width,
                 height,
                 array_layers,
-                cubemap_compatible,
             } => {
                 if width == 0 || height == 0 || array_layers == 0 {
-                    return Err(ImageCreationError::UnsupportedDimensions { dimensions });
-                }
-                if cubemap_compatible && width != height {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
                 let extent = vk::Extent3D {
@@ -404,12 +397,7 @@ impl UnsafeImage {
                     height,
                     depth: 1,
                 };
-                let flags = if cubemap_compatible {
-                    vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT
-                } else {
-                    0
-                };
-                (vk::IMAGE_TYPE_2D, extent, array_layers, flags)
+                (vk::IMAGE_TYPE_2D, extent, array_layers)
             }
             ImageDimensions::Dim3d {
                 width,
@@ -424,9 +412,22 @@ impl UnsafeImage {
                     height,
                     depth,
                 };
-                (vk::IMAGE_TYPE_3D, extent, 1, 0)
+                (vk::IMAGE_TYPE_3D, extent, 1)
             }
         };
+
+        // Checking flags requirements.
+        if flags.cube_compatible {
+            if !(ty == vk::IMAGE_TYPE_2D && extent.width == extent.height && array_layers >= 6) {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+        }
+
+        if flags.array_2d_compatible {
+            if !(ty == vk::IMAGE_TYPE_3D) {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+        }
 
         // Checking the dimensions against the limits.
         if array_layers > device.physical_device().limits().max_image_array_layers() {
@@ -447,9 +448,8 @@ impl UnsafeImage {
                     capabilities_error = Some(err);
                 }
 
-                if (flags & vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT) != 0 {
+                if flags.cube_compatible {
                     let limit = device.physical_device().limits().max_image_dimension_cube();
-                    debug_assert_eq!(extent.width, extent.height); // checked above
                     if extent.width > limit {
                         let err = ImageCreationError::UnsupportedDimensions { dimensions };
                         capabilities_error = Some(err);
@@ -466,7 +466,7 @@ impl UnsafeImage {
             _ => unreachable!(),
         };
 
-        let usage = usage.to_usage_bits();
+        let usage_bits = usage.to_usage_bits();
 
         // Now that all checks have been performed, if any of the check failed we query the Vulkan
         // implementation for additional image capabilities.
@@ -484,7 +484,7 @@ impl UnsafeImage {
                 format as u32,
                 ty,
                 tiling,
-                usage,
+                usage_bits,
                 0, /* TODO */
                 output.as_mut_ptr(),
             );
@@ -515,7 +515,7 @@ impl UnsafeImage {
             let infos = vk::ImageCreateInfo {
                 sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                 pNext: ptr::null(),
-                flags,
+                flags: flags.into(),
                 imageType: ty,
                 format: format as u32,
                 extent,
@@ -527,7 +527,7 @@ impl UnsafeImage {
                 } else {
                     vk::IMAGE_TILING_OPTIMAL
                 },
-                usage,
+                usage: usage_bits,
                 sharingMode: sh_mode,
                 queueFamilyIndexCount: sh_indices.len() as u32,
                 pQueueFamilyIndices: sh_indices.as_ptr(),
@@ -597,6 +597,7 @@ impl UnsafeImage {
             image,
             usage,
             format,
+            flags,
             dimensions,
             samples: num_samples,
             mipmaps,
@@ -614,17 +615,14 @@ impl UnsafeImage {
     pub unsafe fn from_raw(
         device: Arc<Device>,
         handle: u64,
-        usage: u32,
+        usage: ImageUsage,
         format: Format,
+        flags: ImageCreateFlags,
         dimensions: ImageDimensions,
         samples: u32,
         mipmaps: u32,
     ) -> UnsafeImage {
-        let vk_i = device.instance().pointers();
-        let physical_device = device.physical_device().internal_object();
-
-        let mut output = MaybeUninit::uninit();
-        vk_i.GetPhysicalDeviceFormatProperties(physical_device, format as u32, output.as_mut_ptr());
+        let format_properties = format.properties(device.physical_device());
 
         // TODO: check that usage is correct in regard to `output`?
 
@@ -633,10 +631,11 @@ impl UnsafeImage {
             image: handle,
             usage,
             format,
+            flags,
             dimensions,
             samples,
             mipmaps,
-            format_features: output.assume_init().optimalTilingFeatures,
+            format_features: format_properties.optimal_tiling_features,
             needs_destruction: false,     // TODO: pass as parameter
             preinitialized_layout: false, // TODO: Maybe this should be passed in?
         }
@@ -677,6 +676,10 @@ impl UnsafeImage {
     #[inline]
     pub fn format(&self) -> Format {
         self.format
+    }
+
+    pub fn create_flags(&self) -> ImageCreateFlags {
+        self.flags
     }
 
     #[inline]
@@ -826,62 +829,22 @@ impl UnsafeImage {
         }
     }
 
-    /// Returns true if the image can be used as a source for blits.
+    /// Returns the flags the image was created with.
     #[inline]
-    pub fn supports_blit_source(&self) -> bool {
-        (self.format_features & vk::FORMAT_FEATURE_BLIT_SRC_BIT) != 0
+    pub fn flags(&self) -> ImageCreateFlags {
+        self.flags
     }
 
-    /// Returns true if the image can be used as a destination for blits.
+    /// Returns the features supported by the image's format.
     #[inline]
-    pub fn supports_blit_destination(&self) -> bool {
-        (self.format_features & vk::FORMAT_FEATURE_BLIT_DST_BIT) != 0
+    pub fn format_features(&self) -> FormatFeatures {
+        self.format_features
     }
 
-    /// Returns true if the image can be sampled with a linear filtering.
+    /// Returns the usage the image was created with.
     #[inline]
-    pub fn supports_linear_filtering(&self) -> bool {
-        (self.format_features & vk::FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_source(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_destination(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_sampled(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_storage(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_color_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_depth_stencil_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transient_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_input_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
+    pub fn usage(&self) -> ImageUsage {
+        self.usage
     }
 
     #[inline]
@@ -944,7 +907,11 @@ impl Hash for UnsafeImage {
 pub enum ImageCreationError {
     /// Allocating memory failed.
     AllocError(DeviceMemoryAllocError),
+    /// The specified creation flags have requirements (e.g. specific dimension) that were not met.
+    CreationFlagRequirementsNotMet,
     /// A wrong number of mipmaps was provided.
+    FormatNotSupported,
+    /// The format is supported, but at least one of the requested usages is not supported.
     InvalidMipmapsCount {
         obtained: u32,
         valid_range: Range<u32>,
@@ -954,8 +921,6 @@ pub enum ImageCreationError {
     /// The dimensions are too large, or one of the dimensions is 0.
     UnsupportedDimensions { dimensions: ImageDimensions },
     /// The requested format is not supported by the Vulkan implementation.
-    FormatNotSupported,
-    /// The format is supported, but at least one of the requested usages is not supported.
     UnsupportedUsage,
     /// The `shader_storage_image_multisample` feature must be enabled to create such an image.
     ShaderStorageImageMultisampleFeatureNotEnabled,
@@ -979,6 +944,12 @@ impl fmt::Display for ImageCreationError {
             "{}",
             match *self {
                 ImageCreationError::AllocError(_) => "allocating memory failed",
+                ImageCreationError::CreationFlagRequirementsNotMet => {
+                    "the requested creation flags have additional requirements that were not met"
+                }
+                ImageCreationError::FormatNotSupported => {
+                    "the requested format is not supported by the Vulkan implementation"
+                }
                 ImageCreationError::InvalidMipmapsCount { .. } => {
                     "a wrong number of mipmaps was provided"
                 }
@@ -987,9 +958,6 @@ impl fmt::Display for ImageCreationError {
                 }
                 ImageCreationError::UnsupportedDimensions { .. } => {
                     "the dimensions are too large, or one of the dimensions is 0"
-                }
-                ImageCreationError::FormatNotSupported => {
-                    "the requested format is not supported by the Vulkan implementation"
                 }
                 ImageCreationError::UnsupportedUsage => {
                     "the format is supported, but at least one of the requested usages is not \
@@ -1053,254 +1021,12 @@ pub struct LinearLayout {
     pub depth_pitch: usize,
 }
 
-pub struct UnsafeImageView {
-    view: vk::ImageView,
-    device: Arc<Device>,
-    usage: vk::ImageUsageFlagBits,
-    identity_swizzle: bool,
-    format: Format,
-}
-
-impl UnsafeImageView {
-    /// See the docs of new().
-    pub unsafe fn raw(
-        image: &UnsafeImage,
-        ty: ViewType,
-        mipmap_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> Result<UnsafeImageView, OomError> {
-        let vk = image.device.pointers();
-
-        assert!(mipmap_levels.end > mipmap_levels.start);
-        assert!(mipmap_levels.end <= image.mipmaps);
-        assert!(array_layers.end > array_layers.start);
-        assert!(array_layers.end <= image.dimensions.array_layers());
-        assert!(
-            (
-                vk::IMAGE_USAGE_SAMPLED_BIT
-                    | vk::IMAGE_USAGE_STORAGE_BIT
-                    | vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT
-                    | vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
-                    | vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT
-                    | vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT
-                // TODO | vk::IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR
-                // TODO | vk::IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT
-            ) & image.usage
-                != 0
-        );
-
-        let aspect_mask = match image.format.ty() {
-            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
-                vk::IMAGE_ASPECT_COLOR_BIT
-            }
-            FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
-            FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
-            FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
-            // Not yet supported --> would require changes to ImmutableImage API :-)
-            FormatTy::Ycbcr => panic!(),
-        };
-
-        let view_type = match (
-            image.dimensions(),
-            ty,
-            array_layers.end - array_layers.start,
-        ) {
-            (ImageDimensions::Dim1d { .. }, ViewType::Dim1d, 1) => vk::IMAGE_VIEW_TYPE_1D,
-            (ImageDimensions::Dim1d { .. }, ViewType::Dim1dArray, _) => {
-                vk::IMAGE_VIEW_TYPE_1D_ARRAY
-            }
-            (ImageDimensions::Dim2d { .. }, ViewType::Dim2d, 1) => vk::IMAGE_VIEW_TYPE_2D,
-            (ImageDimensions::Dim2d { .. }, ViewType::Dim2dArray, _) => {
-                vk::IMAGE_VIEW_TYPE_2D_ARRAY
-            }
-            (
-                ImageDimensions::Dim2d {
-                    cubemap_compatible, ..
-                },
-                ViewType::Cubemap,
-                n,
-            ) if cubemap_compatible => {
-                assert_eq!(n, 6);
-                vk::IMAGE_VIEW_TYPE_CUBE
-            }
-            (
-                ImageDimensions::Dim2d {
-                    cubemap_compatible, ..
-                },
-                ViewType::CubemapArray,
-                n,
-            ) if cubemap_compatible => {
-                assert_eq!(n % 6, 0);
-                vk::IMAGE_VIEW_TYPE_CUBE_ARRAY
-            }
-            (ImageDimensions::Dim3d { .. }, ViewType::Dim3d, _) => vk::IMAGE_VIEW_TYPE_3D,
-            _ => panic!(),
-        };
-
-        let view = {
-            let infos = vk::ImageViewCreateInfo {
-                sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                image: image.internal_object(),
-                viewType: view_type,
-                format: image.format as u32,
-                components: vk::ComponentMapping {
-                    r: 0,
-                    g: 0,
-                    b: 0,
-                    a: 0,
-                }, // FIXME:
-                subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: aspect_mask,
-                    baseMipLevel: mipmap_levels.start,
-                    levelCount: mipmap_levels.end - mipmap_levels.start,
-                    baseArrayLayer: array_layers.start,
-                    layerCount: array_layers.end - array_layers.start,
-                },
-            };
-
-            let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateImageView(
-                image.device.internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        Ok(UnsafeImageView {
-            view,
-            device: image.device.clone(),
-            usage: image.usage,
-            identity_swizzle: true, // FIXME:
-            format: image.format,
-        })
-    }
-
-    /// Creates a new view from an image.
-    ///
-    /// Note that you must create the view with identity swizzling if you want to use this view
-    /// as a framebuffer attachment.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if `mipmap_levels` or `array_layers` is out of range of the image.
-    /// - Panics if the view types doesn't match the dimensions of the image (for example a 2D
-    ///   view from a 3D image).
-    /// - Panics if trying to create a cubemap with a number of array layers different from 6.
-    /// - Panics if trying to create a cubemap array with a number of array layers not a multiple
-    ///   of 6.
-    /// - Panics if the device or host ran out of memory.
-    /// - Panics if the image is a YcbCr image, since the Vulkano API is not yet flexible enough to
-    ///   specify the aspect of image.
-    #[inline]
-    pub unsafe fn new(
-        image: &UnsafeImage,
-        ty: ViewType,
-        mipmap_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> UnsafeImageView {
-        UnsafeImageView::raw(image, ty, mipmap_levels, array_layers).unwrap()
-    }
-
-    #[inline]
-    pub fn format(&self) -> Format {
-        self.format
-    }
-
-    #[inline]
-    pub fn usage_transfer_source(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_destination(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_sampled(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_SAMPLED_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_storage(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_STORAGE_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_color_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_depth_stencil_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transient_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_input_attachment(&self) -> bool {
-        (self.usage & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0
-    }
-}
-
-unsafe impl VulkanObject for UnsafeImageView {
-    type Object = vk::ImageView;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_IMAGE_VIEW;
-
-    #[inline]
-    fn internal_object(&self) -> vk::ImageView {
-        self.view
-    }
-}
-
-impl fmt::Debug for UnsafeImageView {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan image view {:?}>", self.view)
-    }
-}
-
-impl Drop for UnsafeImageView {
-    #[inline]
-    fn drop(&mut self) {
-        unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyImageView(self.device.internal_object(), self.view, ptr::null());
-        }
-    }
-}
-
-impl PartialEq for UnsafeImageView {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.view == other.view && self.device == other.device
-    }
-}
-
-impl Eq for UnsafeImageView {}
-
-impl Hash for UnsafeImageView {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.view.hash(state);
-        self.device.hash(state);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::iter::Empty;
     use std::u32;
 
+    use super::ImageCreateFlags;
     use super::ImageCreationError;
     use super::ImageUsage;
     use super::UnsafeImage;
@@ -1323,11 +1049,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 1,
@@ -1354,11 +1080,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 1,
@@ -1384,11 +1110,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 0,
                 1,
@@ -1418,11 +1144,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 5,
                 1,
@@ -1452,11 +1178,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 0,
@@ -1487,11 +1213,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 u32::MAX,
@@ -1527,11 +1253,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 2,
                 1,
@@ -1562,11 +1288,11 @@ mod tests {
                 device,
                 usage,
                 Format::ASTC_5x4UnormBlock,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 u32::MAX,
@@ -1598,11 +1324,11 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 32,
                     array_layers: 1,
-                    cubemap_compatible: false,
                 },
                 1,
                 1,
@@ -1632,11 +1358,14 @@ mod tests {
                 device,
                 usage,
                 Format::R8G8B8A8Unorm,
+                ImageCreateFlags {
+                    cube_compatible: true,
+                    ..ImageCreateFlags::none()
+                },
                 ImageDimensions::Dim2d {
                     width: 32,
                     height: 64,
                     array_layers: 1,
-                    cubemap_compatible: true,
                 },
                 1,
                 1,
@@ -1647,7 +1376,7 @@ mod tests {
         };
 
         match res {
-            Err(ImageCreationError::UnsupportedDimensions { .. }) => (),
+            Err(ImageCreationError::CreationFlagRequirementsNotMet) => (),
             _ => panic!(),
         };
     }
