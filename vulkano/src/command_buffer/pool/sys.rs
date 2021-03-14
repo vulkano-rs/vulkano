@@ -173,6 +173,7 @@ impl UnsafeCommandPool {
     ) -> Result<UnsafeCommandPoolAllocIter, OomError> {
         if count == 0 {
             return Ok(UnsafeCommandPoolAllocIter {
+                device: self.device.clone(),
                 list: vec![].into_iter(),
             });
         }
@@ -201,6 +202,7 @@ impl UnsafeCommandPool {
             out.set_len(count);
 
             Ok(UnsafeCommandPoolAllocIter {
+                device: self.device.clone(),
                 list: out.into_iter(),
             })
         }
@@ -216,7 +218,8 @@ impl UnsafeCommandPool {
     where
         I: Iterator<Item = UnsafeCommandPoolAlloc>,
     {
-        let command_buffers: SmallVec<[_; 4]> = command_buffers.map(|cb| cb.0).collect();
+        let command_buffers: SmallVec<[_; 4]> =
+            command_buffers.map(|cb| cb.command_buffer).collect();
         let vk = self.device.pointers();
         vk.FreeCommandBuffers(
             self.device.internal_object(),
@@ -265,7 +268,17 @@ impl Drop for UnsafeCommandPool {
 }
 
 /// Opaque type that represents a command buffer allocated from a pool.
-pub struct UnsafeCommandPoolAlloc(vk::CommandBuffer);
+pub struct UnsafeCommandPoolAlloc {
+    command_buffer: vk::CommandBuffer,
+    device: Arc<Device>,
+}
+
+unsafe impl DeviceOwned for UnsafeCommandPoolAlloc {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+}
 
 unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
     type Object = vk::CommandBuffer;
@@ -274,13 +287,14 @@ unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
 
     #[inline]
     fn internal_object(&self) -> vk::CommandBuffer {
-        self.0
+        self.command_buffer
     }
 }
 
 /// Iterator for newly-allocated command buffers.
 #[derive(Debug)]
 pub struct UnsafeCommandPoolAllocIter {
+    device: Arc<Device>,
     list: VecIntoIter<vk::CommandBuffer>,
 }
 
@@ -289,7 +303,12 @@ impl Iterator for UnsafeCommandPoolAllocIter {
 
     #[inline]
     fn next(&mut self) -> Option<UnsafeCommandPoolAlloc> {
-        self.list.next().map(|cb| UnsafeCommandPoolAlloc(cb))
+        self.list
+            .next()
+            .map(|command_buffer| UnsafeCommandPoolAlloc {
+                command_buffer,
+                device: self.device.clone(),
+            })
     }
 
     #[inline]

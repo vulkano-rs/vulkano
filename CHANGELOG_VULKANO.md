@@ -15,7 +15,9 @@
   - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
   - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. `ImageView` implements this trait.
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
+- **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself). The `PoolAlloc` associated type on the `CommandBuffer` trait is also removed, as it's no longer needed.
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
+- `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 
 - Allow `const` usage of features and `BufferUsage`
 

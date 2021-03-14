@@ -20,6 +20,7 @@ use buffer::BufferAccess;
 use buffer::TypedBufferAccess;
 use command_buffer::pool::standard::StandardCommandPoolAlloc;
 use command_buffer::pool::standard::StandardCommandPoolBuilder;
+use command_buffer::pool::CommandPool;
 use command_buffer::pool::CommandPoolBuilderAlloc;
 use command_buffer::synced::SyncCommandBuffer;
 use command_buffer::synced::SyncCommandBufferBuilder;
@@ -85,7 +86,8 @@ use {OomError, SafeDeref};
 /// `AutoCommandBufferBuilder` will not implement `Send` and `Sync` either. Once a command buffer
 /// is built, however, it *does* implement `Send` and `Sync`.
 pub struct AutoCommandBufferBuilder<P = StandardCommandPoolBuilder> {
-    inner: SyncCommandBufferBuilder<P>,
+    inner: SyncCommandBufferBuilder,
+    pool_builder_alloc: P, // Safety: must be dropped after `inner`
     state_cacher: StateCacher,
 
     // True if the queue family supports graphics operations.
@@ -444,14 +446,19 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
 
         unsafe {
             let pool = Device::standard_command_pool(&device, queue_family);
-            let inner = SyncCommandBufferBuilder::new(&pool, kind, flags);
+            let pool_builder_alloc = pool
+                .alloc(!matches!(new_kind, Kind::Primary), 1)?
+                .next()
+                .expect("Requested one command buffer from the command pool, but got zero.");
+            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), kind, flags)?;
             let state_cacher = StateCacher::new();
 
             let graphics_allowed = queue_family.supports_graphics();
             let compute_allowed = queue_family.supports_compute();
 
             Ok(AutoCommandBufferBuilder {
-                inner: inner?,
+                inner,
+                pool_builder_alloc,
                 state_cacher,
                 graphics_allowed,
                 compute_allowed,
@@ -575,6 +582,7 @@ impl<P> AutoCommandBufferBuilder<P> {
 
         Ok(AutoCommandBuffer {
             inner: self.inner.build()?,
+            pool_alloc: self.pool_builder_alloc.into_alloc(),
             kind: self.kind,
             submit_state,
         })
@@ -1776,8 +1784,8 @@ unsafe impl<P> DeviceOwned for AutoCommandBufferBuilder<P> {
 }
 
 // Shortcut function to set the push constants.
-unsafe fn push_constants<P, Pl, Pc>(
-    destination: &mut SyncCommandBufferBuilder<P>,
+unsafe fn push_constants<Pl, Pc>(
+    destination: &mut SyncCommandBufferBuilder,
     pipeline: Pl,
     push_constants: Pc,
 ) where
@@ -1808,7 +1816,7 @@ unsafe fn push_constants<P, Pl, Pc>(
 }
 
 // Shortcut function to change the state of the pipeline.
-unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &DynamicState) {
+unsafe fn set_state(destination: &mut SyncCommandBufferBuilder, dynamic: &DynamicState) {
     if let Some(line_width) = dynamic.line_width {
         destination.set_line_width(line_width);
     }
@@ -1837,8 +1845,8 @@ unsafe fn set_state<P>(destination: &mut SyncCommandBufferBuilder<P>, dynamic: &
 }
 
 // Shortcut function to bind vertex buffers.
-unsafe fn vertex_buffers<P>(
-    destination: &mut SyncCommandBufferBuilder<P>,
+unsafe fn vertex_buffers(
+    destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
     vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>,
 ) -> Result<(), SyncCommandBufferBuilderError> {
@@ -1868,8 +1876,8 @@ unsafe fn vertex_buffers<P>(
     Ok(())
 }
 
-unsafe fn descriptor_sets<P, Pl, S, Do, Doi>(
-    destination: &mut SyncCommandBufferBuilder<P>,
+unsafe fn descriptor_sets<Pl, S, Do, Doi>(
+    destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
     gfx: bool,
     pipeline: Pl,
@@ -1962,7 +1970,8 @@ where
 }
 
 pub struct AutoCommandBuffer<P = StandardCommandPoolAlloc> {
-    inner: SyncCommandBuffer<P>,
+    inner: SyncCommandBuffer,
+    pool_alloc: P, // Safety: must be dropped after `inner`
     kind:
         Kind<Box<dyn RenderPassAbstract + Send + Sync>, Box<dyn FramebufferAbstract + Send + Sync>>,
 
@@ -1992,10 +2001,8 @@ enum SubmitState {
 }
 
 unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
-    type PoolAlloc = P;
-
     #[inline]
-    fn inner(&self) -> &UnsafeCommandBuffer<P> {
+    fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
     }
 
