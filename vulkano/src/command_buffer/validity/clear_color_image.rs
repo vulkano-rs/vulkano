@@ -10,9 +10,9 @@
 use std::error;
 use std::fmt;
 
-use device::Device;
-use image::ImageAccess;
-use VulkanObject;
+use crate::device::Device;
+use crate::image::ImageAccess;
+use crate::VulkanObject;
 
 /// Checks whether a clear color image command is valid.
 ///

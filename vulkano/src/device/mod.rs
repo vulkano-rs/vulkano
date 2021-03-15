@@ -107,32 +107,32 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
 
-use command_buffer::pool::StandardCommandPool;
-use descriptor::descriptor_set::StdDescriptorPool;
-use instance::Instance;
-use instance::PhysicalDevice;
-use instance::QueueFamily;
-use memory::pool::StdMemoryPool;
+use crate::command_buffer::pool::StandardCommandPool;
+use crate::descriptor::descriptor_set::StdDescriptorPool;
+use crate::instance::Instance;
+use crate::instance::PhysicalDevice;
+use crate::instance::QueueFamily;
+use crate::memory::pool::StdMemoryPool;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use SynchronizedVulkanObject;
-use VulkanHandle;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SynchronizedVulkanObject;
+use crate::VulkanHandle;
+use crate::VulkanObject;
 
 pub use self::extensions::DeviceExtensions;
 pub use self::extensions::RawDeviceExtensions;
-pub use features::Features;
+pub use crate::features::Features;
 mod extensions;
 
-use format::Format;
-use image::ImageCreateFlags;
-use image::ImageFormatProperties;
-use image::ImageTiling;
-use image::ImageType;
-use image::ImageUsage;
+use crate::format::Format;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageFormatProperties;
+use crate::image::ImageTiling;
+use crate::image::ImageType;
+use crate::image::ImageUsage;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -850,11 +850,11 @@ unsafe impl SynchronizedVulkanObject for Queue {
 
 #[cfg(test)]
 mod tests {
-    use device::Device;
-    use device::DeviceCreationError;
-    use device::DeviceExtensions;
-    use features::Features;
-    use instance;
+    use crate::device::Device;
+    use crate::device::DeviceCreationError;
+    use crate::device::DeviceExtensions;
+    use crate::features::Features;
+    use crate::instance;
     use std::sync::Arc;
 
     #[test]

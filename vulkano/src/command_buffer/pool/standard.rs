@@ -18,17 +18,17 @@ use std::sync::Weak;
 use std::thread;
 use std::vec::IntoIter as VecIntoIter;
 
-use command_buffer::pool::CommandPool;
-use command_buffer::pool::CommandPoolAlloc;
-use command_buffer::pool::CommandPoolBuilderAlloc;
-use command_buffer::pool::UnsafeCommandPool;
-use command_buffer::pool::UnsafeCommandPoolAlloc;
-use instance::QueueFamily;
+use crate::command_buffer::pool::CommandPool;
+use crate::command_buffer::pool::CommandPoolAlloc;
+use crate::command_buffer::pool::CommandPoolBuilderAlloc;
+use crate::command_buffer::pool::UnsafeCommandPool;
+use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
+use crate::instance::QueueFamily;
 
-use device::Device;
-use device::DeviceOwned;
-use OomError;
-use VulkanObject;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Standard implementation of a command pool.
 ///
@@ -272,12 +272,12 @@ impl Drop for StandardCommandPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use command_buffer::pool::CommandPool;
-    use command_buffer::pool::CommandPoolBuilderAlloc;
-    use command_buffer::pool::StandardCommandPool;
-    use device::Device;
+    use crate::command_buffer::pool::CommandPool;
+    use crate::command_buffer::pool::CommandPoolBuilderAlloc;
+    use crate::command_buffer::pool::StandardCommandPool;
+    use crate::device::Device;
     use std::sync::Arc;
-    use VulkanObject;
+    use crate::VulkanObject;
 
     #[test]
     fn reuse_command_buffers() {

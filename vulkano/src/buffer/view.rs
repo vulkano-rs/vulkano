@@ -43,20 +43,20 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use buffer::BufferInner;
-use buffer::TypedBufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use format::FormatDesc;
-use format::StrongStorage;
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferInner;
+use crate::buffer::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::FormatDesc;
+use crate::format::StrongStorage;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use SafeDeref;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
@@ -366,11 +366,11 @@ impl From<Error> for BufferViewCreationError {
 
 #[cfg(test)]
 mod tests {
-    use buffer::immutable::ImmutableBuffer;
-    use buffer::view::BufferViewCreationError;
-    use buffer::BufferUsage;
-    use buffer::BufferView;
-    use format;
+    use crate::buffer::immutable::ImmutableBuffer;
+    use crate::buffer::view::BufferViewCreationError;
+    use crate::buffer::BufferUsage;
+    use crate::buffer::BufferView;
+    use crate::format;
 
     #[test]
     fn create_uniform() {

@@ -10,12 +10,12 @@
 use std::error;
 use std::fmt;
 
-use buffer::BufferAccess;
-use buffer::TypedBufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use pipeline::input_assembly::Index;
-use VulkanObject;
+use crate::buffer::BufferAccess;
+use crate::buffer::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::pipeline::input_assembly::Index;
+use crate::VulkanObject;
 
 /// Checks whether an index buffer can be bound.
 ///
@@ -94,8 +94,8 @@ impl fmt::Display for CheckIndexBufferError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use buffer::BufferUsage;
-    use buffer::CpuAccessibleBuffer;
+    use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
 
     #[test]
     fn num_indices() {

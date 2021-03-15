@@ -12,24 +12,24 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use buffer::BufferViewRef;
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor_set::persistent::*;
-use descriptor::descriptor_set::DescriptorPool;
-use descriptor::descriptor_set::DescriptorPoolAlloc;
-use descriptor::descriptor_set::DescriptorPoolAllocError;
-use descriptor::descriptor_set::DescriptorSet;
-use descriptor::descriptor_set::DescriptorSetDesc;
-use descriptor::descriptor_set::UnsafeDescriptorPool;
-use descriptor::descriptor_set::UnsafeDescriptorSet;
-use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use device::Device;
-use device::DeviceOwned;
-use image::view::ImageViewAbstract;
-use sampler::Sampler;
-use OomError;
-use VulkanObject;
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferViewRef;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::descriptor_set::persistent::*;
+use crate::descriptor::descriptor_set::DescriptorPool;
+use crate::descriptor::descriptor_set::DescriptorPoolAlloc;
+use crate::descriptor::descriptor_set::DescriptorPoolAllocError;
+use crate::descriptor::descriptor_set::DescriptorSet;
+use crate::descriptor::descriptor_set::DescriptorSetDesc;
+use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
+use crate::sampler::Sampler;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Pool of descriptor sets of a specific capacity and that are automatically reclaimed.
 ///

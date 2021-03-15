@@ -7,49 +7,48 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferInner;
+use crate::check_errors;
+use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
+use crate::command_buffer::CommandBuffer;
+use crate::command_buffer::Kind;
+use crate::command_buffer::KindOcclusionQuery;
+use crate::command_buffer::SubpassContents;
+use crate::descriptor::descriptor::ShaderStages;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
+use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::ClearValue;
+use crate::format::FormatTy;
+use crate::format::PossibleCompressedFormatDesc;
+use crate::framebuffer::FramebufferAbstract;
+use crate::framebuffer::RenderPassAbstract;
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::pipeline::depth_stencil::StencilFaceFlags;
+use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::viewport::Scissor;
+use crate::pipeline::viewport::Viewport;
+use crate::pipeline::ComputePipelineAbstract;
+use crate::pipeline::GraphicsPipelineAbstract;
+use crate::query::UnsafeQueriesRange;
+use crate::query::UnsafeQuery;
+use crate::sampler::Filter;
+use crate::sync::AccessFlagBits;
+use crate::sync::Event;
+use crate::sync::PipelineStages;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
+use std::ffi::CStr;
 use std::fmt;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-
-use buffer::BufferAccess;
-use buffer::BufferInner;
-use check_errors;
-use command_buffer::pool::UnsafeCommandPoolAlloc;
-use command_buffer::CommandBuffer;
-use command_buffer::Kind;
-use command_buffer::KindOcclusionQuery;
-use command_buffer::SubpassContents;
-use descriptor::descriptor::ShaderStages;
-use descriptor::descriptor_set::UnsafeDescriptorSet;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use device::Device;
-use device::DeviceOwned;
-use format::ClearValue;
-use format::FormatTy;
-use format::PossibleCompressedFormatDesc;
-use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPassAbstract;
-use image::ImageAccess;
-use image::ImageLayout;
-use pipeline::depth_stencil::StencilFaceFlags;
-use pipeline::input_assembly::IndexType;
-use pipeline::viewport::Scissor;
-use pipeline::viewport::Viewport;
-use pipeline::ComputePipelineAbstract;
-use pipeline::GraphicsPipelineAbstract;
-use query::UnsafeQueriesRange;
-use query::UnsafeQuery;
-use sampler::Filter;
-use std::ffi::CStr;
-use sync::AccessFlagBits;
-use sync::Event;
-use sync::PipelineStages;
-use vk;
-use OomError;
-use VulkanObject;
 
 /// Flags to pass when creating a command buffer.
 ///

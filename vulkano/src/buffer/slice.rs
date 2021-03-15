@@ -15,14 +15,14 @@ use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::sync::Arc;
 
-use buffer::traits::BufferAccess;
-use buffer::traits::BufferInner;
-use buffer::traits::TypedBufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use image::ImageAccess;
-use sync::AccessError;
+use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferInner;
+use crate::buffer::traits::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::image::ImageAccess;
+use crate::sync::AccessError;
 
 /// A subpart of a buffer.
 ///

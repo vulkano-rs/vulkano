@@ -9,12 +9,12 @@
 
 use std::iter;
 
-use buffer::BufferAccess;
-use pipeline::vertex::AttributeInfo;
-use pipeline::vertex::IncompatibleVertexDefinitionError;
-use pipeline::vertex::InputRate;
-use pipeline::vertex::VertexDefinition;
-use pipeline::vertex::VertexSource;
+use crate::buffer::BufferAccess;
+use crate::pipeline::vertex::AttributeInfo;
+use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
+use crate::pipeline::vertex::InputRate;
+use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexSource;
 
 /// Implementation of `VertexDefinition` for drawing with no buffers at all.
 ///

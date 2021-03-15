@@ -10,7 +10,7 @@
 use std::error;
 use std::fmt;
 
-use device::Device;
+use crate::device::Device;
 
 /// Checks whether the dispatch dimensions are supported by the device.
 pub fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), CheckDispatchError> {
@@ -60,7 +60,7 @@ impl fmt::Display for CheckDispatchError {
 
 #[cfg(test)]
 mod tests {
-    use command_buffer::validity;
+    use crate::command_buffer::validity;
 
     #[test]
     fn max_checked() {

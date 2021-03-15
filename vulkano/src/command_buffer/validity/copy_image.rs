@@ -10,12 +10,12 @@
 use std::error;
 use std::fmt;
 
-use device::Device;
-use format::FormatTy;
-use format::PossibleCompressedFormatDesc;
-use image::ImageAccess;
-use image::ImageDimensions;
-use VulkanObject;
+use crate::device::Device;
+use crate::format::FormatTy;
+use crate::format::PossibleCompressedFormatDesc;
+use crate::image::ImageAccess;
+use crate::image::ImageDimensions;
+use crate::VulkanObject;
 
 /// Checks whether a copy image command is valid.
 ///

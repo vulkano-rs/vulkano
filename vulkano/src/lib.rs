@@ -62,29 +62,26 @@
 #![allow(dead_code)] // TODO: remove
 #![allow(unused_variables)] // TODO: remove
 
-extern crate crossbeam;
-extern crate fnv;
-#[macro_use]
-extern crate lazy_static;
-pub extern crate half;
-extern crate parking_lot;
-extern crate shared_library;
-extern crate smallvec;
 extern crate vk_sys as vk;
+
+pub use half;
+use std::error;
+use std::fmt;
+use std::ops::Deref;
+use std::sync::Arc;
+use std::sync::MutexGuard;
 
 #[macro_use]
 mod tests;
-
 #[macro_use]
 mod extensions;
-mod features;
-mod version;
-
 pub mod buffer;
 pub mod command_buffer;
 pub mod descriptor;
 pub mod device;
+mod features;
 pub mod format;
+mod version;
 #[macro_use]
 pub mod framebuffer;
 pub mod image;
@@ -95,12 +92,6 @@ pub mod query;
 pub mod sampler;
 pub mod swapchain;
 pub mod sync;
-
-use std::error;
-use std::fmt;
-use std::ops::Deref;
-use std::sync::Arc;
-use std::sync::MutexGuard;
 
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}

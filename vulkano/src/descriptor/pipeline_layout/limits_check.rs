@@ -12,11 +12,11 @@
 use std::error;
 use std::fmt;
 
-use descriptor::descriptor::DescriptorType;
-use descriptor::descriptor::ShaderStages;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use instance::Limits;
+use crate::descriptor::descriptor::DescriptorType;
+use crate::descriptor::descriptor::ShaderStages;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use crate::instance::Limits;
 
 /// Checks whether the pipeline layout description fulfills the device limits requirements.
 pub fn check_desc_against_limits<D>(

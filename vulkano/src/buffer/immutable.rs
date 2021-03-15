@@ -27,35 +27,35 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use buffer::sys::BufferCreationError;
-use buffer::sys::SparseLevel;
-use buffer::sys::UnsafeBuffer;
-use buffer::traits::BufferAccess;
-use buffer::traits::BufferInner;
-use buffer::traits::TypedBufferAccess;
-use buffer::BufferUsage;
-use buffer::CpuAccessibleBuffer;
-use command_buffer::AutoCommandBuffer;
-use command_buffer::AutoCommandBufferBuilder;
-use command_buffer::CommandBuffer;
-use command_buffer::CommandBufferExecFuture;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use image::ImageAccess;
-use instance::QueueFamily;
-use memory::pool::AllocFromRequirementsFilter;
-use memory::pool::AllocLayout;
-use memory::pool::MappingRequirement;
-use memory::pool::MemoryPool;
-use memory::pool::MemoryPoolAlloc;
-use memory::pool::PotentialDedicatedAllocation;
-use memory::pool::StdMemoryPoolAlloc;
-use memory::DedicatedAlloc;
-use memory::DeviceMemoryAllocError;
-use sync::AccessError;
-use sync::NowFuture;
-use sync::Sharing;
+use crate::buffer::sys::BufferCreationError;
+use crate::buffer::sys::SparseLevel;
+use crate::buffer::sys::UnsafeBuffer;
+use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferInner;
+use crate::buffer::traits::TypedBufferAccess;
+use crate::buffer::BufferUsage;
+use crate::buffer::CpuAccessibleBuffer;
+use crate::command_buffer::AutoCommandBuffer;
+use crate::command_buffer::AutoCommandBufferBuilder;
+use crate::command_buffer::CommandBuffer;
+use crate::command_buffer::CommandBufferExecFuture;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::image::ImageAccess;
+use crate::instance::QueueFamily;
+use crate::memory::pool::AllocFromRequirementsFilter;
+use crate::memory::pool::AllocLayout;
+use crate::memory::pool::MappingRequirement;
+use crate::memory::pool::MemoryPool;
+use crate::memory::pool::MemoryPoolAlloc;
+use crate::memory::pool::PotentialDedicatedAllocation;
+use crate::memory::pool::StdMemoryPoolAlloc;
+use crate::memory::DedicatedAlloc;
+use crate::memory::DeviceMemoryAllocError;
+use crate::sync::AccessError;
+use crate::sync::NowFuture;
+use crate::sync::Sharing;
 
 /// Buffer that is written once then read for as long as it is alive.
 // TODO: implement Debug
@@ -531,12 +531,12 @@ impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A> {
 
 #[cfg(test)]
 mod tests {
-    use buffer::cpu_access::CpuAccessibleBuffer;
-    use buffer::immutable::ImmutableBuffer;
-    use buffer::BufferUsage;
-    use command_buffer::AutoCommandBufferBuilder;
-    use command_buffer::CommandBuffer;
-    use sync::GpuFuture;
+    use crate::buffer::cpu_access::CpuAccessibleBuffer;
+    use crate::buffer::immutable::ImmutableBuffer;
+    use crate::buffer::BufferUsage;
+    use crate::command_buffer::AutoCommandBufferBuilder;
+    use crate::command_buffer::CommandBuffer;
+    use crate::sync::GpuFuture;
 
     #[test]
     fn from_data_working() {

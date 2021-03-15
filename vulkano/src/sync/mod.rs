@@ -103,7 +103,7 @@
 //! TODO: talk about fence + semaphore simultaneously
 //! TODO: talk about using fences to clean up
 
-use device::Queue;
+use crate::device::Queue;
 use std::sync::Arc;
 
 pub use self::event::Event;

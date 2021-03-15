@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use format::Format;
-use image::ImageUsage;
-use vk;
+use crate::format::Format;
+use crate::image::ImageUsage;
+use crate::vk;
 
 /// The capabilities of a surface when used by a physical device.
 ///

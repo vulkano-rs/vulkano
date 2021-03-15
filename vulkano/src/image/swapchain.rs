@@ -11,20 +11,20 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use format::ClearValue;
-use format::Format;
-use format::FormatDesc;
-use image::traits::ImageAccess;
-use image::traits::ImageClearValue;
-use image::traits::ImageContent;
-use image::ImageDescriptorLayouts;
-use image::ImageInner;
-use image::ImageLayout;
-use swapchain::Swapchain;
-use sync::AccessError;
+use crate::buffer::BufferAccess;
+use crate::format::ClearValue;
+use crate::format::Format;
+use crate::format::FormatDesc;
+use crate::image::traits::ImageAccess;
+use crate::image::traits::ImageClearValue;
+use crate::image::traits::ImageContent;
+use crate::image::ImageDescriptorLayouts;
+use crate::image::ImageInner;
+use crate::image::ImageLayout;
+use crate::swapchain::Swapchain;
+use crate::sync::AccessError;
 
-use OomError;
+use crate::OomError;
 
 /// An image that is part of a swapchain.
 ///

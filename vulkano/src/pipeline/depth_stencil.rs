@@ -22,7 +22,7 @@
 
 use std::ops::Range;
 use std::u32;
-use vk;
+use crate::vk;
 
 /// Configuration of the depth and stencil tests.
 #[derive(Debug, Clone)]

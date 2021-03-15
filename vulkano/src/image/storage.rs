@@ -14,33 +14,33 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use device::Device;
-use format::ClearValue;
-use format::FormatDesc;
-use format::FormatTy;
-use image::sys::ImageCreationError;
-use image::sys::UnsafeImage;
-use image::traits::ImageAccess;
-use image::traits::ImageClearValue;
-use image::traits::ImageContent;
-use image::ImageCreateFlags;
-use image::ImageDescriptorLayouts;
-use image::ImageDimensions;
-use image::ImageInner;
-use image::ImageLayout;
-use image::ImageUsage;
-use instance::QueueFamily;
-use memory::pool::AllocFromRequirementsFilter;
-use memory::pool::AllocLayout;
-use memory::pool::MappingRequirement;
-use memory::pool::MemoryPool;
-use memory::pool::MemoryPoolAlloc;
-use memory::pool::PotentialDedicatedAllocation;
-use memory::pool::StdMemoryPool;
-use memory::DedicatedAlloc;
-use sync::AccessError;
-use sync::Sharing;
+use crate::buffer::BufferAccess;
+use crate::device::Device;
+use crate::format::ClearValue;
+use crate::format::FormatDesc;
+use crate::format::FormatTy;
+use crate::image::sys::ImageCreationError;
+use crate::image::sys::UnsafeImage;
+use crate::image::traits::ImageAccess;
+use crate::image::traits::ImageClearValue;
+use crate::image::traits::ImageContent;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageDescriptorLayouts;
+use crate::image::ImageDimensions;
+use crate::image::ImageInner;
+use crate::image::ImageLayout;
+use crate::image::ImageUsage;
+use crate::instance::QueueFamily;
+use crate::memory::pool::AllocFromRequirementsFilter;
+use crate::memory::pool::AllocLayout;
+use crate::memory::pool::MappingRequirement;
+use crate::memory::pool::MemoryPool;
+use crate::memory::pool::MemoryPoolAlloc;
+use crate::memory::pool::PotentialDedicatedAllocation;
+use crate::memory::pool::StdMemoryPool;
+use crate::memory::DedicatedAlloc;
+use crate::sync::AccessError;
+use crate::sync::Sharing;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
@@ -333,8 +333,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::StorageImage;
-    use format::Format;
-    use image::ImageDimensions;
+    use crate::format::Format;
+    use crate::image::ImageDimensions;
 
     #[test]
     fn create() {

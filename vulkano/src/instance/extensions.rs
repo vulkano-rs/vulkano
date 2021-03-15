@@ -14,11 +14,11 @@ use std::iter::FromIterator;
 use std::ptr;
 use std::str;
 
-use check_errors;
-use extensions::SupportedExtensionsError;
-use instance::loader;
-use instance::loader::LoadingError;
-use vk;
+use crate::check_errors;
+use crate::extensions::SupportedExtensionsError;
+use crate::instance::loader;
+use crate::instance::loader::LoadingError;
+use crate::vk;
 
 macro_rules! instance_extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
@@ -170,7 +170,7 @@ pub struct Unbuildable(());
 
 #[cfg(test)]
 mod tests {
-    use instance::{InstanceExtensions, RawInstanceExtensions};
+    use crate::instance::{InstanceExtensions, RawInstanceExtensions};
 
     #[test]
     fn empty_extensions() {

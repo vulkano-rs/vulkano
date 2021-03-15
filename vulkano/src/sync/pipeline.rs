@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::ops;
-use vk;
+use crate::vk;
 
 macro_rules! pipeline_stages {
     ($($elem:ident => $val:expr,)+) => (

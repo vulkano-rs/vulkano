@@ -16,23 +16,23 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use device::Device;
-use device::DeviceOwned;
-use format::ClearValue;
-use framebuffer::AttachmentDescription;
-use framebuffer::EmptySinglePassRenderPassDesc;
-use framebuffer::LoadOp;
-use framebuffer::PassDependencyDescription;
-use framebuffer::PassDescription;
-use framebuffer::RenderPassAbstract;
-use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescClearValues;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::ClearValue;
+use crate::framebuffer::AttachmentDescription;
+use crate::framebuffer::EmptySinglePassRenderPassDesc;
+use crate::framebuffer::LoadOp;
+use crate::framebuffer::PassDependencyDescription;
+use crate::framebuffer::PassDescription;
+use crate::framebuffer::RenderPassAbstract;
+use crate::framebuffer::RenderPassDesc;
+use crate::framebuffer::RenderPassDescClearValues;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Defines the layout of multiple subpasses.
 ///
@@ -592,9 +592,9 @@ impl From<Error> for RenderPassCreationError {
 
 #[cfg(test)]
 mod tests {
-    use format::Format;
-    use framebuffer::RenderPass;
-    use framebuffer::RenderPassCreationError;
+    use crate::format::Format;
+    use crate::framebuffer::RenderPass;
+    use crate::framebuffer::RenderPassCreationError;
 
     #[test]
     fn empty() {

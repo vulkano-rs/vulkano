@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use format::Format;
+use crate::format::Format;
 
 /// Describes an individual `Vertex`. In other words a collection of attributes that can be read
 /// from a vertex shader.

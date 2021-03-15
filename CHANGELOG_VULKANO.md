@@ -1,6 +1,6 @@
 # Unreleased
-- Added external memory support for `DeviceLocalBuffer` for `Linux`
 
+- **Breaking** Updated all code to Rust 2018 edition.
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
   - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
@@ -18,8 +18,8 @@
 - **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself). The `PoolAlloc` associated type on the `CommandBuffer` trait is also removed, as it's no longer needed.
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
-
 - Allow `const` usage of features and `BufferUsage`
+- Added external memory support for `DeviceLocalBuffer` for `Linux`
 
 # Version 0.21.0 (2021-03-05)
 

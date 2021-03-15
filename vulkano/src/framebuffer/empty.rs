@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use format::ClearValue;
-use framebuffer::AttachmentDescription;
-use framebuffer::PassDependencyDescription;
-use framebuffer::PassDescription;
-use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescClearValues;
+use crate::format::ClearValue;
+use crate::framebuffer::AttachmentDescription;
+use crate::framebuffer::PassDependencyDescription;
+use crate::framebuffer::PassDescription;
+use crate::framebuffer::RenderPassDesc;
+use crate::framebuffer::RenderPassDescClearValues;
 use std::iter;
 
 /// Description of an empty render pass.

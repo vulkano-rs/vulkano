@@ -11,12 +11,12 @@ use std::error;
 use std::fmt;
 use std::u32;
 
-use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
-use pipeline::input_assembly::PrimitiveTopology;
-use pipeline::shader::ShaderInterfaceMismatchError;
-use pipeline::vertex::IncompatibleVertexDefinitionError;
-use Error;
-use OomError;
+use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
+use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::shader::ShaderInterfaceMismatchError;
+use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
+use crate::Error;
+use crate::OomError;
 
 /// Error that can happen when creating a graphics pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -10,23 +10,23 @@
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use buffer::BufferAccess;
-use format::ClearValue;
-use format::Format;
-use format::PossibleCompressedFormatDesc;
-use format::PossibleDepthFormatDesc;
-use format::PossibleDepthStencilFormatDesc;
-use format::PossibleFloatFormatDesc;
-use format::PossibleSintFormatDesc;
-use format::PossibleStencilFormatDesc;
-use format::PossibleUintFormatDesc;
-use image::sys::UnsafeImage;
-use image::ImageDescriptorLayouts;
-use image::ImageDimensions;
-use image::ImageLayout;
-use sync::AccessError;
+use crate::buffer::BufferAccess;
+use crate::format::ClearValue;
+use crate::format::Format;
+use crate::format::PossibleCompressedFormatDesc;
+use crate::format::PossibleDepthFormatDesc;
+use crate::format::PossibleDepthStencilFormatDesc;
+use crate::format::PossibleFloatFormatDesc;
+use crate::format::PossibleSintFormatDesc;
+use crate::format::PossibleStencilFormatDesc;
+use crate::format::PossibleUintFormatDesc;
+use crate::image::sys::UnsafeImage;
+use crate::image::ImageDescriptorLayouts;
+use crate::image::ImageDimensions;
+use crate::image::ImageLayout;
+use crate::sync::AccessError;
 
-use SafeDeref;
+use crate::SafeDeref;
 
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {

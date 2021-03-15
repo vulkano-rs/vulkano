@@ -9,10 +9,10 @@
 
 use smallvec::SmallVec;
 
-use command_buffer::submit::SubmitCommandBufferBuilder;
-use command_buffer::submit::SubmitPresentBuilder;
-use sync::PipelineStages;
-use sync::Semaphore;
+use crate::command_buffer::submit::SubmitCommandBufferBuilder;
+use crate::command_buffer::submit::SubmitPresentBuilder;
+use crate::sync::PipelineStages;
+use crate::sync::Semaphore;
 
 /// Prototype for a submission that waits on semaphores.
 ///

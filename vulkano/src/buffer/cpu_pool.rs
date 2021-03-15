@@ -20,30 +20,30 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 
-use buffer::sys::BufferCreationError;
-use buffer::sys::SparseLevel;
-use buffer::sys::UnsafeBuffer;
-use buffer::traits::BufferAccess;
-use buffer::traits::BufferInner;
-use buffer::traits::TypedBufferAccess;
-use buffer::BufferUsage;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use image::ImageAccess;
-use memory::pool::AllocFromRequirementsFilter;
-use memory::pool::AllocLayout;
-use memory::pool::MappingRequirement;
-use memory::pool::MemoryPool;
-use memory::pool::MemoryPoolAlloc;
-use memory::pool::PotentialDedicatedAllocation;
-use memory::pool::StdMemoryPool;
-use memory::DedicatedAlloc;
-use memory::DeviceMemoryAllocError;
-use sync::AccessError;
-use sync::Sharing;
+use crate::buffer::sys::BufferCreationError;
+use crate::buffer::sys::SparseLevel;
+use crate::buffer::sys::UnsafeBuffer;
+use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferInner;
+use crate::buffer::traits::TypedBufferAccess;
+use crate::buffer::BufferUsage;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::image::ImageAccess;
+use crate::memory::pool::AllocFromRequirementsFilter;
+use crate::memory::pool::AllocLayout;
+use crate::memory::pool::MappingRequirement;
+use crate::memory::pool::MemoryPool;
+use crate::memory::pool::MemoryPoolAlloc;
+use crate::memory::pool::PotentialDedicatedAllocation;
+use crate::memory::pool::StdMemoryPool;
+use crate::memory::DedicatedAlloc;
+use crate::memory::DeviceMemoryAllocError;
+use crate::sync::AccessError;
+use crate::sync::Sharing;
 
-use OomError;
+use crate::OomError;
 
 // TODO: Add `CpuBufferPoolSubbuffer::read` to read the content of a subbuffer.
 //       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
@@ -876,7 +876,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use buffer::CpuBufferPool;
+    use crate::buffer::CpuBufferPool;
     use std::mem;
 
     #[test]

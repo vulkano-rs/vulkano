@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use image::view::ImageViewAbstract;
+use crate::image::view::ImageViewAbstract;
 use std::sync::Arc;
-use SafeDeref;
+use crate::SafeDeref;
 //use sync::AccessFlagBits;
 //use sync::PipelineStages;
 

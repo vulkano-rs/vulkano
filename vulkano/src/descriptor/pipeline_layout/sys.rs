@@ -14,21 +14,21 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor::ShaderStages;
-use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use descriptor::pipeline_layout::PipelineLayoutLimitsError;
-use device::Device;
-use device::DeviceOwned;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::descriptor::ShaderStages;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use crate::descriptor::pipeline_layout::PipelineLayoutLimitsError;
+use crate::device::Device;
+use crate::device::DeviceOwned;
 
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
 /// descriptor sets and push constants available to your shaders

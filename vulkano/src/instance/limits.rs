@@ -9,7 +9,7 @@
 
 //! The `Limits` struct provides a nicer API around `vkPhysicalDeviceLimits`.
 
-use vk;
+use crate::vk;
 
 /// Limits of a physical device.
 pub struct Limits<'a> {

@@ -25,12 +25,12 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
+use crate::device::Device;
 
-use check_errors;
-use vk;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -252,12 +252,12 @@ impl Drop for PipelineCache {
 mod tests {
     use std::{ffi::CStr, sync::Arc};
 
-    use descriptor::descriptor::DescriptorDesc;
-    use descriptor::pipeline_layout::PipelineLayoutDesc;
-    use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-    use pipeline::cache::PipelineCache;
-    use pipeline::shader::ShaderModule;
-    use pipeline::ComputePipeline;
+    use crate::descriptor::descriptor::DescriptorDesc;
+    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+    use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+    use crate::pipeline::cache::PipelineCache;
+    use crate::pipeline::shader::ShaderModule;
+    use crate::pipeline::ComputePipeline;
 
     #[test]
     fn merge_self_forbidden() {

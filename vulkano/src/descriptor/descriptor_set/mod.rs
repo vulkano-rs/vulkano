@@ -38,12 +38,12 @@
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use buffer::BufferAccess;
-use descriptor::descriptor::DescriptorDesc;
-use device::DeviceOwned;
-use image::view::ImageViewAbstract;
-use SafeDeref;
-use VulkanObject;
+use crate::buffer::BufferAccess;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
+use crate::SafeDeref;
+use crate::VulkanObject;
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::fixed_size_pool::FixedSizeDescriptorSet;

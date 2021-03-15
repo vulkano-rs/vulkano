@@ -46,13 +46,13 @@ use std::panic;
 use std::ptr;
 use std::sync::Arc;
 
-use instance::Instance;
+use crate::instance::Instance;
 
-use check_errors;
-use vk;
-use vk::{Bool32, DebugUtilsMessengerCallbackDataEXT};
-use Error;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::vk::{Bool32, DebugUtilsMessengerCallbackDataEXT};
+use crate::Error;
+use crate::VulkanObject;
 
 /// Registration of a callback called by validation layers.
 ///

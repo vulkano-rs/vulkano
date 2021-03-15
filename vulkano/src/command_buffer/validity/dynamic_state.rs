@@ -10,8 +10,8 @@
 use std::error;
 use std::fmt;
 
-use command_buffer::DynamicState;
-use pipeline::GraphicsPipelineAbstract;
+use crate::command_buffer::DynamicState;
+use crate::pipeline::GraphicsPipelineAbstract;
 
 /// Checks whether states that are about to be set are correct.
 pub fn check_dynamic_state_validity<Pl>(

@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
 /// Description of an empty pipeline layout.
 ///

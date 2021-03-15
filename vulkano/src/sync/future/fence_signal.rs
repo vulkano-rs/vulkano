@@ -13,20 +13,20 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::time::Duration;
 
-use buffer::BufferAccess;
-use command_buffer::submit::SubmitAnyBuilder;
-use command_buffer::submit::SubmitCommandBufferBuilder;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use image::ImageAccess;
-use image::ImageLayout;
-use sync::AccessCheckError;
-use sync::AccessFlagBits;
-use sync::Fence;
-use sync::FlushError;
-use sync::GpuFuture;
-use sync::PipelineStages;
+use crate::buffer::BufferAccess;
+use crate::command_buffer::submit::SubmitAnyBuilder;
+use crate::command_buffer::submit::SubmitCommandBufferBuilder;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::sync::AccessCheckError;
+use crate::sync::AccessFlagBits;
+use crate::sync::Fence;
+use crate::sync::FlushError;
+use crate::sync::GpuFuture;
+use crate::sync::PipelineStages;
 
 /// Builds a new fence signal future.
 #[inline]

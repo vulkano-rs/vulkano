@@ -41,15 +41,15 @@
 //!   in a render pass. Can only give access to the same pixel as the one you're processing.
 //!
 
-use format::Format;
-use image::view::ImageViewType;
+use crate::format::Format;
+use crate::image::view::ImageViewType;
 use std::cmp;
 use std::error;
 use std::fmt;
 use std::ops::BitOr;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
-use vk;
+use crate::sync::AccessFlagBits;
+use crate::sync::PipelineStages;
+use crate::vk;
 
 /// Contains the exact description of a single descriptor.
 ///

@@ -22,20 +22,20 @@ use std::ptr;
 use std::slice;
 use std::sync::Arc;
 
-use check_errors;
-use instance::limits::Limits;
-use instance::loader;
-use instance::loader::FunctionPointers;
-use instance::loader::Loader;
-use instance::loader::LoadingError;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::instance::limits::Limits;
+use crate::instance::loader;
+use crate::instance::loader::FunctionPointers;
+use crate::instance::loader::Loader;
+use crate::instance::loader::LoadingError;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
-use features::{Features, FeaturesFfi};
-use instance::{InstanceExtensions, RawInstanceExtensions};
-use version::Version;
+use crate::features::{Features, FeaturesFfi};
+use crate::instance::{InstanceExtensions, RawInstanceExtensions};
+use crate::version::Version;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -1413,7 +1413,7 @@ impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
 
 #[cfg(test)]
 mod tests {
-    use instance;
+    use crate::instance;
 
     #[test]
     fn create_instance() {

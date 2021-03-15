@@ -107,10 +107,10 @@ use std::vec::IntoIter as VecIntoIter;
 use std::{error, fmt, mem};
 
 use half::f16;
-use instance::PhysicalDevice;
+use crate::instance::PhysicalDevice;
 
-use vk;
-use VulkanObject;
+use crate::vk;
+use crate::VulkanObject;
 
 // TODO: add enumerations for color, depth, stencil and depthstencil formats
 

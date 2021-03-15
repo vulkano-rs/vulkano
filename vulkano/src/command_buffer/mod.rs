@@ -98,10 +98,10 @@ pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 
-use framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
-use pipeline::depth_stencil::DynamicStencilValue;
-use pipeline::viewport::{Scissor, Viewport};
-use query::QueryPipelineStatisticFlags;
+use crate::framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
+use crate::pipeline::depth_stencil::DynamicStencilValue;
+use crate::pipeline::viewport::{Scissor, Viewport};
+use crate::query::QueryPipelineStatisticFlags;
 use std::sync::Arc;
 
 pub mod pool;

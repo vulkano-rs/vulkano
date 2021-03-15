@@ -13,15 +13,15 @@ use std::option::IntoIter as OptionIntoIter;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
-use buffer::BufferAccess;
-use buffer::TypedBufferAccess;
-use pipeline::shader::ShaderInterfaceDef;
-use pipeline::vertex::AttributeInfo;
-use pipeline::vertex::IncompatibleVertexDefinitionError;
-use pipeline::vertex::InputRate;
-use pipeline::vertex::Vertex;
-use pipeline::vertex::VertexDefinition;
-use pipeline::vertex::VertexSource;
+use crate::buffer::BufferAccess;
+use crate::buffer::TypedBufferAccess;
+use crate::pipeline::shader::ShaderInterfaceDef;
+use crate::pipeline::vertex::AttributeInfo;
+use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
+use crate::pipeline::vertex::InputRate;
+use crate::pipeline::vertex::Vertex;
+use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexSource;
 
 /// Implementation of `VertexDefinition` for a single vertex buffer.
 pub struct SingleBufferDefinition<T>(pub PhantomData<T>);

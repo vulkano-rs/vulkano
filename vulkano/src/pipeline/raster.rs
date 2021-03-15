@@ -13,7 +13,7 @@
 //! of pixels or samples.
 //!
 
-use vk;
+use crate::vk;
 
 /// State of the rasterizer.
 #[derive(Clone, Debug)]

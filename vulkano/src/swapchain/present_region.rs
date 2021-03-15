@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use swapchain::Swapchain;
-use vk;
+use crate::swapchain::Swapchain;
+use crate::vk;
 
 /// Represents a region on an image.
 ///

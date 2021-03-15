@@ -16,27 +16,27 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
-use device::DeviceOwned;
-use format::ClearValue;
-use framebuffer::ensure_image_view_compatible;
-use framebuffer::AttachmentDescription;
-use framebuffer::AttachmentsList;
-use framebuffer::FramebufferAbstract;
-use framebuffer::IncompatibleRenderPassAttachmentError;
-use framebuffer::PassDependencyDescription;
-use framebuffer::PassDescription;
-use framebuffer::RenderPassAbstract;
-use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassDescClearValues;
-use framebuffer::RenderPassSys;
-use image::view::ImageViewAbstract;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::ClearValue;
+use crate::framebuffer::ensure_image_view_compatible;
+use crate::framebuffer::AttachmentDescription;
+use crate::framebuffer::AttachmentsList;
+use crate::framebuffer::FramebufferAbstract;
+use crate::framebuffer::IncompatibleRenderPassAttachmentError;
+use crate::framebuffer::PassDependencyDescription;
+use crate::framebuffer::PassDescription;
+use crate::framebuffer::RenderPassAbstract;
+use crate::framebuffer::RenderPassDesc;
+use crate::framebuffer::RenderPassDescClearValues;
+use crate::framebuffer::RenderPassSys;
+use crate::image::view::ImageViewAbstract;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Contains a render pass and the image views that are attached to it.
 ///
@@ -559,13 +559,13 @@ impl From<Error> for FramebufferCreationError {
 
 #[cfg(test)]
 mod tests {
-    use format::Format;
-    use framebuffer::EmptySinglePassRenderPassDesc;
-    use framebuffer::Framebuffer;
-    use framebuffer::FramebufferCreationError;
-    use framebuffer::RenderPassDesc;
-    use image::attachment::AttachmentImage;
-    use image::view::ImageView;
+    use crate::format::Format;
+    use crate::framebuffer::EmptySinglePassRenderPassDesc;
+    use crate::framebuffer::Framebuffer;
+    use crate::framebuffer::FramebufferCreationError;
+    use crate::framebuffer::RenderPassDesc;
+    use crate::image::attachment::AttachmentImage;
+    use crate::image::view::ImageView;
     use std::sync::Arc;
 
     #[test]

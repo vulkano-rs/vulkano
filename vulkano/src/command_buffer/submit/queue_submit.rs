@@ -13,18 +13,18 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ptr;
 
-use command_buffer::sys::UnsafeCommandBuffer;
-use device::Queue;
-use sync::Fence;
-use sync::PipelineStages;
-use sync::Semaphore;
+use crate::command_buffer::sys::UnsafeCommandBuffer;
+use crate::device::Queue;
+use crate::sync::Fence;
+use crate::sync::PipelineStages;
+use crate::sync::Semaphore;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use SynchronizedVulkanObject;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SynchronizedVulkanObject;
+use crate::VulkanObject;
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here
@@ -303,7 +303,7 @@ impl From<Error> for SubmitCommandBufferError {
 mod tests {
     use super::*;
     use std::time::Duration;
-    use sync::Fence;
+    use crate::sync::Fence;
 
     #[test]
     fn empty_submit() {

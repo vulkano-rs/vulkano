@@ -12,9 +12,9 @@ use std::fmt;
 
 use smallvec::SmallVec;
 
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 
 /// Runtime description of a pipeline layout.
 #[derive(Debug, Clone)]
@@ -124,11 +124,11 @@ impl fmt::Display for RuntimePipelineDescError {
 
 #[cfg(test)]
 mod tests {
-    use descriptor::descriptor::DescriptorDesc;
-    use descriptor::descriptor::ShaderStages;
-    use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-    use descriptor::pipeline_layout::RuntimePipelineDesc;
-    use descriptor::pipeline_layout::RuntimePipelineDescError;
+    use crate::descriptor::descriptor::DescriptorDesc;
+    use crate::descriptor::descriptor::ShaderStages;
+    use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+    use crate::descriptor::pipeline_layout::RuntimePipelineDesc;
+    use crate::descriptor::pipeline_layout::RuntimePipelineDescError;
     use std::iter;
 
     #[test]

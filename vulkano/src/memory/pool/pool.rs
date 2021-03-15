@@ -14,20 +14,20 @@ use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use device::Device;
-use device::DeviceOwned;
-use instance::MemoryType;
-use memory::pool::AllocLayout;
-use memory::pool::MappingRequirement;
-use memory::pool::MemoryPool;
-use memory::pool::MemoryPoolAlloc;
-use memory::pool::StdHostVisibleMemoryTypePool;
-use memory::pool::StdHostVisibleMemoryTypePoolAlloc;
-use memory::pool::StdNonHostVisibleMemoryTypePool;
-use memory::pool::StdNonHostVisibleMemoryTypePoolAlloc;
-use memory::DeviceMemory;
-use memory::DeviceMemoryAllocError;
-use memory::MappedDeviceMemory;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::instance::MemoryType;
+use crate::memory::pool::AllocLayout;
+use crate::memory::pool::MappingRequirement;
+use crate::memory::pool::MemoryPool;
+use crate::memory::pool::MemoryPoolAlloc;
+use crate::memory::pool::StdHostVisibleMemoryTypePool;
+use crate::memory::pool::StdHostVisibleMemoryTypePoolAlloc;
+use crate::memory::pool::StdNonHostVisibleMemoryTypePool;
+use crate::memory::pool::StdNonHostVisibleMemoryTypePoolAlloc;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MappedDeviceMemory;
 
 #[derive(Debug)]
 pub struct StdMemoryPool {

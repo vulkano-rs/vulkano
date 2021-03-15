@@ -22,7 +22,7 @@
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 //!
 
-use vk;
+use crate::vk;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.

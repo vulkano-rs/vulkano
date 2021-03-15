@@ -21,6 +21,9 @@
 //! By default vulkano will use the `auto_loader()` function, which tries to automatically load
 //! a Vulkan implementation from the system.
 
+use crate::vk;
+use crate::SafeDeref;
+use lazy_static::lazy_static;
 use shared_library;
 use std::error;
 use std::fmt;
@@ -29,9 +32,6 @@ use std::ops::Deref;
 use std::os::raw::c_char;
 use std::os::raw::c_void;
 use std::path::Path;
-
-use vk;
-use SafeDeref;
 
 /// Implemented on objects that grant access to a Vulkan implementation.
 pub unsafe trait Loader {
@@ -273,8 +273,8 @@ impl fmt::Display for LoadingError {
 
 #[cfg(test)]
 mod tests {
-    use instance::loader::DynamicLibraryLoader;
-    use instance::loader::LoadingError;
+    use crate::instance::loader::DynamicLibraryLoader;
+    use crate::instance::loader::LoadingError;
 
     #[test]
     fn dl_open_error() {

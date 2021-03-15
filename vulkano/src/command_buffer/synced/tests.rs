@@ -7,17 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferUsage;
+use crate::buffer::CpuAccessibleBuffer;
+use crate::command_buffer::pool::CommandPool;
+use crate::command_buffer::pool::CommandPoolBuilderAlloc;
+use crate::command_buffer::synced::base::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::base::SyncCommandBufferBuilderError;
+use crate::command_buffer::sys::Flags;
+use crate::command_buffer::Kind;
+use crate::device::Device;
 use std::iter;
-
-use buffer::BufferUsage;
-use buffer::CpuAccessibleBuffer;
-use command_buffer::pool::CommandPool;
-use command_buffer::pool::CommandPoolBuilderAlloc;
-use command_buffer::synced::base::SyncCommandBufferBuilder;
-use command_buffer::synced::base::SyncCommandBufferBuilderError;
-use command_buffer::sys::Flags;
-use command_buffer::Kind;
-use device::Device;
 
 #[test]
 fn basic_creation() {

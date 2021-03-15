@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::ops::BitOr;
-use vk;
+use crate::vk;
 
 /// Describes how a buffer is going to be used. This is **not** just an optimization.
 ///
