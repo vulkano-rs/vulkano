@@ -77,6 +77,7 @@ use std::ffi::CStr;
 use sync::AccessCheckError;
 use sync::AccessFlagBits;
 use sync::GpuFuture;
+use sync::PipelineMemoryAccess;
 use sync::PipelineStages;
 use VulkanObject;
 use {OomError, SafeDeref};
@@ -2119,6 +2120,34 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
                 query_statistics_flags: *query_statistics_flags,
             },
         }
+    }
+
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.inner.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
+        self.inner.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.inner.num_images()
+    }
+
+    #[inline]
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )> {
+        self.inner.image(index)
     }
 }
 
