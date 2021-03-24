@@ -441,18 +441,12 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     where
         C: CommandBuffer + Send + Sync + 'static,
     {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 
     /// Returns the dimensions in pixels of the viewport.
@@ -480,24 +474,18 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     ///
     /// All the objects will be colored with an intensity of `color`.
     pub fn ambient_light(&mut self, color: [f32; 3]) {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = self.frame.system.ambient_lighting_system.draw(
-                [dims[0], dims[1]],
-                self.frame.system.diffuse_buffer.clone(),
-                color,
-            );
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        let dims = self.frame.framebuffer.dimensions();
+        let command_buffer = self.frame.system.ambient_lighting_system.draw(
+            [dims[0], dims[1]],
+            self.frame.system.diffuse_buffer.clone(),
+            color,
+        );
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 
     /// Applies an directional lighting to the scene.
@@ -505,26 +493,20 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// All the objects will be colored with an intensity varying between `[0, 0, 0]` and `color`,
     /// depending on the dot product of their normal and `direction`.
     pub fn directional_light(&mut self, direction: Vector3<f32>, color: [f32; 3]) {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = self.frame.system.directional_lighting_system.draw(
-                [dims[0], dims[1]],
-                self.frame.system.diffuse_buffer.clone(),
-                self.frame.system.normals_buffer.clone(),
-                direction,
-                color,
-            );
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        let dims = self.frame.framebuffer.dimensions();
+        let command_buffer = self.frame.system.directional_lighting_system.draw(
+            [dims[0], dims[1]],
+            self.frame.system.diffuse_buffer.clone(),
+            self.frame.system.normals_buffer.clone(),
+            direction,
+            color,
+        );
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 
     /// Applies a spot lighting to the scene.
@@ -533,30 +515,24 @@ impl<'f, 's: 'f> LightingPass<'f, 's> {
     /// depending on their distance with `position`. Objects that aren't facing `position` won't
     /// receive any light.
     pub fn point_light(&mut self, position: Vector3<f32>, color: [f32; 3]) {
-        // Note that vulkano doesn't perform any safety check for now when executing secondary
-        // command buffers, hence why it is unsafe. This operation will be safe in the future
-        // however.
-        // TODO: ^
-        unsafe {
-            let dims = self.frame.framebuffer.dimensions();
-            let command_buffer = {
-                self.frame.system.point_lighting_system.draw(
-                    [dims[0], dims[1]],
-                    self.frame.system.diffuse_buffer.clone(),
-                    self.frame.system.normals_buffer.clone(),
-                    self.frame.system.depth_buffer.clone(),
-                    self.frame.world_to_framebuffer.invert().unwrap(),
-                    position,
-                    color,
-                )
-            };
+        let dims = self.frame.framebuffer.dimensions();
+        let command_buffer = {
+            self.frame.system.point_lighting_system.draw(
+                [dims[0], dims[1]],
+                self.frame.system.diffuse_buffer.clone(),
+                self.frame.system.normals_buffer.clone(),
+                self.frame.system.depth_buffer.clone(),
+                self.frame.world_to_framebuffer.invert().unwrap(),
+                position,
+                color,
+            )
+        };
 
-            self.frame
-                .command_buffer_builder
-                .as_mut()
-                .unwrap()
-                .execute_commands(command_buffer)
-                .unwrap();
-        }
+        self.frame
+            .command_buffer_builder
+            .as_mut()
+            .unwrap()
+            .execute_commands(command_buffer)
+            .unwrap();
     }
 }

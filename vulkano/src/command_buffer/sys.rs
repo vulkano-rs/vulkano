@@ -54,17 +54,18 @@ use VulkanObject;
 /// Flags to pass when creating a command buffer.
 ///
 /// The safest option is `SimultaneousUse`, but it may be slower than the other two.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Flags {
-    /// The command buffer can be used multiple times, but must not execute more than once
+    /// The command buffer can only be submitted once. Any further submit is forbidden.
+    OneTimeSubmit,
+
+    /// The command buffer can be used multiple times, but must not execute or record more than once
     /// simultaneously.
     None,
 
-    /// The command buffer can be executed multiple times in parallel.
+    /// The command buffer can be executed multiple times in parallel. If it's a secondary command
+    /// buffer, it can be recorded to multiple primary command buffers at once.
     SimultaneousUse,
-
-    /// The command buffer can only be submitted once. Any further submit is forbidden.
-    OneTimeSubmit,
 }
 
 /// Command buffer being built.

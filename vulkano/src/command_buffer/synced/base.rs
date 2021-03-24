@@ -1479,8 +1479,6 @@ mod tests {
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
     use crate::command_buffer::sys::Flags;
     use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBufferExecError;
-    use crate::command_buffer::ExecuteCommandsError;
     use crate::command_buffer::Kind;
     use crate::device::Device;
     use crate::sync::GpuFuture;
@@ -1610,79 +1608,6 @@ mod tests {
                     ec.submit(),
                     Err(SyncCommandBufferBuilderError::Conflict { .. })
                 ));
-            }
-        }
-    }
-
-    #[test]
-    fn secondary_nonconcurrent_conflict() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
-
-            // Make a secondary CB that doesn't support simultaneous use.
-            let builder =
-                AutoCommandBufferBuilder::secondary_compute(device.clone(), queue.family())
-                    .unwrap();
-            let secondary = Arc::new(builder.build().unwrap());
-
-            {
-                let pool = Device::standard_command_pool(&device, queue.family());
-                let alloc = pool.alloc(false, 2).unwrap().collect::<Vec<_>>();
-                let mut builder = SyncCommandBufferBuilder::new(
-                    alloc[0].inner(),
-                    Kind::primary(),
-                    Flags::SimultaneousUse,
-                )
-                .unwrap();
-
-                // Add the secondary a first time
-                let mut ec = builder.execute_commands();
-                ec.add(secondary.clone());
-                ec.submit().unwrap();
-
-                // Try to add a second time
-                let mut ec = builder.execute_commands();
-                ec.add(secondary.clone());
-
-                // Using the same non-concurrent secondary command buffer twice is an error.
-                assert!(matches!(
-                    ec.submit(),
-                    Err(SyncCommandBufferBuilderError::ExecError(
-                        CommandBufferExecError::ExclusiveAlreadyInUse
-                    ))
-                ));
-            }
-
-            {
-                let mut builder = AutoCommandBufferBuilder::primary_simultaneous_use(
-                    device.clone(),
-                    queue.family(),
-                )
-                .unwrap();
-                builder.execute_commands(secondary.clone()).unwrap();
-                let cb1 = builder.build().unwrap();
-
-                let mut builder = AutoCommandBufferBuilder::primary_simultaneous_use(
-                    device.clone(),
-                    queue.family(),
-                )
-                .unwrap();
-
-                // Recording the same non-concurrent secondary command buffer into multiple
-                // primaries is an error.
-                assert!(matches!(
-                    builder.execute_commands(secondary.clone()),
-                    Err(ExecuteCommandsError::SyncCommandBufferBuilderError(
-                        SyncCommandBufferBuilderError::ExecError(
-                            CommandBufferExecError::ExclusiveAlreadyInUse
-                        )
-                    ))
-                ));
-
-                std::mem::drop(cb1);
-
-                // Now that the first cb is dropped, we should be able to record.
-                builder.execute_commands(secondary.clone()).unwrap();
             }
         }
     }

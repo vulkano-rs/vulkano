@@ -21,6 +21,7 @@
 - Allow `const` usage of features and `BufferUsage`.
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - Added external memory support for `DeviceLocalBuffer` for `Linux`
+- `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 
 # Version 0.21.0 (2021-03-05)
 
