@@ -60,11 +60,17 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError>;
 
+    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
+    /// and if so locks it.
+    ///
+    /// If you call this function, then you should call `unlock` afterwards.
+    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
+
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
     ///
     /// # Safety
     ///
-    /// Must not be called if you haven't called `lock_submit` before.
+    /// Must not be called if you haven't called `lock_submit` or `lock_record` before.
     unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
@@ -209,6 +215,11 @@ where
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError> {
         (**self).lock_submit(future, queue)
+    }
+
+    #[inline]
+    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+        (**self).lock_record()
     }
 
     #[inline]

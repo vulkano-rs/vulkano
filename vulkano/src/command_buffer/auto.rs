@@ -2013,6 +2013,10 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
         future: &dyn GpuFuture,
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError> {
+        if !matches!(self.kind, Kind::Primary) {
+            panic!("Can only be called on a primary command buffer");
+        }
+
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -2053,9 +2057,38 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
+    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+        if !matches!(self.kind, Kind::Secondary { .. }) {
+            panic!("Can only be called on a secondary command buffer");
+        }
+
+        match self.submit_state {
+            SubmitState::OneTime {
+                ref already_submitted,
+            } => {
+                let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
+                if was_already_submitted {
+                    return Err(CommandBufferExecError::OneTimeSubmitAlreadySubmitted);
+                }
+            }
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let already_in_use = in_use.swap(true, Ordering::SeqCst);
+                if already_in_use {
+                    return Err(CommandBufferExecError::ExclusiveAlreadyInUse);
+                }
+            }
+            SubmitState::Concurrent => (),
+        };
+
+        Ok(())
+    }
+
+    #[inline]
     unsafe fn unlock(&self) {
         // Because of panic safety, we unlock the inner command buffer first.
-        self.inner.unlock();
+        if matches!(self.kind, Kind::Primary) {
+            self.inner.unlock();
+        }
 
         match self.submit_state {
             SubmitState::OneTime {

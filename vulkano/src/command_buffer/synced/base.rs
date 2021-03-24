@@ -7,15 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use fnv::FnvHashMap;
-use std::borrow::Cow;
-use std::collections::hash_map::Entry;
-use std::error;
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use buffer::BufferAccess;
 use command_buffer::pool::UnsafeCommandPoolAlloc;
 use command_buffer::sys::Flags;
@@ -27,11 +18,19 @@ use command_buffer::Kind;
 use device::Device;
 use device::DeviceOwned;
 use device::Queue;
+use fnv::FnvHashMap;
 use framebuffer::FramebufferAbstract;
 use framebuffer::RenderPassAbstract;
 use image::ImageAccess;
 use image::ImageLayout;
+use std::borrow::Cow;
 use std::cell::RefCell;
+use std::collections::hash_map::Entry;
+use std::error;
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+use std::sync::Mutex;
 use sync::AccessCheckError;
 use sync::AccessError;
 use sync::AccessFlagBits;
@@ -165,6 +164,8 @@ pub enum SyncCommandBufferBuilderError {
         command2_param: Cow<'static, str>,
         command2_offset: usize,
     },
+
+    ExecError(CommandBufferExecError),
 }
 
 impl error::Error for SyncCommandBufferBuilderError {}
@@ -172,13 +173,17 @@ impl error::Error for SyncCommandBufferBuilderError {}
 impl fmt::Display for SyncCommandBufferBuilderError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                SyncCommandBufferBuilderError::Conflict { .. } => "unsolvable conflict",
-            }
-        )
+        match self {
+            SyncCommandBufferBuilderError::Conflict { .. } => write!(fmt, "unsolvable conflict"),
+            SyncCommandBufferBuilderError::ExecError(err) => err.fmt(fmt),
+        }
+    }
+}
+
+impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
+    #[inline]
+    fn from(val: CommandBufferExecError) -> Self {
+        SyncCommandBufferBuilderError::ExecError(val)
     }
 }
 
@@ -505,6 +510,17 @@ impl SyncCommandBufferBuilder {
         let mut cmd_lock = self.commands.lock().unwrap();
         debug_assert!(cmd_lock.latest_render_pass_enter.is_some());
         cmd_lock.latest_render_pass_enter = None;
+    }
+
+    pub(super) fn prev_cmd_skip(&mut self, resource_ty: KeyTy) {
+        match resource_ty {
+            KeyTy::Buffer => {
+                self.last_cmd_buffer += 1;
+            }
+            KeyTy::Image => {
+                self.last_cmd_image += 1;
+            }
+        }
     }
 
     // After a command is added to the list of pending commands, this function must be called for
@@ -963,10 +979,11 @@ impl SyncCommandBuffer {
                 _ => unreachable!(),
             };
 
+            let command = &self.commands[command_ids[0]];
+
             match resource_ty {
                 KeyTy::Buffer => {
-                    let cmd = &self.commands[command_ids[0]];
-                    let buf = cmd.buffer(resource_index);
+                    let buf = command.buffer(resource_index);
 
                     // Because try_gpu_lock needs to be called first,
                     // this should never return Ok without first returning Err
@@ -987,20 +1004,17 @@ impl SyncCommandBuffer {
                         | (_, AccessCheckError::Denied(err)) => {
                             ret_value = Err(CommandBufferExecError::AccessError {
                                 error: err,
-                                command_name: cmd.name().into(),
-                                command_param: cmd.buffer_name(resource_index),
+                                command_name: command.name().into(),
+                                command_param: command.buffer_name(resource_index),
                                 command_offset: command_ids[0],
                             });
                             break;
                         }
                     };
-
-                    locked_resources += 1;
                 }
 
                 KeyTy::Image => {
-                    let cmd = &self.commands[command_ids[0]];
-                    let img = cmd.image(resource_index);
+                    let img = command.image(resource_index);
 
                     let prev_err = match future.check_image_access(
                         img,
@@ -1027,17 +1041,17 @@ impl SyncCommandBuffer {
                         | (_, AccessCheckError::Denied(err)) => {
                             ret_value = Err(CommandBufferExecError::AccessError {
                                 error: err,
-                                command_name: cmd.name().into(),
-                                command_param: cmd.image_name(resource_index),
+                                command_name: command.name().into(),
+                                command_param: command.image_name(resource_index),
                                 command_offset: command_ids[0],
                             });
                             break;
                         }
                     };
-
-                    locked_resources += 1;
                 }
             }
+
+            locked_resources += 1;
         }
 
         // If we are going to return an error, we have to unlock all the resources we locked above.
@@ -1053,18 +1067,19 @@ impl SyncCommandBuffer {
                     _ => unreachable!(),
                 };
 
+                let command = &self.commands[command_ids[0]];
+
                 match resource_ty {
                     KeyTy::Buffer => {
-                        let cmd = &self.commands[command_ids[0]];
-                        let buf = cmd.buffer(resource_index);
+                        let buf = command.buffer(resource_index);
                         unsafe {
                             buf.unlock();
                         }
                     }
 
                     KeyTy::Image => {
-                        let cmd = &self.commands[command_ids[0]];
-                        let img = cmd.image(resource_index);
+                        let command = &self.commands[command_ids[0]];
+                        let img = command.image(resource_index);
                         let trans = if val.final_layout != val.initial_layout {
                             Some(val.final_layout)
                         } else {
@@ -1103,15 +1118,16 @@ impl SyncCommandBuffer {
                 _ => unreachable!(),
             };
 
+            let command = &self.commands[command_ids[0]];
+
             match resource_ty {
                 KeyTy::Buffer => {
-                    let cmd = &self.commands[command_ids[0]];
-                    let buf = cmd.buffer(resource_index);
+                    let buf = command.buffer(resource_index);
                     buf.unlock();
                 }
+
                 KeyTy::Image => {
-                    let cmd = &self.commands[command_ids[0]];
-                    let img = cmd.image(resource_index);
+                    let img = command.image(resource_index);
                     let trans = if val.final_layout != val.initial_layout {
                         Some(val.final_layout)
                     } else {
@@ -1364,7 +1380,7 @@ impl<'a> CbKey<'a> {
     #[inline]
     fn conflicts_image(
         &self,
-        commands_lock: Option<&Vec<Box<dyn FinalCommand + Send + Sync>>>,
+        commands_external: Option<&Vec<Box<dyn FinalCommand + Send + Sync>>>,
         img: &dyn ImageAccess,
     ) -> bool {
         match *self {
@@ -1374,21 +1390,16 @@ impl<'a> CbKey<'a> {
                 resource_ty,
                 resource_index,
             } => {
-                let lock = if commands_lock.is_none() {
-                    Some(commands) //.lock().unwrap())
-                } else {
-                    None
-                };
-                let commands_lock = commands_lock.unwrap_or_else(|| lock.as_ref().unwrap());
+                let commands = commands_external.unwrap_or(commands);
 
                 // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
                 match resource_ty {
                     KeyTy::Buffer => command_ids.iter().any(|command_id| {
-                        let c = &commands_lock[*command_id];
+                        let c = &commands[*command_id];
                         c.buffer(resource_index).conflicts_image(img)
                     }),
                     KeyTy::Image => command_ids.iter().any(|command_id| {
-                        let c = &commands_lock[*command_id];
+                        let c = &commands[*command_id];
                         c.image(resource_index).conflicts_image(img)
                     }),
                 }
@@ -1440,20 +1451,16 @@ impl<'a> Hash for CbKey<'a> {
                 ref command_ids,
                 resource_ty,
                 resource_index,
-            } => {
-                let commands_lock = commands; //.lock().unwrap();
-
-                match resource_ty {
-                    KeyTy::Buffer => {
-                        let c = &commands_lock[command_ids[0]];
-                        c.buffer(resource_index).conflict_key().hash(state)
-                    }
-                    KeyTy::Image => {
-                        let c = &commands_lock[command_ids[0]];
-                        c.image(resource_index).conflict_key().hash(state)
-                    }
+            } => match resource_ty {
+                KeyTy::Buffer => {
+                    let c = &commands[command_ids[0]];
+                    c.buffer(resource_index).conflict_key().hash(state)
                 }
-            }
+                KeyTy::Image => {
+                    let c = &commands[command_ids[0]];
+                    c.image(resource_index).conflict_key().hash(state)
+                }
+            },
 
             CbKey::BufferRef(buf) => buf.conflict_key().hash(state),
             CbKey::ImageRef(img) => img.conflict_key().hash(state),
@@ -1464,105 +1471,219 @@ impl<'a> Hash for CbKey<'a> {
 #[cfg(test)]
 mod tests {
     use super::SyncCommandBufferBuilder;
+    use super::SyncCommandBufferBuilderError;
     use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
     use crate::buffer::ImmutableBuffer;
     use crate::command_buffer::pool::CommandPool;
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
     use crate::command_buffer::sys::Flags;
-    use crate::command_buffer::AutoCommandBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
+    use crate::command_buffer::CommandBufferExecError;
+    use crate::command_buffer::ExecuteCommandsError;
     use crate::command_buffer::Kind;
     use crate::device::Device;
-    use crate::device::Queue;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
 
-    // Creates two identical secondary command buffers,
-    // each containing a single write command to the same buffer.
-    fn secondary_cbufs(device: &Arc<Device>, queue: &Arc<Queue>) -> Vec<AutoCommandBuffer> {
-        let (buf, future) =
-            ImmutableBuffer::from_data(0u32, BufferUsage::transfer_destination(), queue.clone())
-                .unwrap();
-        future
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
-
-        (0..2)
-            .map(move |_| {
-                let mut builder = AutoCommandBufferBuilder::secondary_compute_simultaneous_use(
-                    device.clone(),
-                    queue.family(),
-                )
-                .unwrap();
-                builder.fill_buffer(buf.clone(), 42u32).unwrap();
-                builder.build().unwrap()
-            })
-            .collect()
-    }
-
     #[test]
-    fn sync_multiple_execute_barrier() {
+    fn basic_creation() {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
-            let secondary = secondary_cbufs(&device, &queue);
-
             let pool = Device::standard_command_pool(&device, queue.family());
-            let alloc = pool.alloc(false, 1).unwrap().next().unwrap();
-            let mut builder = SyncCommandBufferBuilder::new(
-                alloc.inner(),
-                Kind::primary(),
-                Flags::SimultaneousUse,
-            )
-            .unwrap();
+            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
 
-            // For each secondary, add a separate execute_commands to the primary
-            secondary.into_iter().for_each(|secondary| {
-                let mut ec = builder.execute_commands();
-                ec.add(secondary);
-                ec.submit().unwrap();
-            });
-
-            let primary = builder.build().unwrap();
-            let names = primary
-                .commands
-                .iter()
-                .map(|c| c.name())
-                .collect::<Vec<_>>();
-
-            // Ensure that the builder added a barrier between the two writes
-            assert_eq!(&names, &["vkCmdExecuteCommands", "vkCmdExecuteCommands"]);
-            assert_eq!(&primary.barriers, &[0, 1]);
+            assert!(matches!(
+                SyncCommandBufferBuilder::new(
+                    &pool_builder_alloc.inner(),
+                    Kind::primary(),
+                    Flags::None,
+                ),
+                Ok(_)
+            ));
         }
     }
 
     #[test]
-    fn sync_single_execute_conflict() {
+    fn basic_conflict() {
         unsafe {
             let (device, queue) = gfx_dev_and_queue!();
-            let secondary = secondary_cbufs(&device, &queue);
 
             let pool = Device::standard_command_pool(&device, queue.family());
-            let alloc = pool.alloc(false, 1).unwrap().next().unwrap();
-            let mut builder = SyncCommandBufferBuilder::new(
-                alloc.inner(),
+            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let mut sync = SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
                 Kind::primary(),
-                Flags::SimultaneousUse,
+                Flags::None,
             )
             .unwrap();
+            let buf =
+                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
 
-            // Add a single execute_commands for all secondary command buffers at once
-            let mut ec = builder.execute_commands();
-            secondary.into_iter().for_each(|secondary| {
-                ec.add(secondary);
-            });
+            assert!(matches!(
+                sync.copy_buffer(buf.clone(), buf.clone(), std::iter::once((0, 0, 4))),
+                Err(SyncCommandBufferBuilderError::Conflict { .. })
+            ));
+        }
+    }
 
-            // The two writes to the same buffer conflict, but can't be split up by a barrier
-            // because they are part of the same command. Therefore an error.
-            // TODO: Would be nice if SyncCommandBufferBuilder would split the commands
-            // automatically in order to insert a barrier.
-            assert!(ec.submit().is_err());
+    #[test]
+    fn secondary_conflicting_writes() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            // Create a tiny test buffer
+            let (buf, future) = ImmutableBuffer::from_data(
+                0u32,
+                BufferUsage::transfer_destination(),
+                queue.clone(),
+            )
+            .unwrap();
+            future
+                .then_signal_fence_and_flush()
+                .unwrap()
+                .wait(None)
+                .unwrap();
+
+            // Two secondary command buffers that both write to the buffer
+            let secondary = (0..2)
+                .map(|_| {
+                    let mut builder = AutoCommandBufferBuilder::secondary_compute_simultaneous_use(
+                        device.clone(),
+                        queue.family(),
+                    )
+                    .unwrap();
+                    builder.fill_buffer(buf.clone(), 42u32).unwrap();
+                    Arc::new(builder.build().unwrap())
+                })
+                .collect::<Vec<_>>();
+
+            let pool = Device::standard_command_pool(&device, queue.family());
+            let allocs = pool.alloc(false, 2).unwrap().collect::<Vec<_>>();
+
+            {
+                let mut builder = SyncCommandBufferBuilder::new(
+                    allocs[0].inner(),
+                    Kind::primary(),
+                    Flags::SimultaneousUse,
+                )
+                .unwrap();
+
+                // Add both secondary command buffers using separate execute_commands calls.
+                secondary.iter().cloned().for_each(|secondary| {
+                    let mut ec = builder.execute_commands();
+                    ec.add(secondary);
+                    ec.submit().unwrap();
+                });
+
+                let primary = builder.build().unwrap();
+                let names = primary
+                    .commands
+                    .iter()
+                    .map(|c| c.name())
+                    .collect::<Vec<_>>();
+
+                // Ensure that the builder added a barrier between the two writes
+                assert_eq!(&names, &["vkCmdExecuteCommands", "vkCmdExecuteCommands"]);
+                assert_eq!(&primary.barriers, &[0, 1]);
+            }
+
+            {
+                let mut builder = SyncCommandBufferBuilder::new(
+                    allocs[1].inner(),
+                    Kind::primary(),
+                    Flags::SimultaneousUse,
+                )
+                .unwrap();
+
+                // Add a single execute_commands for all secondary command buffers at once
+                let mut ec = builder.execute_commands();
+                secondary.into_iter().for_each(|secondary| {
+                    ec.add(secondary);
+                });
+
+                // The two writes can't be split up by a barrier because they are part of the same
+                // command. Therefore an error.
+                // TODO: Would be nice if SyncCommandBufferBuilder would split the commands
+                // automatically in order to insert a barrier.
+                assert!(matches!(
+                    ec.submit(),
+                    Err(SyncCommandBufferBuilderError::Conflict { .. })
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn secondary_nonconcurrent_conflict() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            // Make a secondary CB that doesn't support simultaneous use.
+            let builder =
+                AutoCommandBufferBuilder::secondary_compute(device.clone(), queue.family())
+                    .unwrap();
+            let secondary = Arc::new(builder.build().unwrap());
+
+            {
+                let pool = Device::standard_command_pool(&device, queue.family());
+                let alloc = pool.alloc(false, 2).unwrap().collect::<Vec<_>>();
+                let mut builder = SyncCommandBufferBuilder::new(
+                    alloc[0].inner(),
+                    Kind::primary(),
+                    Flags::SimultaneousUse,
+                )
+                .unwrap();
+
+                // Add the secondary a first time
+                let mut ec = builder.execute_commands();
+                ec.add(secondary.clone());
+                ec.submit().unwrap();
+
+                // Try to add a second time
+                let mut ec = builder.execute_commands();
+                ec.add(secondary.clone());
+
+                // Using the same non-concurrent secondary command buffer twice is an error.
+                assert!(matches!(
+                    ec.submit(),
+                    Err(SyncCommandBufferBuilderError::ExecError(
+                        CommandBufferExecError::ExclusiveAlreadyInUse
+                    ))
+                ));
+            }
+
+            {
+                let mut builder = AutoCommandBufferBuilder::primary_simultaneous_use(
+                    device.clone(),
+                    queue.family(),
+                )
+                .unwrap();
+                builder.execute_commands(secondary.clone()).unwrap();
+                let cb1 = builder.build().unwrap();
+
+                let mut builder = AutoCommandBufferBuilder::primary_simultaneous_use(
+                    device.clone(),
+                    queue.family(),
+                )
+                .unwrap();
+
+                // Recording the same non-concurrent secondary command buffer into multiple
+                // primaries is an error.
+                assert!(matches!(
+                    builder.execute_commands(secondary.clone()),
+                    Err(ExecuteCommandsError::SyncCommandBufferBuilderError(
+                        SyncCommandBufferBuilderError::ExecError(
+                            CommandBufferExecError::ExclusiveAlreadyInUse
+                        )
+                    ))
+                ));
+
+                std::mem::drop(cb1);
+
+                // Now that the first cb is dropped, we should be able to record.
+                builder.execute_commands(secondary.clone()).unwrap();
+            }
         }
     }
 }

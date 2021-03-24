@@ -78,6 +78,7 @@ pub enum Flags {
 pub struct UnsafeCommandBufferBuilder {
     command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
+    flags: Flags,
 }
 
 impl fmt::Debug for UnsafeCommandBufferBuilder {
@@ -209,6 +210,7 @@ impl UnsafeCommandBufferBuilder {
         Ok(UnsafeCommandBufferBuilder {
             command_buffer: pool_alloc.internal_object(),
             device: device.clone(),
+            flags,
         })
     }
 
@@ -222,6 +224,7 @@ impl UnsafeCommandBufferBuilder {
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.command_buffer,
                 device: self.device.clone(),
+                flags: self.flags,
             })
         }
     }
@@ -1962,6 +1965,14 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 pub struct UnsafeCommandBuffer {
     command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
+    flags: Flags,
+}
+
+impl UnsafeCommandBuffer {
+    #[inline]
+    pub fn flags(&self) -> Flags {
+        self.flags
+    }
 }
 
 unsafe impl DeviceOwned for UnsafeCommandBuffer {

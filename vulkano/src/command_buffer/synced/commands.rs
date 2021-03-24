@@ -14,6 +14,7 @@ use command_buffer::synced::base::FinalCommand;
 use command_buffer::synced::base::KeyTy;
 use command_buffer::synced::base::SyncCommandBufferBuilder;
 use command_buffer::synced::base::SyncCommandBufferBuilderError;
+use command_buffer::sys::Flags;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
@@ -22,6 +23,7 @@ use command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use command_buffer::CommandBuffer;
+use command_buffer::CommandBufferExecError;
 use command_buffer::SubpassContents;
 use descriptor::descriptor::DescriptorDescTy;
 use descriptor::descriptor::ShaderStages;
@@ -2430,10 +2432,11 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
         for (memory, layout, ignore_me_hack) in all_images.into_iter() {
             if ignore_me_hack {
-                continue;
+                self.builder.prev_cmd_skip(KeyTy::Image);
+            } else {
+                self.builder
+                    .prev_cmd_resource(KeyTy::Image, memory, layout, layout)?;
             }
-            self.builder
-                .prev_cmd_resource(KeyTy::Image, memory, layout, layout)?;
         }
 
         Ok(())
@@ -2532,7 +2535,6 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
 }
 
 /// Prototype for a `vkCmdExecuteCommands`.
-// FIXME: synchronization not implemented yet
 pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
     inner: Vec<Box<dyn CommandBuffer + Send + Sync>>,
@@ -2550,7 +2552,25 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
 
     #[inline]
     pub unsafe fn submit(self) -> Result<(), SyncCommandBufferBuilderError> {
-        struct Cmd(Vec<Box<dyn CommandBuffer + Send + Sync>>);
+        struct DropUnlock(Box<dyn CommandBuffer + Send + Sync>);
+        impl std::ops::Deref for DropUnlock {
+            type Target = Box<dyn CommandBuffer + Send + Sync>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+        unsafe impl SafeDeref for DropUnlock {}
+
+        impl Drop for DropUnlock {
+            fn drop(&mut self) {
+                unsafe {
+                    self.unlock();
+                }
+            }
+        }
+
+        struct Cmd(Vec<DropUnlock>);
 
         impl Command for Cmd {
             fn name(&self) -> &'static str {
@@ -2565,8 +2585,8 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                 out.execute_commands(execute);
             }
 
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Vec<Box<dyn CommandBuffer + Send + Sync>>);
+            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Vec<DropUnlock>);
                 impl FinalCommand for Fin {
                     fn name(&self) -> &'static str {
                         "vkCmdExecuteCommands"
@@ -2620,7 +2640,7 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                         panic!()
                     }
                 }
-                Box::new(Fin(self.0))
+                Box::new(Fin(std::mem::take(&mut self.0)))
             }
 
             fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
@@ -2687,7 +2707,22 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
             all_images
         };
 
-        self.builder.append_command(Cmd(self.inner));
+        let all_secondary_cbs = {
+            let mut all_secondary_cbs = Vec::new();
+            for cbuf in self.inner.iter() {
+                all_secondary_cbs.push(!matches!(cbuf.inner().flags(), Flags::SimultaneousUse));
+            }
+            all_secondary_cbs
+        };
+
+        self.builder.append_command(Cmd(self
+            .inner
+            .into_iter()
+            .map(|cbuf| {
+                cbuf.lock_record()?;
+                Ok(DropUnlock(cbuf))
+            })
+            .collect::<Result<Vec<_>, CommandBufferExecError>>()?));
 
         for memory in all_buffers.into_iter() {
             self.builder.prev_cmd_resource(
