@@ -57,11 +57,11 @@ fn main() {
 
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
-layout(set = 0, binding = 0) buffer Data {
+layout(set = 0, binding = 0) restrict buffer Data {
     uint data[];
 } data;
 
-layout(set = 0, binding = 1) buffer ImmutableData {
+layout(set = 0, binding = 1) readonly restrict buffer ImmutableData {
     uint data;
 } immutable_data;
 
