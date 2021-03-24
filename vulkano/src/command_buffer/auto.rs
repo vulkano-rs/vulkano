@@ -1641,10 +1641,11 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that multiple secondary command buffers in a vector.
     ///
-    /// # Safety
-    /// The execution state of the secondary command buffer is not checked, and resources are not
-    /// synchronised against concurrent access.
-    pub unsafe fn execute_commands_from_vec<C>(
+    /// This requires that the secondary command buffers do not have resource conflicts; an error
+    /// will be returned if there are any. Use `execute_commands` if you want to ensure that
+    /// resource conflicts are automatically resolved.
+    // TODO ^ would be nice if this just worked without errors
+    pub fn execute_commands_from_vec<C>(
         &mut self,
         command_buffers: Vec<C>,
     ) -> Result<&mut Self, ExecuteCommandsError>
@@ -1659,15 +1660,22 @@ impl<P> AutoCommandBufferBuilder<P> {
             self.check_command_buffer(command_buffer)?;
         }
 
-        {
+        let mut secondary_flags = Flags::SimultaneousUse; // Most permissive flags
+        unsafe {
             let mut builder = self.inner.execute_commands();
             for command_buffer in command_buffers {
+                secondary_flags = std::cmp::min(secondary_flags, command_buffer.inner().flags());
                 builder.add(command_buffer);
             }
             builder.submit()?;
         }
 
+        // Secondary command buffer could leave the primary in any state.
         self.state_cacher.invalidate();
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+        self.flags = std::cmp::min(self.flags, secondary_flags);
+
         Ok(self)
     }
 
