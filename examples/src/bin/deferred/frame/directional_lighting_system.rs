@@ -10,9 +10,9 @@
 use cgmath::Vector3;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
+use vulkano::command_buffer::SecondaryAutoCommandBuffer;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::framebuffer::RenderPassAbstract;
@@ -129,7 +129,7 @@ impl DirectionalLightingSystem {
         normals_input: N,
         direction: Vector3<f32>,
         color: [f32; 3],
-    ) -> AutoCommandBuffer
+    ) -> SecondaryAutoCommandBuffer
     where
         C: ImageViewAbstract + Send + Sync + 'static,
         N: ImageViewAbstract + Send + Sync + 'static,

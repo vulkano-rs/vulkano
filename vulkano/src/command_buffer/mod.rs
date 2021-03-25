@@ -73,7 +73,6 @@
 //! alternative command pool implementations and use them. See the `pool` module for more
 //! information.
 
-pub use self::auto::AutoCommandBuffer;
 pub use self::auto::AutoCommandBufferBuilder;
 pub use self::auto::AutoCommandBufferBuilderContextError;
 pub use self::auto::BeginRenderPassError;
@@ -91,6 +90,8 @@ pub use self::auto::DrawIndexedIndirectError;
 pub use self::auto::DrawIndirectError;
 pub use self::auto::ExecuteCommandsError;
 pub use self::auto::FillBufferError;
+pub use self::auto::PrimaryAutoCommandBuffer;
+pub use self::auto::SecondaryAutoCommandBuffer;
 pub use self::auto::UpdateBufferError;
 pub use self::state_cacher::StateCacher;
 pub use self::state_cacher::StateCacherOutcome;

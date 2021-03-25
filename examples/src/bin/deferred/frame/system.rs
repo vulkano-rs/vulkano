@@ -7,11 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::frame::ambient_lighting_system::AmbientLightingSystem;
+use crate::frame::directional_lighting_system::DirectionalLightingSystem;
+use crate::frame::point_lighting_system::PointLightingSystem;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::command_buffer::PrimaryAutoCommandBuffer;
 use vulkano::command_buffer::SecondaryCommandBuffer;
 use vulkano::command_buffer::SubpassContents;
 use vulkano::device::Queue;
@@ -25,10 +29,6 @@ use vulkano::image::AttachmentImage;
 use vulkano::image::ImageUsage;
 use vulkano::image::ImageViewAbstract;
 use vulkano::sync::GpuFuture;
-
-use crate::frame::ambient_lighting_system::AmbientLightingSystem;
-use crate::frame::directional_lighting_system::DirectionalLightingSystem;
-use crate::frame::point_lighting_system::PointLightingSystem;
 
 /// System that contains the necessary facilities for rendering a single frame.
 pub struct FrameSystem {
@@ -349,7 +349,7 @@ pub struct Frame<'a> {
     // Framebuffer that was used when starting the render pass.
     framebuffer: Arc<dyn FramebufferAbstract + Send + Sync>,
     // The command buffer builder that will be built during the lifetime of this object.
-    command_buffer_builder: Option<AutoCommandBufferBuilder>,
+    command_buffer_builder: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
     // Matrix that was passed to `frame()`.
     world_to_framebuffer: Matrix4<f32>,
 }

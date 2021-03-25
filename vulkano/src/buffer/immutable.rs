@@ -26,9 +26,9 @@ use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
 use crate::buffer::BufferUsage;
 use crate::buffer::CpuAccessibleBuffer;
-use crate::command_buffer::AutoCommandBuffer;
 use crate::command_buffer::AutoCommandBufferBuilder;
 use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::PrimaryAutoCommandBuffer;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -77,7 +77,7 @@ pub struct ImmutableBuffer<T: ?Sized, A = PotentialDedicatedAllocation<StdMemory
 }
 
 // TODO: make this prettier
-type ImmutableBufferFromBufferFuture = CommandBufferExecFuture<NowFuture, AutoCommandBuffer>;
+type ImmutableBufferFromBufferFuture = CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>;
 
 impl<T: ?Sized> ImmutableBuffer<T> {
     /// Builds an `ImmutableBuffer` from some data.

@@ -9,9 +9,9 @@
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
+use vulkano::command_buffer::SecondaryAutoCommandBuffer;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::framebuffer::RenderPassAbstract;
@@ -119,7 +119,7 @@ impl AmbientLightingSystem {
         viewport_dimensions: [u32; 2],
         color_input: C,
         ambient_color: [f32; 3],
-    ) -> AutoCommandBuffer
+    ) -> SecondaryAutoCommandBuffer
     where
         C: ImageViewAbstract + Send + Sync + 'static,
     {

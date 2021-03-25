@@ -11,9 +11,9 @@ use crate::buffer::BufferAccess;
 use crate::buffer::BufferUsage;
 use crate::buffer::CpuAccessibleBuffer;
 use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::AutoCommandBuffer;
 use crate::command_buffer::AutoCommandBufferBuilder;
 use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::PrimaryAutoCommandBuffer;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
 use crate::device::Queue;
@@ -327,7 +327,7 @@ impl<F> ImmutableImage<F> {
     ) -> Result<
         (
             Arc<Self>,
-            CommandBufferExecFuture<NowFuture, AutoCommandBuffer>,
+            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
         ImageCreationError,
     >
@@ -356,7 +356,7 @@ impl<F> ImmutableImage<F> {
     ) -> Result<
         (
             Arc<Self>,
-            CommandBufferExecFuture<NowFuture, AutoCommandBuffer>,
+            CommandBufferExecFuture<NowFuture, PrimaryAutoCommandBuffer>,
         ),
         ImageCreationError,
     >
