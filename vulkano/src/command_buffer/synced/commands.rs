@@ -14,7 +14,6 @@ use command_buffer::synced::base::FinalCommand;
 use command_buffer::synced::base::KeyTy;
 use command_buffer::synced::base::SyncCommandBufferBuilder;
 use command_buffer::synced::base::SyncCommandBufferBuilderError;
-use command_buffer::sys::Flags;
 use command_buffer::sys::UnsafeCommandBufferBuilder;
 use command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
@@ -120,38 +119,42 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let atch_desc = (0..framebuffer.num_attachments())
-            .map(|atch| framebuffer.attachment_desc(atch).unwrap())
+        let resources = (0..framebuffer.num_attachments())
+            .map(|atch| {
+                let desc = framebuffer.attachment_desc(atch).unwrap();
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                all_commands: true,
+                                ..PipelineStages::none()
+                            }, // TODO: wrong!
+                            access: AccessFlagBits {
+                                input_attachment_read: true,
+                                color_attachment_read: true,
+                                color_attachment_write: true,
+                                depth_stencil_attachment_read: true,
+                                depth_stencil_attachment_write: true,
+                                ..AccessFlagBits::none()
+                            }, // TODO: suboptimal
+                            exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
+                        },
+                        desc.initial_layout,
+                        desc.final_layout,
+                    )),
+                )
+            })
             .collect::<Vec<_>>();
 
-        self.append_command(Cmd {
-            framebuffer,
-            subpass_contents,
-            clear_values: Some(clear_values),
-        });
-
-        for desc in atch_desc.into_iter() {
-            self.prev_cmd_resource(
-                KeyTy::Image,
-                PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        all_commands: true,
-                        ..PipelineStages::none()
-                    }, // TODO: wrong!
-                    access: AccessFlagBits {
-                        input_attachment_read: true,
-                        color_attachment_read: true,
-                        color_attachment_write: true,
-                        depth_stencil_attachment_read: true,
-                        depth_stencil_attachment_write: true,
-                        ..AccessFlagBits::none()
-                    }, // TODO: suboptimal
-                    exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
-                },
-                desc.initial_layout,
-                desc.final_layout,
-            )?;
-        }
+        self.append_command(
+            Cmd {
+                framebuffer,
+                subpass_contents,
+                clear_values: Some(clear_values),
+            },
+            &resources,
+        )?;
 
         self.prev_cmd_entered_render_pass();
         Ok(())
@@ -216,23 +219,28 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { buffer, index_ty });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    vertex_input: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    index_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
-            },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+        self.append_command(
+            Cmd { buffer, index_ty },
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            vertex_input: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            index_read: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: false,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )?;
+
         Ok(())
     }
 
@@ -272,7 +280,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { pipeline });
+        self.append_command(Cmd { pipeline }, &[]).unwrap();
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -311,7 +319,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { pipeline });
+        self.append_command(Cmd { pipeline }, &[]).unwrap();
     }
 
     /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
@@ -440,45 +448,54 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            source: Some(source),
-            source_layout,
-            destination: Some(destination),
-            destination_layout,
-            regions: Some(regions),
-        });
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                source: Some(source),
+                source_layout,
+                destination: Some(destination),
+                destination_layout,
+                regions: Some(regions),
             },
-            source_layout,
-            source_layout,
+            &[
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_read: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: false,
+                        },
+                        source_layout,
+                        source_layout,
+                    )),
+                ),
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_write: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: true,
+                        },
+                        destination_layout,
+                        destination_layout,
+                    )),
+                ),
+            ],
         )?;
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            destination_layout,
-            destination_layout,
-        )?;
+
         Ok(())
     }
 
@@ -590,46 +607,55 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            source: Some(source),
-            source_layout,
-            destination: Some(destination),
-            destination_layout,
-            regions: Some(regions),
-            filter,
-        });
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                source: Some(source),
+                source_layout,
+                destination: Some(destination),
+                destination_layout,
+                regions: Some(regions),
+                filter,
             },
-            source_layout,
-            source_layout,
+            &[
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_read: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: false,
+                        },
+                        source_layout,
+                        source_layout,
+                    )),
+                ),
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_write: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: true,
+                        },
+                        destination_layout,
+                        destination_layout,
+                    )),
+                ),
+            ],
         )?;
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            destination_layout,
-            destination_layout,
-        )?;
+
         Ok(())
     }
 
@@ -707,28 +733,33 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            image: Some(image),
-            layout,
-            color,
-            regions: Some(regions),
-        });
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
+        self.append_command(
+            Cmd {
+                image: Some(image),
+                layout,
+                color,
+                regions: Some(regions),
             },
-            layout,
-            layout,
+            &[(
+                KeyTy::Image,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            transfer_write: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: true,
+                    },
+                    layout,
+                    layout,
+                )),
+            )],
         )?;
+
         Ok(())
     }
 
@@ -822,43 +853,52 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            source: Some(source),
-            destination: Some(destination),
-            regions: Some(regions),
-        });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                source: Some(source),
+                destination: Some(destination),
+                regions: Some(regions),
             },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+            &[
+                (
+                    KeyTy::Buffer,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_read: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: false,
+                        },
+                        ImageLayout::Undefined,
+                        ImageLayout::Undefined,
+                    )),
+                ),
+                (
+                    KeyTy::Buffer,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_write: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: true,
+                        },
+                        ImageLayout::Undefined,
+                        ImageLayout::Undefined,
+                    )),
+                ),
+            ],
         )?;
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
-        )?;
+
         Ok(())
     }
 
@@ -962,44 +1002,53 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            source: Some(source),
-            destination: Some(destination),
-            destination_layout,
-            regions: Some(regions),
-        });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                source: Some(source),
+                destination: Some(destination),
+                destination_layout,
+                regions: Some(regions),
             },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+            &[
+                (
+                    KeyTy::Buffer,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_read: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: false,
+                        },
+                        ImageLayout::Undefined,
+                        ImageLayout::Undefined,
+                    )),
+                ),
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_write: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: true,
+                        },
+                        destination_layout,
+                        destination_layout,
+                    )),
+                ),
+            ],
         )?;
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            destination_layout,
-            destination_layout,
-        )?;
+
         Ok(())
     }
 
@@ -1103,44 +1152,53 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            source: Some(source),
-            destination: Some(destination),
-            source_layout,
-            regions: Some(regions),
-        });
-        self.prev_cmd_resource(
-            KeyTy::Image,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                source: Some(source),
+                destination: Some(destination),
+                source_layout,
+                regions: Some(regions),
             },
-            source_layout,
-            source_layout,
+            &[
+                (
+                    KeyTy::Image,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_read: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: false,
+                        },
+                        source_layout,
+                        source_layout,
+                    )),
+                ),
+                (
+                    KeyTy::Buffer,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                transfer: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                transfer_write: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: true,
+                        },
+                        ImageLayout::Undefined,
+                        ImageLayout::Undefined,
+                    )),
+                ),
+            ],
         )?;
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
-        )?;
+
         Ok(())
     }
 
@@ -1170,7 +1228,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { name, color });
+        self.append_command(Cmd { name, color }, &[]).unwrap();
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -1198,7 +1256,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {});
+        self.append_command(Cmd {}, &[]).unwrap();
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -1227,7 +1285,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { name, color });
+        self.append_command(Cmd { name, color }, &[]).unwrap();
     }
 
     /// Calls `vkCmdDispatch` on the builder.
@@ -1251,7 +1309,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { dimensions });
+        self.append_command(Cmd { dimensions }, &[]).unwrap();
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
@@ -1311,23 +1369,28 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { buffer });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    draw_indirect: true,
-                    ..PipelineStages::none()
-                }, // TODO: is draw_indirect correct?
-                access: AccessFlagBits {
-                    indirect_command_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
-            },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+        self.append_command(
+            Cmd { buffer },
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            draw_indirect: true,
+                            ..PipelineStages::none()
+                        }, // TODO: is draw_indirect correct?
+                        access: AccessFlagBits {
+                            indirect_command_read: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: false,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )?;
+
         Ok(())
     }
 
@@ -1366,12 +1429,16 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            vertex_count,
-            instance_count,
-            first_vertex,
-            first_instance,
-        });
+        self.append_command(
+            Cmd {
+                vertex_count,
+                instance_count,
+                first_vertex,
+                first_instance,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdDrawIndexed` on the builder.
@@ -1412,13 +1479,17 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            index_count,
-            instance_count,
-            first_index,
-            vertex_offset,
-            first_instance,
-        });
+        self.append_command(
+            Cmd {
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdDrawIndirect` on the builder.
@@ -1482,27 +1553,32 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            buffer,
-            draw_count,
-            stride,
-        });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    draw_indirect: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    indirect_command_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                buffer,
+                draw_count,
+                stride,
             },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            draw_indirect: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            indirect_command_read: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: false,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )?;
+
         Ok(())
     }
 
@@ -1567,27 +1643,32 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            buffer,
-            draw_count,
-            stride,
-        });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    draw_indirect: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    indirect_command_read: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: false,
+        self.append_command(
+            Cmd {
+                buffer,
+                draw_count,
+                stride,
             },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            draw_indirect: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            indirect_command_read: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: false,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )?;
+
         Ok(())
     }
 
@@ -1610,7 +1691,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd);
+        self.append_command(Cmd, &[]).unwrap();
         self.prev_cmd_left_render_pass();
     }
 
@@ -1677,22 +1758,26 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { buffer, data });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+        self.append_command(
+            Cmd { buffer, data },
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            transfer_write: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: true,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )
         .unwrap();
     }
@@ -1718,7 +1803,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { subpass_contents });
+        self.append_command(Cmd { subpass_contents }, &[]).unwrap();
     }
 
     /// Calls `vkCmdPushConstants` on the builder.
@@ -1784,13 +1869,17 @@ impl SyncCommandBufferBuilder {
         );
         out.set_len(size as usize);
 
-        self.append_command(Cmd {
-            pipeline_layout,
-            stages,
-            offset,
-            size,
-            data: out.into(),
-        });
+        self.append_command(
+            Cmd {
+                pipeline_layout,
+                stages,
+                offset,
+                size,
+                data: out.into(),
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -1821,7 +1910,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { event, stages });
+        self.append_command(Cmd { event, stages }, &[]).unwrap();
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
@@ -1845,7 +1934,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { constants });
+        self.append_command(Cmd { constants }, &[]).unwrap();
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
@@ -1871,11 +1960,15 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            constant_factor,
-            clamp,
-            slope_factor,
-        });
+        self.append_command(
+            Cmd {
+                constant_factor,
+                clamp,
+                slope_factor,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
@@ -1900,7 +1993,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { min, max });
+        self.append_command(Cmd { min, max }, &[]).unwrap();
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
@@ -1931,7 +2024,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { event, stages });
+        self.append_command(Cmd { event, stages }, &[]).unwrap();
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
@@ -1955,7 +2048,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { line_width });
+        self.append_command(Cmd { line_width }, &[]).unwrap();
     }
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
@@ -1980,10 +2073,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            face_mask: compare_mask.face,
-            compare_mask: compare_mask.value,
-        });
+        self.append_command(
+            Cmd {
+                face_mask: compare_mask.face,
+                compare_mask: compare_mask.value,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetStencilReference` on the builder.
@@ -2008,10 +2105,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            face_mask: reference.face,
-            reference: reference.value,
-        });
+        self.append_command(
+            Cmd {
+                face_mask: reference.face,
+                reference: reference.value,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
@@ -2036,10 +2137,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            face_mask: write_mask.face,
-            write_mask: write_mask.value,
-        });
+        self.append_command(
+            Cmd {
+                face_mask: write_mask.face,
+                write_mask: write_mask.value,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetScissor` on the builder.
@@ -2072,10 +2177,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            first_scissor,
-            scissors: Some(scissors),
-        });
+        self.append_command(
+            Cmd {
+                first_scissor,
+                scissors: Some(scissors),
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -2108,10 +2217,14 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd {
-            first_viewport,
-            viewports: Some(viewports),
-        });
+        self.append_command(
+            Cmd {
+                first_viewport,
+                viewports: Some(viewports),
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
@@ -2171,22 +2284,26 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { buffer, data });
-        self.prev_cmd_resource(
-            KeyTy::Buffer,
-            PipelineMemoryAccess {
-                stages: PipelineStages {
-                    transfer: true,
-                    ..PipelineStages::none()
-                },
-                access: AccessFlagBits {
-                    transfer_write: true,
-                    ..AccessFlagBits::none()
-                },
-                exclusive: true,
-            },
-            ImageLayout::Undefined,
-            ImageLayout::Undefined,
+        self.append_command(
+            Cmd { buffer, data },
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            transfer_write: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: true,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )
         .unwrap();
     }
@@ -2347,8 +2464,8 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             }
         }
 
-        let all_buffers = {
-            let mut all_buffers = Vec::new();
+        let resources = {
+            let mut resources = Vec::new();
             for ds in self.inner.iter() {
                 for buf_num in 0..ds.num_buffers() {
                     let desc = ds
@@ -2356,19 +2473,19 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                         .unwrap();
                     let exclusive = !desc.readonly;
                     let (stages, access) = desc.pipeline_stages_and_access();
-                    all_buffers.push(PipelineMemoryAccess {
-                        stages,
-                        access,
-                        exclusive,
-                    });
+                    resources.push((
+                        KeyTy::Buffer,
+                        Some((
+                            PipelineMemoryAccess {
+                                stages,
+                                access,
+                                exclusive,
+                            },
+                            ImageLayout::Undefined,
+                            ImageLayout::Undefined,
+                        )),
+                    ));
                 }
-            }
-            all_buffers
-        };
-
-        let all_images = {
-            let mut all_images = Vec::new();
-            for ds in self.inner.iter() {
                 for img_num in 0..ds.num_images() {
                     let (image_view, desc_num) = ds.image(img_num).unwrap();
                     let desc = ds.descriptor(desc_num as usize).unwrap();
@@ -2399,45 +2516,37 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                         }
                         _ => panic!("Tried to bind an image to a non-image descriptor"),
                     };
-                    all_images.push((
-                        PipelineMemoryAccess {
-                            stages,
-                            access,
-                            exclusive,
+                    resources.push((
+                        KeyTy::Image,
+                        if ignore_me_hack {
+                            None
+                        } else {
+                            Some((
+                                PipelineMemoryAccess {
+                                    stages,
+                                    access,
+                                    exclusive,
+                                },
+                                layout,
+                                layout,
+                            ))
                         },
-                        layout,
-                        ignore_me_hack,
                     ));
                 }
             }
-            all_images
+            resources
         };
 
-        self.builder.append_command(Cmd {
-            inner: self.inner,
-            graphics,
-            pipeline_layout,
-            first_binding,
-            dynamic_offsets: Some(dynamic_offsets),
-        });
-
-        for memory in all_buffers.into_iter() {
-            self.builder.prev_cmd_resource(
-                KeyTy::Buffer,
-                memory,
-                ImageLayout::Undefined,
-                ImageLayout::Undefined,
-            )?;
-        }
-
-        for (memory, layout, ignore_me_hack) in all_images.into_iter() {
-            if ignore_me_hack {
-                self.builder.prev_cmd_skip(KeyTy::Image);
-            } else {
-                self.builder
-                    .prev_cmd_resource(KeyTy::Image, memory, layout, layout)?;
-            }
-        }
+        self.builder.append_command(
+            Cmd {
+                inner: self.inner,
+                graphics,
+                pipeline_layout,
+                first_binding,
+                dynamic_offsets: Some(dynamic_offsets),
+            },
+            &resources,
+        )?;
 
         Ok(())
     }
@@ -2503,32 +2612,39 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             }
         }
 
-        let num_buffers = self.buffers.len();
+        let resources = self
+            .buffers
+            .iter()
+            .map(|_| {
+                (
+                    KeyTy::Buffer,
+                    Some((
+                        PipelineMemoryAccess {
+                            stages: PipelineStages {
+                                vertex_input: true,
+                                ..PipelineStages::none()
+                            },
+                            access: AccessFlagBits {
+                                vertex_attribute_read: true,
+                                ..AccessFlagBits::none()
+                            },
+                            exclusive: false,
+                        },
+                        ImageLayout::Undefined,
+                        ImageLayout::Undefined,
+                    )),
+                )
+            })
+            .collect::<Vec<_>>();
 
-        self.builder.append_command(Cmd {
-            first_binding,
-            inner: Some(self.inner),
-            buffers: self.buffers,
-        });
-
-        for _ in 0..num_buffers {
-            self.builder.prev_cmd_resource(
-                KeyTy::Buffer,
-                PipelineMemoryAccess {
-                    stages: PipelineStages {
-                        vertex_input: true,
-                        ..PipelineStages::none()
-                    },
-                    access: AccessFlagBits {
-                        vertex_attribute_read: true,
-                        ..AccessFlagBits::none()
-                    },
-                    exclusive: false,
-                },
-                ImageLayout::Undefined,
-                ImageLayout::Undefined,
-            )?;
-        }
+        self.builder.append_command(
+            Cmd {
+                first_binding,
+                inner: Some(self.inner),
+                buffers: self.buffers,
+            },
+            &resources,
+        )?;
 
         Ok(())
     }
@@ -2686,57 +2802,38 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
             }
         }
 
-        let all_buffers = {
-            let mut all_buffers = Vec::new();
+        let resources = {
+            let mut resources = Vec::new();
             for cbuf in self.inner.iter() {
                 for buf_num in 0..cbuf.num_buffers() {
-                    all_buffers.push(cbuf.buffer(buf_num).unwrap().1);
+                    resources.push((
+                        KeyTy::Buffer,
+                        Some((
+                            cbuf.buffer(buf_num).unwrap().1,
+                            ImageLayout::Undefined,
+                            ImageLayout::Undefined,
+                        )),
+                    ));
                 }
-            }
-            all_buffers
-        };
-
-        let all_images = {
-            let mut all_images = Vec::new();
-            for cbuf in self.inner.iter() {
                 for img_num in 0..cbuf.num_images() {
-                    let (_, resource, start_layout, end_layout) = cbuf.image(img_num).unwrap();
-                    all_images.push((resource, start_layout, end_layout));
+                    let (_, memory, start_layout, end_layout) = cbuf.image(img_num).unwrap();
+                    resources.push((KeyTy::Image, Some((memory, start_layout, end_layout))));
                 }
             }
-            all_images
+            resources
         };
 
-        let all_secondary_cbs = {
-            let mut all_secondary_cbs = Vec::new();
-            for cbuf in self.inner.iter() {
-                all_secondary_cbs.push(!matches!(cbuf.inner().flags(), Flags::SimultaneousUse));
-            }
-            all_secondary_cbs
-        };
-
-        self.builder.append_command(Cmd(self
-            .inner
-            .into_iter()
-            .map(|cbuf| {
-                cbuf.lock_record()?;
-                Ok(DropUnlock(cbuf))
-            })
-            .collect::<Result<Vec<_>, CommandBufferExecError>>()?));
-
-        for memory in all_buffers.into_iter() {
-            self.builder.prev_cmd_resource(
-                KeyTy::Buffer,
-                memory,
-                ImageLayout::Undefined,
-                ImageLayout::Undefined,
-            )?;
-        }
-
-        for (memory, start_layout, end_layout) in all_images.into_iter() {
-            self.builder
-                .prev_cmd_resource(KeyTy::Image, memory, start_layout, end_layout)?;
-        }
+        self.builder.append_command(
+            Cmd(self
+                .inner
+                .into_iter()
+                .map(|cbuf| {
+                    cbuf.lock_record()?;
+                    Ok(DropUnlock(cbuf))
+                })
+                .collect::<Result<Vec<_>, CommandBufferExecError>>()?),
+            &resources,
+        )?;
 
         Ok(())
     }

@@ -22,6 +22,7 @@
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - Added external memory support for `DeviceLocalBuffer` for `Linux`
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
+- `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
 
 # Version 0.21.0 (2021-03-05)
 
