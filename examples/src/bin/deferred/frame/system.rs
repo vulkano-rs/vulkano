@@ -12,7 +12,7 @@ use cgmath::SquareMatrix;
 use cgmath::Vector3;
 use std::sync::Arc;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::CommandBuffer;
+use vulkano::command_buffer::SecondaryCommandBuffer;
 use vulkano::command_buffer::SubpassContents;
 use vulkano::device::Queue;
 use vulkano::format::Format;
@@ -439,7 +439,7 @@ impl<'f, 's: 'f> DrawPass<'f, 's> {
     #[inline]
     pub fn execute<C>(&mut self, command_buffer: C)
     where
-        C: CommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         self.frame
             .command_buffer_builder

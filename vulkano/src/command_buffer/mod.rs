@@ -49,7 +49,7 @@
 //!
 //! ```
 //! use vulkano::command_buffer::AutoCommandBufferBuilder;
-//! use vulkano::command_buffer::CommandBuffer;
+//! use vulkano::command_buffer::PrimaryCommandBuffer;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
@@ -94,9 +94,10 @@ pub use self::auto::FillBufferError;
 pub use self::auto::UpdateBufferError;
 pub use self::state_cacher::StateCacher;
 pub use self::state_cacher::StateCacherOutcome;
-pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
+pub use self::traits::PrimaryCommandBuffer;
+pub use self::traits::SecondaryCommandBuffer;
 
 use crate::framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;

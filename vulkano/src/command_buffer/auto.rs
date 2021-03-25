@@ -24,7 +24,6 @@ use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use crate::command_buffer::validity::*;
-use crate::command_buffer::CommandBuffer;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::DispatchIndirectCommand;
 use crate::command_buffer::DrawIndexedIndirectCommand;
@@ -33,6 +32,8 @@ use crate::command_buffer::DynamicState;
 use crate::command_buffer::Kind;
 use crate::command_buffer::KindOcclusionQuery;
 use crate::command_buffer::KindSecondaryRenderPass;
+use crate::command_buffer::PrimaryCommandBuffer;
+use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
 use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
@@ -1689,7 +1690,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         command_buffer: C,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: CommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         if let Kind::Secondary { .. } = self.kind {
             return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
@@ -1724,7 +1725,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         command_buffers: Vec<C>,
     ) -> Result<&mut Self, ExecuteCommandsError>
     where
-        C: CommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         if let Kind::Secondary { .. } = self.kind {
             return Err(AutoCommandBufferBuilderContextError::ForbiddenInSecondary.into());
@@ -1759,7 +1760,7 @@ impl<P> AutoCommandBufferBuilder<P> {
         command_buffer: &C,
     ) -> Result<(), AutoCommandBufferBuilderContextError>
     where
-        C: CommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         if let Kind::Secondary { render_pass, .. } = command_buffer.kind() {
             if let Some(render_pass) = render_pass {
@@ -2089,7 +2090,7 @@ enum SubmitState {
     },
 }
 
-unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
+unsafe impl<P> PrimaryCommandBuffer for AutoCommandBuffer<P> {
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
         self.inner.as_ref()
@@ -2145,6 +2146,56 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
+    unsafe fn unlock(&self) {
+        // Because of panic safety, we unlock the inner command buffer first.
+        if matches!(self.kind, Kind::Primary) {
+            self.inner.unlock();
+        }
+
+        match self.submit_state {
+            SubmitState::OneTime {
+                ref already_submitted,
+            } => {
+                debug_assert!(already_submitted.load(Ordering::SeqCst));
+            }
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let old_val = in_use.swap(false, Ordering::SeqCst);
+                debug_assert!(old_val);
+            }
+            SubmitState::Concurrent => (),
+        };
+    }
+
+    #[inline]
+    fn check_buffer_access(
+        &self,
+        buffer: &dyn BufferAccess,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        self.inner.check_buffer_access(buffer, exclusive, queue)
+    }
+
+    #[inline]
+    fn check_image_access(
+        &self,
+        image: &dyn ImageAccess,
+        layout: ImageLayout,
+        exclusive: bool,
+        queue: &Queue,
+    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+        self.inner
+            .check_image_access(image, layout, exclusive, queue)
+    }
+}
+
+unsafe impl<P> SecondaryCommandBuffer for AutoCommandBuffer<P> {
+    #[inline]
+    fn inner(&self) -> &UnsafeCommandBuffer {
+        self.inner.as_ref()
+    }
+
+    #[inline]
     fn lock_record(&self) -> Result<(), CommandBufferExecError> {
         if !matches!(self.kind, Kind::Secondary { .. }) {
             panic!("Can only be called on a secondary command buffer");
@@ -2190,28 +2241,6 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
             }
             SubmitState::Concurrent => (),
         };
-    }
-
-    #[inline]
-    fn check_buffer_access(
-        &self,
-        buffer: &dyn BufferAccess,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
-        self.inner.check_buffer_access(buffer, exclusive, queue)
-    }
-
-    #[inline]
-    fn check_image_access(
-        &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
-        self.inner
-            .check_image_access(image, layout, exclusive, queue)
     }
 
     fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
@@ -2529,9 +2558,9 @@ mod tests {
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::synced::SyncCommandBufferBuilderError;
     use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBuffer;
     use crate::command_buffer::CommandBufferExecError;
     use crate::command_buffer::ExecuteCommandsError;
+    use crate::command_buffer::PrimaryCommandBuffer;
     use crate::device::Device;
     use crate::device::DeviceExtensions;
     use crate::device::Features;

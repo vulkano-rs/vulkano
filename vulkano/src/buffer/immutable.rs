@@ -18,15 +18,6 @@
 //! The buffer will be stored in device-local memory if possible
 //!
 
-use smallvec::SmallVec;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::marker::PhantomData;
-use std::mem;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
@@ -37,8 +28,8 @@ use crate::buffer::BufferUsage;
 use crate::buffer::CpuAccessibleBuffer;
 use crate::command_buffer::AutoCommandBuffer;
 use crate::command_buffer::AutoCommandBufferBuilder;
-use crate::command_buffer::CommandBuffer;
 use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -56,6 +47,14 @@ use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::NowFuture;
 use crate::sync::Sharing;
+use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::marker::PhantomData;
+use std::mem;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 /// Buffer that is written once then read for as long as it is alive.
 // TODO: implement Debug
@@ -535,7 +534,7 @@ mod tests {
     use crate::buffer::immutable::ImmutableBuffer;
     use crate::buffer::BufferUsage;
     use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBuffer;
+    use crate::command_buffer::PrimaryCommandBuffer;
     use crate::sync::GpuFuture;
 
     #[test]

@@ -11,9 +11,9 @@ use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
 use crate::check_errors;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::command_buffer::CommandBuffer;
 use crate::command_buffer::Kind;
 use crate::command_buffer::KindOcclusionQuery;
+use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
@@ -1606,7 +1606,7 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
     #[inline]
     pub fn add<C>(&mut self, cb: &C)
     where
-        C: ?Sized + CommandBuffer,
+        C: ?Sized + SecondaryCommandBuffer,
     {
         // TODO: debug assert that it is a secondary command buffer?
         self.raw_cbs.push(cb.inner().internal_object());

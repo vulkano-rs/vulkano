@@ -7,21 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferUsage;
 use crate::buffer::CpuAccessibleBuffer;
 use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::AutoCommandBuffer;
 use crate::command_buffer::AutoCommandBufferBuilder;
-use crate::command_buffer::CommandBuffer;
 use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
 use crate::device::Queue;
 use crate::format::AcceptsPixels;
@@ -51,6 +44,12 @@ use crate::sampler::Filter;
 use crate::sync::AccessError;
 use crate::sync::NowFuture;
 use crate::sync::Sharing;
+use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 /// Image whose purpose is to be used for read-only purposes. You can write to the image once,
 /// but then you must only ever read from it.
@@ -121,8 +120,8 @@ fn has_mipmaps(mipmaps: MipmapsCount) -> bool {
     }
 }
 
-fn generate_mipmaps<Img>(
-    cbb: &mut AutoCommandBufferBuilder,
+fn generate_mipmaps<L, Img>(
+    cbb: &mut AutoCommandBufferBuilder<L>,
     image: Arc<Img>,
     dimensions: ImageDimensions,
     layout: ImageLayout,
