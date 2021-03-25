@@ -1006,21 +1006,21 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
-    pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
+    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) {
         debug_assert!({
-            let max_dims = self
+            let max_group_counts = self
                 .device()
                 .physical_device()
                 .limits()
                 .max_compute_work_group_count();
-            dimensions[0] <= max_dims[0]
-                && dimensions[1] <= max_dims[1]
-                && dimensions[2] <= max_dims[2]
+            group_counts[0] <= max_group_counts[0]
+                && group_counts[1] <= max_group_counts[1]
+                && group_counts[2] <= max_group_counts[2]
         });
 
         let vk = self.device().pointers();
         let cmd = self.internal_object();
-        vk.CmdDispatch(cmd, dimensions[0], dimensions[1], dimensions[2]);
+        vk.CmdDispatch(cmd, group_counts[0], group_counts[1], group_counts[2]);
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.

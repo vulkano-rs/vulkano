@@ -1217,9 +1217,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdDispatch` on the builder.
     #[inline]
-    pub unsafe fn dispatch(&mut self, dimensions: [u32; 3]) {
+    pub unsafe fn dispatch(&mut self, group_counts: [u32; 3]) {
         struct Cmd {
-            dimensions: [u32; 3],
+            group_counts: [u32; 3],
         }
 
         impl Command for Cmd {
@@ -1228,7 +1228,7 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.dispatch(self.dimensions);
+                out.dispatch(self.group_counts);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
@@ -1236,7 +1236,7 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        self.append_command(Cmd { dimensions });
+        self.append_command(Cmd { group_counts });
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
