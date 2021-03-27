@@ -62,7 +62,8 @@
 #![allow(dead_code)] // TODO: remove
 #![allow(unused_variables)] // TODO: remove
 
-extern crate crossbeam;
+extern crate crossbeam_queue;
+
 extern crate fnv;
 #[macro_use]
 extern crate lazy_static;
