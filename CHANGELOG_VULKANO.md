@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking ** DeviceMemoryBuilder::new() takes in `memory_index` rather than `MemoryType`.
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
   - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
@@ -19,8 +20,10 @@
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 - Allow `const` usage of features and `BufferUsage`.
-- Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
+- Opaque fd and dma-buf import support on `Linux`.
+- `DeviceMemoryMapping` to separate device memory and mappings.
 - Added external memory support for `DeviceLocalBuffer` for `Linux`
+- Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 - `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
 
