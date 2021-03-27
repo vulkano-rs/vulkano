@@ -22,6 +22,7 @@
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 
 - Allow `const` usage of features and `BufferUsage`
+- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 
 # Version 0.21.0 (2021-03-05)
 
