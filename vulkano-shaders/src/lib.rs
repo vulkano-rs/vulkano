@@ -511,7 +511,7 @@ impl Parse for MacroInput {
                     let dump_lit: LitBool = input.parse()?;
                     dump = Some(dump_lit.value);
                 }
-                name => panic!(format!("Unknown field name: {}", name)),
+                name => panic!("Unknown field name: {}", name),
             }
 
             if !input.is_empty() {
@@ -614,7 +614,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             &input.macro_defines,
         ) {
             Ok(ok) => ok,
-            Err(e) => panic!(e.replace("(s): ", "(s):\n")),
+            Err(e) => panic!("{}", e.replace("(s): ", "(s):\n")),
         };
 
         codegen::reflect("Shader", content.as_binary(), input.types_meta, input.dump)
