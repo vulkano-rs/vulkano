@@ -1037,7 +1037,7 @@ impl UnsafeCommandBufferBuilder {
         let cmd = self.internal_object();
 
         let inner = buffer.inner();
-        debug_assert!(inner.offset < buffer.size());
+        debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage_indirect_buffer());
         debug_assert_eq!(inner.offset % 4, 0);
 
