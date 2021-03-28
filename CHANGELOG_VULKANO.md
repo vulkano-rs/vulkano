@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking ** DeviceMemoryBuilder::new() takes in `memory_index` rather than `MemoryType`.
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
   - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
@@ -14,11 +15,17 @@
   - Introduced a new `ImageView` type, a safe wrapper around `UnsafeImageView`.
   - The `ImageViewAccess` trait is renamed to `ImageViewAbstract`, some methods added, removed or renamed. `ImageView` implements this trait.
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
-- **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself). The `PoolAlloc` associated type on the `CommandBuffer` trait is also removed, as it's no longer needed.
+- **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself).
+- **Breaking** The `CommandBuffer` trait no longer has the `PoolAlloc` associated type, and has four new methods: `num_buffers`, `buffer`, `num_images` and `image`.
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 - Allow `const` usage of features and `BufferUsage`.
-- Added external memory support for `DeviceLocalBuffer` for `Linux`
+- Opaque fd and dma-buf import support on `Linux`.
+- `DeviceMemoryMapping` to separate device memory and mappings.
+- Added external memory support for `DeviceLocalBuffer` for `Linux`.
+- Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
+- `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
+- `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
 - Added a `dispatch_indirect` command to `AutoCommandBufferBuilder`.
 
 # Version 0.21.0 (2021-03-05)

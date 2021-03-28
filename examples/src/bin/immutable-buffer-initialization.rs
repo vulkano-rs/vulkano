@@ -84,7 +84,6 @@ void main() {
 
     // Create immutable buffer and initialize it
     let immutable_data_buffer = {
-
         // uninitialized(), uninitialized_array() and raw() return two things: the buffer,
         // and a special access that should be used for the initial upload to the buffer.
         let (immutable_data_buffer, immutable_data_buffer_init) = unsafe {
