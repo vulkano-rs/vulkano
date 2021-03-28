@@ -26,6 +26,9 @@
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 - `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
+- Fixed missing barriers in dispatch calls
+  - **Breaking** `shader!` no longer marks descriptor sets as readonly as a fallback when it doesn't know
+    - **Breaking** The keyword `readonly` might need to be added in front of the `buffer` keyword in GLSL files to get them working again
 
 # Version 0.21.0 (2021-03-05)
 
