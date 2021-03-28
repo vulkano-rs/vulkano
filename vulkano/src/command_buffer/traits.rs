@@ -11,7 +11,7 @@ use crate::buffer::BufferAccess;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::Kind;
+use crate::command_buffer::CommandBufferInheritance;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -219,8 +219,11 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
     /// Must not be called if you haven't called `lock_record` before.
     unsafe fn unlock(&self);
 
-    /// Returns a `Kind` value describing the command buffer.
-    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
+    /// Returns a `CommandBufferInheritance` value describing the properties that the command
+    /// buffer inherits from its parent primary command buffer.
+    fn inheritance(
+        &self,
+    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
 
     /// Returns the number of buffers accessed by this command buffer.
     fn num_buffers(&self) -> usize;
@@ -268,8 +271,10 @@ where
     }
 
     #[inline]
-    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
-        (**self).kind()
+    fn inheritance(
+        &self,
+    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+        (**self).inheritance()
     }
 
     #[inline]

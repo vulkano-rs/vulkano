@@ -14,7 +14,7 @@ use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use crate::command_buffer::CommandBufferExecError;
-use crate::command_buffer::Kind;
+use crate::command_buffer::CommandBufferLevel;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -426,21 +426,21 @@ impl SyncCommandBufferBuilder {
     /// See `UnsafeCommandBufferBuilder::new()`.
     pub unsafe fn new<R, F>(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        kind: Kind<R, F>,
+        level: CommandBufferLevel<R, F>,
         flags: Flags,
     ) -> Result<SyncCommandBufferBuilder, OomError>
     where
         R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
-        let (is_secondary, inside_render_pass) = match kind {
-            Kind::Primary => (false, false),
-            Kind::Secondary {
-                ref render_pass, ..
-            } => (true, render_pass.is_some()),
+        let (is_secondary, inside_render_pass) = match level {
+            CommandBufferLevel::Primary => (false, false),
+            CommandBufferLevel::Secondary(ref inheritance) => {
+                (true, inheritance.render_pass.is_some())
+            }
         };
 
-        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, kind, flags)?;
+        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, level, flags)?;
         Ok(SyncCommandBufferBuilder::from_unsafe_cmd(
             cmd,
             is_secondary,
@@ -1506,7 +1506,7 @@ mod tests {
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
     use crate::command_buffer::sys::Flags;
     use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::Kind;
+    use crate::command_buffer::CommandBufferLevel;
     use crate::device::Device;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
@@ -1521,7 +1521,7 @@ mod tests {
             assert!(matches!(
                 SyncCommandBufferBuilder::new(
                     &pool_builder_alloc.inner(),
-                    Kind::primary(),
+                    CommandBufferLevel::primary(),
                     Flags::None,
                 ),
                 Ok(_)
@@ -1538,7 +1538,7 @@ mod tests {
             let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
             let mut sync = SyncCommandBufferBuilder::new(
                 &pool_builder_alloc.inner(),
-                Kind::primary(),
+                CommandBufferLevel::primary(),
                 Flags::None,
             )
             .unwrap();
@@ -1589,7 +1589,7 @@ mod tests {
             {
                 let mut builder = SyncCommandBufferBuilder::new(
                     allocs[0].inner(),
-                    Kind::primary(),
+                    CommandBufferLevel::primary(),
                     Flags::SimultaneousUse,
                 )
                 .unwrap();
@@ -1616,7 +1616,7 @@ mod tests {
             {
                 let mut builder = SyncCommandBufferBuilder::new(
                     allocs[1].inner(),
-                    Kind::primary(),
+                    CommandBufferLevel::primary(),
                     Flags::SimultaneousUse,
                 )
                 .unwrap();

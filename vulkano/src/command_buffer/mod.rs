@@ -99,22 +99,21 @@ pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 pub use self::traits::PrimaryCommandBuffer;
 pub use self::traits::SecondaryCommandBuffer;
-
 use crate::framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
+use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
 use std::sync::Arc;
 
+mod auto;
 pub mod pool;
+mod state_cacher;
 pub mod submit;
 pub mod synced;
 pub mod sys;
-pub mod validity;
-
-mod auto;
-mod state_cacher;
 mod traits;
+pub mod validity;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -186,36 +185,49 @@ pub enum SubpassContents {
     SecondaryCommandBuffers = vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS,
 }
 
-/// Determines the kind of command buffer that we want to create.
+/// Determines the kind of command buffer to create.
 #[derive(Debug, Clone)]
-pub enum Kind<R, F> {
-    /// A primary command buffer can execute all commands and can call secondary command buffers.
+pub enum CommandBufferLevel<R, F> {
+    /// Primary command buffers can be executed on a queue, and can call secondary command buffers.
+    /// Render passes must begin and end within the same primary command buffer.
     Primary,
 
-    /// A secondary command buffer.
-    Secondary {
-        /// If `Some`, can only call draw operations that can be executed from within a specific
-        /// subpass. Otherwise it can execute all dispatch and transfer operations, but not drawing
-        /// operations.
-        render_pass: Option<KindSecondaryRenderPass<R, F>>,
-
-        /// Whether it is allowed to have an active occlusion query in the primary command buffer
-        /// when executing this secondary command buffer.
-        occlusion_query: KindOcclusionQuery,
-
-        /// Which pipeline statistics queries are allowed to be active when this secondary command
-        /// buffer starts.
-        ///
-        /// Note that the `pipeline_statistics_query` feature must be enabled if any of the flags
-        /// of this value are set.
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    },
+    /// Secondary command buffers cannot be executed on a queue, but can be executed by a primary
+    /// command buffer. If created for a render pass, they must fit within a single render subpass.
+    Secondary(CommandBufferInheritance<R, F>),
 }
 
-/// Additional information for `Kind::Secondary`.
+/// The context that a secondary command buffer can inherit from the primary command
+/// buffer it's executed in.
+#[derive(Clone, Debug, Default)]
+pub struct CommandBufferInheritance<R, F> {
+    /// If `Some`, the secondary command buffer is required to be executed within a specific
+    /// render subpass, and can only call draw operations.
+    /// If `None`, it must be executed outside a render pass, and can execute dispatch and transfer
+    /// operations, but not drawing operations.
+    render_pass: Option<CommandBufferInheritanceRenderPass<R, F>>,
+
+    /// If `Some`, the secondary command buffer is allowed to be executed within a primary that has
+    /// an occlusion query active. The inner `QueryControlFlags` specifies which flags the
+    /// active occlusion is allowed to have enabled.
+    /// If `None`, the primary command buffer cannot have an occlusion query active when this
+    /// secondary command buffer is executed.
+    ///
+    /// The `inherited_queries` feature must be enabled if this is `Some`.
+    occlusion_query: Option<QueryControlFlags>,
+
+    /// Which pipeline statistics queries are allowed to be active on the primary command buffer
+    /// when this secondary command buffer is executed.
+    ///
+    /// The `pipeline_statistics_query` feature must be enabled if any of the flags of this value
+    /// are set.
+    query_statistics_flags: QueryPipelineStatisticFlags,
+}
+
+/// The render pass context that a secondary command buffer is created for.
 #[derive(Debug, Clone)]
-pub struct KindSecondaryRenderPass<R, F> {
-    /// Which subpass this secondary command buffer can be called from.
+pub struct CommandBufferInheritanceRenderPass<R, F> {
+    /// The render subpass that this secondary command buffer must be executed within.
     pub subpass: Subpass<R>,
 
     /// The framebuffer object that will be used when calling the command buffer.
@@ -223,24 +235,8 @@ pub struct KindSecondaryRenderPass<R, F> {
     pub framebuffer: Option<F>,
 }
 
-/// Additional information for `Kind::Secondary`.
-#[derive(Debug, Copy, Clone)]
-pub enum KindOcclusionQuery {
-    /// It is allowed to have an active occlusion query in the primary command buffer when
-    /// executing this secondary command buffer.
-    ///
-    /// The `inherited_queries` feature must be enabled on the device for this to be a valid option.
-    Allowed {
-        /// The occlusion query can have the `control_precise` flag.
-        control_precise_allowed: bool,
-    },
-
-    /// It is forbidden to have an active occlusion query.
-    Forbidden,
-}
-
 impl
-    Kind<
+    CommandBufferLevel<
         RenderPass<EmptySinglePassRenderPassDesc>,
         Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
     >
@@ -251,11 +247,11 @@ impl
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> Kind<
+    pub fn primary() -> CommandBufferLevel<
         Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
         Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
     > {
-        Kind::Primary
+        CommandBufferLevel::Primary
     }
 
     /// Equivalent to `Kind::Secondary`.
@@ -265,16 +261,16 @@ impl
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
     pub fn secondary(
-        occlusion_query: KindOcclusionQuery,
+        occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Kind<
+    ) -> CommandBufferLevel<
         Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
         Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
     > {
-        Kind::Secondary {
+        CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: None,
             occlusion_query,
             query_statistics_flags,
-        }
+        })
     }
 }
