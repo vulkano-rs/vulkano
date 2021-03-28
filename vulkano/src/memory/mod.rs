@@ -97,6 +97,7 @@ pub use self::device_memory::CpuAccess;
 pub use self::device_memory::DeviceMemory;
 pub use self::device_memory::DeviceMemoryAllocError;
 pub use self::device_memory::DeviceMemoryBuilder;
+pub use self::device_memory::DeviceMemoryMapping;
 pub use self::device_memory::MappedDeviceMemory;
 pub use self::external_memory_handle_type::ExternalMemoryHandleType;
 pub use self::pool::MemoryPool;

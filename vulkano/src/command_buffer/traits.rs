@@ -7,14 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::borrow::Cow;
-use std::error;
-use std::fmt;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use crate::buffer::BufferAccess;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitCommandBufferBuilder;
@@ -33,9 +25,17 @@ use crate::sync::AccessFlagBits;
 use crate::sync::FlushError;
 use crate::sync::GpuFuture;
 use crate::sync::NowFuture;
+use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::borrow::Cow;
+use std::error;
+use std::fmt;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 pub unsafe trait CommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
@@ -59,11 +59,17 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError>;
 
+    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
+    /// and if so locks it.
+    ///
+    /// If you call this function, then you should call `unlock` afterwards.
+    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
+
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
     ///
     /// # Safety
     ///
-    /// Must not be called if you haven't called `lock_submit` before.
+    /// Must not be called if you haven't called `lock_submit` or `lock_record` before.
     unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
@@ -166,7 +172,29 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     /// Returns a `Kind` value describing the command buffer.
     fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
 
-    // FIXME: lots of other methods
+    /// Returns the number of buffers accessed by this command buffer.
+    fn num_buffers(&self) -> usize;
+
+    /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
+    ///
+    /// The valid range is between 0 and `num_buffers()`.
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)>;
+
+    /// Returns the number of images accessed by this command buffer.
+    fn num_images(&self) -> usize;
+
+    /// Returns the `index`th image of this command buffer, or `None` if out of range.
+    ///
+    /// The valid range is between 0 and `num_images()`.
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )>;
 }
 
 unsafe impl<T> CommandBuffer for T
@@ -186,6 +214,11 @@ where
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError> {
         (**self).lock_submit(future, queue)
+    }
+
+    #[inline]
+    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+        (**self).lock_record()
     }
 
     #[inline]
@@ -217,6 +250,34 @@ where
     #[inline]
     fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
         (**self).kind()
+    }
+
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        (**self).num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
+        (**self).buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        (**self).num_images()
+    }
+
+    #[inline]
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )> {
+        (**self).image(index)
     }
 }
 

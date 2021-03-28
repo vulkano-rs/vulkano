@@ -53,17 +53,18 @@ use std::sync::Arc;
 /// Flags to pass when creating a command buffer.
 ///
 /// The safest option is `SimultaneousUse`, but it may be slower than the other two.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Flags {
-    /// The command buffer can be used multiple times, but must not execute more than once
+    /// The command buffer can only be submitted once. Any further submit is forbidden.
+    OneTimeSubmit,
+
+    /// The command buffer can be used multiple times, but must not execute or record more than once
     /// simultaneously.
     None,
 
-    /// The command buffer can be executed multiple times in parallel.
+    /// The command buffer can be executed multiple times in parallel. If it's a secondary command
+    /// buffer, it can be recorded to multiple primary command buffers at once.
     SimultaneousUse,
-
-    /// The command buffer can only be submitted once. Any further submit is forbidden.
-    OneTimeSubmit,
 }
 
 /// Command buffer being built.
@@ -77,6 +78,7 @@ pub enum Flags {
 pub struct UnsafeCommandBufferBuilder {
     command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
+    flags: Flags,
 }
 
 impl fmt::Debug for UnsafeCommandBufferBuilder {
@@ -208,6 +210,7 @@ impl UnsafeCommandBufferBuilder {
         Ok(UnsafeCommandBufferBuilder {
             command_buffer: pool_alloc.internal_object(),
             device: device.clone(),
+            flags,
         })
     }
 
@@ -221,6 +224,7 @@ impl UnsafeCommandBufferBuilder {
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.command_buffer,
                 device: self.device.clone(),
+                flags: self.flags,
             })
         }
     }
@@ -1961,6 +1965,14 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 pub struct UnsafeCommandBuffer {
     command_buffer: vk::CommandBuffer,
     device: Arc<Device>,
+    flags: Flags,
+}
+
+impl UnsafeCommandBuffer {
+    #[inline]
+    pub fn flags(&self) -> Flags {
+        self.flags
+    }
 }
 
 unsafe impl DeviceOwned for UnsafeCommandBuffer {

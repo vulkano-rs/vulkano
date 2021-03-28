@@ -66,6 +66,7 @@ use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessFlagBits;
 use crate::sync::GpuFuture;
+use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
@@ -1605,10 +1606,10 @@ impl<P> AutoCommandBufferBuilder<P> {
 
     /// Adds a command that executes a secondary command buffer.
     ///
-    /// # Safety
-    /// The execution state of the secondary command buffer is not checked, and resources are not
-    /// synchronised against concurrent access.
-    pub unsafe fn execute_commands<C>(
+    /// If the `flags` that `command_buffer` was created with are more restrictive than those of
+    /// `self`, then `self` will be restricted to match. E.g. executing a secondary command buffer
+    /// with `Flags::OneTimeSubmit` will set `self`'s flags to `Flags::OneTimeSubmit` also.
+    pub fn execute_commands<C>(
         &mut self,
         command_buffer: C,
     ) -> Result<&mut Self, ExecuteCommandsError>
@@ -1620,23 +1621,30 @@ impl<P> AutoCommandBufferBuilder<P> {
         }
 
         self.check_command_buffer(&command_buffer)?;
+        let secondary_flags = command_buffer.inner().flags();
 
-        {
+        unsafe {
             let mut builder = self.inner.execute_commands();
             builder.add(command_buffer);
             builder.submit()?;
         }
 
+        // Secondary command buffer could leave the primary in any state.
         self.state_cacher.invalidate();
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+        self.flags = std::cmp::min(self.flags, secondary_flags);
+
         Ok(self)
     }
 
     /// Adds a command that multiple secondary command buffers in a vector.
     ///
-    /// # Safety
-    /// The execution state of the secondary command buffer is not checked, and resources are not
-    /// synchronised against concurrent access.
-    pub unsafe fn execute_commands_from_vec<C>(
+    /// This requires that the secondary command buffers do not have resource conflicts; an error
+    /// will be returned if there are any. Use `execute_commands` if you want to ensure that
+    /// resource conflicts are automatically resolved.
+    // TODO ^ would be nice if this just worked without errors
+    pub fn execute_commands_from_vec<C>(
         &mut self,
         command_buffers: Vec<C>,
     ) -> Result<&mut Self, ExecuteCommandsError>
@@ -1651,15 +1659,22 @@ impl<P> AutoCommandBufferBuilder<P> {
             self.check_command_buffer(command_buffer)?;
         }
 
-        {
+        let mut secondary_flags = Flags::SimultaneousUse; // Most permissive flags
+        unsafe {
             let mut builder = self.inner.execute_commands();
             for command_buffer in command_buffers {
+                secondary_flags = std::cmp::min(secondary_flags, command_buffer.inner().flags());
                 builder.add(command_buffer);
             }
             builder.submit()?;
         }
 
+        // Secondary command buffer could leave the primary in any state.
         self.state_cacher.invalidate();
+
+        // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
+        self.flags = std::cmp::min(self.flags, secondary_flags);
+
         Ok(self)
     }
 
@@ -2011,6 +2026,10 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
         future: &dyn GpuFuture,
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError> {
+        if !matches!(self.kind, Kind::Primary) {
+            panic!("Can only be called on a primary command buffer");
+        }
+
         match self.submit_state {
             SubmitState::OneTime {
                 ref already_submitted,
@@ -2051,9 +2070,38 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
     }
 
     #[inline]
+    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+        if !matches!(self.kind, Kind::Secondary { .. }) {
+            panic!("Can only be called on a secondary command buffer");
+        }
+
+        match self.submit_state {
+            SubmitState::OneTime {
+                ref already_submitted,
+            } => {
+                let was_already_submitted = already_submitted.swap(true, Ordering::SeqCst);
+                if was_already_submitted {
+                    return Err(CommandBufferExecError::OneTimeSubmitAlreadySubmitted);
+                }
+            }
+            SubmitState::ExclusiveUse { ref in_use } => {
+                let already_in_use = in_use.swap(true, Ordering::SeqCst);
+                if already_in_use {
+                    return Err(CommandBufferExecError::ExclusiveAlreadyInUse);
+                }
+            }
+            SubmitState::Concurrent => (),
+        };
+
+        Ok(())
+    }
+
+    #[inline]
     unsafe fn unlock(&self) {
         // Because of panic safety, we unlock the inner command buffer first.
-        self.inner.unlock();
+        if matches!(self.kind, Kind::Primary) {
+            self.inner.unlock();
+        }
 
         match self.submit_state {
             SubmitState::OneTime {
@@ -2118,6 +2166,34 @@ unsafe impl<P> CommandBuffer for AutoCommandBuffer<P> {
                 query_statistics_flags: *query_statistics_flags,
             },
         }
+    }
+
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.inner.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
+        self.inner.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.inner.num_images()
+    }
+
+    #[inline]
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )> {
+        self.inner.image(index)
     }
 }
 
@@ -2366,13 +2442,17 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
 mod tests {
     use crate::buffer::BufferUsage;
     use crate::buffer::CpuAccessibleBuffer;
+    use crate::command_buffer::synced::SyncCommandBufferBuilderError;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBuffer;
+    use crate::command_buffer::CommandBufferExecError;
+    use crate::command_buffer::ExecuteCommandsError;
     use crate::device::Device;
     use crate::device::DeviceExtensions;
     use crate::device::Features;
     use crate::instance;
     use crate::sync::GpuFuture;
+    use std::sync::Arc;
 
     #[test]
     fn copy_buffer_dimensions() {
@@ -2433,5 +2513,63 @@ mod tests {
         let result = destination.read().unwrap();
 
         assert_eq!(*result, [0_u32, 1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn secondary_nonconcurrent_conflict() {
+        let (device, queue) = gfx_dev_and_queue!();
+
+        // Make a secondary CB that doesn't support simultaneous use.
+        let builder =
+            AutoCommandBufferBuilder::secondary_compute(device.clone(), queue.family()).unwrap();
+        let secondary = Arc::new(builder.build().unwrap());
+
+        {
+            let mut builder =
+                AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue.family())
+                    .unwrap();
+
+            // Add the secondary a first time
+            builder.execute_commands(secondary.clone()).unwrap();
+
+            // Recording the same non-concurrent secondary command buffer twice into the same
+            // primary is an error.
+            assert!(matches!(
+                builder.execute_commands(secondary.clone()),
+                Err(ExecuteCommandsError::SyncCommandBufferBuilderError(
+                    SyncCommandBufferBuilderError::ExecError(
+                        CommandBufferExecError::ExclusiveAlreadyInUse
+                    )
+                ))
+            ));
+        }
+
+        {
+            let mut builder =
+                AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue.family())
+                    .unwrap();
+            builder.execute_commands(secondary.clone()).unwrap();
+            let cb1 = builder.build().unwrap();
+
+            let mut builder =
+                AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue.family())
+                    .unwrap();
+
+            // Recording the same non-concurrent secondary command buffer into multiple
+            // primaries is an error.
+            assert!(matches!(
+                builder.execute_commands(secondary.clone()),
+                Err(ExecuteCommandsError::SyncCommandBufferBuilderError(
+                    SyncCommandBufferBuilderError::ExecError(
+                        CommandBufferExecError::ExclusiveAlreadyInUse
+                    )
+                ))
+            ));
+
+            std::mem::drop(cb1);
+
+            // Now that the first cb is dropped, we should be able to record.
+            builder.execute_commands(secondary.clone()).unwrap();
+        }
     }
 }

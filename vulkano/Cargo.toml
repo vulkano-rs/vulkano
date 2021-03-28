@@ -14,7 +14,7 @@ readme = "../README.md"
 build = "build.rs"
 
 [dependencies]
-crossbeam = "0.8"
+crossbeam-queue = "0.3"
 fnv = "1.0"
 half = "1.7"
 lazy_static = "1.4"

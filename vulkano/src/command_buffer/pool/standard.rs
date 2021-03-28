@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam::queue::SegQueue;
+use crossbeam_queue::SegQueue;
 use fnv::FnvHashMap;
 use std::marker::PhantomData;
 use std::mem::ManuallyDrop;

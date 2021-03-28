@@ -1080,7 +1080,7 @@ impl<'a> Iterator for PhysicalDevicesIter<'a> {
 impl<'a> ExactSizeIterator for PhysicalDevicesIter<'a> {}
 
 /// Type of a physical device.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 #[repr(u32)]
 pub enum PhysicalDeviceType {
     /// The device is an integrated GPU.
