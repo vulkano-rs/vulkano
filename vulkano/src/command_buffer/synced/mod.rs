@@ -18,6 +18,3 @@ pub use self::commands::SyncCommandBufferBuilderExecuteCommands;
 
 mod base;
 mod commands;
-
-#[cfg(test)]
-mod tests;
