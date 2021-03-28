@@ -378,7 +378,7 @@ fn descriptor_infos(
         .iter()
         .filter_map(|i| {
             match i {
-                &Instruction::TypeStruct { result_id, .. } if result_id == pointed_ty => {
+                Instruction::TypeStruct { result_id, member_types } if *result_id == pointed_ty => {
                     let decoration_block = doc
                         .get_decoration_params(pointed_ty, Decoration::DecorationBlock)
                         .is_some();
@@ -392,7 +392,18 @@ fn descriptor_infos(
                     let is_ssbo = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
                     // Determine whether there's a NonWritable decoration.
-                    //let non_writable = false;       // TODO: tricky because the decoration is on struct members
+                    let readonly = {
+                        let mut readonly = vec![false; member_types.len()];
+                        for i in doc.instructions.iter() {
+                            if let Instruction::MemberDecorate { target_id, member, decoration, .. } = i {
+                                if *target_id == *result_id && *decoration == Decoration::DecorationNonWritable {
+                                    assert!(!readonly[*member as usize]);
+                                    readonly[*member as usize] = true;
+                                }
+                            }
+                        }
+                        readonly.iter().all(|x| *x)
+                    };
 
                     let desc = quote! {
                         DescriptorDescTy::Buffer(DescriptorBufferDesc {
@@ -401,7 +412,7 @@ fn descriptor_infos(
                         })
                     };
 
-                    Some((desc, true, 1))
+                    Some((desc, readonly, 1))
                 }
                 &Instruction::TypeImage {
                     result_id,
