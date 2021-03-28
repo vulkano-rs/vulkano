@@ -137,15 +137,76 @@ where
     Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static,
 {
     #[inline]
-    fn decode(&self, source: (Bt, Bu)) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        let vertices = [source.0.len(), source.1.len()]
-            .iter()
-            .cloned()
-            .min()
-            .unwrap();
+    fn decode(&self, (t, u): (Bt, Bu)) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        let vertices = t.len().min(u.len());
         (
-            vec![Box::new(source.0) as Box<_>, Box::new(source.1) as Box<_>],
+            vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>],
             vertices,
+            1,
+        )
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu, const T_N: usize> VertexSource<([Bt; 1], Bu)>
+    for TwoBuffersDefinition<T, U>
+where
+    T: Vertex,
+    Bt: TypedBufferAccess<Content = [T; T_N]> + Send + Sync + 'static,
+    U: Vertex,
+    Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static,
+{
+    #[inline]
+    fn decode(
+        &self,
+        ([t], u): ([Bt; 1], Bu),
+    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        let u_l = u.len();
+        (
+            vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>],
+            T_N.min(u_l),
+            1,
+        )
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu, const U_N: usize> VertexSource<(Bt, [Bu; 1])>
+    for TwoBuffersDefinition<T, U>
+where
+    T: Vertex,
+    Bt: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+    U: Vertex,
+    Bu: TypedBufferAccess<Content = [U; U_N]> + Send + Sync + 'static,
+{
+    #[inline]
+    fn decode(
+        &self,
+        (t, [u]): (Bt, [Bu; 1]),
+    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        let t_l = t.len();
+        (
+            vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>],
+            t_l.min(U_N),
+            1,
+        )
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu, const T_N: usize, const U_N: usize> VertexSource<([Bt; 1], [Bu; 1])>
+    for TwoBuffersDefinition<T, U>
+where
+    T: Vertex,
+    Bt: TypedBufferAccess<Content = [T; T_N]> + Send + Sync + 'static,
+    U: Vertex,
+    Bu: TypedBufferAccess<Content = [U; U_N]> + Send + Sync + 'static,
+{
+    #[inline]
+    fn decode(
+        &self,
+        ([t], [u]): ([Bt; 1], [Bu; 1]),
+    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        (
+            vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>],
+            T_N.min(U_N),
             1,
         )
     }

@@ -214,6 +214,48 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
+impl<T, B, const N: usize> BufferSlice<[T; N], B> {
+    /// Returns the number of elements in this slice.
+    #[inline]
+    pub fn len(&self) -> usize {
+        N
+    }
+
+    /// Reduces the slice to just one element of the array.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    pub fn index(self, index: usize) -> Option<BufferSlice<T, B>> {
+        if index >= N {
+            return None;
+        }
+
+        Some(BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + index * mem::size_of::<T>(),
+            size: mem::size_of::<T>(),
+        })
+    }
+
+    /// Reduces the slice to just a range of the array.
+    ///
+    /// Returns `None` if out of range.
+    #[inline]
+    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<[T], B>> {
+        if range.end > N {
+            return None;
+        }
+
+        Some(BufferSlice {
+            marker: PhantomData,
+            resource: self.resource,
+            offset: self.offset + range.start * mem::size_of::<T>(),
+            size: (range.end - range.start) * mem::size_of::<T>(),
+        })
+    }
+}
+
 unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
 where
     B: BufferAccess,

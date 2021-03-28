@@ -29,6 +29,7 @@
 - Fixed missing barriers in dispatch calls
   - **Breaking** `shader!` no longer marks descriptor sets as readonly as a fallback when it doesn't know
     - **Breaking** The keyword `readonly` might need to be added in front of the `buffer` keyword in GLSL files to get them working again
+- Add support in `AutoCommandbufferBuilder::draw` for taking `[T; N]` in addition to `[T]`
 
 # Version 0.21.0 (2021-03-05)
 

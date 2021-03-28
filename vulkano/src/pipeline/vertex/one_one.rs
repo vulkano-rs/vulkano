@@ -133,13 +133,62 @@ where
     Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static,
 {
     #[inline]
-    fn decode(&self, source: (Bt, Bu)) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        let s1l = source.0.len();
-        let s2l = source.1.len();
-        (
-            vec![Box::new(source.0) as Box<_>, Box::new(source.1) as Box<_>],
-            s1l,
-            s2l,
-        )
+    fn decode(&self, (t, u): (Bt, Bu)) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        let t_l = t.len();
+        let u_l = u.len();
+        (vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>], t_l, u_l)
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu, const T_N: usize> VertexSource<([Bt; 1], Bu)>
+    for OneVertexOneInstanceDefinition<T, U>
+where
+    T: Vertex,
+    Bt: TypedBufferAccess<Content = [T; T_N]> + Send + Sync + 'static,
+    U: Vertex,
+    Bu: TypedBufferAccess<Content = [U]> + Send + Sync + 'static,
+{
+    #[inline]
+    fn decode(
+        &self,
+        ([t], u): ([Bt; 1], Bu),
+    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        let u_l = u.len();
+        (vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>], T_N, u_l)
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu, const U_N: usize> VertexSource<(Bt, [Bu; 1])>
+    for OneVertexOneInstanceDefinition<T, U>
+where
+    T: Vertex,
+    Bt: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+    U: Vertex,
+    Bu: TypedBufferAccess<Content = [U; U_N]> + Send + Sync + 'static,
+{
+    #[inline]
+    fn decode(
+        &self,
+        (t, [u]): (Bt, [Bu; 1]),
+    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        let t_l = t.len();
+        (vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>], t_l, U_N)
+    }
+}
+
+unsafe impl<'a, T, U, Bt, Bu, const T_N: usize, const U_N: usize> VertexSource<([Bt; 1], [Bu; 1])>
+    for OneVertexOneInstanceDefinition<T, U>
+where
+    T: Vertex,
+    Bt: TypedBufferAccess<Content = [T; T_N]> + Send + Sync + 'static,
+    U: Vertex,
+    Bu: TypedBufferAccess<Content = [U; U_N]> + Send + Sync + 'static,
+{
+    #[inline]
+    fn decode(
+        &self,
+        ([t], [u]): ([Bt; 1], [Bu; 1]),
+    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        (vec![Box::new(t) as Box<_>, Box::new(u) as Box<_>], T_N, U_N)
     }
 }
