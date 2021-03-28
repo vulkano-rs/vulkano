@@ -230,3 +230,14 @@ impl AccessFlagBits {
         true
     }
 }
+
+/// The full specification of memory access by the pipeline for a particular resource.
+#[derive(Clone, Copy, Debug)]
+pub struct PipelineMemoryAccess {
+    /// The pipeline stages the resource will be accessed in.
+    pub stages: PipelineStages,
+    /// The type of memory access that will be performed.
+    pub access: AccessFlagBits,
+    /// Whether the resource needs exclusive (mutable) access or can be shared.
+    pub exclusive: bool,
+}
