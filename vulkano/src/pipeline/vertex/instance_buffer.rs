@@ -121,3 +121,14 @@ where
         (vec![Box::new(source) as Box<_>], 1, len)
     }
 }
+
+unsafe impl<'a, B, V, const N: usize> VertexSource<[B; 1]> for SingleInstanceBufferDefinition<V>
+where
+    B: TypedBufferAccess<Content = [V; N]> + Send + Sync + 'static,
+    V: Vertex,
+{
+    #[inline]
+    fn decode(&self, [source]: [B; 1]) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
+        (vec![Box::new(source) as Box<_>], 1, N)
+    }
+}

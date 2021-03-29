@@ -56,7 +56,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
     {
-        BufferSlice::slice(self.as_buffer_slice(), range)
+        <BufferSlice<[T], &Self>>::slice(self.as_buffer_slice(), range)
     }
 
     /// Builds a `BufferSlice` object holding the buffer by value.
