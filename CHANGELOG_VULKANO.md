@@ -1,10 +1,13 @@
 # Unreleased
 
-- **Breaking ** DeviceMemoryBuilder::new() takes in `memory_index` rather than `MemoryType`.
+- **Breaking** DeviceMemoryBuilder::new() takes in `memory_index` rather than `MemoryType`.
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
   - **Breaking** `shader!` will no longer generate descriptor information for variables that are declared but not used in a shader.
 - **Breaking** `shader!` now accepts structs in shader interfaces decorated with `BufferBlock` rather than `Block`.
+- Fixed missing barriers in dispatch calls
+  - **Breaking** `shader!` no longer marks descriptor sets as readonly as a fallback when it doesn't know
+    - **Breaking** The keyword `readonly` might need to be added in front of the `buffer` keyword in GLSL files to get them working again
 - **Breaking** Changes to image types:
   - Image types no longer implement `ImageViewAccess`.
   - `Dimensions` is removed. Image constructors now take `ImageDimensions`.
@@ -22,13 +25,11 @@
 - Allow `const` usage of features and `BufferUsage`.
 - Opaque fd and dma-buf import support on `Linux`.
 - `DeviceMemoryMapping` to separate device memory and mappings.
-- Added external memory support for `DeviceLocalBuffer` for `Linux`
+- Added external memory support for `DeviceLocalBuffer` for Linux.
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 - `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
-- Fixed missing barriers in dispatch calls
-  - **Breaking** `shader!` no longer marks descriptor sets as readonly as a fallback when it doesn't know
-    - **Breaking** The keyword `readonly` might need to be added in front of the `buffer` keyword in GLSL files to get them working again
+- Added a `dispatch_indirect` command to `AutoCommandBufferBuilder`.
 
 # Version 0.21.0 (2021-03-05)
 
