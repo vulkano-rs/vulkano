@@ -191,6 +191,7 @@ pub(super) fn reflect(
     name: &str,
     spirv: &[u32],
     types_meta: TypesMeta,
+    full_path: Option<&str>,
     dump: bool,
 ) -> Result<TokenStream, Error> {
     let struct_name = Ident::new(&name, Span::call_site());
@@ -255,6 +256,12 @@ pub(super) fn reflect(
         }
     }
 
+    let include_bytes = full_path.map(|s| quote! {
+        // using include_bytes here ensures that changing the shader will force recompilation.
+        // The bytes themselves can be optimized out by the compiler as they are unused.
+        let _bytes = ::std::include_bytes!( #s );
+    }).unwrap_or(TokenStream::new());
+
     let structs = structs::write_structs(&doc, &types_meta);
     let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);
     let uses = &types_meta.uses;
@@ -308,6 +315,8 @@ pub(super) fn reflect(
             pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
                         -> Result<#struct_name, ::vulkano::OomError>
             {
+                #include_bytes
+
                 #( #cap_checks )*
                 static WORDS: &[u32] = &[ #( #spirv ),* ];
 
