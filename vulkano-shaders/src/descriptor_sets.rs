@@ -674,7 +674,7 @@ mod tests {
     fn test_descriptor_calculation_with_multiple_functions() {
         let includes: [PathBuf; 0] = [];
         let defines: [(String, String); 0] = [];
-        let comp = compile(
+        let (comp, _) = compile(
             None,
             &Path::new(""),
             "
