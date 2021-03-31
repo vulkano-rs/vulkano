@@ -1,4 +1,8 @@
 # Unreleased
+<!--
+    Please add new changes at the bottom, preceded by a hyphen -.
+    Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
+-->
 
 # Version 0.22.0 (2021-03-31)
 
@@ -24,6 +28,7 @@
 - **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself).
 - **Breaking** The `CommandBuffer` trait no longer has the `PoolAlloc` associated type, and has four new methods: `num_buffers`, `buffer`, `num_images` and `image`.
 - **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
+- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 - Allow `const` usage of features and `BufferUsage`.
@@ -33,7 +38,6 @@
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 - `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
-- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 - Added a `dispatch_indirect` command to `AutoCommandBufferBuilder`.
 
 # Version 0.21.0 (2021-03-05)
