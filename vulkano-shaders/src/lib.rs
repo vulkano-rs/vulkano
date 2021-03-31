@@ -574,23 +574,27 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             "Shader",
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
             input.types_meta,
+            None,
             input.dump,
         )
         .unwrap()
         .into()
     } else {
-        let (path, source_code) = match input.source_kind {
-            SourceKind::Src(source) => (None, source),
-            SourceKind::Path(path) => (Some(path.clone()), {
+        let (path, full_path, source_code) = match input.source_kind {
+            SourceKind::Src(source) => (None, None, source),
+            SourceKind::Path(path) => {
                 let full_path = root_path.join(&path);
 
                 if full_path.is_file() {
+                    (Some(path.clone()),
+                     Some(full_path.to_str()
+                          .expect("Path {:?} could not be converted to UTF-8").to_owned()),
                     read_file_to_string(&full_path)
-                        .expect(&format!("Error reading source from {:?}", path))
+                        .expect(&format!("Error reading source from {:?}", path)))
                 } else {
                     panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
                 }
-            }),
+            }
             SourceKind::Bytes(_) => unreachable!(),
         };
 
@@ -617,7 +621,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!("{}", e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect("Shader", content.as_binary(), input.types_meta, input.dump)
+        codegen::reflect("Shader", content.as_binary(), input.types_meta, full_path.as_deref(), input.dump)
             .unwrap()
             .into()
     }
