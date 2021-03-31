@@ -97,7 +97,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
         queue: Arc<Queue>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferFromBufferFuture), DeviceMemoryAllocError>
     where
-        T: 'static + Send + Sync + Sized,
+        T: 'static + Copy + Send + Sync + Sized,
     {
         let source = CpuAccessibleBuffer::from_data(
             queue.device().clone(),

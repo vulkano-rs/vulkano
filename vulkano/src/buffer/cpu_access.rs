@@ -108,7 +108,7 @@ impl<T> CpuAccessibleBuffer<T> {
         data: T,
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError>
     where
-        T: Content + 'static,
+        T: Content + Copy + 'static,
     {
         unsafe {
             let uninitialized = CpuAccessibleBuffer::raw(
@@ -661,6 +661,7 @@ mod tests {
 
         const EMPTY: [i32; 0] = [];
 
-        let _ = CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, EMPTY.iter());
+        let _ = CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, EMPTY);
+        let _ = CpuAccessibleBuffer::from_iter(device, BufferUsage::all(), false, EMPTY.iter());
     }
 }
