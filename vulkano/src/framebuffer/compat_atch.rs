@@ -10,9 +10,9 @@
 //! This module contains the `ensure_image_view_compatible` function, which verifies whether
 //! an image view can be used as a render pass attachment.
 
-use format::Format;
-use framebuffer::RenderPassDesc;
-use image::view::ImageViewAbstract;
+use crate::format::Format;
+use crate::framebuffer::RenderPassDesc;
+use crate::image::view::ImageViewAbstract;
 use std::error;
 use std::fmt;
 
@@ -181,10 +181,10 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
 mod tests {
     use super::ensure_image_view_compatible;
     use super::IncompatibleRenderPassAttachmentError;
-    use format::Format;
-    use framebuffer::EmptySinglePassRenderPassDesc;
-    use image::view::ImageView;
-    use image::AttachmentImage;
+    use crate::format::Format;
+    use crate::framebuffer::EmptySinglePassRenderPassDesc;
+    use crate::image::view::ImageView;
+    use crate::image::AttachmentImage;
 
     #[test]
     fn basic_ok() {

@@ -7,15 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use device::DeviceOwned;
-use format::ClearValue;
-use framebuffer::FramebufferSys;
-use framebuffer::RenderPassDesc;
-use framebuffer::RenderPassSys;
-use image::view::ImageViewAbstract;
-use pipeline::shader::ShaderInterfaceDef;
+use crate::device::DeviceOwned;
+use crate::format::ClearValue;
+use crate::framebuffer::FramebufferSys;
+use crate::framebuffer::RenderPassDesc;
+use crate::framebuffer::RenderPassSys;
+use crate::image::view::ImageViewAbstract;
+use crate::pipeline::shader::ShaderInterfaceDef;
 
-use SafeDeref;
+use crate::SafeDeref;
 
 /// Trait for objects that contain a Vulkan framebuffer object.
 ///

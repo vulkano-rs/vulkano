@@ -1,5 +1,6 @@
 # Unreleased
 
+- **Breaking** Updated all code to Rust 2018 edition.
 - **Breaking** DeviceMemoryBuilder::new() takes in `memory_index` rather than `MemoryType`.
 - Fixed `shader!` generated descriptor set layouts for shader modules with multiple entrypoints.
   - **Breaking** Prefixed `shader!` generated descriptor set `Layout` structs with the name of the entrypoint the layout belongs to. For shaders generated from GLSL source, this means `Layout` has been renamed to `MainLayout`.
@@ -20,6 +21,7 @@
   - `UnsafeImageView` no longer holds image usage information, nor does it check for valid usage.
 - **Breaking** `UnsafeCommandBuffer` and `SyncCommandBuffer` and their corresponding builders and other related types no longer have a type parameter for the command pool allocation, and no longer keep the command pool alive. Their constructors now take an `&UnsafeCommandPoolAlloc`. Users must now ensure that the pool allocation outlives the command buffers and their builders (`AutoCommandBuffer` does this itself).
 - **Breaking** The `CommandBuffer` trait no longer has the `PoolAlloc` associated type, and has four new methods: `num_buffers`, `buffer`, `num_images` and `image`.
+- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 - Replaced deprecated `compare_and_swap` with `compare_exchange`.
 - `UnsafeCommandPoolAlloc` now implements `DeviceOwned`.
 - Allow `const` usage of features and `BufferUsage`.

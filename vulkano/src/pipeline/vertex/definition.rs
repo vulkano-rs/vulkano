@@ -11,11 +11,11 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use format::Format;
-use pipeline::vertex::VertexMemberTy;
-use vk;
-use SafeDeref;
+use crate::buffer::BufferAccess;
+use crate::format::Format;
+use crate::pipeline::vertex::VertexMemberTy;
+use crate::vk;
+use crate::SafeDeref;
 
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
 pub unsafe trait VertexDefinition<I>:
@@ -117,7 +117,7 @@ pub unsafe trait VertexSource<L> {
     // TODO: return error if problem
     // TODO: better than a Vec
     // TODO: return a struct instead
-    fn decode(&self, L) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize);
+    fn decode(&self, list: L) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize);
 }
 
 unsafe impl<L, T> VertexSource<L> for T

@@ -11,10 +11,10 @@ use std::cmp;
 use std::error;
 use std::fmt;
 
-use buffer::TypedBufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use VulkanObject;
+use crate::buffer::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::VulkanObject;
 
 /// Checks whether a copy buffer command is valid.
 ///

@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use device::{Device, DeviceOwned};
-use instance::MemoryType;
-use memory::DedicatedAlloc;
-use memory::DeviceMemory;
-use memory::DeviceMemoryAllocError;
-use memory::MappedDeviceMemory;
-use memory::MemoryRequirements;
+use crate::device::{Device, DeviceOwned};
+use crate::instance::MemoryType;
+use crate::memory::DedicatedAlloc;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MappedDeviceMemory;
+use crate::memory::MemoryRequirements;
 
 pub use self::host_visible::StdHostVisibleMemoryTypePool;
 pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;

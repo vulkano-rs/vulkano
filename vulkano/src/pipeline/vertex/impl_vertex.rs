@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use pipeline::vertex::VertexMemberTy;
+use crate::pipeline::vertex::VertexMemberTy;
 
 /// Implements the `Vertex` trait on a struct.
 ///# Example

@@ -8,7 +8,7 @@
 // according to those terms.
 
 use std::ops::BitOr;
-use vk;
+use crate::vk;
 
 /// Describes the handle type used for Vulkan external memory apis.  This is **not** just a
 /// suggestion.  Check out vkExternalMemoryHandleTypeFlagBits in the Vulkan spec.

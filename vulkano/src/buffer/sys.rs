@@ -34,19 +34,19 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use buffer::BufferUsage;
-use device::Device;
-use device::DeviceOwned;
-use memory::DeviceMemory;
-use memory::DeviceMemoryAllocError;
-use memory::MemoryRequirements;
-use sync::Sharing;
+use crate::buffer::BufferUsage;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MemoryRequirements;
+use crate::sync::Sharing;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Data storage in a GPU-accessible location.
 pub struct UnsafeBuffer {
@@ -520,9 +520,9 @@ mod tests {
     use super::SparseLevel;
     use super::UnsafeBuffer;
 
-    use device::Device;
-    use device::DeviceOwned;
-    use sync::Sharing;
+    use crate::device::Device;
+    use crate::device::DeviceOwned;
+    use crate::sync::Sharing;
 
     #[test]
     fn create() {

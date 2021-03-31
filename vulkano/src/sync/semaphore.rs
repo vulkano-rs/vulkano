@@ -11,13 +11,13 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use vk;
-use OomError;
-use SafeDeref;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -133,8 +133,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use sync::Semaphore;
-    use VulkanObject;
+    use crate::sync::Semaphore;
+    use crate::VulkanObject;
 
     #[test]
     fn semaphore_create() {

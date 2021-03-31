@@ -12,12 +12,12 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use device::Device;
-use instance::Instance;
-use instance::MemoryType;
-use memory::DeviceMemory;
-use memory::DeviceMemoryAllocError;
-use memory::MappedDeviceMemory;
+use crate::device::Device;
+use crate::instance::Instance;
+use crate::instance::MemoryType;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MappedDeviceMemory;
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]

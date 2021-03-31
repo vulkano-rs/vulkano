@@ -17,20 +17,20 @@ use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
-use buffer::BufferAccess;
-use buffer::BufferInner;
-use buffer::BufferView;
-use descriptor::descriptor::DescriptorType;
-use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use device::Device;
-use device::DeviceOwned;
-use image::view::ImageViewAbstract;
-use sampler::Sampler;
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferInner;
+use crate::buffer::BufferView;
+use crate::descriptor::descriptor::DescriptorType;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
+use crate::sampler::Sampler;
 
-use check_errors;
-use vk;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// A pool from which descriptor sets can be allocated.
 ///
@@ -1133,13 +1133,13 @@ impl DescriptorWrite {
 
 #[cfg(test)]
 mod tests {
-    use descriptor::descriptor::DescriptorBufferDesc;
-    use descriptor::descriptor::DescriptorDesc;
-    use descriptor::descriptor::DescriptorDescTy;
-    use descriptor::descriptor::ShaderStages;
-    use descriptor::descriptor_set::DescriptorsCount;
-    use descriptor::descriptor_set::UnsafeDescriptorPool;
-    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use crate::descriptor::descriptor::DescriptorBufferDesc;
+    use crate::descriptor::descriptor::DescriptorDesc;
+    use crate::descriptor::descriptor::DescriptorDescTy;
+    use crate::descriptor::descriptor::ShaderStages;
+    use crate::descriptor::descriptor_set::DescriptorsCount;
+    use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
+    use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
     use std::iter;
 
     #[test]

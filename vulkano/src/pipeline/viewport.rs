@@ -49,7 +49,7 @@
 //!
 
 use std::ops::Range;
-use vk;
+use crate::vk;
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
 ///

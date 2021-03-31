@@ -11,7 +11,7 @@ use std::marker::PhantomPinned;
 use std::pin::Pin;
 use std::{mem, ptr};
 
-use vk;
+use crate::vk;
 
 macro_rules! features_init {
   (core { $name:ident => $vk:ident }, $out:expr, $val:expr) => {

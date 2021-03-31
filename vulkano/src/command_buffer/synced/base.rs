@@ -7,22 +7,29 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use buffer::BufferAccess;
-use command_buffer::pool::UnsafeCommandPoolAlloc;
-use command_buffer::sys::Flags;
-use command_buffer::sys::UnsafeCommandBuffer;
-use command_buffer::sys::UnsafeCommandBufferBuilder;
-use command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
-use command_buffer::CommandBufferExecError;
-use command_buffer::Kind;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
+use crate::buffer::BufferAccess;
+use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
+use crate::command_buffer::sys::Flags;
+use crate::command_buffer::sys::UnsafeCommandBuffer;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
+use crate::command_buffer::CommandBufferExecError;
+use crate::command_buffer::Kind;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::framebuffer::FramebufferAbstract;
+use crate::framebuffer::RenderPassAbstract;
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::sync::AccessCheckError;
+use crate::sync::AccessError;
+use crate::sync::AccessFlagBits;
+use crate::sync::GpuFuture;
+use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStages;
+use crate::OomError;
 use fnv::FnvHashMap;
-use framebuffer::FramebufferAbstract;
-use framebuffer::RenderPassAbstract;
-use image::ImageAccess;
-use image::ImageLayout;
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
@@ -31,13 +38,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::Mutex;
-use sync::AccessCheckError;
-use sync::AccessError;
-use sync::AccessFlagBits;
-use sync::GpuFuture;
-use sync::PipelineMemoryAccess;
-use sync::PipelineStages;
-use OomError;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///

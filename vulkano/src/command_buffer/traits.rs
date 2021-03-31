@@ -7,6 +7,28 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::command_buffer::submit::SubmitAnyBuilder;
+use crate::command_buffer::submit::SubmitCommandBufferBuilder;
+use crate::command_buffer::sys::UnsafeCommandBuffer;
+use crate::command_buffer::Kind;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::framebuffer::{FramebufferAbstract, RenderPassAbstract};
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::sync::now;
+use crate::sync::AccessCheckError;
+use crate::sync::AccessError;
+use crate::sync::AccessFlagBits;
+use crate::sync::FlushError;
+use crate::sync::GpuFuture;
+use crate::sync::NowFuture;
+use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStages;
+use crate::SafeDeref;
+use crate::VulkanObject;
 use std::borrow::Cow;
 use std::error;
 use std::fmt;
@@ -14,29 +36,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-use buffer::BufferAccess;
-use command_buffer::submit::SubmitAnyBuilder;
-use command_buffer::submit::SubmitCommandBufferBuilder;
-use command_buffer::sys::UnsafeCommandBuffer;
-use command_buffer::Kind;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use framebuffer::{FramebufferAbstract, RenderPassAbstract};
-use image::ImageAccess;
-use image::ImageLayout;
-use sync::now;
-use sync::AccessCheckError;
-use sync::AccessError;
-use sync::AccessFlagBits;
-use sync::FlushError;
-use sync::GpuFuture;
-use sync::NowFuture;
-use sync::PipelineMemoryAccess;
-use sync::PipelineStages;
-use SafeDeref;
-use VulkanObject;
 
 pub unsafe trait CommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.

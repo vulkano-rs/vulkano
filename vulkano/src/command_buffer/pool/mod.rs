@@ -16,10 +16,10 @@
 //! trait. By default vulkano will use the `StandardCommandPool` struct, but you can implement
 //! this trait yourself by wrapping around the `UnsafeCommandPool` type.
 
-use instance::QueueFamily;
+use crate::instance::QueueFamily;
 
-use device::DeviceOwned;
-use OomError;
+use crate::device::DeviceOwned;
+use crate::OomError;
 
 pub use self::standard::StandardCommandPool;
 pub use self::sys::CommandPoolTrimError;

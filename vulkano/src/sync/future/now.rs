@@ -9,18 +9,18 @@
 
 use std::sync::Arc;
 
-use buffer::BufferAccess;
-use command_buffer::submit::SubmitAnyBuilder;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use image::ImageAccess;
-use image::ImageLayout;
-use sync::AccessCheckError;
-use sync::AccessFlagBits;
-use sync::FlushError;
-use sync::GpuFuture;
-use sync::PipelineStages;
+use crate::buffer::BufferAccess;
+use crate::command_buffer::submit::SubmitAnyBuilder;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::sync::AccessCheckError;
+use crate::sync::AccessFlagBits;
+use crate::sync::FlushError;
+use crate::sync::GpuFuture;
+use crate::sync::PipelineStages;
 
 /// Builds a future that represents "now".
 #[inline]

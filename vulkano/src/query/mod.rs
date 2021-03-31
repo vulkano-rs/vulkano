@@ -19,14 +19,14 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
-use device::DeviceOwned;
+use crate::device::Device;
+use crate::device::DeviceOwned;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 pub struct UnsafeQueryPool {
     pool: vk::QueryPool,
@@ -364,11 +364,11 @@ unsafe impl DeviceOwned for OcclusionQueriesPool {
 
 #[cfg(test)]
 mod tests {
-    use query::OcclusionQueriesPool;
-    use query::QueryPipelineStatisticFlags;
-    use query::QueryPoolCreationError;
-    use query::QueryType;
-    use query::UnsafeQueryPool;
+    use crate::query::OcclusionQueriesPool;
+    use crate::query::QueryPipelineStatisticFlags;
+    use crate::query::QueryPoolCreationError;
+    use crate::query::QueryType;
+    use crate::query::UnsafeQueryPool;
 
     #[test]
     fn occlusion_create() {

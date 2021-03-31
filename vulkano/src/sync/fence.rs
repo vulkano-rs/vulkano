@@ -17,15 +17,15 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use vk;
-use Error;
-use OomError;
-use SafeDeref;
-use Success;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::Success;
+use crate::VulkanObject;
 
 /// A fence is used to know when a command buffer submission has finished its execution.
 ///
@@ -403,8 +403,8 @@ impl From<Error> for FenceWaitError {
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
-    use sync::Fence;
-    use VulkanObject;
+    use crate::sync::Fence;
+    use crate::VulkanObject;
 
     #[test]
     fn fence_create() {

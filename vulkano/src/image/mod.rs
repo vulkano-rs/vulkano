@@ -486,10 +486,10 @@ impl ImageDimensions {
 
 #[cfg(test)]
 mod tests {
-    use format;
-    use image::ImageDimensions;
-    use image::ImmutableImage;
-    use image::MipmapsCount;
+    use crate::format;
+    use crate::image::ImageDimensions;
+    use crate::image::ImmutableImage;
+    use crate::image::MipmapsCount;
 
     #[test]
     fn max_mipmaps() {

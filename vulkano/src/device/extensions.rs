@@ -14,11 +14,11 @@ use std::iter::FromIterator;
 use std::ptr;
 use std::str;
 
-use check_errors;
-use extensions::SupportedExtensionsError;
-use instance::PhysicalDevice;
-use vk;
-use VulkanObject;
+use crate::check_errors;
+use crate::extensions::SupportedExtensionsError;
+use crate::instance::PhysicalDevice;
+use crate::vk;
+use crate::VulkanObject;
 
 macro_rules! device_extensions {
     ($sname:ident, $rawname:ident, [$($ext_req_if_supported:ident,)*], $($ext:ident => $s:expr,)*) => (
@@ -155,7 +155,7 @@ pub struct Unbuildable(());
 
 #[cfg(test)]
 mod tests {
-    use device::{DeviceExtensions, RawDeviceExtensions};
+    use crate::device::{DeviceExtensions, RawDeviceExtensions};
 
     #[test]
     fn empty_extensions() {

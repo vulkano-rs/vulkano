@@ -11,13 +11,13 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use vk;
-use OomError;
-use Success;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::OomError;
+use crate::Success;
+use crate::VulkanObject;
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -191,8 +191,8 @@ impl Drop for Event {
 
 #[cfg(test)]
 mod tests {
-    use sync::Event;
-    use VulkanObject;
+    use crate::sync::Event;
+    use crate::VulkanObject;
 
     #[test]
     fn event_create() {

@@ -10,10 +10,10 @@
 use std::error;
 use std::fmt;
 
-use buffer::BufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use VulkanObject;
+use crate::buffer::BufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::VulkanObject;
 
 /// Checks whether a fill buffer command is valid.
 ///
@@ -72,8 +72,8 @@ impl fmt::Display for CheckFillBufferError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use buffer::BufferUsage;
-    use buffer::CpuAccessibleBuffer;
+    use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
 
     #[test]
     fn missing_usage() {

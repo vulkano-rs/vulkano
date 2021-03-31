@@ -13,19 +13,19 @@ use std::fmt;
 use std::marker::PhantomData;
 use std::ptr;
 
-use buffer::sys::UnsafeBuffer;
-use device::Queue;
-use image::sys::UnsafeImage;
-use memory::DeviceMemory;
-use sync::Fence;
-use sync::Semaphore;
+use crate::buffer::sys::UnsafeBuffer;
+use crate::device::Queue;
+use crate::image::sys::UnsafeImage;
+use crate::memory::DeviceMemory;
+use crate::sync::Fence;
+use crate::sync::Semaphore;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use SynchronizedVulkanObject;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SynchronizedVulkanObject;
+use crate::VulkanObject;
 
 // TODO: correctly implement Debug on all the structs of this module
 

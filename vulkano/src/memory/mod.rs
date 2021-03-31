@@ -89,9 +89,9 @@ use std::mem;
 use std::os::raw::c_void;
 use std::slice;
 
-use buffer::sys::UnsafeBuffer;
-use image::sys::UnsafeImage;
-use vk;
+use crate::buffer::sys::UnsafeBuffer;
+use crate::image::sys::UnsafeImage;
+use crate::vk;
 
 pub use self::device_memory::CpuAccess;
 pub use self::device_memory::DeviceMemory;
@@ -166,7 +166,7 @@ pub unsafe trait Content {
     fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut Self>;
 
     /// Returns true if the size is suitable to store a type like this.
-    fn is_size_suitable(usize) -> bool;
+    fn is_size_suitable(size: usize) -> bool;
 
     /// Returns the size of an individual element.
     fn indiv_size() -> usize;

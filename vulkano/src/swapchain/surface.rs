@@ -15,22 +15,22 @@ use std::ptr;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use format::Format;
-use image::ImageUsage;
-use instance::Instance;
-use instance::PhysicalDevice;
-use instance::QueueFamily;
-use swapchain::capabilities;
-use swapchain::display::DisplayMode;
-use swapchain::display::DisplayPlane;
-use swapchain::Capabilities;
-use swapchain::SurfaceSwapchainLock;
+use crate::format::Format;
+use crate::image::ImageUsage;
+use crate::instance::Instance;
+use crate::instance::PhysicalDevice;
+use crate::instance::QueueFamily;
+use crate::swapchain::capabilities;
+use crate::swapchain::display::DisplayMode;
+use crate::swapchain::display::DisplayPlane;
+use crate::swapchain::Capabilities;
+use crate::swapchain::SurfaceSwapchainLock;
 
-use check_errors;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Represents a surface on the screen.
 ///
@@ -811,8 +811,8 @@ impl From<Error> for CapabilitiesError {
 #[cfg(test)]
 mod tests {
     use std::ptr;
-    use swapchain::Surface;
-    use swapchain::SurfaceCreationError;
+    use crate::swapchain::Surface;
+    use crate::swapchain::SurfaceCreationError;
 
     #[test]
     fn khr_win32_surface_ext_missing() {

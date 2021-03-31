@@ -16,15 +16,15 @@ use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
 
-use instance::QueueFamily;
+use crate::instance::QueueFamily;
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Low-level implementation of a command pool.
 ///
@@ -352,8 +352,8 @@ impl From<Error> for CommandPoolTrimError {
 
 #[cfg(test)]
 mod tests {
-    use command_buffer::pool::CommandPoolTrimError;
-    use command_buffer::pool::UnsafeCommandPool;
+    use crate::command_buffer::pool::CommandPoolTrimError;
+    use crate::command_buffer::pool::UnsafeCommandPool;
 
     #[test]
     fn basic_create() {

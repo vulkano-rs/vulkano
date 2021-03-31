@@ -12,7 +12,7 @@
 /// Creates an instance or returns if initialization fails.
 macro_rules! instance {
     () => {{
-        use instance;
+        use crate::instance;
 
         match instance::Instance::new(None, &instance::InstanceExtensions::none(), None) {
             Ok(i) => i,
@@ -24,10 +24,10 @@ macro_rules! instance {
 /// Creates a device and a queue for graphics operations.
 macro_rules! gfx_dev_and_queue {
     ($($feature:ident),*) => ({
-        use instance;
-        use device::Device;
-        use device::DeviceExtensions;
-        use features::Features;
+        use crate::instance;
+        use crate::device::Device;
+        use crate::device::DeviceExtensions;
+        use crate::features::Features;
 
         let instance = instance!();
 

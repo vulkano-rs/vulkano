@@ -10,12 +10,12 @@
 use std::error;
 use std::fmt;
 
-use device::Device;
-use format::FormatTy;
-use image::ImageAccess;
-use image::ImageDimensions;
-use sampler::Filter;
-use VulkanObject;
+use crate::device::Device;
+use crate::format::FormatTy;
+use crate::image::ImageAccess;
+use crate::image::ImageDimensions;
+use crate::sampler::Filter;
+use crate::VulkanObject;
 
 /// Checks whether a blit image command is valid.
 ///

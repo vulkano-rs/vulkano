@@ -9,20 +9,20 @@
 
 use std::sync::Arc;
 
-use device::Device;
-use format::ClearValue;
-use format::Format;
-use format::FormatTy;
-use framebuffer::RenderPass;
-use framebuffer::RenderPassCompatible;
-use framebuffer::RenderPassCreationError;
-use framebuffer::RenderPassDescClearValues;
-use image::ImageLayout;
-use sync::AccessFlagBits;
-use sync::PipelineStages;
+use crate::device::Device;
+use crate::format::ClearValue;
+use crate::format::Format;
+use crate::format::FormatTy;
+use crate::framebuffer::RenderPass;
+use crate::framebuffer::RenderPassCompatible;
+use crate::framebuffer::RenderPassCreationError;
+use crate::framebuffer::RenderPassDescClearValues;
+use crate::image::ImageLayout;
+use crate::sync::AccessFlagBits;
+use crate::sync::PipelineStages;
 
-use vk;
-use SafeDeref;
+use crate::vk;
+use crate::SafeDeref;
 
 /// Trait for objects that contain the description of a render pass.
 ///

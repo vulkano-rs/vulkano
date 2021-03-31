@@ -15,28 +15,28 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use descriptor::pipeline_layout::PipelineLayout;
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use descriptor::pipeline_layout::PipelineLayoutCreationError;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
-use descriptor::pipeline_layout::PipelineLayoutSuperset;
-use descriptor::pipeline_layout::PipelineLayoutSys;
-use pipeline::cache::PipelineCache;
-use pipeline::shader::EntryPointAbstract;
-use pipeline::shader::SpecializationConstants;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor::pipeline_layout::PipelineLayout;
+use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::descriptor::pipeline_layout::PipelineLayoutCreationError;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
+use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
+use crate::descriptor::pipeline_layout::PipelineLayoutSys;
+use crate::pipeline::cache::PipelineCache;
+use crate::pipeline::shader::EntryPointAbstract;
+use crate::pipeline::shader::SpecializationConstants;
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use vk;
-use Error;
-use OomError;
-use SafeDeref;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -406,25 +406,25 @@ impl From<Error> for ComputePipelineCreationError {
 
 #[cfg(test)]
 mod tests {
-    use buffer::BufferUsage;
-    use buffer::CpuAccessibleBuffer;
-    use command_buffer::AutoCommandBufferBuilder;
-    use descriptor::descriptor::DescriptorBufferDesc;
-    use descriptor::descriptor::DescriptorDesc;
-    use descriptor::descriptor::DescriptorDescTy;
-    use descriptor::descriptor::ShaderStages;
-    use descriptor::descriptor_set::PersistentDescriptorSet;
-    use descriptor::pipeline_layout::PipelineLayoutAbstract;
-    use descriptor::pipeline_layout::PipelineLayoutDesc;
-    use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-    use pipeline::shader::ShaderModule;
-    use pipeline::shader::SpecializationConstants;
-    use pipeline::shader::SpecializationMapEntry;
-    use pipeline::ComputePipeline;
+    use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
+    use crate::command_buffer::AutoCommandBufferBuilder;
+    use crate::descriptor::descriptor::DescriptorBufferDesc;
+    use crate::descriptor::descriptor::DescriptorDesc;
+    use crate::descriptor::descriptor::DescriptorDescTy;
+    use crate::descriptor::descriptor::ShaderStages;
+    use crate::descriptor::descriptor_set::PersistentDescriptorSet;
+    use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+    use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+    use crate::pipeline::shader::ShaderModule;
+    use crate::pipeline::shader::SpecializationConstants;
+    use crate::pipeline::shader::SpecializationMapEntry;
+    use crate::pipeline::ComputePipeline;
     use std::ffi::CStr;
     use std::sync::Arc;
-    use sync::now;
-    use sync::GpuFuture;
+    use crate::sync::now;
+    use crate::sync::GpuFuture;
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error

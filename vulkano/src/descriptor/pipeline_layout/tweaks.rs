@@ -7,11 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use descriptor::descriptor::DescriptorBufferDesc;
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor::DescriptorDescTy;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use crate::descriptor::descriptor::DescriptorBufferDesc;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::descriptor::DescriptorDescTy;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use fnv::FnvHashSet;
 
 /// Transforms a `PipelineLayoutDesc`.

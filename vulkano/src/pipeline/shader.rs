@@ -30,16 +30,16 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-use descriptor::pipeline_layout::EmptyPipelineDesc;
-use descriptor::pipeline_layout::PipelineLayoutDesc;
-use format::Format;
-use pipeline::input_assembly::PrimitiveTopology;
+use crate::descriptor::pipeline_layout::EmptyPipelineDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::format::Format;
+use crate::pipeline::input_assembly::PrimitiveTopology;
 
-use check_errors;
-use device::Device;
-use vk;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 
 /// Contains SPIR-V code with one or more entry points.
 ///

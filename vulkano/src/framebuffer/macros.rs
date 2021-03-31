@@ -336,7 +336,7 @@ macro_rules! ordered_passes_renderpass {
 
 #[cfg(test)]
 mod tests {
-    use format::Format;
+    use crate::format::Format;
 
     #[test]
     fn single_pass_resolve() {

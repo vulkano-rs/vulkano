@@ -12,10 +12,10 @@ use std::error;
 use std::fmt;
 use std::mem;
 
-use buffer::TypedBufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use VulkanObject;
+use crate::buffer::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::VulkanObject;
 
 /// Checks whether an update buffer command is valid.
 ///
@@ -93,9 +93,9 @@ impl fmt::Display for CheckUpdateBufferError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use buffer::BufferAccess;
-    use buffer::BufferUsage;
-    use buffer::CpuAccessibleBuffer;
+    use crate::buffer::BufferAccess;
+    use crate::buffer::BufferUsage;
+    use crate::buffer::CpuAccessibleBuffer;
 
     #[test]
     fn missing_usage() {

@@ -10,9 +10,9 @@
 use std::error;
 use std::fmt;
 
-use instance::loader::LoadingError;
-use Error;
-use OomError;
+use crate::instance::loader::LoadingError;
+use crate::Error;
+use crate::OomError;
 
 macro_rules! extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (

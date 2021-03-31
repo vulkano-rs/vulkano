@@ -10,14 +10,14 @@
 use std::error;
 use std::fmt;
 
-use buffer::TypedBufferAccess;
-use device::Device;
-use device::DeviceOwned;
-use format::AcceptsPixels;
-use format::Format;
-use format::IncompatiblePixelsType;
-use image::ImageAccess;
-use VulkanObject;
+use crate::buffer::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::AcceptsPixels;
+use crate::format::Format;
+use crate::format::IncompatiblePixelsType;
+use crate::image::ImageAccess;
+use crate::VulkanObject;
 
 /// Type of operation to check.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -141,7 +141,7 @@ where
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
-    use command_buffer::validity::copy_image_buffer::required_len_for_format;
+    use crate::command_buffer::validity::copy_image_buffer::required_len_for_format;
 
     #[test]
     fn test_required_len_for_format() {

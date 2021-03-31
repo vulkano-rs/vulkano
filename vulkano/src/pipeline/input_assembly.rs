@@ -12,7 +12,7 @@
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 //!
 
-use vk;
+use crate::vk;
 
 /// How the input assembly stage should behave.
 #[derive(Copy, Clone, Debug)]

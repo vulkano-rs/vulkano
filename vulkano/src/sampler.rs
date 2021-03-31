@@ -68,15 +68,15 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
-pub use pipeline::depth_stencil::Compare;
+pub use crate::pipeline::depth_stencil::Compare;
 
 /// Describes how to retrieve data from an image within a shader.
 pub struct Sampler {
@@ -776,7 +776,7 @@ impl From<Error> for SamplerCreationError {
 
 #[cfg(test)]
 mod tests {
-    use sampler;
+    use crate::sampler;
 
     #[test]
     fn create_regular() {

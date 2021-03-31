@@ -126,7 +126,7 @@ pub use self::layers::LayersIterator;
 pub use self::layers::LayersListError;
 pub use self::limits::Limits;
 pub use self::loader::LoadingError;
-pub use version::Version;
+pub use crate::version::Version;
 
 pub mod debug;
 pub mod loader;

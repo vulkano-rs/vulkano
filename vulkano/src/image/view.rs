@@ -22,20 +22,20 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-use device::Device;
-use format::Format;
-use format::FormatTy;
-use image::sys::UnsafeImage;
-use image::ImageAccess;
-use image::ImageDimensions;
-use memory::DeviceMemoryAllocError;
-use sampler::Sampler;
+use crate::device::Device;
+use crate::format::Format;
+use crate::format::FormatTy;
+use crate::image::sys::UnsafeImage;
+use crate::image::ImageAccess;
+use crate::image::ImageDimensions;
+use crate::memory::DeviceMemoryAllocError;
+use crate::sampler::Sampler;
 
-use check_errors;
-use vk;
-use OomError;
-use SafeDeref;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 
 /// A safe image view that checks for validity and keeps its attached image alive.
 pub struct ImageView<I>

@@ -24,17 +24,17 @@ use std::fs::File;
 #[cfg(target_os = "linux")]
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 
-use check_errors;
-use device::Device;
-use device::DeviceOwned;
-use instance::MemoryType;
-use memory::Content;
-use memory::DedicatedAlloc;
-use memory::ExternalMemoryHandleType;
-use vk;
-use Error;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::instance::MemoryType;
+use crate::memory::Content;
+use crate::memory::DedicatedAlloc;
+use crate::memory::ExternalMemoryHandleType;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 
 pub struct BaseOutStructure {
     pub s_type: i32,
@@ -1050,9 +1050,9 @@ impl From<OomError> for DeviceMemoryAllocError {
 
 #[cfg(test)]
 mod tests {
-    use memory::DeviceMemory;
-    use memory::DeviceMemoryAllocError;
-    use OomError;
+    use crate::memory::DeviceMemory;
+    use crate::memory::DeviceMemoryAllocError;
+    use crate::OomError;
 
     #[test]
     fn create() {

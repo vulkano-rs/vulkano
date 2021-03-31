@@ -10,10 +10,10 @@
 use std::error;
 use std::fmt;
 
-use buffer::BufferAccess;
-use device::DeviceOwned;
-use pipeline::vertex::VertexSource;
-use VulkanObject;
+use crate::buffer::BufferAccess;
+use crate::device::DeviceOwned;
+use crate::pipeline::vertex::VertexSource;
+use crate::VulkanObject;
 
 /// Checks whether vertex buffers can be bound.
 ///

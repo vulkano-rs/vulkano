@@ -13,16 +13,16 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use check_errors;
-use vk;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 
-use descriptor::descriptor::DescriptorDesc;
-use descriptor::descriptor_set::DescriptorSetDesc;
-use descriptor::descriptor_set::DescriptorsCount;
-use device::Device;
-use device::DeviceOwned;
+use crate::descriptor::descriptor::DescriptorDesc;
+use crate::descriptor::descriptor_set::DescriptorSetDesc;
+use crate::descriptor::descriptor_set::DescriptorsCount;
+use crate::device::Device;
+use crate::device::DeviceOwned;
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 ///
@@ -168,12 +168,12 @@ impl Drop for UnsafeDescriptorSetLayout {
 
 #[cfg(test)]
 mod tests {
-    use descriptor::descriptor::DescriptorBufferDesc;
-    use descriptor::descriptor::DescriptorDesc;
-    use descriptor::descriptor::DescriptorDescTy;
-    use descriptor::descriptor::ShaderStages;
-    use descriptor::descriptor_set::DescriptorsCount;
-    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use crate::descriptor::descriptor::DescriptorBufferDesc;
+    use crate::descriptor::descriptor::DescriptorDesc;
+    use crate::descriptor::descriptor::DescriptorDescTy;
+    use crate::descriptor::descriptor::ShaderStages;
+    use crate::descriptor::descriptor_set::DescriptorsCount;
+    use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
     use std::iter;
 
     #[test]

@@ -10,8 +10,8 @@
 use std::error;
 use std::fmt;
 
-use descriptor::pipeline_layout::PipelineLayoutAbstract;
-use descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
+use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
 
 /// Checks whether push constants are compatible with the pipeline.
 pub fn check_push_constants_validity<Pl, Pc>(

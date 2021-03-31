@@ -33,15 +33,15 @@ use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter;
 
-use instance::Instance;
-use instance::PhysicalDevice;
-use swapchain::capabilities;
-use swapchain::SupportedSurfaceTransforms;
+use crate::instance::Instance;
+use crate::instance::PhysicalDevice;
+use crate::swapchain::capabilities;
+use crate::swapchain::SupportedSurfaceTransforms;
 
-use check_errors;
-use vk;
-use OomError;
-use VulkanObject;
+use crate::check_errors;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 
 // TODO: extract this to a `display` module and solve the visibility problems
 

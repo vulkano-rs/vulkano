@@ -12,21 +12,21 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use buffer::BufferAccess;
-use command_buffer::submit::SubmitAnyBuilder;
-use command_buffer::submit::SubmitCommandBufferBuilder;
-use command_buffer::submit::SubmitSemaphoresWaitBuilder;
-use device::Device;
-use device::DeviceOwned;
-use device::Queue;
-use image::ImageAccess;
-use image::ImageLayout;
-use sync::AccessCheckError;
-use sync::AccessFlagBits;
-use sync::FlushError;
-use sync::GpuFuture;
-use sync::PipelineStages;
-use sync::Semaphore;
+use crate::buffer::BufferAccess;
+use crate::command_buffer::submit::SubmitAnyBuilder;
+use crate::command_buffer::submit::SubmitCommandBufferBuilder;
+use crate::command_buffer::submit::SubmitSemaphoresWaitBuilder;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::image::ImageAccess;
+use crate::image::ImageLayout;
+use crate::sync::AccessCheckError;
+use crate::sync::AccessFlagBits;
+use crate::sync::FlushError;
+use crate::sync::GpuFuture;
+use crate::sync::PipelineStages;
+use crate::sync::Semaphore;
 
 /// Builds a new semaphore signal future.
 #[inline]
