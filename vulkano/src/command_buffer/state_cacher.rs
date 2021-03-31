@@ -368,13 +368,9 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf = CpuAccessibleBuffer::from_data(
-            device,
-            BufferUsage::vertex_buffer(),
-            false,
-            EMPTY.iter(),
-        )
-        .unwrap();
+        let buf =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY)
+                .unwrap();
 
         let mut cacher = StateCacher::new();
 
@@ -396,13 +392,9 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         const EMPTY: [i32; 0] = [];
-        let buf = CpuAccessibleBuffer::from_data(
-            device,
-            BufferUsage::vertex_buffer(),
-            false,
-            EMPTY.iter(),
-        )
-        .unwrap();
+        let buf =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY)
+                .unwrap();
 
         let mut cacher = StateCacher::new();
 
@@ -436,23 +428,19 @@ mod tests {
             device.clone(),
             BufferUsage::vertex_buffer(),
             false,
-            EMPTY.iter(),
+            EMPTY,
         )
         .unwrap();
         let buf2 = CpuAccessibleBuffer::from_data(
             device.clone(),
             BufferUsage::vertex_buffer(),
             false,
-            EMPTY.iter(),
+            EMPTY,
         )
         .unwrap();
-        let buf3 = CpuAccessibleBuffer::from_data(
-            device,
-            BufferUsage::vertex_buffer(),
-            false,
-            EMPTY.iter(),
-        )
-        .unwrap();
+        let buf3 =
+            CpuAccessibleBuffer::from_data(device, BufferUsage::vertex_buffer(), false, EMPTY)
+                .unwrap();
 
         let mut cacher = StateCacher::new();
 

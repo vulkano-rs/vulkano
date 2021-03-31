@@ -29,6 +29,10 @@
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 - `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
+- Fixed missing barriers in dispatch calls
+  - **Breaking** `shader!` no longer marks descriptor sets as readonly as a fallback when it doesn't know
+    - **Breaking** The keyword `readonly` might need to be added in front of the `buffer` keyword in GLSL files to get them working again
+- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 - Added a `dispatch_indirect` command to `AutoCommandBufferBuilder`.
 
 # Version 0.21.0 (2021-03-05)
