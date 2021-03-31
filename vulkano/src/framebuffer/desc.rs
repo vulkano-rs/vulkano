@@ -443,7 +443,7 @@ where
 }
 
 /// Describes an attachment that will be used in a render pass.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct AttachmentDescription {
     /// Format of the image that is going to be bound.
     pub format: Format,
@@ -530,7 +530,7 @@ pub struct PassDescription {
 /// The implementation is allowed to change the order of the passes within a render pass, unless
 /// you specify that there exists a dependency between two passes (ie. the result of one will be
 /// used as the input of another one).
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct PassDependencyDescription {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,

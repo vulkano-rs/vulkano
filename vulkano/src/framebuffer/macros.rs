@@ -64,273 +64,142 @@ macro_rules! ordered_passes_renderpass {
     ) => ({
         use $crate::framebuffer::RenderPassDesc;
 
-        mod scope {
-            #![allow(non_camel_case_types)]
-            #![allow(non_snake_case)]
-
-            use $crate::format::ClearValue;
-            use $crate::format::Format;
-            use $crate::framebuffer::RenderPassDesc;
-            use $crate::framebuffer::RenderPassDescClearValues;
+        let desc = {
             use $crate::framebuffer::AttachmentDescription;
-            use $crate::framebuffer::PassDescription;
             use $crate::framebuffer::PassDependencyDescription;
+            use $crate::framebuffer::PassDescription;
+            use $crate::framebuffer::RenderPassDescReal;
             use $crate::image::ImageLayout;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
 
-            pub struct CustomRenderPassDesc {
-                $(
-                    pub $atch_name: (Format, u32),
-                )*
-            }
-
-            #[allow(unsafe_code)]
-            unsafe impl RenderPassDesc for CustomRenderPassDesc {
-                #[inline]
-                fn num_attachments(&self) -> usize {
-                    num_attachments()
-                }
-
-                #[inline]
-                fn attachment_desc(&self, id: usize) -> Option<AttachmentDescription> {
-                    attachment(self, id)
-                }
-
-                #[inline]
-                fn num_subpasses(&self) -> usize {
-                    num_subpasses()
-                }
-
-                #[inline]
-                fn subpass_desc(&self, id: usize) -> Option<PassDescription> {
-                    subpass(id)
-                }
-
-                #[inline]
-                fn num_dependencies(&self) -> usize {
-                    num_dependencies()
-                }
-
-                #[inline]
-                fn dependency_desc(&self, id: usize) -> Option<PassDependencyDescription> {
-                    dependency(id)
-                }
-            }
-
-            unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for CustomRenderPassDesc {
-                fn convert_clear_values(&self, values: Vec<ClearValue>) -> Box<dyn Iterator<Item = ClearValue>> {
-                    // FIXME: safety checks
-                    Box::new(values.into_iter())
-                }
-            }
-
-            #[inline]
-            fn num_attachments() -> usize {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-                let mut num = 0;
-                $(let $atch_name = num; num += 1;)*
-                num
-            }
-
-            #[inline]
-            fn attachment(desc: &CustomRenderPassDesc, id: usize) -> Option<AttachmentDescription> {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-
-                let mut num = 0;
-
-                $({
-                    if id == num {
-                        let (initial_layout, final_layout) = attachment_layouts(num);
-
-                        return Some($crate::framebuffer::AttachmentDescription {
-                            format: desc.$atch_name.0,
-                            samples: desc.$atch_name.1,
-                            load: $crate::framebuffer::LoadOp::$load,
-                            store: $crate::framebuffer::StoreOp::$store,
-                            stencil_load: $crate::framebuffer::LoadOp::$load,
-                            stencil_store: $crate::framebuffer::StoreOp::$store,
-                            initial_layout: initial_layout,
-                            final_layout: final_layout,
-                        });
-                    }
-
-                    num += 1;
-                })*
-
-                None
-            }
-
-            #[inline]
-            fn num_subpasses() -> usize {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-                let mut num = 0;
-                $($(let $color_atch = num;)* num += 1;)*
-                num
-            }
-
-            #[inline]
-            fn subpass(id: usize) -> Option<PassDescription> {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-
-                let mut attachment_num = 0;
-                $(
-                    let $atch_name = attachment_num;
-                    attachment_num += 1;
-                )*
-
-                let mut cur_pass_num = 0;
-
-                $({
-                    if id == cur_pass_num {
-                        let mut depth = None;
-                        $(
-                            depth = Some(($depth_atch, ImageLayout::DepthStencilAttachmentOptimal));
-                        )*
-
-                        let mut desc = PassDescription {
-                            color_attachments: vec![
-                                $(
-                                    ($color_atch, ImageLayout::ColorAttachmentOptimal)
-                                ),*
-                            ],
-                            depth_stencil: depth,
-                            input_attachments: vec![
-                                $(
-                                    ($input_atch, ImageLayout::ShaderReadOnlyOptimal)
-                                ),*
-                            ],
-                            resolve_attachments: vec![
-                                $($(
-                                    ($resolve_atch, ImageLayout::TransferDstOptimal)
-                                ),*)*
-                            ],
-                            preserve_attachments: (0 .. attachment_num).filter(|&a| {
-                                $(if a == $color_atch { return false; })*
-                                $(if a == $depth_atch { return false; })*
-                                $(if a == $input_atch { return false; })*
-                                $($(if a == $resolve_atch { return false; })*)*
-                                true
-                            }).collect()
-                        };
-
-                        assert!(desc.resolve_attachments.is_empty() ||
-                                desc.resolve_attachments.len() == desc.color_attachments.len());
-                        return Some(desc);
-                    }
-
-                    cur_pass_num += 1;
-                })*
-
-                None
-            }
-
-            #[inline]
-            fn num_dependencies() -> usize {
-                num_subpasses().saturating_sub(1)
-            }
-
-            #[inline]
-            fn dependency(id: usize) -> Option<PassDependencyDescription> {
-                let num_passes = num_subpasses();
-
-                if id + 1 >= num_passes {
-                    return None;
-                }
-
-                Some(PassDependencyDescription {
-                    source_subpass: id,
-                    destination_subpass: id + 1,
-                    source_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
-                    destination_stages: PipelineStages { all_graphics: true, .. PipelineStages::none() },         // TODO: correct values
-                    source_access: AccessFlagBits::all(),         // TODO: correct values
-                    destination_access: AccessFlagBits::all(),         // TODO: correct values
-                    by_region: true,            // TODO: correct values
-                })
-            }
-
-            /// Returns the initial and final layout of an attachment, given its num.
-            ///
-            /// The value always correspond to the first and last usages of an attachment.
-            fn attachment_layouts(num: usize) -> (ImageLayout, ImageLayout) {
-                #![allow(unused_assignments)]
-                #![allow(unused_mut)]
-                #![allow(unused_variables)]
-
-                let mut attachment_num = 0;
-                $(
-                    let $atch_name = attachment_num;
-                    attachment_num += 1;
-                )*
-
-                let mut initial_layout = None;
-                let mut final_layout = None;
-
-                $({
-                    $(
-                        if $depth_atch == num {
-                            if initial_layout.is_none() {
-                                initial_layout = Some(ImageLayout::DepthStencilAttachmentOptimal);
-                            }
-                            final_layout = Some(ImageLayout::DepthStencilAttachmentOptimal);
-                        }
-                    )*
-
-                    $(
-                        if $color_atch == num {
-                            if initial_layout.is_none() {
-                                initial_layout = Some(ImageLayout::ColorAttachmentOptimal);
-                            }
-                            final_layout = Some(ImageLayout::ColorAttachmentOptimal);
-                        }
-                    )*
-
-                    $($(
-                        if $resolve_atch == num {
-                            if initial_layout.is_none() {
-                                initial_layout = Some(ImageLayout::TransferDstOptimal);
-                            }
-                            final_layout = Some(ImageLayout::TransferDstOptimal);
-                        }
-                    )*)*
-
-                    $(
-                        if $input_atch == num {
-                            if initial_layout.is_none() {
-                                initial_layout = Some(ImageLayout::ShaderReadOnlyOptimal);
-                            }
-                            final_layout = Some(ImageLayout::ShaderReadOnlyOptimal);
-                        }
-                    )*
-                })*
-
-                $(if $atch_name == num {
-                    $(initial_layout = Some($init_layout);)*
-                    $(final_layout = Some($final_layout);)*
-                })*
-                (
-                    initial_layout.expect(format!("Attachment {} is missing initial_layout, this is normally \
-                        automatically determined but you can manually specify it for an individual \
-                        attachment in the single_pass_renderpass! macro", attachment_num).as_ref()),
-                    final_layout.expect(format!("Attachment {} is missing final_layout, this is normally \
-                        automatically determined but you can manually specify it for an individual \
-                        attachment in the single_pass_renderpass! macro", attachment_num).as_ref())
-                )
-            }
-        }
-
-        scope::CustomRenderPassDesc {
+            let mut attachment_num = 0;
             $(
-                $atch_name: ($format, $samples),
+                let $atch_name = attachment_num;
+                attachment_num += 1;
             )*
-        }.build_render_pass($device)
+
+            let mut layouts: Vec<(Option<ImageLayout>, Option<ImageLayout>)> = vec![(None, None); attachment_num];
+
+            let subpasses = vec![
+                $({
+                    let desc = PassDescription {
+                        color_attachments: vec![
+                            $({
+                                let layout = &mut layouts[$color_atch];
+                                layout.0 = layout.0.or(Some(ImageLayout::ColorAttachmentOptimal));
+                                layout.1 = Some(ImageLayout::ColorAttachmentOptimal);
+
+                                ($color_atch, ImageLayout::ColorAttachmentOptimal)
+                            }),*
+                        ],
+                        depth_stencil: {
+                            let depth: Option<(usize, ImageLayout)> = None;
+                            $(
+                                let layout = &mut layouts[$depth_atch];
+                                layout.1 = Some(ImageLayout::DepthStencilAttachmentOptimal);
+                                layout.0 = layout.0.or(layout.1);
+
+                                let depth = Some(($depth_atch, ImageLayout::DepthStencilAttachmentOptimal));
+                            )*
+                            depth
+                        },
+                        input_attachments: vec![
+                            $({
+                                let layout = &mut layouts[$input_atch];
+                                layout.1 = Some(ImageLayout::ShaderReadOnlyOptimal);
+                                layout.0 = layout.0.or(layout.1);
+
+                                ($input_atch, ImageLayout::ShaderReadOnlyOptimal)
+                            }),*
+                        ],
+                        resolve_attachments: vec![
+                            $($({
+                                let layout = &mut layouts[$resolve_atch];
+                                layout.1 = Some(ImageLayout::TransferDstOptimal);
+                                layout.0 = layout.0.or(layout.1);
+
+                                ($resolve_atch, ImageLayout::TransferDstOptimal)
+                            }),*)*
+                        ],
+                        preserve_attachments: (0 .. attachment_num).filter(|&a| {
+                            $(if a == $color_atch { return false; })*
+                            $(if a == $depth_atch { return false; })*
+                            $(if a == $input_atch { return false; })*
+                            $($(if a == $resolve_atch { return false; })*)*
+                            true
+                        }).collect()
+                    };
+
+                    assert!(desc.resolve_attachments.is_empty() ||
+                            desc.resolve_attachments.len() == desc.color_attachments.len());
+                    desc
+                }),*
+            ];
+
+            let dependencies = (0..subpasses.len().saturating_sub(1))
+                .map(|id| {
+                    PassDependencyDescription {
+                        source_subpass: id,
+                        destination_subpass: id + 1,
+                        source_stages: PipelineStages {
+                            all_graphics: true,
+                            ..PipelineStages::none()
+                        }, // TODO: correct values
+                        destination_stages: PipelineStages {
+                            all_graphics: true,
+                            ..PipelineStages::none()
+                        }, // TODO: correct values
+                        source_access: AccessFlagBits::all(), // TODO: correct values
+                        destination_access: AccessFlagBits::all(), // TODO: correct values
+                        by_region: true,                      // TODO: correct values
+                    }
+                })
+                .collect();
+
+            let attachments = vec![
+                $({
+                    let layout = &mut layouts[$atch_name];
+                    $(layout.0 = Some($init_layout);)*
+                    $(layout.1 = Some($final_layout);)*
+
+                    AttachmentDescription {
+                        format: $format,
+                        samples: $samples,
+                        load: $crate::framebuffer::LoadOp::$load,
+                        store: $crate::framebuffer::StoreOp::$store,
+                        stencil_load: $crate::framebuffer::LoadOp::$load,
+                        stencil_store: $crate::framebuffer::StoreOp::$store,
+                        initial_layout: layout.0.expect(
+                            format!(
+                                "Attachment {} is missing initial_layout, this is normally \
+                                automatically determined but you can manually specify it for an individual \
+                                attachment in the single_pass_renderpass! macro",
+                                attachment_num
+                            )
+                            .as_ref(),
+                        ),
+                        final_layout: layout.1.expect(
+                            format!(
+                                "Attachment {} is missing final_layout, this is normally \
+                                automatically determined but you can manually specify it for an individual \
+                                attachment in the single_pass_renderpass! macro",
+                                attachment_num
+                            )
+                            .as_ref(),
+                        ),
+                    }
+                }),*
+            ];
+
+            RenderPassDescReal::new(
+                attachments,
+                subpasses,
+                dependencies,
+            )
+        };
+
+        desc.build_render_pass($device)
     });
 }
 

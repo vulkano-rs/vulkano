@@ -375,7 +375,7 @@ where
 
         Ok(RenderPass {
             device: device.clone(),
-            render_pass: render_pass,
+            render_pass,
             desc: description,
             granularity: Mutex::new(None),
         })
@@ -587,6 +587,62 @@ impl From<Error> for RenderPassCreationError {
             }
             _ => panic!("unexpected error: {:?}", err),
         }
+    }
+}
+
+pub struct RenderPassDescReal {
+    attachments: Vec<AttachmentDescription>,
+    subpasses: Vec<PassDescription>,
+    dependencies: Vec<PassDependencyDescription>,
+}
+
+impl RenderPassDescReal {
+    pub fn new(
+        attachments: Vec<AttachmentDescription>,
+        subpasses: Vec<PassDescription>,
+        dependencies: Vec<PassDependencyDescription>,
+    ) -> RenderPassDescReal {
+        RenderPassDescReal {
+            attachments,
+            subpasses,
+            dependencies,
+        }
+    }
+}
+
+unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for RenderPassDescReal {
+    fn convert_clear_values(
+        &self,
+        values: Vec<ClearValue>,
+    ) -> Box<dyn Iterator<Item = ClearValue>> {
+        // FIXME: safety checks
+        Box::new(values.into_iter())
+    }
+}
+
+unsafe impl RenderPassDesc for RenderPassDescReal {
+    fn num_attachments(&self) -> usize {
+        self.attachments.len()
+    }
+
+    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
+        self.attachments.get(num).copied()
+    }
+
+    fn num_subpasses(&self) -> usize {
+        self.subpasses.len()
+    }
+
+    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
+        self.subpasses.get(num).cloned()
+    }
+
+    fn num_dependencies(&self) -> usize {
+        self.dependencies.len()
+    }
+
+    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
+        self.dependencies.get(num).copied()
     }
 }
 

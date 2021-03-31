@@ -109,6 +109,7 @@ pub use self::framebuffer::FramebufferCreationError;
 pub use self::framebuffer::FramebufferSys;
 pub use self::sys::RenderPass;
 pub use self::sys::RenderPassCreationError;
+pub use self::sys::RenderPassDescReal;
 pub use self::sys::RenderPassSys;
 pub use self::traits::FramebufferAbstract;
 pub use self::traits::RenderPassAbstract;
