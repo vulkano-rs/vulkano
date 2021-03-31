@@ -1,4 +1,8 @@
 # Unreleased
+<!--
+    Please add new changes at the bottom, preceded by a hyphen -.
+    Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
+-->
 
 # Version 0.22.0 (2021-03-31)
 
@@ -33,7 +37,6 @@
 - Implemented synchronization for `SyncCommandBufferBuilder::execute_commands`.
 - `AutoCommandBufferBuilder::execute_commands` is now fully safe to use.
 - `SyncCommandBufferBuilder` now becomes poisoned when it returns an error, to prevent using the builder in an inconsistent state.
-- **Breaking** structures passed to `ImmutableBuffer::from_data` and `CpuAccessibleBuffer::from_data` must implement [`Copy`](https://doc.rust-lang.org/std/marker/trait.Copy.html) to ensure soundness of these functions
 - Added a `dispatch_indirect` command to `AutoCommandBufferBuilder`.
 
 # Version 0.21.0 (2021-03-05)
