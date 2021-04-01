@@ -560,10 +560,10 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
-    use crate::framebuffer::EmptySinglePassRenderPassDesc;
     use crate::framebuffer::Framebuffer;
     use crate::framebuffer::FramebufferCreationError;
     use crate::framebuffer::RenderPassDesc;
+    use crate::framebuffer::RenderPassDescReal;
     use crate::image::attachment::AttachmentImage;
     use crate::image::view::ImageView;
     use std::sync::Arc;
@@ -605,7 +605,7 @@ mod tests {
     fn check_device_limits() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
+        let rp = RenderPassDescReal::empty()
             .build_render_pass(device)
             .unwrap();
         let res = Framebuffer::with_dimensions(rp, [0xffffffff, 0xffffffff, 0xffffffff]).build();
@@ -919,7 +919,7 @@ mod tests {
     fn empty_working() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
+        let rp = RenderPassDescReal::empty()
             .build_render_pass(device)
             .unwrap();
         let _ = Framebuffer::with_dimensions(rp, [512, 512, 1])
@@ -931,7 +931,7 @@ mod tests {
     fn cant_determine_dimensions_auto() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
+        let rp = RenderPassDescReal::empty()
             .build_render_pass(device)
             .unwrap();
         let res = Framebuffer::start(rp).build();
@@ -945,7 +945,7 @@ mod tests {
     fn cant_determine_dimensions_intersect() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
+        let rp = RenderPassDescReal::empty()
             .build_render_pass(device)
             .unwrap();
         let res = Framebuffer::with_intersecting_dimensions(rp).build();

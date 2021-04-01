@@ -41,13 +41,13 @@
 //! call the `build_render_pass` method on it.
 //!
 //! ```
-//! use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+//! use vulkano::framebuffer::RenderPassDescReal;
 //! use vulkano::framebuffer::RenderPassDesc;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
-//! let desc = EmptySinglePassRenderPassDesc;
+//! let desc = RenderPassDescReal::empty();
 //! let render_pass = desc.build_render_pass(device.clone()).unwrap();
-//! // The type of `render_pass` is `RenderPass<EmptySinglePassRenderPassDesc>`.
+//! // The type of `render_pass` is `RenderPass<RenderPassDescReal>`.
 //! ```
 //!
 //! This example creates a render pass with no attachment and one single subpass that doesn't draw
@@ -102,7 +102,6 @@ pub use self::desc::RenderPassDescAttachments;
 pub use self::desc::RenderPassDescDependencies;
 pub use self::desc::RenderPassDescSubpasses;
 pub use self::desc::StoreOp;
-pub use self::empty::EmptySinglePassRenderPassDesc;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferBuilder;
 pub use self::framebuffer::FramebufferCreationError;
@@ -123,7 +122,6 @@ mod macros;
 mod attachments_list;
 mod compat_atch;
 mod desc;
-mod empty;
 mod framebuffer;
 mod sys;
 mod traits;

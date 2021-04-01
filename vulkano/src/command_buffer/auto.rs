@@ -46,7 +46,6 @@ use crate::format::AcceptsPixels;
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
-use crate::framebuffer::EmptySinglePassRenderPassDesc;
 use crate::framebuffer::Framebuffer;
 use crate::framebuffer::FramebufferAbstract;
 use crate::framebuffer::LoadOp;
@@ -54,6 +53,7 @@ use crate::framebuffer::RenderPass;
 use crate::framebuffer::RenderPassAbstract;
 use crate::framebuffer::RenderPassCompatible;
 use crate::framebuffer::RenderPassDescClearValues;
+use crate::framebuffer::RenderPassDescReal;
 use crate::framebuffer::Subpass;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
@@ -273,7 +273,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>>,
             }),
             occlusion_query: KindOcclusionQuery::Forbidden,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -299,7 +299,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>>,
             }),
             occlusion_query: KindOcclusionQuery::Forbidden,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -324,7 +324,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>>,
             }),
             occlusion_query: KindOcclusionQuery::Forbidden,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -348,7 +348,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>>,
             }),
             occlusion_query,
             query_statistics_flags,
@@ -372,7 +372,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>>,
             }),
             occlusion_query,
             query_statistics_flags,
@@ -396,7 +396,7 @@ impl AutoCommandBufferBuilder<StandardCommandPoolBuilder> {
         let kind = Kind::Secondary {
             render_pass: Some(KindSecondaryRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>>,
             }),
             occlusion_query,
             query_statistics_flags,

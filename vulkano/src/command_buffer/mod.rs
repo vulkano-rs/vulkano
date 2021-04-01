@@ -98,7 +98,7 @@ pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 
-use crate::framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
+use crate::framebuffer::{Framebuffer, RenderPass, RenderPassDescReal, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryPipelineStatisticFlags;
@@ -237,12 +237,7 @@ pub enum KindOcclusionQuery {
     Forbidden,
 }
 
-impl
-    Kind<
-        RenderPass<EmptySinglePassRenderPassDesc>,
-        Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
-    >
-{
+impl Kind<RenderPass<RenderPassDescReal>, Framebuffer<RenderPass<RenderPassDescReal>, ()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
@@ -250,8 +245,8 @@ impl
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
     pub fn primary() -> Kind<
-        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-        Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
+        Arc<RenderPass<RenderPassDescReal>>,
+        Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>,
     > {
         Kind::Primary
     }
@@ -266,8 +261,8 @@ impl
         occlusion_query: KindOcclusionQuery,
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Kind<
-        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-        Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
+        Arc<RenderPass<RenderPassDescReal>>,
+        Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>,
     > {
         Kind::Secondary {
             render_pass: None,

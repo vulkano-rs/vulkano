@@ -20,7 +20,6 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::framebuffer::AttachmentDescription;
-use crate::framebuffer::EmptySinglePassRenderPassDesc;
 use crate::framebuffer::LoadOp;
 use crate::framebuffer::PassDependencyDescription;
 use crate::framebuffer::PassDescription;
@@ -382,15 +381,15 @@ where
     }
 }
 
-impl RenderPass<EmptySinglePassRenderPassDesc> {
+impl RenderPass<RenderPassDescReal> {
     /// Builds a render pass with one subpass and no attachment.
     ///
     /// This method is useful for quick tests.
     #[inline]
     pub fn empty_single_pass(
         device: Arc<Device>,
-    ) -> Result<RenderPass<EmptySinglePassRenderPassDesc>, RenderPassCreationError> {
-        RenderPass::new(device, EmptySinglePassRenderPassDesc)
+    ) -> Result<RenderPass<RenderPassDescReal>, RenderPassCreationError> {
+        RenderPass::new(device, RenderPassDescReal::empty())
     }
 }
 
@@ -590,6 +589,7 @@ impl From<Error> for RenderPassCreationError {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct RenderPassDescReal {
     attachments: Vec<AttachmentDescription>,
     subpasses: Vec<PassDescription>,
@@ -597,6 +597,7 @@ pub struct RenderPassDescReal {
 }
 
 impl RenderPassDescReal {
+    /// Creates a description of a render pass.
     pub fn new(
         attachments: Vec<AttachmentDescription>,
         subpasses: Vec<PassDescription>,
@@ -607,6 +608,27 @@ impl RenderPassDescReal {
             subpasses,
             dependencies,
         }
+    }
+
+    /// Creates a description of an empty render pass, with one subpass and no attachments.
+    pub fn empty() -> RenderPassDescReal {
+        RenderPassDescReal {
+            attachments: vec![],
+            subpasses: vec![PassDescription {
+                color_attachments: vec![],
+                depth_stencil: None,
+                input_attachments: vec![],
+                resolve_attachments: vec![],
+                preserve_attachments: vec![],
+            }],
+            dependencies: vec![],
+        }
+    }
+}
+
+impl Default for RenderPassDescReal {
+    fn default() -> Self {
+        Self::empty()
     }
 }
 

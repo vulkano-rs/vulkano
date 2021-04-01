@@ -85,12 +85,12 @@ where
 ///
 /// ```
 /// use std::sync::Arc;
-/// use vulkano::framebuffer::EmptySinglePassRenderPassDesc;
+/// use vulkano::framebuffer::RenderPassDescReal;
 /// use vulkano::framebuffer::RenderPass;
 /// use vulkano::framebuffer::RenderPassAbstract;
 ///
 /// # let device: Arc<vulkano::device::Device> = return;
-/// let render_pass = RenderPass::new(device.clone(), EmptySinglePassRenderPassDesc).unwrap();
+/// let render_pass = RenderPass::new(device.clone(), RenderPassDescReal::empty()).unwrap();
 ///
 /// // For easier storage, turn this render pass into a `Arc<RenderPassAbstract + Send + Sync>`.
 /// let stored_rp = Arc::new(render_pass) as Arc<RenderPassAbstract + Send + Sync>;

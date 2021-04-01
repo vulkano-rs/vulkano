@@ -182,7 +182,7 @@ mod tests {
     use super::ensure_image_view_compatible;
     use super::IncompatibleRenderPassAttachmentError;
     use crate::format::Format;
-    use crate::framebuffer::EmptySinglePassRenderPassDesc;
+    use crate::framebuffer::RenderPassDescReal;
     use crate::image::view::ImageView;
     use crate::image::AttachmentImage;
 
@@ -252,7 +252,7 @@ mod tests {
     fn attachment_out_of_range() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc;
+        let rp = RenderPassDescReal::empty();
         let view = ImageView::new(
             AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
         )
