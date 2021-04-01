@@ -36,8 +36,8 @@
 //! then pass it to the `RenderPass` constructor.
 //!
 //! ```
-//! use vulkano::framebuffer::RenderPass;
-//! use vulkano::framebuffer::RenderPassDesc;
+//! use vulkano::render_pass::RenderPass;
+//! use vulkano::render_pass::RenderPassDesc;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! let desc = RenderPassDesc::empty();
@@ -84,21 +84,21 @@
 pub use self::attachments_list::AttachmentsList;
 pub use self::compat_atch::ensure_image_view_compatible;
 pub use self::compat_atch::IncompatibleRenderPassAttachmentError;
-pub use self::desc::AttachmentDescription;
+pub use self::desc::AttachmentDesc;
 pub use self::desc::LoadOp;
-pub use self::desc::PassDependencyDescription;
-pub use self::desc::PassDescription;
+pub use self::desc::RenderPassDesc;
 pub use self::desc::StoreOp;
+pub use self::desc::SubpassDependencyDesc;
+pub use self::desc::SubpassDesc;
 pub use self::framebuffer::Framebuffer;
+pub use self::framebuffer::FramebufferAbstract;
 pub use self::framebuffer::FramebufferBuilder;
 pub use self::framebuffer::FramebufferCreationError;
 pub use self::framebuffer::FramebufferSys;
-pub use self::sys::RenderPass;
-pub use self::sys::RenderPassCreationError;
-pub use self::sys::RenderPassDesc;
-pub use self::sys::RenderPassSys;
-pub use self::traits::FramebufferAbstract;
-pub use self::traits::Subpass;
+pub use self::render_pass::RenderPass;
+pub use self::render_pass::RenderPassCreationError;
+pub use self::render_pass::RenderPassSys;
+pub use self::render_pass::Subpass;
 
 #[macro_use]
 mod macros;
@@ -106,5 +106,4 @@ mod attachments_list;
 mod compat_atch;
 mod desc;
 mod framebuffer;
-mod sys;
-mod traits;
+mod render_pass;

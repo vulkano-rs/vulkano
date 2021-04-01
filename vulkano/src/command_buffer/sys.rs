@@ -23,7 +23,7 @@ use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::format::FormatTy;
 use crate::format::PossibleCompressedFormatDesc;
-use crate::framebuffer::FramebufferAbstract;
+use crate::render_pass::FramebufferAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaceFlags;

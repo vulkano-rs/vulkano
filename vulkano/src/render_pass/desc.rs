@@ -7,15 +7,146 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::ImageLayout;
+use crate::pipeline::shader::ShaderInterfaceDef;
 use crate::sync::AccessFlagBits;
 use crate::sync::PipelineStages;
 use crate::vk;
 
+/// Object that contains the description of a render pass.
+#[derive(Clone, Debug)]
+pub struct RenderPassDesc {
+    attachments: Vec<AttachmentDesc>,
+    subpasses: Vec<SubpassDesc>,
+    dependencies: Vec<SubpassDependencyDesc>,
+}
+
+impl RenderPassDesc {
+    /// Creates a description of a render pass.
+    pub fn new(
+        attachments: Vec<AttachmentDesc>,
+        subpasses: Vec<SubpassDesc>,
+        dependencies: Vec<SubpassDependencyDesc>,
+    ) -> RenderPassDesc {
+        RenderPassDesc {
+            attachments,
+            subpasses,
+            dependencies,
+        }
+    }
+
+    /// Creates a description of an empty render pass, with one subpass and no attachments.
+    pub fn empty() -> RenderPassDesc {
+        RenderPassDesc {
+            attachments: vec![],
+            subpasses: vec![SubpassDesc {
+                color_attachments: vec![],
+                depth_stencil: None,
+                input_attachments: vec![],
+                resolve_attachments: vec![],
+                preserve_attachments: vec![],
+            }],
+            dependencies: vec![],
+        }
+    }
+
+    // Returns the attachments of the description.
+    #[inline]
+    pub fn attachments(&self) -> &[AttachmentDesc] {
+        &self.attachments
+    }
+
+    // Returns the subpasses of the description.
+    #[inline]
+    pub fn subpasses(&self) -> &[SubpassDesc] {
+        &self.subpasses
+    }
+
+    // Returns the dependencies of the description.
+    #[inline]
+    pub fn dependencies(&self) -> &[SubpassDependencyDesc] {
+        &self.dependencies
+    }
+
+    /// Decodes `I` into a list of clear values where each element corresponds
+    /// to an attachment. The size of the returned iterator must be the same as the number of
+    /// attachments.
+    ///
+    /// When the user enters a render pass, they need to pass a list of clear values to apply to
+    /// the attachments of the framebuffer. This method is then responsible for checking the
+    /// correctness of these values and turning them into a list that can be processed by vulkano.
+    ///
+    /// The format of the clear value **must** match the format of the attachment. Attachments
+    /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
+    pub fn convert_clear_values<I>(&self, values: I) -> impl Iterator<Item = ClearValue>
+    where
+        I: IntoIterator<Item = ClearValue>,
+    {
+        // FIXME: safety checks
+        values.into_iter()
+    }
+
+    /// Returns `true` if the subpass of this description is compatible with the shader's fragment
+    /// output definition.
+    pub fn is_compatible_with_shader<S>(&self, subpass: u32, shader_interface: &S) -> bool
+    where
+        S: ShaderInterfaceDef,
+    {
+        let pass_descr = match self.subpasses.get(subpass as usize) {
+            Some(s) => s,
+            None => return false,
+        };
+
+        for element in shader_interface.elements() {
+            for location in element.location.clone() {
+                let attachment_id = match pass_descr.color_attachments.get(location as usize) {
+                    Some(a) => a.0,
+                    None => return false,
+                };
+
+                let attachment_desc = &self.attachments[attachment_id];
+
+                // FIXME: compare formats depending on the number of components and data type
+                /*if attachment_desc.format != element.format {
+                    return false;
+                }*/
+            }
+        }
+
+        true
+    }
+
+    /// Returns `true` if this description is compatible with the other description,
+    /// as defined in the `Render Pass Compatibility` section of the Vulkan specs.
+    // TODO: return proper error
+    pub fn is_compatible_with_desc(&self, other: &RenderPassDesc) -> bool {
+        if self.attachments().len() != other.attachments().len() {
+            return false;
+        }
+
+        for (my_atch, other_atch) in self.attachments.iter().zip(other.attachments.iter()) {
+            if !my_atch.is_compatible_with(&other_atch) {
+                return false;
+            }
+        }
+
+        return true;
+
+        // FIXME: finish
+    }
+}
+
+impl Default for RenderPassDesc {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 /// Describes an attachment that will be used in a render pass.
 #[derive(Debug, Clone, Copy)]
-pub struct AttachmentDescription {
+pub struct AttachmentDesc {
     /// Format of the image that is going to be bound.
     pub format: Format,
     /// Number of samples of the image that is going to be bound.
@@ -43,16 +174,16 @@ pub struct AttachmentDescription {
     pub final_layout: ImageLayout,
 }
 
-impl AttachmentDescription {
+impl AttachmentDesc {
     /// Returns true if this attachment is compatible with another attachment, as defined in the
     /// `Render Pass Compatibility` section of the Vulkan specs.
     #[inline]
-    pub fn is_compatible_with(&self, other: &AttachmentDescription) -> bool {
+    pub fn is_compatible_with(&self, other: &AttachmentDesc) -> bool {
         self.format == other.format && self.samples == other.samples
     }
 }
 
-/// Describes one of the passes of a render pass.
+/// Describes one of the subpasses of a render pass.
 ///
 /// # Restrictions
 ///
@@ -76,7 +207,7 @@ impl AttachmentDescription {
 // TODO: add tests for all these restrictions
 // TODO: allow unused attachments (for example attachment 0 and 2 are used, 1 is unused)
 #[derive(Debug, Clone)]
-pub struct PassDescription {
+pub struct SubpassDesc {
     /// Indices and layouts of attachments to use as color attachments.
     pub color_attachments: Vec<(usize, ImageLayout)>, // TODO: Vec is slow
 
@@ -96,13 +227,13 @@ pub struct PassDescription {
     pub preserve_attachments: Vec<usize>, // TODO: Vec is slow
 }
 
-/// Describes a dependency between two passes of a render pass.
+/// Describes a dependency between two subpasses of a render pass.
 ///
-/// The implementation is allowed to change the order of the passes within a render pass, unless
-/// you specify that there exists a dependency between two passes (ie. the result of one will be
+/// The implementation is allowed to change the order of the subpasses within a render pass, unless
+/// you specify that there exists a dependency between two subpasses (ie. the result of one will be
 /// used as the input of another one).
 #[derive(Debug, Clone, Copy)]
-pub struct PassDependencyDescription {
+pub struct SubpassDependencyDesc {
     /// Index of the subpass that writes the data that `destination_subpass` is going to use.
     pub source_subpass: usize,
 

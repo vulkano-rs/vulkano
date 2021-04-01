@@ -28,7 +28,7 @@ use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::DescriptorSet;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::format::ClearValue;
-use crate::framebuffer::FramebufferAbstract;
+use crate::render_pass::FramebufferAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::DynamicStencilValue;

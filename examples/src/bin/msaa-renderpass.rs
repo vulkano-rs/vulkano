@@ -76,7 +76,7 @@ use vulkano::command_buffer::{
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
-use vulkano::framebuffer::{Framebuffer, Subpass};
+use vulkano::render_pass::{Framebuffer, Subpass};
 use vulkano::image::{view::ImageView, AttachmentImage, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;

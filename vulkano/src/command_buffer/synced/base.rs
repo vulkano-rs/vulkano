@@ -18,7 +18,7 @@ use crate::command_buffer::Kind;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::framebuffer::FramebufferAbstract;
+use crate::render_pass::FramebufferAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::sync::AccessCheckError;

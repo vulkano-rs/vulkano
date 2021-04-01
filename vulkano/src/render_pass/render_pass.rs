@@ -10,12 +10,13 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::format::ClearValue;
-use crate::framebuffer::AttachmentDescription;
-use crate::framebuffer::LoadOp;
-use crate::framebuffer::PassDependencyDescription;
-use crate::framebuffer::PassDescription;
+use crate::format::FormatTy;
+use crate::image::ImageLayout;
 use crate::pipeline::shader::ShaderInterfaceDef;
+use crate::render_pass::AttachmentDesc;
+use crate::render_pass::LoadOp;
+use crate::render_pass::RenderPassDesc;
+use crate::render_pass::SubpassDesc;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -95,7 +96,7 @@ impl RenderPass {
         ));
 
         let attachments = description
-            .attachments
+            .attachments()
             .iter()
             .map(|attachment| {
                 debug_assert!(attachment.samples.is_power_of_two());
@@ -121,7 +122,7 @@ impl RenderPass {
         // input attachment references, then all resolve attachment references, then the depth
         // stencil attachment reference.
         let attachment_references = description
-            .subpasses
+            .subpasses()
             .iter()
             .flat_map(|pass| {
                 // Performing some validation with debug asserts.
@@ -216,7 +217,7 @@ impl RenderPass {
         // This is separate because attachment references are u32s and not `vkAttachmentReference`
         // structs.
         let preserve_attachments_references = description
-            .subpasses
+            .subpasses()
             .iter()
             .flat_map(|pass| {
                 pass.preserve_attachments
@@ -234,7 +235,7 @@ impl RenderPass {
             let mut preserve_ref_index = 0usize;
             let mut out: SmallVec<[_; 16]> = SmallVec::new();
 
-            for pass in &description.subpasses {
+            for pass in description.subpasses() {
                 if pass.color_attachments.len() as u32
                     > device.physical_device().limits().max_color_attachments()
                 {
@@ -299,7 +300,7 @@ impl RenderPass {
         };
 
         let dependencies = description
-            .dependencies
+            .dependencies()
             .iter()
             .map(|dependency| {
                 debug_assert!(
@@ -517,140 +518,196 @@ impl From<Error> for RenderPassCreationError {
     }
 }
 
-/// Trait for objects that contain the description of a render pass.
-#[derive(Clone, Debug)]
-pub struct RenderPassDesc {
-    attachments: Vec<AttachmentDescription>,
-    subpasses: Vec<PassDescription>,
-    dependencies: Vec<PassDependencyDescription>,
+/// Represents a subpass within a `RenderPass` object.
+///
+/// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
+/// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the
+/// subpass is checked when the object is created. When you have a `Subpass` you are guaranteed
+/// that the given subpass does exist.
+#[derive(Debug, Clone)]
+pub struct Subpass {
+    render_pass: Arc<RenderPass>,
+    subpass_id: u32,
 }
 
-impl RenderPassDesc {
-    /// Creates a description of a render pass.
-    pub fn new(
-        attachments: Vec<AttachmentDescription>,
-        subpasses: Vec<PassDescription>,
-        dependencies: Vec<PassDependencyDescription>,
-    ) -> RenderPassDesc {
-        RenderPassDesc {
-            attachments,
-            subpasses,
-            dependencies,
+impl Subpass {
+    /// Returns a handle that represents a subpass of a render pass.
+    #[inline]
+    pub fn from(render_pass: Arc<RenderPass>, id: u32) -> Option<Subpass> {
+        if (id as usize) < render_pass.desc().subpasses().len() {
+            Some(Subpass {
+                render_pass,
+                subpass_id: id,
+            })
+        } else {
+            None
         }
     }
 
-    /// Creates a description of an empty render pass, with one subpass and no attachments.
-    pub fn empty() -> RenderPassDesc {
-        RenderPassDesc {
-            attachments: vec![],
-            subpasses: vec![PassDescription {
-                color_attachments: vec![],
-                depth_stencil: None,
-                input_attachments: vec![],
-                resolve_attachments: vec![],
-                preserve_attachments: vec![],
-            }],
-            dependencies: vec![],
-        }
-    }
-
-    // Returns the attachments of the description.
     #[inline]
-    pub fn attachments(&self) -> &[AttachmentDescription] {
-        &self.attachments
+    fn subpass_desc(&self) -> &SubpassDesc {
+        &self.render_pass.desc().subpasses()[self.subpass_id as usize]
     }
 
-    // Returns the subpasses of the description.
     #[inline]
-    pub fn subpasses(&self) -> &[PassDescription] {
-        &self.subpasses
+    fn attachment_desc(&self, atch_num: usize) -> &AttachmentDesc {
+        &self.render_pass.desc().attachments()[atch_num]
     }
 
-    // Returns the dependencies of the description.
+    /// Returns the number of color attachments in this subpass.
     #[inline]
-    pub fn dependencies(&self) -> &[PassDependencyDescription] {
-        &self.dependencies
+    pub fn num_color_attachments(&self) -> u32 {
+        self.subpass_desc().color_attachments.len() as u32
     }
 
-    /// Decodes `I` into a list of clear values where each element corresponds
-    /// to an attachment. The size of the returned iterator must be the same as the number of
-    /// attachments.
-    ///
-    /// When the user enters a render pass, they need to pass a list of clear values to apply to
-    /// the attachments of the framebuffer. This method is then responsible for checking the
-    /// correctness of these values and turning them into a list that can be processed by vulkano.
-    ///
-    /// The format of the clear value **must** match the format of the attachment. Attachments
-    /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
-    pub fn convert_clear_values<I>(&self, values: I) -> impl Iterator<Item = ClearValue>
-    where
-        I: IntoIterator<Item = ClearValue>,
-    {
-        // FIXME: safety checks
-        values.into_iter()
-    }
-
-    /// Returns `true` if the subpass of this description is compatible with the shader's fragment
-    /// output definition.
-    pub fn is_compatible_with_shader<S>(&self, subpass: u32, shader_interface: &S) -> bool
-    where
-        S: ShaderInterfaceDef,
-    {
-        let pass_descr = match self.subpasses.get(subpass as usize) {
-            Some(s) => s,
+    /// Returns true if the subpass has a depth attachment or a depth-stencil attachment.
+    #[inline]
+    pub fn has_depth(&self) -> bool {
+        let subpass_desc = self.subpass_desc();
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, _)) => d,
             None => return false,
         };
 
-        for element in shader_interface.elements() {
-            for location in element.location.clone() {
-                let attachment_id = match pass_descr.color_attachments.get(location as usize) {
-                    Some(a) => a.0,
-                    None => return false,
-                };
-
-                let attachment_desc = &self.attachments[attachment_id];
-
-                // FIXME: compare formats depending on the number of components and data type
-                /*if attachment_desc.format != element.format {
-                    return false;
-                }*/
-            }
+        match self.attachment_desc(atch_num).format.ty() {
+            FormatTy::Depth => true,
+            FormatTy::Stencil => false,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
         }
-
-        true
     }
 
-    /// Returns `true` if this description is compatible with the other description,
-    /// as defined in the `Render Pass Compatibility` section of the Vulkan specs.
-    // TODO: return proper error
-    pub fn is_compatible_with_desc(&self, other: &RenderPassDesc) -> bool {
-        if self.attachments().len() != other.attachments().len() {
-            return false;
-        }
-
-        for (my_atch, other_atch) in self.attachments.iter().zip(other.attachments.iter()) {
-            if !my_atch.is_compatible_with(&other_atch) {
-                return false;
+    /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
+    /// layout is not `DepthStencilReadOnlyOptimal`.
+    #[inline]
+    pub fn has_writable_depth(&self) -> bool {
+        let subpass_desc = self.subpass_desc();
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, l)) => {
+                if l == ImageLayout::DepthStencilReadOnlyOptimal {
+                    return false;
+                }
+                d
             }
+            None => return false,
+        };
+
+        match self.attachment_desc(atch_num).format.ty() {
+            FormatTy::Depth => true,
+            FormatTy::Stencil => false,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
+    #[inline]
+    pub fn has_stencil(&self) -> bool {
+        let subpass_desc = self.subpass_desc();
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, _)) => d,
+            None => return false,
+        };
+
+        match self.attachment_desc(atch_num).format.ty() {
+            FormatTy::Depth => false,
+            FormatTy::Stencil => true,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
+    /// layout is not `DepthStencilReadOnlyOptimal`.
+    #[inline]
+    pub fn has_writable_stencil(&self) -> bool {
+        let subpass_desc = self.subpass_desc();
+
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, l)) => {
+                if l == ImageLayout::DepthStencilReadOnlyOptimal {
+                    return false;
+                }
+                d
+            }
+            None => return false,
+        };
+
+        match self.attachment_desc(atch_num).format.ty() {
+            FormatTy::Depth => false,
+            FormatTy::Stencil => true,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
+    }
+
+    /// Returns true if the subpass has any color or depth/stencil attachment.
+    #[inline]
+    pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
+        if self.num_color_attachments() >= 1 {
+            return true;
         }
 
-        return true;
+        let subpass_desc = self.subpass_desc();
+        match subpass_desc.depth_stencil {
+            Some((d, _)) => true,
+            None => false,
+        }
+    }
 
-        // FIXME: finish
+    /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
+    /// if there is no such attachment in this subpass.
+    #[inline]
+    pub fn num_samples(&self) -> Option<u32> {
+        let subpass_desc = self.subpass_desc();
+
+        // TODO: chain input attachments as well?
+        subpass_desc
+            .color_attachments
+            .iter()
+            .cloned()
+            .chain(subpass_desc.depth_stencil.clone().into_iter())
+            .filter_map(|a| self.render_pass.desc().attachments().get(a.0))
+            .next()
+            .map(|a| a.samples)
+    }
+
+    /// Returns the render pass of this subpass.
+    #[inline]
+    pub fn render_pass(&self) -> &Arc<RenderPass> {
+        &self.render_pass
+    }
+
+    /// Returns the index of this subpass within the renderpass.
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.subpass_id
+    }
+
+    /// Returns `true` if this subpass is compatible with the fragment output definition.
+    // TODO: return proper error
+    pub fn is_compatible_with<S>(&self, shader_interface: &S) -> bool
+    where
+        S: ShaderInterfaceDef,
+    {
+        self.render_pass
+            .desc()
+            .is_compatible_with_shader(self.subpass_id, shader_interface)
     }
 }
 
-impl Default for RenderPassDesc {
-    fn default() -> Self {
-        Self::empty()
+impl From<Subpass> for (Arc<RenderPass>, u32) {
+    #[inline]
+    fn from(value: Subpass) -> (Arc<RenderPass>, u32) {
+        (value.render_pass, value.subpass_id)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
-    use crate::framebuffer::RenderPass;
-    use crate::framebuffer::RenderPassCreationError;
+    use crate::render_pass::RenderPass;
+    use crate::render_pass::RenderPassCreationError;
 
     #[test]
     fn empty() {

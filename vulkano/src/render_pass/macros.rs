@@ -62,13 +62,13 @@ macro_rules! ordered_passes_renderpass {
             ),*
         ]
     ) => ({
-        use $crate::framebuffer::RenderPass;
+        use $crate::render_pass::RenderPass;
 
         let desc = {
-            use $crate::framebuffer::AttachmentDescription;
-            use $crate::framebuffer::PassDependencyDescription;
-            use $crate::framebuffer::PassDescription;
-            use $crate::framebuffer::RenderPassDesc;
+            use $crate::render_pass::AttachmentDesc;
+            use $crate::render_pass::RenderPassDesc;
+            use $crate::render_pass::SubpassDependencyDesc;
+            use $crate::render_pass::SubpassDesc;
             use $crate::image::ImageLayout;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
@@ -83,7 +83,7 @@ macro_rules! ordered_passes_renderpass {
 
             let subpasses = vec![
                 $({
-                    let desc = PassDescription {
+                    let desc = SubpassDesc {
                         color_attachments: vec![
                             $({
                                 let layout = &mut layouts[$color_atch];
@@ -139,7 +139,7 @@ macro_rules! ordered_passes_renderpass {
 
             let dependencies = (0..subpasses.len().saturating_sub(1))
                 .map(|id| {
-                    PassDependencyDescription {
+                    SubpassDependencyDesc {
                         source_subpass: id,
                         destination_subpass: id + 1,
                         source_stages: PipelineStages {
@@ -163,13 +163,13 @@ macro_rules! ordered_passes_renderpass {
                     $(layout.0 = Some($init_layout);)*
                     $(layout.1 = Some($final_layout);)*
 
-                    AttachmentDescription {
+                    AttachmentDesc {
                         format: $format,
                         samples: $samples,
-                        load: $crate::framebuffer::LoadOp::$load,
-                        store: $crate::framebuffer::StoreOp::$store,
-                        stencil_load: $crate::framebuffer::LoadOp::$load,
-                        stencil_store: $crate::framebuffer::StoreOp::$store,
+                        load: $crate::render_pass::LoadOp::$load,
+                        store: $crate::render_pass::StoreOp::$store,
+                        stencil_load: $crate::render_pass::LoadOp::$load,
+                        stencil_store: $crate::render_pass::StoreOp::$store,
                         initial_layout: layout.0.expect(
                             format!(
                                 "Attachment {} is missing initial_layout, this is normally \

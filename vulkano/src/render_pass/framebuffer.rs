@@ -10,15 +10,15 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::framebuffer::ensure_image_view_compatible;
-use crate::framebuffer::AttachmentsList;
-use crate::framebuffer::FramebufferAbstract;
-use crate::framebuffer::IncompatibleRenderPassAttachmentError;
-use crate::framebuffer::RenderPass;
+use crate::render_pass::ensure_image_view_compatible;
+use crate::render_pass::AttachmentsList;
+use crate::render_pass::IncompatibleRenderPassAttachmentError;
+use crate::render_pass::RenderPass;
 use crate::image::view::ImageViewAbstract;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
+use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::cmp;
@@ -41,8 +41,8 @@ use std::sync::Arc;
 ///
 /// ```
 /// # use std::sync::Arc;
-/// # use vulkano::framebuffer::RenderPass;
-/// use vulkano::framebuffer::Framebuffer;
+/// # use vulkano::render_pass::RenderPass;
+/// use vulkano::render_pass::Framebuffer;
 ///
 /// # let render_pass: Arc<RenderPass> = return;
 /// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage<vulkano::format::Format>>>> = return;
@@ -361,6 +361,70 @@ impl<A> Framebuffer<A> {
     }
 }
 
+/// Trait for objects that contain a Vulkan framebuffer object.
+///
+/// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
+/// into a `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
+pub unsafe trait FramebufferAbstract {
+    /// Returns an opaque struct that represents the framebuffer's internals.
+    fn inner(&self) -> FramebufferSys;
+
+    /// Returns the width, height and array layers of the framebuffer.
+    fn dimensions(&self) -> [u32; 3];
+
+    /// Returns the render pass this framebuffer was created for.
+    fn render_pass(&self) -> &Arc<RenderPass>;
+
+    /// Returns the attachment of the framebuffer with the given index.
+    ///
+    /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract>;
+
+    /// Returns the width of the framebuffer in pixels.
+    #[inline]
+    fn width(&self) -> u32 {
+        self.dimensions()[0]
+    }
+
+    /// Returns the height of the framebuffer in pixels.
+    #[inline]
+    fn height(&self) -> u32 {
+        self.dimensions()[1]
+    }
+
+    /// Returns the number of layers (or depth) of the framebuffer.
+    #[inline]
+    fn layers(&self) -> u32 {
+        self.dimensions()[2]
+    }
+}
+
+unsafe impl<T> FramebufferAbstract for T
+where
+    T: SafeDeref,
+    T::Target: FramebufferAbstract,
+{
+    #[inline]
+    fn inner(&self) -> FramebufferSys {
+        FramebufferAbstract::inner(&**self)
+    }
+
+    #[inline]
+    fn dimensions(&self) -> [u32; 3] {
+        (**self).dimensions()
+    }
+
+    #[inline]
+    fn render_pass(&self) -> &Arc<RenderPass> {
+        (**self).render_pass()
+    }
+
+    #[inline]
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
+        (**self).attached_image_view(index)
+    }
+}
+
 unsafe impl<A> FramebufferAbstract for Framebuffer<A>
 where
     A: AttachmentsList,
@@ -501,9 +565,9 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
-    use crate::framebuffer::Framebuffer;
-    use crate::framebuffer::FramebufferCreationError;
-    use crate::framebuffer::RenderPass;
+    use crate::render_pass::Framebuffer;
+    use crate::render_pass::FramebufferCreationError;
+    use crate::render_pass::RenderPass;
     use crate::image::attachment::AttachmentImage;
     use crate::image::view::ImageView;
     use std::sync::Arc;

@@ -17,7 +17,7 @@ use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDescTweaks;
 use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::device::Device;
-use crate::framebuffer::Subpass;
+use crate::render_pass::Subpass;
 use crate::pipeline::blend::AttachmentBlend;
 use crate::pipeline::blend::AttachmentsBlend;
 use crate::pipeline::blend::Blend;
