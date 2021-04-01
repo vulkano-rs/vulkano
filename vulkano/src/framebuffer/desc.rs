@@ -9,7 +9,6 @@
 
 use crate::format::Format;
 use crate::format::FormatTy;
-use crate::framebuffer::RenderPassCompatible;
 use crate::image::ImageLayout;
 use crate::sync::AccessFlagBits;
 use crate::sync::PipelineStages;
@@ -93,22 +92,6 @@ pub unsafe trait RenderPassDesc {
             render_pass: self,
             num: 0,
         }
-    }
-
-    /// Returns true if this render pass is compatible with another render pass.
-    ///
-    /// Two render passes that contain one subpass are compatible if they are identical. Two render
-    /// passes that contain more than one subpass are compatible if they are identical except for
-    /// the load/store operations and the image layouts.
-    ///
-    /// This function is just a shortcut for the `RenderPassCompatible` trait.
-    #[inline]
-    fn is_compatible_with<T>(&self, other: &T) -> bool
-    where
-        Self: Sized,
-        T: ?Sized + RenderPassDesc,
-    {
-        RenderPassCompatible::is_compatible_with(self, other)
     }
 
     /// Returns the number of color attachments of a subpass. Returns `None` if out of range.

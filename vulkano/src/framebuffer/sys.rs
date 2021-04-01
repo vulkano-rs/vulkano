@@ -16,6 +16,7 @@ use crate::framebuffer::LoadOp;
 use crate::framebuffer::PassDependencyDescription;
 use crate::framebuffer::PassDescription;
 use crate::framebuffer::RenderPassDesc;
+use crate::pipeline::shader::ShaderInterfaceDef;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -552,6 +553,7 @@ impl From<Error> for RenderPassCreationError {
     }
 }
 
+/// Trait for objects that contain the description of a render pass.
 #[derive(Clone, Debug)]
 pub struct RenderPassDescReal {
     attachments: Vec<AttachmentDescription>,
@@ -604,6 +606,65 @@ impl RenderPassDescReal {
     {
         // FIXME: safety checks
         values.into_iter()
+    }
+
+    /// Returns `true` if the subpass of this description is compatible with the shader's fragment
+    /// output definition.
+    pub fn is_compatible_with_shader<S>(&self, subpass: u32, shader_interface: &S) -> bool
+    where
+        S: ShaderInterfaceDef,
+    {
+        let pass_descr = match RenderPassDesc::subpass_descs(self)
+            .skip(subpass as usize)
+            .next()
+        {
+            Some(s) => s,
+            None => return false,
+        };
+
+        for element in shader_interface.elements() {
+            for location in element.location.clone() {
+                let attachment_id = match pass_descr.color_attachments.get(location as usize) {
+                    Some(a) => a.0,
+                    None => return false,
+                };
+
+                let attachment_desc = (&self)
+                    .attachment_descs()
+                    .skip(attachment_id)
+                    .next()
+                    .unwrap();
+
+                // FIXME: compare formats depending on the number of components and data type
+                /*if attachment_desc.format != element.format {
+                    return false;
+                }*/
+            }
+        }
+
+        true
+    }
+
+    /// Returns `true` if this description is compatible with the other description,
+    /// as defined in the `Render Pass Compatibility` section of the Vulkan specs.
+    // TODO: return proper error
+    pub fn is_compatible_with_desc(&self, other: &RenderPassDescReal) -> bool {
+        if self.num_attachments() != other.num_attachments() {
+            return false;
+        }
+
+        for atch_num in 0..self.num_attachments() {
+            let my_atch = self.attachment_desc(atch_num).unwrap();
+            let other_atch = other.attachment_desc(atch_num).unwrap();
+
+            if !my_atch.is_compatible_with(&other_atch) {
+                return false;
+            }
+        }
+
+        return true;
+
+        // FIXME: finish
     }
 }
 

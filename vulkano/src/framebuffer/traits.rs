@@ -79,107 +79,6 @@ where
     }
 }
 
-/// Extension trait for `RenderPassDesc` that checks whether a subpass of this render pass accepts
-/// the output of a fragment shader.
-///
-/// The trait is automatically implemented for all type that implement `RenderPassDesc` and
-/// `RenderPassDesc`.
-///
-/// > **Note**: This trait exists so that you can specialize it once specialization lands in Rust.
-// TODO: once specialization lands, this trait can be specialized for pairs that are known to
-//       always be compatible
-pub unsafe trait RenderPassSubpassInterface<Other: ?Sized>: RenderPassDesc
-where
-    Other: ShaderInterfaceDef,
-{
-    /// Returns `true` if this subpass is compatible with the fragment output definition.
-    /// Also returns `false` if the subpass is out of range.
-    // TODO: return proper error
-    fn is_compatible_with(&self, subpass: u32, other: &Other) -> bool;
-}
-
-unsafe impl<A, B: ?Sized> RenderPassSubpassInterface<B> for A
-where
-    A: RenderPassDesc,
-    B: ShaderInterfaceDef,
-{
-    fn is_compatible_with(&self, subpass: u32, other: &B) -> bool {
-        let pass_descr = match RenderPassDesc::subpass_descs(self)
-            .skip(subpass as usize)
-            .next()
-        {
-            Some(s) => s,
-            None => return false,
-        };
-
-        for element in other.elements() {
-            for location in element.location.clone() {
-                let attachment_id = match pass_descr.color_attachments.get(location as usize) {
-                    Some(a) => a.0,
-                    None => return false,
-                };
-
-                let attachment_desc = (&self)
-                    .attachment_descs()
-                    .skip(attachment_id)
-                    .next()
-                    .unwrap();
-
-                // FIXME: compare formats depending on the number of components and data type
-                /*if attachment_desc.format != element.format {
-                    return false;
-                }*/
-            }
-        }
-
-        true
-    }
-}
-
-/// Trait implemented on render pass objects to check whether they are compatible
-/// with another render pass.
-///
-/// The trait is automatically implemented for all type that implement `RenderPassDesc`.
-///
-/// > **Note**: This trait exists so that you can specialize it once specialization lands in Rust.
-// TODO: once specialization lands, this trait can be specialized for pairs that are known to
-//       always be compatible
-// TODO: maybe this can be unimplemented on some pairs, to provide compile-time checks?
-pub unsafe trait RenderPassCompatible<Other: ?Sized>: RenderPassDesc
-where
-    Other: RenderPassDesc,
-{
-    /// Returns `true` if this layout is compatible with the other layout, as defined in the
-    /// `Render Pass Compatibility` section of the Vulkan specs.
-    // TODO: return proper error
-    fn is_compatible_with(&self, other: &Other) -> bool;
-}
-
-unsafe impl<A: ?Sized, B: ?Sized> RenderPassCompatible<B> for A
-where
-    A: RenderPassDesc,
-    B: RenderPassDesc,
-{
-    fn is_compatible_with(&self, other: &B) -> bool {
-        if self.num_attachments() != other.num_attachments() {
-            return false;
-        }
-
-        for atch_num in 0..self.num_attachments() {
-            let my_atch = self.attachment_desc(atch_num).unwrap();
-            let other_atch = other.attachment_desc(atch_num).unwrap();
-
-            if !my_atch.is_compatible_with(&other_atch) {
-                return false;
-            }
-        }
-
-        return true;
-
-        // FIXME: finish
-    }
-}
-
 /// Represents a subpass within a `RenderPass` object.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
@@ -273,11 +172,22 @@ impl Subpass {
     pub fn index(&self) -> u32 {
         self.subpass_id
     }
+
+    /// Returns `true` if this subpass is compatible with the fragment output definition.
+    // TODO: return proper error
+    pub fn is_compatible_with<S>(&self, shader_interface: &S) -> bool
+    where
+        S: ShaderInterfaceDef,
+    {
+        self.render_pass
+            .desc()
+            .is_compatible_with_shader(self.subpass_id, shader_interface)
+    }
 }
 
-impl Into<(Arc<RenderPass>, u32)> for Subpass {
+impl From<Subpass> for (Arc<RenderPass>, u32) {
     #[inline]
-    fn into(self) -> (Arc<RenderPass>, u32) {
-        (self.render_pass, self.subpass_id)
+    fn from(value: Subpass) -> (Arc<RenderPass>, u32) {
+        (value.render_pass, value.subpass_id)
     }
 }

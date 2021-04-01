@@ -50,7 +50,6 @@ use crate::framebuffer::Framebuffer;
 use crate::framebuffer::FramebufferAbstract;
 use crate::framebuffer::LoadOp;
 use crate::framebuffer::RenderPass;
-use crate::framebuffer::RenderPassCompatible;
 use crate::framebuffer::RenderPassDesc;
 use crate::framebuffer::Subpass;
 use crate::image::ImageAccess;
@@ -472,10 +471,12 @@ impl<P> AutoCommandBufferBuilder<P> {
             }
 
             // Render passes must be compatible.
-            if !RenderPassCompatible::is_compatible_with(
-                render_pass.subpass.render_pass(),
-                &render_pass_state.subpass.0,
-            ) {
+            if !render_pass
+                .subpass
+                .render_pass()
+                .desc()
+                .is_compatible_with_desc(render_pass_state.subpass.0.desc())
+            {
                 return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
             }
 
@@ -516,10 +517,12 @@ impl<P> AutoCommandBufferBuilder<P> {
                     }
 
                     // Render passes must be compatible.
-                    if !RenderPassCompatible::is_compatible_with(
-                        pipeline.subpass().render_pass(),
-                        &render_pass_state.subpass.0,
-                    ) {
+                    if !pipeline
+                        .subpass()
+                        .render_pass()
+                        .desc()
+                        .is_compatible_with_desc(&render_pass_state.subpass.0.desc())
+                    {
                         return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
                     }
                 } else {

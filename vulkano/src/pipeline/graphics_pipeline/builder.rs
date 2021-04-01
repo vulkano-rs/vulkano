@@ -17,7 +17,6 @@ use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDescTweaks;
 use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::device::Device;
-use crate::framebuffer::RenderPassSubpassInterface;
 use crate::framebuffer::Subpass;
 use crate::pipeline::blend::AttachmentBlend;
 use crate::pipeline::blend::AttachmentsBlend;
@@ -435,11 +434,12 @@ where
         }
 
         // Check that the subpass can accept the output of the fragment shader.
-        if !RenderPassSubpassInterface::is_compatible_with(
-            &self.subpass.as_ref().unwrap().render_pass(),
-            self.subpass.as_ref().unwrap().index(),
-            self.fragment_shader.as_ref().unwrap().0.output(),
-        ) {
+        if !self
+            .subpass
+            .as_ref()
+            .unwrap()
+            .is_compatible_with(self.fragment_shader.as_ref().unwrap().0.output())
+        {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
         }
 
