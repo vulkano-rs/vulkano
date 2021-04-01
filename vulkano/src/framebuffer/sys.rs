@@ -15,7 +15,6 @@ use crate::framebuffer::AttachmentDescription;
 use crate::framebuffer::LoadOp;
 use crate::framebuffer::PassDependencyDescription;
 use crate::framebuffer::PassDescription;
-use crate::framebuffer::RenderPassAbstract;
 use crate::framebuffer::RenderPassDesc;
 use crate::framebuffer::RenderPassDescClearValues;
 use crate::vk;
@@ -32,9 +31,6 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 /// Defines the layout of multiple subpasses.
-///
-/// The `RenderPass` struct should always implement the `RenderPassAbstract` trait. Therefore
-/// you can turn any `Arc<RenderPass>` into a `Arc<RenderPassAbstract + Send + Sync>` if you need to.
 pub struct RenderPass {
     // The internal Vulkan object.
     render_pass: vk::RenderPass,
@@ -383,6 +379,11 @@ impl RenderPass {
         RenderPass::new(device, RenderPassDescReal::empty())
     }
 
+    #[inline]
+    pub fn inner(&self) -> RenderPassSys {
+        RenderPassSys(self.render_pass, PhantomData)
+    }
+
     /// Returns the granularity of this render pass.
     ///
     /// If the render area of a render pass in a command buffer is a multiple of this granularity,
@@ -462,13 +463,6 @@ where
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
         self.desc.convert_clear_values(vals)
-    }
-}
-
-unsafe impl RenderPassAbstract for RenderPass {
-    #[inline]
-    fn inner(&self) -> RenderPassSys {
-        RenderPassSys(self.render_pass, PhantomData)
     }
 }
 

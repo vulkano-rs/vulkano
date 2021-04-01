@@ -7,26 +7,28 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::framebuffer::FramebufferSys;
+use crate::framebuffer::RenderPass;
 use crate::framebuffer::RenderPassDesc;
-use crate::framebuffer::RenderPassSys;
 use crate::image::view::ImageViewAbstract;
 use crate::pipeline::shader::ShaderInterfaceDef;
-
 use crate::SafeDeref;
+use std::sync::Arc;
 
 /// Trait for objects that contain a Vulkan framebuffer object.
 ///
 /// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
 /// into a `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
-pub unsafe trait FramebufferAbstract: RenderPassAbstract {
+pub unsafe trait FramebufferAbstract {
     /// Returns an opaque struct that represents the framebuffer's internals.
     fn inner(&self) -> FramebufferSys;
 
     /// Returns the width, height and array layers of the framebuffer.
     fn dimensions(&self) -> [u32; 3];
+
+    /// Returns the render pass this framebuffer was created for.
+    fn render_pass(&self) -> &Arc<RenderPass>;
 
     /// Returns the attachment of the framebuffer with the given index.
     ///
@@ -68,50 +70,13 @@ where
     }
 
     #[inline]
+    fn render_pass(&self) -> &Arc<RenderPass> {
+        (**self).render_pass()
+    }
+
+    #[inline]
     fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         (**self).attached_image_view(index)
-    }
-}
-
-/// Trait for objects that contain a Vulkan render pass object.
-///
-/// Any `RenderPass` object implements this trait. You can therefore turn a `Arc<RenderPass>`
-/// into a `Arc<RenderPassAbstract + Send + Sync>` for easier storage.
-///
-/// The `Arc<RenderPassAbstract + Send + Sync>` accepts a `Vec<ClearValue>` for clear values and a
-/// `Vec<Arc<ImageView + Send + Sync>>` for the list of attachments.
-///
-/// # Example
-///
-/// ```
-/// use std::sync::Arc;
-/// use vulkano::framebuffer::RenderPassDescReal;
-/// use vulkano::framebuffer::RenderPass;
-/// use vulkano::framebuffer::RenderPassAbstract;
-///
-/// # let device: Arc<vulkano::device::Device> = return;
-/// let render_pass = RenderPass::new(device.clone(), RenderPassDescReal::empty()).unwrap();
-///
-/// // For easier storage, turn this render pass into a `Arc<RenderPassAbstract + Send + Sync>`.
-/// let stored_rp = Arc::new(render_pass) as Arc<RenderPassAbstract + Send + Sync>;
-/// ```
-pub unsafe trait RenderPassAbstract: DeviceOwned + RenderPassDesc {
-    /// Returns an opaque object representing the render pass' internals.
-    ///
-    /// # Safety
-    ///
-    /// The trait implementation must return the same value every time.
-    fn inner(&self) -> RenderPassSys;
-}
-
-unsafe impl<T> RenderPassAbstract for T
-where
-    T: SafeDeref,
-    T::Target: RenderPassAbstract,
-{
-    #[inline]
-    fn inner(&self) -> RenderPassSys {
-        (**self).inner()
     }
 }
 
@@ -251,25 +216,22 @@ where
     }
 }
 
-/// Represents a subpass within a `RenderPassAbstract` object.
+/// Represents a subpass within a `RenderPass` object.
 ///
 /// This struct doesn't correspond to anything in Vulkan. It is simply an equivalent to a
 /// tuple of a render pass and subpass index. Contrary to a tuple, however, the existence of the
 /// subpass is checked when the object is created. When you have a `Subpass` you are guaranteed
 /// that the given subpass does exist.
-#[derive(Debug, Copy, Clone)]
-pub struct Subpass<L> {
-    render_pass: L,
+#[derive(Debug, Clone)]
+pub struct Subpass {
+    render_pass: Arc<RenderPass>,
     subpass_id: u32,
 }
 
-impl<L> Subpass<L>
-where
-    L: RenderPassDesc,
-{
+impl Subpass {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
-    pub fn from(render_pass: L, id: u32) -> Option<Subpass<L>> {
+    pub fn from(render_pass: Arc<RenderPass>, id: u32) -> Option<Subpass> {
         if (id as usize) < render_pass.num_subpasses() {
             Some(Subpass {
                 render_pass,
@@ -335,12 +297,10 @@ where
     pub fn num_samples(&self) -> Option<u32> {
         self.render_pass.num_samples(self.subpass_id)
     }
-}
 
-impl<L> Subpass<L> {
     /// Returns the render pass of this subpass.
     #[inline]
-    pub fn render_pass(&self) -> &L {
+    pub fn render_pass(&self) -> &Arc<RenderPass> {
         &self.render_pass
     }
 
@@ -351,9 +311,9 @@ impl<L> Subpass<L> {
     }
 }
 
-impl<L> Into<(L, u32)> for Subpass<L> {
+impl Into<(Arc<RenderPass>, u32)> for Subpass {
     #[inline]
-    fn into(self) -> (L, u32) {
+    fn into(self) -> (Arc<RenderPass>, u32) {
         (self.render_pass, self.subpass_id)
     }
 }

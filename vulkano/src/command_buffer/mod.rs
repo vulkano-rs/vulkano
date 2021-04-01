@@ -97,7 +97,7 @@ pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
-use crate::framebuffer::{Framebuffer, RenderPass, Subpass};
+use crate::framebuffer::{Framebuffer, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryPipelineStatisticFlags;
@@ -184,7 +184,7 @@ pub enum SubpassContents {
 
 /// Determines the kind of command buffer that we want to create.
 #[derive(Debug, Clone)]
-pub enum Kind<R, F> {
+pub enum Kind<F> {
     /// A primary command buffer can execute all commands and can call secondary command buffers.
     Primary,
 
@@ -193,7 +193,7 @@ pub enum Kind<R, F> {
         /// If `Some`, can only call draw operations that can be executed from within a specific
         /// subpass. Otherwise it can execute all dispatch and transfer operations, but not drawing
         /// operations.
-        render_pass: Option<KindSecondaryRenderPass<R, F>>,
+        render_pass: Option<KindSecondaryRenderPass<F>>,
 
         /// Whether it is allowed to have an active occlusion query in the primary command buffer
         /// when executing this secondary command buffer.
@@ -210,9 +210,9 @@ pub enum Kind<R, F> {
 
 /// Additional information for `Kind::Secondary`.
 #[derive(Debug, Clone)]
-pub struct KindSecondaryRenderPass<R, F> {
+pub struct KindSecondaryRenderPass<F> {
     /// Which subpass this secondary command buffer can be called from.
-    pub subpass: Subpass<R>,
+    pub subpass: Subpass,
 
     /// The framebuffer object that will be used when calling the command buffer.
     /// This parameter is optional and is an optimization hint for the implementation.
@@ -235,14 +235,14 @@ pub enum KindOcclusionQuery {
     Forbidden,
 }
 
-impl Kind<RenderPass, Framebuffer<RenderPass, ()>> {
+impl Kind<Framebuffer<()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> Kind<Arc<RenderPass>, Arc<Framebuffer<RenderPass, ()>>> {
+    pub fn primary() -> Kind<Arc<Framebuffer<()>>> {
         Kind::Primary
     }
 
@@ -255,7 +255,7 @@ impl Kind<RenderPass, Framebuffer<RenderPass, ()>> {
     pub fn secondary(
         occlusion_query: KindOcclusionQuery,
         query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Kind<Arc<RenderPass>, Arc<Framebuffer<RenderPass, ()>>> {
+    ) -> Kind<Arc<Framebuffer<()>>> {
         Kind::Secondary {
             render_pass: None,
             occlusion_query,

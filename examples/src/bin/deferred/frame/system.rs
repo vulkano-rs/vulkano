@@ -18,7 +18,7 @@ use vulkano::device::Queue;
 use vulkano::format::Format;
 use vulkano::framebuffer::Framebuffer;
 use vulkano::framebuffer::FramebufferAbstract;
-use vulkano::framebuffer::RenderPassAbstract;
+use vulkano::framebuffer::RenderPass;
 use vulkano::framebuffer::Subpass;
 use vulkano::image::view::ImageView;
 use vulkano::image::AttachmentImage;
@@ -38,7 +38,7 @@ pub struct FrameSystem {
     // Render pass used for the drawing. See the `new` method for the actual render pass content.
     // We need to keep it in `FrameSystem` because we may want to recreate the intermediate buffers
     // in of a change in the dimensions.
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<RenderPass>,
 
     // Intermediate render target that will contain the albedo of each pixel of the scene.
     diffuse_buffer: Arc<ImageView<Arc<AttachmentImage>>>,
@@ -214,7 +214,7 @@ impl FrameSystem {
     /// This method is necessary in order to initialize the pipelines that will draw the objects
     /// of the scene.
     #[inline]
-    pub fn deferred_subpass(&self) -> Subpass<Arc<dyn RenderPassAbstract + Send + Sync>> {
+    pub fn deferred_subpass(&self) -> Subpass {
         Subpass::from(self.render_pass.clone(), 0).unwrap()
     }
 

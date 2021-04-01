@@ -15,7 +15,7 @@ use crate::command_buffer::Kind;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::framebuffer::{FramebufferAbstract, RenderPassAbstract};
+use crate::framebuffer::FramebufferAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::sync::now;
@@ -170,7 +170,7 @@ pub unsafe trait CommandBuffer: DeviceOwned {
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
 
     /// Returns a `Kind` value describing the command buffer.
-    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
+    fn kind(&self) -> Kind<&dyn FramebufferAbstract>;
 
     /// Returns the number of buffers accessed by this command buffer.
     fn num_buffers(&self) -> usize;
@@ -248,7 +248,7 @@ where
     }
 
     #[inline]
-    fn kind(&self) -> Kind<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+    fn kind(&self) -> Kind<&dyn FramebufferAbstract> {
         (**self).kind()
     }
 

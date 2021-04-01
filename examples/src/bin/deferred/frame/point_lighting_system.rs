@@ -16,7 +16,6 @@ use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
-use vulkano::framebuffer::RenderPassAbstract;
 use vulkano::framebuffer::Subpass;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;
@@ -36,10 +35,7 @@ pub struct PointLightingSystem {
 
 impl PointLightingSystem {
     /// Initializes the point lighting system.
-    pub fn new<R>(gfx_queue: Arc<Queue>, subpass: Subpass<R>) -> PointLightingSystem
-    where
-        R: RenderPassAbstract + Send + Sync + 'static,
-    {
+    pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> PointLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertex_buffer = {
@@ -175,7 +171,7 @@ impl PointLightingSystem {
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
-            self.pipeline.clone().subpass(),
+            self.pipeline.subpass().clone(),
         )
         .unwrap();
         builder

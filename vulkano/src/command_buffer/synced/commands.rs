@@ -29,6 +29,7 @@ use crate::descriptor::descriptor_set::DescriptorSet;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::format::ClearValue;
 use crate::framebuffer::FramebufferAbstract;
+use crate::framebuffer::RenderPassDesc;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::DynamicStencilValue;
@@ -119,9 +120,9 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let resources = (0..framebuffer.num_attachments())
+        let resources = (0..framebuffer.render_pass().num_attachments())
             .map(|atch| {
-                let desc = framebuffer.attachment_desc(atch).unwrap();
+                let desc = framebuffer.render_pass().attachment_desc(atch).unwrap();
                 (
                     KeyTy::Image,
                     Some((

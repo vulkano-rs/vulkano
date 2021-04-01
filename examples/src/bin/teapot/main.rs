@@ -13,7 +13,7 @@ use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassCon
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
-use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPassAbstract, Subpass};
+use vulkano::framebuffer::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -308,7 +308,7 @@ fn window_size_dependent_setup(
     vs: &vs::Shader,
     fs: &fs::Shader,
     images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<dyn RenderPassAbstract + Send + Sync>,
+    render_pass: Arc<RenderPass>,
 ) -> (
     Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
     Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,

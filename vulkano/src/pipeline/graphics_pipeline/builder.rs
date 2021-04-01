@@ -11,16 +11,13 @@
 // to avoid duplicating code, so we hide the warnings for now
 #![allow(deprecated)]
 
-use smallvec::SmallVec;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-use std::u32;
-
+use crate::check_errors;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDescTweaks;
+use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::device::Device;
-use crate::framebuffer::RenderPassAbstract;
+use crate::framebuffer::RenderPassSubpassInterface;
 use crate::framebuffer::Subpass;
 use crate::pipeline::blend::AttachmentBlend;
 use crate::pipeline::blend::AttachmentsBlend;
@@ -50,18 +47,18 @@ use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::viewport::ViewportsState;
-
-use crate::check_errors;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescTweaks;
-use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
-use crate::framebuffer::RenderPassSubpassInterface;
 use crate::vk;
 use crate::VulkanObject;
+use smallvec::SmallVec;
+use std::mem;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
+use std::u32;
 
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
-pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
+pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss> {
     vertex_input: Vdef,
     vertex_shader: Option<(Vs, Vss)>,
     input_assembly: vk::PipelineInputAssemblyStateCreateInfo,
@@ -76,7 +73,7 @@ pub struct GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss,
     fragment_shader: Option<(Fs, Fss)>,
     depth_stencil: DepthStencil,
     blend: Blend,
-    render_pass: Option<Subpass<Rp>>,
+    subpass: Option<Subpass>,
     cache: Option<Arc<PipelineCache>>,
 }
 
@@ -99,7 +96,6 @@ impl
         EmptyEntryPointDummy,
         (),
         EmptyEntryPointDummy,
-        (),
         (),
     >
 {
@@ -126,15 +122,15 @@ impl
                 fragment_shader: None,
                 depth_stencil: DepthStencil::disabled(),
                 blend: Blend::pass_through(),
-                render_pass: None,
+                subpass: None,
                 cache: None,
             }
         }
     }
 }
 
-impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
-    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
+    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
 where
     Vdef: VertexDefinition<Vs::InputDefinition>,
     Vs: GraphicsEntryPointAbstract,
@@ -159,7 +155,6 @@ where
     Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition>
         + ShaderInterfaceDefMatch<Tes::OutputDefinition>
         + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-    Rp: RenderPassAbstract + RenderPassSubpassInterface<Fs::OutputDefinition>,
 {
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
@@ -167,7 +162,7 @@ where
         self,
         device: Arc<Device>,
     ) -> Result<
-        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
+        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>>,
         GraphicsPipelineCreationError,
     > {
         self.with_auto_layout(device, &[])
@@ -182,7 +177,7 @@ where
         device: Arc<Device>,
         dynamic_buffers: &[(usize, usize)],
     ) -> Result<
-        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>, Rp>,
+        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>>,
         GraphicsPipelineCreationError,
     > {
         let pipeline_layout;
@@ -404,7 +399,7 @@ where
         mut self,
         device: Arc<Device>,
         pipeline_layout: Pl,
-    ) -> Result<GraphicsPipeline<Vdef, Pl, Rp>, GraphicsPipelineCreationError>
+    ) -> Result<GraphicsPipeline<Vdef, Pl>, GraphicsPipelineCreationError>
     where
         Pl: PipelineLayoutAbstract,
     {
@@ -441,8 +436,8 @@ where
 
         // Check that the subpass can accept the output of the fragment shader.
         if !RenderPassSubpassInterface::is_compatible_with(
-            &self.render_pass.as_ref().unwrap().render_pass(),
-            self.render_pass.as_ref().unwrap().index(),
+            &self.subpass.as_ref().unwrap().render_pass(),
+            self.subpass.as_ref().unwrap().index(),
             self.fragment_shader.as_ref().unwrap().0.output(),
         ) {
             return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
@@ -936,12 +931,8 @@ where
             lineWidth: self.raster.line_width.unwrap_or(1.0),
         };
 
-        self.multisample.rasterizationSamples = self
-            .render_pass
-            .as_ref()
-            .unwrap()
-            .num_samples()
-            .unwrap_or(1);
+        self.multisample.rasterizationSamples =
+            self.subpass.as_ref().unwrap().num_samples().unwrap_or(1);
         if self.multisample.sampleShadingEnable != vk::FALSE {
             debug_assert!(
                 self.multisample.minSampleShading >= 0.0
@@ -1012,20 +1003,20 @@ where
             };
 
             if self.depth_stencil.depth_write
-                && !self.render_pass.as_ref().unwrap().has_writable_depth()
+                && !self.subpass.as_ref().unwrap().has_writable_depth()
             {
                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
             }
 
             if self.depth_stencil.depth_compare != Compare::Always
-                && !self.render_pass.as_ref().unwrap().has_depth()
+                && !self.subpass.as_ref().unwrap().has_depth()
             {
                 return Err(GraphicsPipelineCreationError::NoDepthAttachment);
             }
 
             if (!self.depth_stencil.stencil_front.always_keep()
                 || !self.depth_stencil.stencil_back.always_keep())
-                && !self.render_pass.as_ref().unwrap().has_stencil()
+                && !self.subpass.as_ref().unwrap().has_stencil()
             {
                 return Err(GraphicsPipelineCreationError::NoStencilAttachment);
             }
@@ -1097,7 +1088,7 @@ where
         };
 
         let blend_atch: SmallVec<[vk::PipelineColorBlendAttachmentState; 8]> = {
-            let num_atch = self.render_pass.as_ref().unwrap().num_color_attachments();
+            let num_atch = self.subpass.as_ref().unwrap().num_color_attachments();
 
             match self.blend.attachments {
                 AttachmentsBlend::Collective(blend) => (0..num_atch)
@@ -1183,13 +1174,13 @@ where
                     .unwrap_or(ptr::null()),
                 layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
                 renderPass: self
-                    .render_pass
+                    .subpass
                     .as_ref()
                     .unwrap()
                     .render_pass()
                     .inner()
                     .internal_object(),
-                subpass: self.render_pass.as_ref().unwrap().index(),
+                subpass: self.subpass.as_ref().unwrap().index(),
                 basePipelineHandle: 0, // TODO:
                 basePipelineIndex: -1, // TODO:
             };
@@ -1218,19 +1209,16 @@ where
             panic!("vkCreateGraphicsPipelines provided a NULL handle");
         }
 
-        let (render_pass, render_pass_subpass) = self.render_pass.take().unwrap().into();
-
         Ok(GraphicsPipeline {
             inner: GraphicsPipelineInner {
                 device: device.clone(),
-                pipeline: pipeline,
+                pipeline,
             },
             layout: pipeline_layout,
 
             vertex_definition: self.vertex_input,
 
-            render_pass: render_pass,
-            render_pass_subpass: render_pass_subpass,
+            subpass: self.subpass.take().unwrap(),
 
             dynamic_line_width: self.raster.line_width.is_none(),
             dynamic_viewport: self.viewport.as_ref().unwrap().dynamic_viewports(),
@@ -1249,8 +1237,8 @@ where
     // TODO: add build_with_cache method
 }
 
-impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
-    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
+    GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
 {
     // TODO: add pipeline derivate system
 
@@ -1259,9 +1247,9 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     pub fn vertex_input<T>(
         self,
         vertex_input: T,
-    ) -> GraphicsPipelineBuilder<T, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> {
+    ) -> GraphicsPipelineBuilder<T, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss> {
         GraphicsPipelineBuilder {
-            vertex_input: vertex_input,
+            vertex_input,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1273,7 +1261,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             fragment_shader: self.fragment_shader,
             depth_stencil: self.depth_stencil,
             blend: self.blend,
-            render_pass: self.render_pass,
+            subpass: self.subpass,
             cache: self.cache,
         }
     }
@@ -1297,7 +1285,6 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         Gss,
         Fs,
         Fss,
-        Rp,
     > {
         self.vertex_input(SingleBufferDefinition::<V>::new())
     }
@@ -1309,7 +1296,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         self,
         shader: Vs2,
         specialization_constants: Vss2,
-    ) -> GraphicsPipelineBuilder<Vdef, Vs2, Vss2, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+    ) -> GraphicsPipelineBuilder<Vdef, Vs2, Vss2, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
     where
         Vs2: GraphicsEntryPointAbstract<SpecializationConstants = Vss2>,
         Vss2: SpecializationConstants,
@@ -1327,7 +1314,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             fragment_shader: self.fragment_shader,
             depth_stencil: self.depth_stencil,
             blend: self.blend,
-            render_pass: self.render_pass,
+            subpass: self.subpass,
             cache: self.cache,
         }
     }
@@ -1457,7 +1444,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         tessellation_control_shader_spec_constants: Tcss2,
         tessellation_evaluation_shader: Tes2,
         tessellation_evaluation_shader_spec_constants: Tess2,
-    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs2, Tcss2, Tes2, Tess2, Gs, Gss, Fs, Fss, Rp>
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs2, Tcss2, Tes2, Tess2, Gs, Gss, Fs, Fss>
     where
         Tcs2: GraphicsEntryPointAbstract<SpecializationConstants = Tcss2>,
         Tes2: GraphicsEntryPointAbstract<SpecializationConstants = Tess2>,
@@ -1486,7 +1473,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             fragment_shader: self.fragment_shader,
             depth_stencil: self.depth_stencil,
             blend: self.blend,
-            render_pass: self.render_pass,
+            subpass: self.subpass,
             cache: self.cache,
         }
     }
@@ -1505,7 +1492,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         self,
         shader: Gs2,
         specialization_constants: Gss2,
-    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs2, Gss2, Fs, Fss, Rp>
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs2, Gss2, Fs, Fss>
     where
         Gs2: GraphicsEntryPointAbstract<SpecializationConstants = Gss2>,
         Gss2: SpecializationConstants,
@@ -1523,7 +1510,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             fragment_shader: self.fragment_shader,
             depth_stencil: self.depth_stencil,
             blend: self.blend,
-            render_pass: self.render_pass,
+            subpass: self.subpass,
             cache: self.cache,
         }
     }
@@ -1597,7 +1584,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     /// drawing.
     #[inline]
     pub fn viewports_scissors_dynamic(mut self, num: u32) -> Self {
-        self.viewport = Some(ViewportsState::Dynamic { num: num });
+        self.viewport = Some(ViewportsState::Dynamic { num });
         self
     }
 
@@ -1788,7 +1775,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
         self,
         shader: Fs2,
         specialization_constants: Fss2,
-    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs2, Fss2, Rp>
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs2, Fss2>
     where
         Fs2: GraphicsEntryPointAbstract<SpecializationConstants = Fss2>,
         Fss2: SpecializationConstants,
@@ -1806,7 +1793,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             fragment_shader: Some((shader, specialization_constants)),
             depth_stencil: self.depth_stencil,
             blend: self.blend,
-            render_pass: self.render_pass,
+            subpass: self.subpass,
             cache: self.cache,
         }
     }
@@ -1907,10 +1894,10 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
 
     /// Sets the render pass subpass to use.
     #[inline]
-    pub fn render_pass<Rp2>(
+    pub fn render_pass(
         self,
-        subpass: Subpass<Rp2>,
-    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp2> {
+        subpass: Subpass,
+    ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss> {
         GraphicsPipelineBuilder {
             vertex_input: self.vertex_input,
             vertex_shader: self.vertex_shader,
@@ -1924,7 +1911,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
             fragment_shader: self.fragment_shader,
             depth_stencil: self.depth_stencil,
             blend: self.blend,
-            render_pass: Some(subpass),
+            subpass: Some(subpass),
             cache: self.cache,
         }
     }
@@ -1941,8 +1928,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
     }
 }
 
-impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp> Clone
-    for GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss, Rp>
+impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss> Clone
+    for GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
 where
     Vdef: Clone,
     Vs: Clone,
@@ -1955,7 +1942,6 @@ where
     Gss: Clone,
     Fs: Clone,
     Fss: Clone,
-    Rp: Clone,
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
@@ -1981,7 +1967,7 @@ where
             fragment_shader: self.fragment_shader.clone(),
             depth_stencil: self.depth_stencil.clone(),
             blend: self.blend.clone(),
-            render_pass: self.render_pass.clone(),
+            subpass: self.subpass.clone(),
             cache: self.cache.clone(),
         }
     }
