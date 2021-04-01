@@ -15,7 +15,6 @@ use crate::framebuffer::AttachmentsList;
 use crate::framebuffer::FramebufferAbstract;
 use crate::framebuffer::IncompatibleRenderPassAttachmentError;
 use crate::framebuffer::RenderPass;
-use crate::framebuffer::RenderPassDesc;
 use crate::image::view::ImageViewAbstract;
 use crate::vk;
 use crate::Error;
@@ -158,14 +157,15 @@ where
     where
         T: ImageViewAbstract,
     {
-        if self.raw_ids.len() >= self.render_pass.num_attachments() {
+        if self.raw_ids.len() >= self.render_pass.desc().attachments().len() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: self.render_pass.num_attachments(),
+                expected: self.render_pass.desc().attachments().len(),
                 obtained: self.raw_ids.len() + 1,
             });
         }
 
-        match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &attachment) {
+        match ensure_image_view_compatible(self.render_pass.desc(), self.raw_ids.len(), &attachment)
+        {
             Ok(()) => (),
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
@@ -257,9 +257,9 @@ where
         let device = self.render_pass.device().clone();
 
         // Check the number of attachments.
-        if self.raw_ids.len() != self.render_pass.num_attachments() {
+        if self.raw_ids.len() != self.render_pass.desc().attachments().len() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: self.render_pass.num_attachments(),
+                expected: self.render_pass.desc().attachments().len(),
                 obtained: self.raw_ids.len(),
             });
         }

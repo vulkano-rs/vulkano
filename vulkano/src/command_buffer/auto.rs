@@ -50,7 +50,6 @@ use crate::framebuffer::Framebuffer;
 use crate::framebuffer::FramebufferAbstract;
 use crate::framebuffer::LoadOp;
 use crate::framebuffer::RenderPass;
-use crate::framebuffer::RenderPassDesc;
 use crate::framebuffer::Subpass;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
@@ -605,7 +604,13 @@ impl<P> AutoCommandBufferBuilder<P> {
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
-            for (atch_i, atch_desc) in framebuffer.render_pass().attachment_descs().enumerate() {
+            for (atch_i, atch_desc) in framebuffer
+                .render_pass()
+                .desc()
+                .attachments()
+                .into_iter()
+                .enumerate()
+            {
                 match clear_values_copy.next() {
                     Some((clear_i, clear_value)) => {
                         if atch_desc.load == LoadOp::Clear {
@@ -1643,9 +1648,9 @@ impl<P> AutoCommandBufferBuilder<P> {
             if let Some(render_pass_state) = self.render_pass_state.as_ref() {
                 let (ref rp, index) = render_pass_state.subpass;
 
-                if rp.num_subpasses() as u32 != index + 1 {
+                if rp.desc().subpasses().len() as u32 != index + 1 {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.num_subpasses() as u32,
+                        actual: rp.desc().subpasses().len() as u32,
                         current: index,
                     });
                 }
@@ -1795,9 +1800,9 @@ impl<P> AutoCommandBufferBuilder<P> {
             if let Some(render_pass_state) = self.render_pass_state.as_mut() {
                 let (ref rp, ref mut index) = render_pass_state.subpass;
 
-                if *index + 1 >= rp.num_subpasses() as u32 {
+                if *index + 1 >= rp.desc().subpasses().len() as u32 {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.num_subpasses() as u32,
+                        actual: rp.desc().subpasses().len() as u32,
                         current: *index,
                     });
                 } else {

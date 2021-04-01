@@ -68,7 +68,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::framebuffer::AttachmentDescription;
             use $crate::framebuffer::PassDependencyDescription;
             use $crate::framebuffer::PassDescription;
-            use $crate::framebuffer::RenderPassDescReal;
+            use $crate::framebuffer::RenderPassDesc;
             use $crate::image::ImageLayout;
             use $crate::sync::AccessFlagBits;
             use $crate::sync::PipelineStages;
@@ -192,7 +192,7 @@ macro_rules! ordered_passes_renderpass {
                 }),*
             ];
 
-            RenderPassDescReal::new(
+            RenderPassDesc::new(
                 attachments,
                 subpasses,
                 dependencies,

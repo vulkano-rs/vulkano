@@ -32,15 +32,15 @@
 //! # Render passes
 //!
 //! In vulkano a render pass is represented by the `RenderPass` struct. In order to create a
-//! render pass, you can create a `RenderPassDescReal` object that describes the render pass,
+//! render pass, you can create a `RenderPassDesc` object that describes the render pass,
 //! then pass it to the `RenderPass` constructor.
 //!
 //! ```
 //! use vulkano::framebuffer::RenderPass;
-//! use vulkano::framebuffer::RenderPassDescReal;
+//! use vulkano::framebuffer::RenderPassDesc;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
-//! let desc = RenderPassDescReal::empty();
+//! let desc = RenderPassDesc::empty();
 //! let render_pass = RenderPass::new(device.clone(), desc).unwrap();
 //! ```
 //!
@@ -88,10 +88,6 @@ pub use self::desc::AttachmentDescription;
 pub use self::desc::LoadOp;
 pub use self::desc::PassDependencyDescription;
 pub use self::desc::PassDescription;
-pub use self::desc::RenderPassDesc;
-pub use self::desc::RenderPassDescAttachments;
-pub use self::desc::RenderPassDescDependencies;
-pub use self::desc::RenderPassDescSubpasses;
 pub use self::desc::StoreOp;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferBuilder;
@@ -99,7 +95,7 @@ pub use self::framebuffer::FramebufferCreationError;
 pub use self::framebuffer::FramebufferSys;
 pub use self::sys::RenderPass;
 pub use self::sys::RenderPassCreationError;
-pub use self::sys::RenderPassDescReal;
+pub use self::sys::RenderPassDesc;
 pub use self::sys::RenderPassSys;
 pub use self::traits::FramebufferAbstract;
 pub use self::traits::Subpass;

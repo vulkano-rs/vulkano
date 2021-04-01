@@ -7,10 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::format::FormatTy;
+use crate::framebuffer::AttachmentDescription;
 use crate::framebuffer::FramebufferSys;
+use crate::framebuffer::PassDescription;
 use crate::framebuffer::RenderPass;
-use crate::framebuffer::RenderPassDesc;
 use crate::image::view::ImageViewAbstract;
+use crate::image::ImageLayout;
 use crate::pipeline::shader::ShaderInterfaceDef;
 use crate::SafeDeref;
 use std::sync::Arc;
@@ -95,7 +98,7 @@ impl Subpass {
     /// Returns a handle that represents a subpass of a render pass.
     #[inline]
     pub fn from(render_pass: Arc<RenderPass>, id: u32) -> Option<Subpass> {
-        if (id as usize) < render_pass.num_subpasses() {
+        if (id as usize) < render_pass.desc().subpasses().len() {
             Some(Subpass {
                 render_pass,
                 subpass_id: id,
@@ -105,60 +108,132 @@ impl Subpass {
         }
     }
 
+    #[inline]
+    fn subpass_desc(&self) -> &PassDescription {
+        &self.render_pass.desc().subpasses()[self.subpass_id as usize]
+    }
+
+    #[inline]
+    fn attachment(&self, atch_num: usize) -> &AttachmentDescription {
+        &self.render_pass.desc().attachments()[atch_num]
+    }
+
     /// Returns the number of color attachments in this subpass.
     #[inline]
     pub fn num_color_attachments(&self) -> u32 {
-        self.render_pass
-            .num_color_attachments(self.subpass_id)
-            .unwrap()
+        self.subpass_desc().color_attachments.len() as u32
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment.
     #[inline]
     pub fn has_depth(&self) -> bool {
-        self.render_pass.has_depth(self.subpass_id).unwrap()
+        let subpass_desc = self.subpass_desc();
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, _)) => d,
+            None => return false,
+        };
+
+        match self.attachment(atch_num).format.ty() {
+            FormatTy::Depth => true,
+            FormatTy::Stencil => false,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
     /// layout is not `DepthStencilReadOnlyOptimal`.
     #[inline]
     pub fn has_writable_depth(&self) -> bool {
-        self.render_pass
-            .has_writable_depth(self.subpass_id)
-            .unwrap()
+        let subpass_desc = self.subpass_desc();
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, l)) => {
+                if l == ImageLayout::DepthStencilReadOnlyOptimal {
+                    return false;
+                }
+                d
+            }
+            None => return false,
+        };
+
+        match self.attachment(atch_num).format.ty() {
+            FormatTy::Depth => true,
+            FormatTy::Stencil => false,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
     #[inline]
     pub fn has_stencil(&self) -> bool {
-        self.render_pass.has_stencil(self.subpass_id).unwrap()
+        let subpass_desc = self.subpass_desc();
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, _)) => d,
+            None => return false,
+        };
+
+        match self.attachment(atch_num).format.ty() {
+            FormatTy::Depth => false,
+            FormatTy::Stencil => true,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
     /// layout is not `DepthStencilReadOnlyOptimal`.
     #[inline]
     pub fn has_writable_stencil(&self) -> bool {
-        self.render_pass
-            .has_writable_stencil(self.subpass_id)
-            .unwrap()
+        let subpass_desc = self.subpass_desc();
+
+        let atch_num = match subpass_desc.depth_stencil {
+            Some((d, l)) => {
+                if l == ImageLayout::DepthStencilReadOnlyOptimal {
+                    return false;
+                }
+                d
+            }
+            None => return false,
+        };
+
+        match self.attachment(atch_num).format.ty() {
+            FormatTy::Depth => false,
+            FormatTy::Stencil => true,
+            FormatTy::DepthStencil => true,
+            _ => unreachable!(),
+        }
     }
 
     /// Returns true if the subpass has any color or depth/stencil attachment.
     #[inline]
     pub fn has_color_or_depth_stencil_attachment(&self) -> bool {
-        self.num_color_attachments() >= 1
-            || self
-                .render_pass
-                .has_depth_stencil_attachment(self.subpass_id)
-                .unwrap()
-                != (false, false)
+        if self.num_color_attachments() >= 1 {
+            return true;
+        }
+
+        let subpass_desc = self.subpass_desc();
+        match subpass_desc.depth_stencil {
+            Some((d, _)) => true,
+            None => false,
+        }
     }
 
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
     /// if there is no such attachment in this subpass.
     #[inline]
     pub fn num_samples(&self) -> Option<u32> {
-        self.render_pass.num_samples(self.subpass_id)
+        let subpass_desc = self.subpass_desc();
+
+        // TODO: chain input attachments as well?
+        subpass_desc
+            .color_attachments
+            .iter()
+            .cloned()
+            .chain(subpass_desc.depth_stencil.clone().into_iter())
+            .filter_map(|a| self.render_pass.desc().attachments().get(a.0))
+            .next()
+            .map(|a| a.samples)
     }
 
     /// Returns the render pass of this subpass.
