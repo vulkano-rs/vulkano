@@ -15,7 +15,7 @@ use crate::sync::AccessFlagBits;
 use crate::sync::PipelineStages;
 use crate::vk;
 
-/// Object that contains the description of a render pass.
+/// The description of a render pass.
 #[derive(Clone, Debug)]
 pub struct RenderPassDesc {
     attachments: Vec<AttachmentDesc>,

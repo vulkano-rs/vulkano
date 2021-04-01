@@ -30,7 +30,58 @@ use std::ptr;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Defines the layout of multiple subpasses.
+/// An object representing the discrete steps in which rendering is done.
+///
+/// A render pass in Vulkan is made up of three parts:
+/// - A list of attachments, which are image views that are inputs, outputs or intermediate stages
+///   in the rendering process.
+/// - One or more subpasses, which are the steps in which the rendering process, takes place,
+///   and the attachments that are used for each step.
+/// - Dependencies, which describe how the input and output data of each subpass is to be passed
+///   from one subpass to the next.
+///
+/// In order to create a render pass, you must create a `RenderPassDesc` object that describes the
+/// render pass, then pass it to `RenderPass::new`.
+///
+/// ```
+/// use vulkano::render_pass::RenderPass;
+/// use vulkano::render_pass::RenderPassDesc;
+///
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// let desc = RenderPassDesc::empty();
+/// let render_pass = RenderPass::new(device.clone(), desc).unwrap();
+/// ```
+///
+/// This example creates a render pass with no attachment and one single subpass that doesn't draw
+/// on anything. While it's sometimes useful, most of the time it's not what you want.
+///
+/// The easiest way to create a "real" render pass is to use the `single_pass_renderpass!` macro.
+///
+/// ```
+/// # #[macro_use] extern crate vulkano;
+/// # fn main() {
+/// # let device: std::sync::Arc<vulkano::device::Device> = return;
+/// use vulkano::format::Format;
+///
+/// let render_pass = single_pass_renderpass!(device.clone(),
+///     attachments: {
+///         // `foo` is a custom name we give to the first and only attachment.
+///         foo: {
+///             load: Clear,
+///             store: Store,
+///             format: Format::R8G8B8A8Unorm,
+///             samples: 1,
+///         }
+///     },
+///     pass: {
+///         color: [foo],       // Repeat the attachment name here.
+///         depth_stencil: {}
+///     }
+/// ).unwrap();
+/// # }
+/// ```
+///
+/// See the documentation of the macro for more details. TODO: put link here
 pub struct RenderPass {
     // The internal Vulkan object.
     render_pass: vk::RenderPass,

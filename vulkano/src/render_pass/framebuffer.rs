@@ -29,7 +29,11 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-/// Contains a render pass and the image views that are attached to it.
+/// The image views that are attached to a render pass during drawing.
+///
+/// A framebuffer is a collection of images, and supplies the actual inputs and outputs of each
+/// subpass within a render pass. It is created from a subpass and must match it: each attachment
+/// point in the subpass must have a matching image in the framebuffer.
 ///
 /// Creating a framebuffer is done by calling `Framebuffer::start`, which returns a
 /// `FramebufferBuilder` object. You can then add the framebuffer attachments one by one by
