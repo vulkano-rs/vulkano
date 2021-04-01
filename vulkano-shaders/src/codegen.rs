@@ -538,7 +538,17 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
-    fn prepend_root(root_path: &Path, paths: &[&str]) -> Vec<String> {
+    #[cfg(not(target_os = "windows"))]
+    pub fn path_separator() -> &'static str {
+        "/"
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn path_separator() -> &'static str {
+        "\\"
+    }
+
+    fn convert_paths(root_path: &Path, paths: &[String]) -> Vec<String> {
         paths
             .iter()
             .map(|p| path_to_str(root_path.join(p).as_path()).to_owned())
@@ -664,19 +674,19 @@ mod tests {
         ",
             ShaderKind::Vertex,
             &[
-                root_path.join("tests/include_dir_a"),
-                root_path.join("tests/include_dir_b"),
+                root_path.join("tests").join("include_dir_a"),
+                root_path.join("tests").join("include_dir_b"),
             ],
             &defines,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
             includes,
-            prepend_root(
+            convert_paths(
                 &root_path,
                 &[
-                    "tests/include_dir_a/target_a.glsl",
-                    "tests/include_dir_b/target_b.glsl"
+                    vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator()),
+                    vec!["tests", "include_dir_b", "target_b.glsl"].join(path_separator()),
                 ]
             )
         );
@@ -691,22 +701,26 @@ mod tests {
         void main() {}
         ",
             ShaderKind::Vertex,
-            &[root_path.join("tests/include_dir_a")],
+            &[root_path.join("tests").join("include_dir_a")],
             &defines,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
             includes_with_relative,
-            prepend_root(
+            convert_paths(
                 &root_path,
                 &[
-                    "tests/include_dir_a/target_a.glsl",
-                    "tests/include_dir_a/../include_dir_b/target_b.glsl"
+                    vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator()),
+                    vec!["tests", "include_dir_a", "../include_dir_b/target_b.glsl"]
+                        .join(path_separator()),
                 ]
             )
         );
 
-        let absolute_path = root_path.join("tests/include_dir_a/target_a.glsl");
+        let absolute_path = root_path
+            .join("tests")
+            .join("include_dir_a")
+            .join("target_a.glsl");
         let absolute_path_str = absolute_path
             .to_str()
             .expect("Cannot run tests in a folder with non unicode characters");
@@ -728,7 +742,10 @@ mod tests {
         .expect("Cannot resolve include files");
         assert_eq!(
             includes_absolute_path,
-            prepend_root(&root_path, &["tests/include_dir_a/target_a.glsl"])
+            convert_paths(
+                &root_path,
+                &[vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator())]
+            )
         );
 
         let (_compile_recursive_, includes_recursive) = compile(
@@ -741,20 +758,21 @@ mod tests {
         ",
             ShaderKind::Vertex,
             &[
-                root_path.join("tests/include_dir_b"),
-                root_path.join("tests/include_dir_c"),
+                root_path.join("tests").join("include_dir_b"),
+                root_path.join("tests").join("include_dir_c"),
             ],
             &defines,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
             includes_recursive,
-            prepend_root(
+            convert_paths(
                 &root_path,
                 &[
-                    "tests/include_dir_c/target_c.glsl",
-                    "tests/include_dir_c/../include_dir_a/target_a.glsl",
-                    "tests/include_dir_b/target_b.glsl"
+                    vec!["tests", "include_dir_c", "target_c.glsl"].join(path_separator()),
+                    vec!["tests", "include_dir_c", "../include_dir_a/target_a.glsl"]
+                        .join(path_separator()),
+                    vec!["tests", "include_dir_b", "target_b.glsl"].join(path_separator()),
                 ]
             )
         );
