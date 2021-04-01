@@ -18,9 +18,7 @@ use crate::descriptor::pipeline_layout::PipelineLayoutSys;
 use crate::descriptor::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::format::ClearValue;
 use crate::framebuffer::RenderPass;
-use crate::framebuffer::RenderPassDescClearValues;
 use crate::framebuffer::Subpass;
 use crate::pipeline::shader::EmptyEntryPointDummy;
 use crate::pipeline::vertex::BufferlessDefinition;
@@ -239,16 +237,6 @@ impl<Mv, L> fmt::Debug for GraphicsPipeline<Mv, L> {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan graphics pipeline {:?}>", self.inner.pipeline)
-    }
-}
-
-unsafe impl<C, Mv, L> RenderPassDescClearValues<C> for GraphicsPipeline<Mv, L>
-where
-    RenderPass: RenderPassDescClearValues<C>,
-{
-    #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
-        self.subpass.render_pass().convert_clear_values(vals)
     }
 }
 

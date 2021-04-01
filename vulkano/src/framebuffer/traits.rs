@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::format::ClearValue;
 use crate::framebuffer::FramebufferSys;
 use crate::framebuffer::RenderPass;
 use crate::framebuffer::RenderPassDesc;
@@ -77,41 +76,6 @@ where
     #[inline]
     fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         (**self).attached_image_view(index)
-    }
-}
-
-/// Extension trait for `RenderPassDesc`. Defines which types are allowed as a list of clear values.
-///
-/// When the user enters a render pass, they need to pass a list of clear values to apply to
-/// the attachments of the framebuffer. To do so, the render pass object or the framebuffer
-/// (depending on the function you use) must implement `RenderPassDescClearValues<C>` where `C` is
-/// the parameter that the user passed. The trait method is then responsible for checking the
-/// correctness of these values and turning them into a list that can be processed by vulkano.
-pub unsafe trait RenderPassDescClearValues<C> {
-    /// Decodes a `C` into a list of clear values where each element corresponds
-    /// to an attachment. The size of the returned iterator must be the same as the number of
-    /// attachments.
-    ///
-    /// The format of the clear value **must** match the format of the attachment. Attachments
-    /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
-    ///
-    /// # Safety
-    ///
-    /// This trait is unsafe because vulkano doesn't check whether the clear value is in a format
-    /// that matches the attachment.
-    ///
-    // TODO: meh for boxing
-    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>>;
-}
-
-unsafe impl<T, C> RenderPassDescClearValues<C> for T
-where
-    T: SafeDeref,
-    T::Target: RenderPassDescClearValues<C>,
-{
-    #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
-        (**self).convert_clear_values(vals)
     }
 }
 

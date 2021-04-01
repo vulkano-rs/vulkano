@@ -52,7 +52,6 @@ use crate::framebuffer::LoadOp;
 use crate::framebuffer::RenderPass;
 use crate::framebuffer::RenderPassCompatible;
 use crate::framebuffer::RenderPassDesc;
-use crate::framebuffer::RenderPassDescClearValues;
 use crate::framebuffer::Subpass;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
@@ -575,15 +574,15 @@ impl<P> AutoCommandBufferBuilder<P> {
     ///
     /// You must call this before you can add draw commands.
     #[inline]
-    pub fn begin_render_pass<F, C>(
+    pub fn begin_render_pass<F, I>(
         &mut self,
         framebuffer: F,
         contents: SubpassContents,
-        clear_values: C,
+        clear_values: I,
     ) -> Result<&mut Self, BeginRenderPassError>
     where
         F: FramebufferAbstract + Clone + Send + Sync + 'static,
-        RenderPass: RenderPassDescClearValues<C>,
+        I: IntoIterator<Item = ClearValue>,
     {
         unsafe {
             if let Kind::Secondary { .. } = self.kind {
@@ -596,7 +595,10 @@ impl<P> AutoCommandBufferBuilder<P> {
 
             self.ensure_outside_render_pass()?;
 
-            let clear_values = framebuffer.render_pass().convert_clear_values(clear_values);
+            let clear_values = framebuffer
+                .render_pass()
+                .desc()
+                .convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 

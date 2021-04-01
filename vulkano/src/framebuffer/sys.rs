@@ -16,7 +16,6 @@ use crate::framebuffer::LoadOp;
 use crate::framebuffer::PassDependencyDescription;
 use crate::framebuffer::PassDescription;
 use crate::framebuffer::RenderPassDesc;
-use crate::framebuffer::RenderPassDescClearValues;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -456,16 +455,6 @@ unsafe impl RenderPassDesc for RenderPass {
     }
 }
 
-unsafe impl<C> RenderPassDescClearValues<C> for RenderPass
-where
-    RenderPassDescReal: RenderPassDescClearValues<C>,
-{
-    #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
-        self.desc.convert_clear_values(vals)
-    }
-}
-
 unsafe impl DeviceOwned for RenderPass {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -598,21 +587,29 @@ impl RenderPassDescReal {
             dependencies: vec![],
         }
     }
+
+    /// Decodes `I` into a list of clear values where each element corresponds
+    /// to an attachment. The size of the returned iterator must be the same as the number of
+    /// attachments.
+    ///
+    /// When the user enters a render pass, they need to pass a list of clear values to apply to
+    /// the attachments of the framebuffer. This method is then responsible for checking the
+    /// correctness of these values and turning them into a list that can be processed by vulkano.
+    ///
+    /// The format of the clear value **must** match the format of the attachment. Attachments
+    /// that are not loaded with `LoadOp::Clear` must have an entry equal to `ClearValue::None`.
+    pub fn convert_clear_values<I>(&self, values: I) -> impl Iterator<Item = ClearValue>
+    where
+        I: IntoIterator<Item = ClearValue>,
+    {
+        // FIXME: safety checks
+        values.into_iter()
+    }
 }
 
 impl Default for RenderPassDescReal {
     fn default() -> Self {
         Self::empty()
-    }
-}
-
-unsafe impl RenderPassDescClearValues<Vec<ClearValue>> for RenderPassDescReal {
-    fn convert_clear_values(
-        &self,
-        values: Vec<ClearValue>,
-    ) -> Box<dyn Iterator<Item = ClearValue>> {
-        // FIXME: safety checks
-        Box::new(values.into_iter())
     }
 }
 

@@ -7,11 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
 use crate::framebuffer::RenderPassCompatible;
-use crate::framebuffer::RenderPassDescClearValues;
 use crate::image::ImageLayout;
 use crate::sync::AccessFlagBits;
 use crate::sync::PipelineStages;
@@ -36,7 +34,7 @@ use crate::SafeDeref;
 /// - The provided methods shouldn't be overridden with fancy implementations. For example
 ///   `build_render_pass` must build a render pass from the description and not a different one.
 ///
-pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
+pub unsafe trait RenderPassDesc {
     /// Returns the number of attachments of the render pass.
     fn num_attachments(&self) -> usize;
 
