@@ -31,23 +31,17 @@
 //!
 //! # Render passes
 //!
-//! In vulkano a render pass is represented by the `RenderPass` struct. This struct has a template
-//! parameter that contains the description of the render pass. The `RenderPassAbstract` trait is
-//! implemented on all instances of `RenderPass<_>` and makes it easier to store render passes
-//! without having to explicitly write its type.
-//!
-//! The template parameter of the `RenderPass` struct must implement the `RenderPassDesc` trait.
-//! In order to create a render pass, you can create an object that implements this trait, then
-//! call the `build_render_pass` method on it.
+//! In vulkano a render pass is represented by the `RenderPass` struct. In order to create a
+//! render pass, you can create a `RenderPassDescReal` object that describes the render pass,
+//! then pass it to the `RenderPass` constructor.
 //!
 //! ```
+//! use vulkano::framebuffer::RenderPass;
 //! use vulkano::framebuffer::RenderPassDescReal;
-//! use vulkano::framebuffer::RenderPassDesc;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! let desc = RenderPassDescReal::empty();
-//! let render_pass = desc.build_render_pass(device.clone()).unwrap();
-//! // The type of `render_pass` is `RenderPass<RenderPassDescReal>`.
+//! let render_pass = RenderPass::new(device.clone(), desc).unwrap();
 //! ```
 //!
 //! This example creates a render pass with no attachment and one single subpass that doesn't draw
@@ -80,9 +74,6 @@
 //! ```
 //!
 //! See the documentation of the macro for more details. TODO: put link here
-//!
-//! Once a `RenderPass<_>` struct is created, it implements the same render-pass-related traits as
-//! its template parameter.
 //!
 //! # Framebuffers
 //!

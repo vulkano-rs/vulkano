@@ -7,15 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-use std::sync::Mutex;
-
+use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
@@ -26,18 +18,24 @@ use crate::framebuffer::PassDescription;
 use crate::framebuffer::RenderPassAbstract;
 use crate::framebuffer::RenderPassDesc;
 use crate::framebuffer::RenderPassDescClearValues;
-
-use crate::check_errors;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
+use smallvec::SmallVec;
+use std::error;
+use std::fmt;
+use std::marker::PhantomData;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Defines the layout of multiple subpasses.
 ///
 /// The `RenderPass` struct should always implement the `RenderPassAbstract` trait. Therefore
-/// you can turn any `Arc<RenderPass<D>>` into a `Arc<RenderPassAbstract + Send + Sync>` if you need to.
-pub struct RenderPass<D> {
+/// you can turn any `Arc<RenderPass>` into a `Arc<RenderPassAbstract + Send + Sync>` if you need to.
+pub struct RenderPass {
     // The internal Vulkan object.
     render_pass: vk::RenderPass,
 
@@ -45,16 +43,13 @@ pub struct RenderPass<D> {
     device: Arc<Device>,
 
     // Description of the render pass.
-    desc: D,
+    desc: RenderPassDescReal,
 
     // Cache of the granularity of the render pass.
     granularity: Mutex<Option<[u32; 2]>>,
 }
 
-impl<D> RenderPass<D>
-where
-    D: RenderPassDesc,
-{
+impl RenderPass {
     /// Builds a new render pass.
     ///
     /// # Panic
@@ -65,8 +60,8 @@ where
     ///
     pub fn new(
         device: Arc<Device>,
-        description: D,
-    ) -> Result<RenderPass<D>, RenderPassCreationError> {
+        description: RenderPassDescReal,
+    ) -> Result<RenderPass, RenderPassCreationError> {
         let vk = device.pointers();
 
         // If the first use of an attachment in this render pass is as an input attachment, and
@@ -379,21 +374,15 @@ where
             granularity: Mutex::new(None),
         })
     }
-}
 
-impl RenderPass<RenderPassDescReal> {
     /// Builds a render pass with one subpass and no attachment.
     ///
     /// This method is useful for quick tests.
     #[inline]
-    pub fn empty_single_pass(
-        device: Arc<Device>,
-    ) -> Result<RenderPass<RenderPassDescReal>, RenderPassCreationError> {
+    pub fn empty_single_pass(device: Arc<Device>) -> Result<RenderPass, RenderPassCreationError> {
         RenderPass::new(device, RenderPassDescReal::empty())
     }
-}
 
-impl<D> RenderPass<D> {
     /// Returns the granularity of this render pass.
     ///
     /// If the render area of a render pass in a command buffer is a multiple of this granularity,
@@ -429,15 +418,12 @@ impl<D> RenderPass<D> {
     /// > **Note**: You must not somehow modify the description. This shouldn't be possible anyway
     /// > if `RenderPassDesc` was implemented correctly.
     #[inline]
-    pub fn desc(&self) -> &D {
+    pub fn desc(&self) -> &RenderPassDescReal {
         &self.desc
     }
 }
 
-unsafe impl<D> RenderPassDesc for RenderPass<D>
-where
-    D: RenderPassDesc,
-{
+unsafe impl RenderPassDesc for RenderPass {
     #[inline]
     fn num_attachments(&self) -> usize {
         self.desc.num_attachments()
@@ -469,9 +455,9 @@ where
     }
 }
 
-unsafe impl<C, D> RenderPassDescClearValues<C> for RenderPass<D>
+unsafe impl<C> RenderPassDescClearValues<C> for RenderPass
 where
-    D: RenderPassDescClearValues<C>,
+    RenderPassDescReal: RenderPassDescClearValues<C>,
 {
     #[inline]
     fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
@@ -479,27 +465,21 @@ where
     }
 }
 
-unsafe impl<D> RenderPassAbstract for RenderPass<D>
-where
-    D: RenderPassDesc,
-{
+unsafe impl RenderPassAbstract for RenderPass {
     #[inline]
     fn inner(&self) -> RenderPassSys {
         RenderPassSys(self.render_pass, PhantomData)
     }
 }
 
-unsafe impl<D> DeviceOwned for RenderPass<D> {
+unsafe impl DeviceOwned for RenderPass {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl<D> fmt::Debug for RenderPass<D>
-where
-    D: fmt::Debug,
-{
+impl fmt::Debug for RenderPass {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("RenderPass")
             .field("raw", &self.render_pass)
@@ -509,7 +489,7 @@ where
     }
 }
 
-impl<D> Drop for RenderPass<D> {
+impl Drop for RenderPass {
     #[inline]
     fn drop(&mut self) {
         unsafe {

@@ -62,7 +62,7 @@ macro_rules! ordered_passes_renderpass {
             ),*
         ]
     ) => ({
-        use $crate::framebuffer::RenderPassDesc;
+        use $crate::framebuffer::RenderPass;
 
         let desc = {
             use $crate::framebuffer::AttachmentDescription;
@@ -199,7 +199,7 @@ macro_rules! ordered_passes_renderpass {
             )
         };
 
-        desc.build_render_pass($device)
+        RenderPass::new($device, desc)
     });
 }
 

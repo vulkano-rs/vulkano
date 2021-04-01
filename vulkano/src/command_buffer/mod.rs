@@ -97,22 +97,20 @@ pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
-
-use crate::framebuffer::{Framebuffer, RenderPass, RenderPassDescReal, Subpass};
+use crate::framebuffer::{Framebuffer, RenderPass, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryPipelineStatisticFlags;
 use std::sync::Arc;
 
+mod auto;
 pub mod pool;
+mod state_cacher;
 pub mod submit;
 pub mod synced;
 pub mod sys;
-pub mod validity;
-
-mod auto;
-mod state_cacher;
 mod traits;
+pub mod validity;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -237,17 +235,14 @@ pub enum KindOcclusionQuery {
     Forbidden,
 }
 
-impl Kind<RenderPass<RenderPassDescReal>, Framebuffer<RenderPass<RenderPassDescReal>, ()>> {
+impl Kind<RenderPass, Framebuffer<RenderPass, ()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> Kind<
-        Arc<RenderPass<RenderPassDescReal>>,
-        Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>,
-    > {
+    pub fn primary() -> Kind<Arc<RenderPass>, Arc<Framebuffer<RenderPass, ()>>> {
         Kind::Primary
     }
 
@@ -260,10 +255,7 @@ impl Kind<RenderPass<RenderPassDescReal>, Framebuffer<RenderPass<RenderPassDescR
     pub fn secondary(
         occlusion_query: KindOcclusionQuery,
         query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Kind<
-        Arc<RenderPass<RenderPassDescReal>>,
-        Arc<Framebuffer<RenderPass<RenderPassDescReal>, ()>>,
-    > {
+    ) -> Kind<Arc<RenderPass>, Arc<Framebuffer<RenderPass, ()>>> {
         Kind::Secondary {
             render_pass: None,
             occlusion_query,

@@ -562,8 +562,7 @@ mod tests {
     use crate::format::Format;
     use crate::framebuffer::Framebuffer;
     use crate::framebuffer::FramebufferCreationError;
-    use crate::framebuffer::RenderPassDesc;
-    use crate::framebuffer::RenderPassDescReal;
+    use crate::framebuffer::RenderPass;
     use crate::image::attachment::AttachmentImage;
     use crate::image::view::ImageView;
     use std::sync::Arc;
@@ -605,9 +604,7 @@ mod tests {
     fn check_device_limits() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = RenderPassDescReal::empty()
-            .build_render_pass(device)
-            .unwrap();
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let res = Framebuffer::with_dimensions(rp, [0xffffffff, 0xffffffff, 0xffffffff]).build();
         match res {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
@@ -919,9 +916,7 @@ mod tests {
     fn empty_working() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = RenderPassDescReal::empty()
-            .build_render_pass(device)
-            .unwrap();
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let _ = Framebuffer::with_dimensions(rp, [512, 512, 1])
             .build()
             .unwrap();
@@ -931,9 +926,7 @@ mod tests {
     fn cant_determine_dimensions_auto() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = RenderPassDescReal::empty()
-            .build_render_pass(device)
-            .unwrap();
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let res = Framebuffer::start(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),
@@ -945,9 +938,7 @@ mod tests {
     fn cant_determine_dimensions_intersect() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = RenderPassDescReal::empty()
-            .build_render_pass(device)
-            .unwrap();
+        let rp = RenderPass::empty_single_pass(device).unwrap();
         let res = Framebuffer::with_intersecting_dimensions(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),

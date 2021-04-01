@@ -75,7 +75,7 @@ where
 
 /// Trait for objects that contain a Vulkan render pass object.
 ///
-/// Any `RenderPass` object implements this trait. You can therefore turn a `Arc<RenderPass<_>>`
+/// Any `RenderPass` object implements this trait. You can therefore turn a `Arc<RenderPass>`
 /// into a `Arc<RenderPassAbstract + Send + Sync>` for easier storage.
 ///
 /// The `Arc<RenderPassAbstract + Send + Sync>` accepts a `Vec<ClearValue>` for clear values and a

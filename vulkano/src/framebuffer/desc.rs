@@ -7,20 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-
-use crate::device::Device;
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
-use crate::framebuffer::RenderPass;
 use crate::framebuffer::RenderPassCompatible;
-use crate::framebuffer::RenderPassCreationError;
 use crate::framebuffer::RenderPassDescClearValues;
 use crate::image::ImageLayout;
 use crate::sync::AccessFlagBits;
 use crate::sync::PipelineStages;
-
 use crate::vk;
 use crate::SafeDeref;
 
@@ -117,20 +111,6 @@ pub unsafe trait RenderPassDesc: RenderPassDescClearValues<Vec<ClearValue>> {
         T: ?Sized + RenderPassDesc,
     {
         RenderPassCompatible::is_compatible_with(self, other)
-    }
-
-    /// Builds a render pass from this description.
-    ///
-    /// > **Note**: This function is just a shortcut for `RenderPass::new`.
-    #[inline]
-    fn build_render_pass(
-        self,
-        device: Arc<Device>,
-    ) -> Result<RenderPass<Self>, RenderPassCreationError>
-    where
-        Self: Sized,
-    {
-        RenderPass::new(device, self)
     }
 
     /// Returns the number of color attachments of a subpass. Returns `None` if out of range.
