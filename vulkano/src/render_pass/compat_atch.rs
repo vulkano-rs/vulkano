@@ -11,8 +11,8 @@
 //! an image view can be used as a render pass attachment.
 
 use crate::format::Format;
-use crate::render_pass::RenderPassDesc;
 use crate::image::view::ImageViewAbstract;
+use crate::render_pass::RenderPassDesc;
 use std::error;
 use std::fmt;
 
@@ -178,9 +178,9 @@ mod tests {
     use super::ensure_image_view_compatible;
     use super::IncompatibleRenderPassAttachmentError;
     use crate::format::Format;
-    use crate::render_pass::RenderPassDesc;
     use crate::image::view::ImageView;
     use crate::image::AttachmentImage;
+    use crate::render_pass::RenderPassDesc;
 
     #[test]
     fn basic_ok() {

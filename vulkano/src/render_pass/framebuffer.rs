@@ -10,11 +10,11 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
 use crate::render_pass::ensure_image_view_compatible;
 use crate::render_pass::AttachmentsList;
 use crate::render_pass::IncompatibleRenderPassAttachmentError;
 use crate::render_pass::RenderPass;
-use crate::image::view::ImageViewAbstract;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -565,11 +565,11 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
+    use crate::image::attachment::AttachmentImage;
+    use crate::image::view::ImageView;
     use crate::render_pass::Framebuffer;
     use crate::render_pass::FramebufferCreationError;
     use crate::render_pass::RenderPass;
-    use crate::image::attachment::AttachmentImage;
-    use crate::image::view::ImageView;
     use std::sync::Arc;
 
     #[test]

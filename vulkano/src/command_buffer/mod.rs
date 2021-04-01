@@ -97,10 +97,10 @@ pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
-use crate::render_pass::{Framebuffer, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryPipelineStatisticFlags;
+use crate::render_pass::{Framebuffer, Subpass};
 use std::sync::Arc;
 
 mod auto;

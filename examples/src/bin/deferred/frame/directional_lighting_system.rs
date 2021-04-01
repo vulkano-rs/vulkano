@@ -15,7 +15,6 @@ use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
-use vulkano::render_pass::Subpass;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;
 use vulkano::pipeline::blend::BlendFactor;
@@ -23,6 +22,7 @@ use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
+use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
 

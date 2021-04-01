@@ -13,10 +13,10 @@ use vulkano::command_buffer::AutoCommandBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
 use vulkano::device::Queue;
-use vulkano::render_pass::Subpass;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
+use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
 

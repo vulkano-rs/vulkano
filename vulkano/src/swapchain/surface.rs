@@ -810,9 +810,9 @@ impl From<Error> for CapabilitiesError {
 
 #[cfg(test)]
 mod tests {
-    use std::ptr;
     use crate::swapchain::Surface;
     use crate::swapchain::SurfaceCreationError;
+    use std::ptr;
 
     #[test]
     fn khr_win32_surface_ext_missing() {

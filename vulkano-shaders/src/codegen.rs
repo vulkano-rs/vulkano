@@ -256,11 +256,15 @@ pub(super) fn reflect(
         }
     }
 
-    let include_bytes = full_path.map(|s| quote! {
-        // using include_bytes here ensures that changing the shader will force recompilation.
-        // The bytes themselves can be optimized out by the compiler as they are unused.
-        let _bytes = ::std::include_bytes!( #s );
-    }).unwrap_or(TokenStream::new());
+    let include_bytes = full_path
+        .map(|s| {
+            quote! {
+                // using include_bytes here ensures that changing the shader will force recompilation.
+                // The bytes themselves can be optimized out by the compiler as they are unused.
+                let _bytes = ::std::include_bytes!( #s );
+            }
+        })
+        .unwrap_or(TokenStream::new());
 
     let structs = structs::write_structs(&doc, &types_meta);
     let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);

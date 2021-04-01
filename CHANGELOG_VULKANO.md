@@ -3,6 +3,17 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+- **Breaking** Major rearranging of framebuffer and render pass-related types:
+  - The `framebuffer` module is renamed to `render_pass`.
+  - `RenderPassDesc` is now a struct, not a trait. The methods have been simplified, returning a slice reference to the `attachments`, `subpasses` and `dependencies`.
+    - Renamed: `AttachmentDescription` > `AttachmentDesc`, `PassDescription` > `SubpassDesc`, `PassDependencyDescription` > `SubpassDependencyDesc`.
+    - `EmptySinglePassRenderPassDesc` is replaced with the `RenderPassDesc::empty` constructor, or its `Default` implementation.
+    - The `RenderPassCompatible`, `RenderPassDescClearValues` and `RenderPassSubpassInterface` traits are removed, their functionality is moved to `RenderPassDesc`.
+  - `RenderPass` takes a concrete `RenderPassDesc` value for construction, and no longer has a type parameter.
+    - The `RenderPassAbstract` trait is removed.
+    - `GraphicsPipeline` and `Framebuffer` no longer have a render pass type parameter.
+    - `GraphicsPipelineAbstract` and `FramebufferAbstract` have trait methods to retrieve the render pass instead.
+  - The `ordered_passes_renderpass!` and `single_pass_renderpass!` macros are unchanged externally.
 
 # Version 0.22.0 (2021-03-31)
 

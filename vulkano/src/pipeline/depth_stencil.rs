@@ -20,9 +20,9 @@
 //! value in the stencil buffer at each fragment's location. Depending on the outcome of the
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
 
+use crate::vk;
 use std::ops::Range;
 use std::u32;
-use crate::vk;
 
 /// Configuration of the depth and stencil tests.
 #[derive(Debug, Clone)]
