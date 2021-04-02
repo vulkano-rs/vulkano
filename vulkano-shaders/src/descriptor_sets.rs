@@ -11,7 +11,7 @@ use std::cmp;
 
 use proc_macro2::{Ident, TokenStream};
 
-use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
+use crate::enums::{AccessQualifier, Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use std::collections::HashSet;
@@ -389,10 +389,14 @@ fn descriptor_infos(
                         decoration_block ^ decoration_buffer_block,
                         "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
-                    let is_ssbo = pointer_storage == StorageClass::StorageClassStorageBuffer;
+
+                    // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    let storage = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
                     // Determine whether there's a NonWritable decoration.
-                    let readonly = {
+                    // Uniforms are never writable.
+                    let readonly = !storage || {
                         let mut readonly = vec![false; member_types.len()];
                         for i in doc.instructions.iter() {
                             if let Instruction::MemberDecorate { target_id, member, decoration, .. } = i {
@@ -408,7 +412,7 @@ fn descriptor_infos(
                     let desc = quote! {
                         DescriptorDescTy::Buffer(DescriptorBufferDesc {
                             dynamic: None,
-                            storage: #is_ssbo,
+                            storage: #storage,
                         })
                     };
 
@@ -421,11 +425,17 @@ fn descriptor_infos(
                     ms,
                     sampled,
                     ref format,
+                    ref access,
                     ..
                 } if result_id == pointed_ty => {
                     let sampled = sampled.expect(
                         "Vulkan requires that variables of type OpTypeImage \
                                               have a Sampled operand of 1 or 2",
+                    );
+
+                    let readonly = matches!(
+                        access,
+                        Some(AccessQualifier::AccessQualifierReadOnly)
                     );
 
                     let arrayed = match arrayed {
@@ -435,7 +445,7 @@ fn descriptor_infos(
 
                     match dim {
                         Dim::DimSubpassData => {
-                            // We are an input attachment.
+                            // VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
                             assert!(
                                 !force_combined_image_sampled,
                                 "An OpTypeSampledImage can't point to \
@@ -459,25 +469,32 @@ fn descriptor_infos(
                                 }
                             };
 
-                            Some((desc, true, 1))
+                            Some((desc, true, 1)) // Never writable.
                         }
                         Dim::DimBuffer => {
-                            // We are a texel buffer.
-                            let not_sampled = !sampled;
+                            // false -> VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+                            // true -> VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+                            let storage = !sampled;
                             let desc = quote! {
                                 DescriptorDescTy::TexelBuffer {
-                                    storage: #not_sampled,
+                                    storage: #storage,
                                     format: None, // TODO: specify format if known
                                 }
                             };
 
-                            Some((desc, true, 1))
+                            Some((desc, !storage || readonly, 1)) // Uniforms are never writable.
                         }
                         _ => {
-                            // We are a sampled or storage image.
-                            let ty = match force_combined_image_sampled {
-                                true => quote! { DescriptorDescTy::CombinedImageSampler },
-                                false => quote! { DescriptorDescTy::Image },
+                            let (ty, readonly) = match force_combined_image_sampled {
+                                // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                // Never writable.
+                                true => (quote! { DescriptorDescTy::CombinedImageSampler }, true),
+                                false => {
+                                    // false -> VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                    let storage = !sampled;
+                                    (quote! { DescriptorDescTy::Image }, !storage || readonly) // Sampled images are never writable.
+                                },
                             };
                             let dim = match *dim {
                                 Dim::Dim1D => {
@@ -504,7 +521,7 @@ fn descriptor_infos(
                                 })
                             };
 
-                            Some((desc, true, 1))
+                            Some((desc, readonly, 1))
                         }
                     }
                 }
