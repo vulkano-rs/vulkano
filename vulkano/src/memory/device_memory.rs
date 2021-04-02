@@ -992,7 +992,7 @@ pub enum DeviceMemoryAllocError {
 
 impl error::Error for DeviceMemoryAllocError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             DeviceMemoryAllocError::OomError(ref err) => Some(err),
             _ => None,

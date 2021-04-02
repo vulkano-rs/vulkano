@@ -2290,7 +2290,7 @@ macro_rules! err_gen {
 
         impl error::Error for $name {
             #[inline]
-            fn cause(&self) -> Option<&dyn error::Error> {
+            fn source(&self) -> Option<&(dyn error::Error + 'static)> {
                 match *self {
                     $(
                         $name::$err(ref err) => Some(err),

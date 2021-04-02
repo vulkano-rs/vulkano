@@ -184,7 +184,7 @@ pub enum SupportedExtensionsError {
 
 impl error::Error for SupportedExtensionsError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SupportedExtensionsError::LoadingError(ref err) => Some(err),
             SupportedExtensionsError::OomError(ref err) => Some(err),

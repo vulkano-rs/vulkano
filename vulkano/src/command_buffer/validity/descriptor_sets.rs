@@ -81,7 +81,7 @@ pub enum CheckDescriptorSetsValidityError {
 
 impl error::Error for CheckDescriptorSetsValidityError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CheckDescriptorSetsValidityError::IncompatibleDescriptor { ref error, .. } => {
                 Some(error)

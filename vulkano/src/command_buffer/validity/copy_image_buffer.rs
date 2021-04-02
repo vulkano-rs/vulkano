@@ -211,7 +211,7 @@ pub enum CheckCopyBufferImageError {
 }
 
 impl error::Error for CheckCopyBufferImageError {
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CheckCopyBufferImageError::WrongPixelType(ref err) => Some(err),
             _ => None,

@@ -262,7 +262,7 @@ pub enum SubmitCommandBufferError {
 
 impl error::Error for SubmitCommandBufferError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SubmitCommandBufferError::OomError(ref err) => Some(err),
             _ => None,

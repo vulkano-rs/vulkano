@@ -316,7 +316,7 @@ pub enum BufferViewCreationError {
 
 impl error::Error for BufferViewCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             BufferViewCreationError::OomError(ref err) => Some(err),
             _ => None,

@@ -724,7 +724,7 @@ pub enum SamplerCreationError {
 
 impl error::Error for SamplerCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SamplerCreationError::OomError(ref err) => Some(err),
             _ => None,
