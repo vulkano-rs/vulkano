@@ -3,6 +3,7 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+- Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
 
 # Version 0.22.0 (2021-03-31)
 
