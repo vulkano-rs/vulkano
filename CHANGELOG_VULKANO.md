@@ -3,6 +3,7 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+- The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 
 # Version 0.22.0 (2021-03-31)
 
