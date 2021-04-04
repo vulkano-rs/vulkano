@@ -11,11 +11,12 @@ use std::cmp;
 
 use proc_macro2::{Ident, TokenStream};
 
-use crate::enums::{AccessQualifier, Decoration, Dim, ImageFormat, StorageClass};
+use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use std::collections::HashSet;
 
+#[derive(Debug)]
 struct Descriptor {
     set: u32,
     binding: u32,
@@ -177,6 +178,10 @@ fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<D
             .get_decoration_params(variable_id, Decoration::DecorationBinding)
             .unwrap()[0];
 
+        let nonwritable = doc
+            .get_decoration_params(variable_id, Decoration::DecorationNonWritable)
+            .is_some();
+
         // Find information about the kind of binding for this descriptor.
         let (desc_ty, readonly, array_count) =
             descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
@@ -188,7 +193,7 @@ fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<D
             set,
             binding,
             array_count,
-            readonly,
+            readonly: nonwritable || readonly,
         });
     }
 
@@ -394,20 +399,13 @@ fn descriptor_infos(
                     // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                     let storage = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
-                    // Determine whether there's a NonWritable decoration.
+                    // Determine whether all members have a NonWritable decoration.
+                    let nonwritable = (0..member_types.len() as u32).all(|i| {
+                        doc.get_member_decoration_params(pointed_ty, i, Decoration::DecorationNonWritable).is_some()
+                    });
+
                     // Uniforms are never writable.
-                    let readonly = !storage || {
-                        let mut readonly = vec![false; member_types.len()];
-                        for i in doc.instructions.iter() {
-                            if let Instruction::MemberDecorate { target_id, member, decoration, .. } = i {
-                                if *target_id == *result_id && *decoration == Decoration::DecorationNonWritable {
-                                    assert!(!readonly[*member as usize]);
-                                    readonly[*member as usize] = true;
-                                }
-                            }
-                        }
-                        readonly.iter().all(|x| *x)
-                    };
+                    let readonly = !storage || nonwritable;
 
                     let desc = quote! {
                         DescriptorDescTy::Buffer(DescriptorBufferDesc {
@@ -425,17 +423,11 @@ fn descriptor_infos(
                     ms,
                     sampled,
                     ref format,
-                    ref access,
                     ..
                 } if result_id == pointed_ty => {
                     let sampled = sampled.expect(
                         "Vulkan requires that variables of type OpTypeImage \
                                               have a Sampled operand of 1 or 2",
-                    );
-
-                    let readonly = matches!(
-                        access,
-                        Some(AccessQualifier::AccessQualifierReadOnly)
                     );
 
                     let arrayed = match arrayed {
@@ -482,7 +474,7 @@ fn descriptor_infos(
                                 }
                             };
 
-                            Some((desc, !storage || readonly, 1)) // Uniforms are never writable.
+                            Some((desc, !storage, 1)) // Uniforms are never writable.
                         }
                         _ => {
                             let (ty, readonly) = match force_combined_image_sampled {
@@ -493,7 +485,7 @@ fn descriptor_infos(
                                     // false -> VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
                                     // true -> VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                     let storage = !sampled;
-                                    (quote! { DescriptorDescTy::Image }, !storage || readonly) // Sampled images are never writable.
+                                    (quote! { DescriptorDescTy::Image }, !storage) // Sampled images are never writable.
                                 },
                             };
                             let dim = match *dim {
