@@ -472,7 +472,7 @@ pub enum CommandBufferExecError {
 
 impl error::Error for CommandBufferExecError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CommandBufferExecError::AccessError { ref error, .. } => Some(error),
             _ => None,
