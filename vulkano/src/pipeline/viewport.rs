@@ -169,10 +169,7 @@ pub struct Scissor {
 }
 
 impl Scissor {
-    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire framebuffer, seen
-    /// [here][scissor].
-    ///
-    /// [scissor]: https://vulkan-tutorial.com/Drawing_a_triangle/Graphics_pipeline_basics/Fixed_functions#page_Viewports-and-scissors
+    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire framebuffer.
     #[inline]
     pub fn irrelevant() -> Scissor {
         Scissor {
