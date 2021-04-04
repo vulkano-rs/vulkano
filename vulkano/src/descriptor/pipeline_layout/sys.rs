@@ -281,7 +281,7 @@ pub enum PipelineLayoutCreationError {
 
 impl error::Error for PipelineLayoutCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             PipelineLayoutCreationError::OomError(ref err) => Some(err),
             PipelineLayoutCreationError::LimitsError(ref err) => Some(err),

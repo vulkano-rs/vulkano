@@ -246,7 +246,7 @@ pub enum LoadingError {
 
 impl error::Error for LoadingError {
     /*#[inline]
-    fn cause(&self) -> Option<&error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             LoadingError::LibraryLoadFailure(ref err) => Some(err),
             _ => None

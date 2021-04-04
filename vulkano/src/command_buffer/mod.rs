@@ -85,6 +85,7 @@ pub use self::auto::CopyBufferImageError;
 pub use self::auto::CopyImageError;
 pub use self::auto::DebugMarkerError;
 pub use self::auto::DispatchError;
+pub use self::auto::DispatchIndirectError;
 pub use self::auto::DrawError;
 pub use self::auto::DrawIndexedError;
 pub use self::auto::DrawIndexedIndirectError;
@@ -97,22 +98,20 @@ pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBuffer;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
-
 use crate::framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryPipelineStatisticFlags;
 use std::sync::Arc;
 
+mod auto;
 pub mod pool;
+mod state_cacher;
 pub mod submit;
 pub mod synced;
 pub mod sys;
-pub mod validity;
-
-mod auto;
-mod state_cacher;
 mod traits;
+pub mod validity;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]

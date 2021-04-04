@@ -195,11 +195,11 @@ extern crate quote;
 extern crate syn;
 extern crate proc_macro;
 
-use std::env;
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Result as IoResult};
 use std::path::Path;
+use std::{env, iter::empty};
 
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{
@@ -574,7 +574,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             "Shader",
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
             input.types_meta,
-            None,
+            empty(),
             input.dump,
         )
         .unwrap()
@@ -584,13 +584,11 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             SourceKind::Src(source) => (None, None, source),
             SourceKind::Path(path) => {
                 let full_path = root_path.join(&path);
+                let source_code = read_file_to_string(&full_path)
+                    .expect(&format!("Error reading source from {:?}", path));
 
                 if full_path.is_file() {
-                    (Some(path.clone()),
-                     Some(full_path.to_str()
-                          .expect("Path {:?} could not be converted to UTF-8").to_owned()),
-                    read_file_to_string(&full_path)
-                        .expect(&format!("Error reading source from {:?}", path)))
+                    (Some(path.clone()), Some(full_path), source_code)
                 } else {
                     panic!("File {:?} was not found ; note that the path must be relative to your Cargo.toml", path);
                 }
@@ -609,7 +607,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             })
             .collect::<Vec<_>>();
 
-        let content = match codegen::compile(
+        let (content, includes) = match codegen::compile(
             path,
             &root_path,
             &source_code,
@@ -621,8 +619,21 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             Err(e) => panic!("{}", e.replace("(s): ", "(s):\n")),
         };
 
-        codegen::reflect("Shader", content.as_binary(), input.types_meta, full_path.as_deref(), input.dump)
-            .unwrap()
-            .into()
+        let input_paths = includes.iter().map(|s| s.as_ref()).chain(
+            full_path
+                .as_ref()
+                .map(|p| p.as_path())
+                .map(codegen::path_to_str),
+        );
+
+        codegen::reflect(
+            "Shader",
+            content.as_binary(),
+            input.types_meta,
+            input_paths,
+            input.dump,
+        )
+        .unwrap()
+        .into()
     }
 }

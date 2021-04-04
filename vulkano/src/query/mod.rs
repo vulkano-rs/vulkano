@@ -276,7 +276,7 @@ pub enum QueryPoolCreationError {
 
 impl error::Error for QueryPoolCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
             _ => None,

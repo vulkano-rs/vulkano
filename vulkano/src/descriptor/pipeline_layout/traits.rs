@@ -252,7 +252,7 @@ pub enum PipelineLayoutNotSupersetError {
 
 impl error::Error for PipelineLayoutNotSupersetError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             PipelineLayoutNotSupersetError::IncompatibleDescriptors { ref error, .. } => {
                 Some(error)

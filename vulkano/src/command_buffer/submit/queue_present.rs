@@ -224,7 +224,7 @@ pub enum SubmitPresentError {
 
 impl error::Error for SubmitPresentError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SubmitPresentError::OomError(ref err) => Some(err),
             _ => None,

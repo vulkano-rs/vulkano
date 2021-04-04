@@ -928,7 +928,7 @@ pub enum ImageCreationError {
 
 impl error::Error for ImageCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             ImageCreationError::AllocError(ref err) => Some(err),
             _ => None,
