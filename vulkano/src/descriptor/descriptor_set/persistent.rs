@@ -649,6 +649,10 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                         &image_view,
                     )
                 } else {
+                    if !image_view.component_mapping().is_identity() {
+                        return Err(PersistentDescriptorSetError::NotIdentitySwizzled);
+                    }
+
                     DescriptorWrite::storage_image(
                         self.builder.binding_id as u32,
                         self.array_element as u32,
@@ -664,6 +668,10 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                     return Err(PersistentDescriptorSetError::MissingImageUsage(
                         MissingImageUsage::InputAttachment,
                     ));
+                }
+
+                if !image_view.component_mapping().is_identity() {
+                    return Err(PersistentDescriptorSetError::NotIdentitySwizzled);
                 }
 
                 if multisampled && image_view.image().samples() == 1 {
@@ -1133,41 +1141,6 @@ pub enum MissingImageUsage {
 /// Error related to the persistent descriptor set.
 #[derive(Debug, Clone)]
 pub enum PersistentDescriptorSetError {
-    /// Expected one type of resource but got another.
-    WrongDescriptorTy {
-        /// The expected descriptor type.
-        expected: DescriptorType,
-    },
-
-    /// Expected nothing.
-    EmptyExpected,
-
-    /// Tried to add too many elements to an array.
-    ArrayOutOfBounds,
-
-    /// Didn't fill all the elements of an array before leaving.
-    MissingArrayElements {
-        /// Number of expected elements.
-        expected: u32,
-        /// Number of elements that were added.
-        obtained: u32,
-    },
-
-    /// The image view isn't compatible with the sampler.
-    IncompatibleImageViewSampler,
-
-    /// The buffer is missing the correct usage.
-    MissingBufferUsage(MissingBufferUsage),
-
-    /// The image is missing the correct usage.
-    MissingImageUsage(MissingImageUsage),
-
-    /// Expected a multisampled image, but got a single-sampled image.
-    ExpectedMultisampled,
-
-    /// Expected a single-sampled image, but got a multisampled image.
-    UnexpectedMultisampled,
-
     /// The number of array layers of an image doesn't match what was expected.
     ArrayLayersMismatch {
         /// Number of expected array layers for the image.
@@ -1175,6 +1148,15 @@ pub enum PersistentDescriptorSetError {
         /// Number of array layers of the image that was added.
         obtained: u32,
     },
+
+    /// Tried to add too many elements to an array.
+    ArrayOutOfBounds,
+
+    /// Expected nothing.
+    EmptyExpected,
+
+    /// Expected a multisampled image, but got a single-sampled image.
+    ExpectedMultisampled,
 
     /// The format of an image view doesn't match what was expected.
     ImageViewFormatMismatch {
@@ -1191,6 +1173,35 @@ pub enum PersistentDescriptorSetError {
         /// Type of the image view that was passed.
         obtained: DescriptorImageDescDimensions,
     },
+
+    /// The image view isn't compatible with the sampler.
+    IncompatibleImageViewSampler,
+
+    /// Didn't fill all the elements of an array before leaving.
+    MissingArrayElements {
+        /// Number of expected elements.
+        expected: u32,
+        /// Number of elements that were added.
+        obtained: u32,
+    },
+
+    /// The buffer is missing the correct usage.
+    MissingBufferUsage(MissingBufferUsage),
+
+    /// The image is missing the correct usage.
+    MissingImageUsage(MissingImageUsage),
+
+    /// The image view has a component swizzle that is different from identity.
+    NotIdentitySwizzled,
+
+    /// Expected a single-sampled image, but got a multisampled image.
+    UnexpectedMultisampled,
+
+    /// Expected one type of resource but got another.
+    WrongDescriptorTy {
+        /// The expected descriptor type.
+        expected: DescriptorType,
+    },
 }
 
 impl error::Error for PersistentDescriptorSetError {}
@@ -1202,20 +1213,29 @@ impl fmt::Display for PersistentDescriptorSetError {
             fmt,
             "{}",
             match *self {
-                PersistentDescriptorSetError::WrongDescriptorTy { .. } => {
-                    "expected one type of resource but got another"
-                }
-                PersistentDescriptorSetError::EmptyExpected => {
-                    "expected an empty descriptor but got something"
+                PersistentDescriptorSetError::ArrayLayersMismatch { .. } => {
+                    "the number of array layers of an image doesn't match what was expected"
                 }
                 PersistentDescriptorSetError::ArrayOutOfBounds => {
                     "tried to add too many elements to an array"
                 }
-                PersistentDescriptorSetError::MissingArrayElements { .. } => {
-                    "didn't fill all the elements of an array before leaving"
+                PersistentDescriptorSetError::EmptyExpected => {
+                    "expected an empty descriptor but got something"
+                }
+                PersistentDescriptorSetError::ExpectedMultisampled => {
+                    "expected a multisampled image, but got a single-sampled image"
+                }
+                PersistentDescriptorSetError::ImageViewFormatMismatch { .. } => {
+                    "the format of an image view doesn't match what was expected"
+                }
+                PersistentDescriptorSetError::ImageViewTypeMismatch { .. } => {
+                    "the type of an image view doesn't match what was expected"
                 }
                 PersistentDescriptorSetError::IncompatibleImageViewSampler => {
                     "the image view isn't compatible with the sampler"
+                }
+                PersistentDescriptorSetError::MissingArrayElements { .. } => {
+                    "didn't fill all the elements of an array before leaving"
                 }
                 PersistentDescriptorSetError::MissingBufferUsage { .. } => {
                     "the buffer is missing the correct usage"
@@ -1223,20 +1243,14 @@ impl fmt::Display for PersistentDescriptorSetError {
                 PersistentDescriptorSetError::MissingImageUsage { .. } => {
                     "the image is missing the correct usage"
                 }
-                PersistentDescriptorSetError::ExpectedMultisampled => {
-                    "expected a multisampled image, but got a single-sampled image"
+                PersistentDescriptorSetError::NotIdentitySwizzled => {
+                    "the image view's component mapping is not identity swizzled"
                 }
                 PersistentDescriptorSetError::UnexpectedMultisampled => {
                     "expected a single-sampled image, but got a multisampled image"
                 }
-                PersistentDescriptorSetError::ArrayLayersMismatch { .. } => {
-                    "the number of array layers of an image doesn't match what was expected"
-                }
-                PersistentDescriptorSetError::ImageViewFormatMismatch { .. } => {
-                    "the format of an image view doesn't match what was expected"
-                }
-                PersistentDescriptorSetError::ImageViewTypeMismatch { .. } => {
-                    "the type of an image view doesn't match what was expected"
+                PersistentDescriptorSetError::WrongDescriptorTy { .. } => {
+                    "expected one type of resource but got another"
                 }
             }
         )
