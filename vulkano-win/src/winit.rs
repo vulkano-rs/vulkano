@@ -90,7 +90,7 @@ pub enum CreationError {
 
 impl error::Error for CreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CreationError::SurfaceCreationError(ref err) => Some(err),
             CreationError::WindowCreationError(ref err) => Some(err),

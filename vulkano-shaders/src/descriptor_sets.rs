@@ -16,6 +16,7 @@ use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use std::collections::HashSet;
 
+#[derive(Debug)]
 struct Descriptor {
     set: u32,
     binding: u32,
@@ -177,6 +178,10 @@ fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<D
             .get_decoration_params(variable_id, Decoration::DecorationBinding)
             .unwrap()[0];
 
+        let nonwritable = doc
+            .get_decoration_params(variable_id, Decoration::DecorationNonWritable)
+            .is_some();
+
         // Find information about the kind of binding for this descriptor.
         let (desc_ty, readonly, array_count) =
             descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
@@ -188,7 +193,7 @@ fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<D
             set,
             binding,
             array_count,
-            readonly,
+            readonly: nonwritable || readonly,
         });
     }
 
@@ -389,26 +394,23 @@ fn descriptor_infos(
                         decoration_block ^ decoration_buffer_block,
                         "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
-                    let is_ssbo = pointer_storage == StorageClass::StorageClassStorageBuffer;
 
-                    // Determine whether there's a NonWritable decoration.
-                    let readonly = {
-                        let mut readonly = vec![false; member_types.len()];
-                        for i in doc.instructions.iter() {
-                            if let Instruction::MemberDecorate { target_id, member, decoration, .. } = i {
-                                if *target_id == *result_id && *decoration == Decoration::DecorationNonWritable {
-                                    assert!(!readonly[*member as usize]);
-                                    readonly[*member as usize] = true;
-                                }
-                            }
-                        }
-                        readonly.iter().all(|x| *x)
-                    };
+                    // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                    let storage = pointer_storage == StorageClass::StorageClassStorageBuffer;
+
+                    // Determine whether all members have a NonWritable decoration.
+                    let nonwritable = (0..member_types.len() as u32).all(|i| {
+                        doc.get_member_decoration_params(pointed_ty, i, Decoration::DecorationNonWritable).is_some()
+                    });
+
+                    // Uniforms are never writable.
+                    let readonly = !storage || nonwritable;
 
                     let desc = quote! {
                         DescriptorDescTy::Buffer(DescriptorBufferDesc {
                             dynamic: None,
-                            storage: #is_ssbo,
+                            storage: #storage,
                         })
                     };
 
@@ -435,7 +437,7 @@ fn descriptor_infos(
 
                     match dim {
                         Dim::DimSubpassData => {
-                            // We are an input attachment.
+                            // VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
                             assert!(
                                 !force_combined_image_sampled,
                                 "An OpTypeSampledImage can't point to \
@@ -459,25 +461,32 @@ fn descriptor_infos(
                                 }
                             };
 
-                            Some((desc, true, 1))
+                            Some((desc, true, 1)) // Never writable.
                         }
                         Dim::DimBuffer => {
-                            // We are a texel buffer.
-                            let not_sampled = !sampled;
+                            // false -> VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+                            // true -> VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+                            let storage = !sampled;
                             let desc = quote! {
                                 DescriptorDescTy::TexelBuffer {
-                                    storage: #not_sampled,
+                                    storage: #storage,
                                     format: None, // TODO: specify format if known
                                 }
                             };
 
-                            Some((desc, true, 1))
+                            Some((desc, !storage, 1)) // Uniforms are never writable.
                         }
                         _ => {
-                            // We are a sampled or storage image.
-                            let ty = match force_combined_image_sampled {
-                                true => quote! { DescriptorDescTy::CombinedImageSampler },
-                                false => quote! { DescriptorDescTy::Image },
+                            let (ty, readonly) = match force_combined_image_sampled {
+                                // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                // Never writable.
+                                true => (quote! { DescriptorDescTy::CombinedImageSampler }, true),
+                                false => {
+                                    // false -> VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                    let storage = !sampled;
+                                    (quote! { DescriptorDescTy::Image }, !storage) // Sampled images are never writable.
+                                },
                             };
                             let dim = match *dim {
                                 Dim::Dim1D => {
@@ -504,7 +513,7 @@ fn descriptor_infos(
                                 })
                             };
 
-                            Some((desc, true, 1))
+                            Some((desc, readonly, 1))
                         }
                     }
                 }
@@ -674,7 +683,7 @@ mod tests {
     fn test_descriptor_calculation_with_multiple_functions() {
         let includes: [PathBuf; 0] = [];
         let defines: [(String, String); 0] = [];
-        let comp = compile(
+        let (comp, _) = compile(
             None,
             &Path::new(""),
             "

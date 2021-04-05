@@ -191,7 +191,7 @@ pub enum ImageViewCreationError {
 
 impl error::Error for ImageViewCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             ImageViewCreationError::AllocError(ref err) => Some(err),
             _ => None,

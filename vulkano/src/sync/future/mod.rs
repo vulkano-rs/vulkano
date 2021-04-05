@@ -470,7 +470,7 @@ pub enum FlushError {
 
 impl error::Error for FlushError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             FlushError::AccessError(ref err) => Some(err),
             FlushError::OomError(ref err) => Some(err),
