@@ -7,18 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-use std::sync::Arc;
-
+pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
+pub use self::join::JoinFuture;
+pub use self::now::{now, NowFuture};
+pub use self::semaphore_signal::SemaphoreSignalFuture;
 use crate::buffer::BufferAccess;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitBindSparseError;
 use crate::command_buffer::submit::SubmitCommandBufferError;
 use crate::command_buffer::submit::SubmitPresentError;
-use crate::command_buffer::CommandBuffer;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
@@ -31,11 +31,9 @@ use crate::sync::AccessFlagBits;
 use crate::sync::FenceWaitError;
 use crate::sync::PipelineStages;
 use crate::OomError;
-
-pub use self::fence_signal::{FenceSignalFuture, FenceSignalFutureBehavior};
-pub use self::join::JoinFuture;
-pub use self::now::{now, NowFuture};
-pub use self::semaphore_signal::SemaphoreSignalFuture;
+use std::error;
+use std::fmt;
+use std::sync::Arc;
 
 mod fence_signal;
 mod join;
@@ -166,7 +164,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
     where
         Self: Sized,
-        Cb: CommandBuffer + 'static,
+        Cb: PrimaryCommandBuffer + 'static,
     {
         command_buffer.execute_after(self, queue)
     }
@@ -182,7 +180,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     ) -> Result<CommandBufferExecFuture<Self, Cb>, CommandBufferExecError>
     where
         Self: Sized,
-        Cb: CommandBuffer + 'static,
+        Cb: PrimaryCommandBuffer + 'static,
     {
         let queue = self.queue().unwrap().clone();
         command_buffer.execute_after(self, queue)

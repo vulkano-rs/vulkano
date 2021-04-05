@@ -181,7 +181,12 @@ pub enum QueryType {
     Timestamp,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryControlFlags {
+    pub precise: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 pub struct QueryPipelineStatisticFlags {
     pub input_assembly_vertices: bool,
     pub input_assembly_primitives: bool,
