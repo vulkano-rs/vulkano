@@ -48,8 +48,8 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use std::ops::Range;
 use crate::vk;
+use std::ops::Range;
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
 ///
@@ -169,7 +169,7 @@ pub struct Scissor {
 }
 
 impl Scissor {
-    /// Defines a scissor box that it outside of the image.
+    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire framebuffer.
     #[inline]
     pub fn irrelevant() -> Scissor {
         Scissor {
