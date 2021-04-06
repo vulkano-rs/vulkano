@@ -911,7 +911,13 @@ where
         DescriptorImageDescArray::NonArrayed => {
             // TODO: when a non-array is expected, can we pass an image view that is in fact an
             // array with one layer? need to check
-            if num_layers != 1 {
+            let required_layers = if desc.dimensions == DescriptorImageDescDimensions::Cube {
+                6
+            } else {
+                1
+            };
+
+            if num_layers != required_layers {
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                     expected: 1,
                     obtained: num_layers,
@@ -921,8 +927,14 @@ where
         DescriptorImageDescArray::Arrayed {
             max_layers: Some(max_layers),
         } => {
-            if num_layers > max_layers {
-                // TODO: is this correct? "max" layers? or is it in fact min layers?
+            let required_layers = if desc.dimensions == DescriptorImageDescDimensions::Cube {
+                max_layers * 6
+            } else {
+                max_layers
+            };
+
+            // TODO: is this correct? "max" layers? or is it in fact min layers?
+            if num_layers > required_layers {
                 return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
                     expected: max_layers,
                     obtained: num_layers,
