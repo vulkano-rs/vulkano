@@ -13,25 +13,27 @@
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
 //! pool and the slot id within that query pool.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::Success;
+use crate::VulkanObject;
 use std::error;
+use std::ffi::c_void;
 use std::fmt;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::device::Device;
-use crate::device::DeviceOwned;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-
+#[derive(Debug)]
 pub struct UnsafeQueryPool {
     pool: vk::QueryPool,
     device: Arc<Device>,
     num_slots: u32,
+    ty: QueryType,
 }
 
 impl UnsafeQueryPool {
@@ -75,10 +77,16 @@ impl UnsafeQueryPool {
         };
 
         Ok(UnsafeQueryPool {
-            pool: pool,
-            device: device,
-            num_slots: num_slots,
+            pool,
+            device,
+            num_slots,
+            ty,
         })
+    }
+
+    #[inline]
+    pub fn ty(&self) -> QueryType {
+        self.ty
     }
 
     /// Returns the number of slots of that query pool.
@@ -131,132 +139,6 @@ unsafe impl DeviceOwned for UnsafeQueryPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-}
-
-pub struct UnsafeQuery<'a> {
-    pool: &'a UnsafeQueryPool,
-    index: u32,
-}
-
-impl<'a> UnsafeQuery<'a> {
-    #[inline]
-    pub fn pool(&self) -> &'a UnsafeQueryPool {
-        &self.pool
-    }
-
-    #[inline]
-    pub fn index(&self) -> u32 {
-        self.index
-    }
-}
-
-pub struct UnsafeQueriesRange<'a> {
-    pool: &'a UnsafeQueryPool,
-    first: u32,
-    count: u32,
-}
-
-impl<'a> UnsafeQueriesRange<'a> {
-    #[inline]
-    pub fn pool(&self) -> &'a UnsafeQueryPool {
-        &self.pool
-    }
-
-    #[inline]
-    pub fn first_index(&self) -> u32 {
-        self.first
-    }
-
-    #[inline]
-    pub fn count(&self) -> u32 {
-        self.count
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub enum QueryType {
-    Occlusion,
-    PipelineStatistics(QueryPipelineStatisticFlags),
-    Timestamp,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct QueryControlFlags {
-    pub precise: bool,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct QueryPipelineStatisticFlags {
-    pub input_assembly_vertices: bool,
-    pub input_assembly_primitives: bool,
-    pub vertex_shader_invocations: bool,
-    pub geometry_shader_invocations: bool,
-    pub geometry_shader_primitives: bool,
-    pub clipping_invocations: bool,
-    pub clipping_primitives: bool,
-    pub fragment_shader_invocations: bool,
-    pub tessellation_control_shader_patches: bool,
-    pub tessellation_evaluation_shader_invocations: bool,
-    pub compute_shader_invocations: bool,
-}
-
-impl QueryPipelineStatisticFlags {
-    #[inline]
-    pub fn none() -> QueryPipelineStatisticFlags {
-        QueryPipelineStatisticFlags {
-            input_assembly_vertices: false,
-            input_assembly_primitives: false,
-            vertex_shader_invocations: false,
-            geometry_shader_invocations: false,
-            geometry_shader_primitives: false,
-            clipping_invocations: false,
-            clipping_primitives: false,
-            fragment_shader_invocations: false,
-            tessellation_control_shader_patches: false,
-            tessellation_evaluation_shader_invocations: false,
-            compute_shader_invocations: false,
-        }
-    }
-}
-
-impl Into<vk::QueryPipelineStatisticFlags> for QueryPipelineStatisticFlags {
-    fn into(self) -> vk::QueryPipelineStatisticFlags {
-        let mut result = 0;
-        if self.input_assembly_vertices {
-            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT;
-        }
-        if self.input_assembly_primitives {
-            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT;
-        }
-        if self.vertex_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT;
-        }
-        if self.geometry_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT;
-        }
-        if self.geometry_shader_primitives {
-            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT;
-        }
-        if self.clipping_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT;
-        }
-        if self.clipping_primitives {
-            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT;
-        }
-        if self.fragment_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT;
-        }
-        if self.tessellation_control_shader_patches {
-            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT;
-        }
-        if self.tessellation_evaluation_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT;
-        }
-        if self.compute_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
-        }
-        result
     }
 }
 
@@ -321,6 +203,313 @@ impl From<Error> for QueryPoolCreationError {
             err @ Error::OutOfDeviceMemory => QueryPoolCreationError::OomError(OomError::from(err)),
             _ => panic!("unexpected error: {:?}", err),
         }
+    }
+}
+
+pub struct UnsafeQuery<'a> {
+    pool: &'a UnsafeQueryPool,
+    index: u32,
+}
+
+impl<'a> UnsafeQuery<'a> {
+    #[inline]
+    pub fn pool(&self) -> &'a UnsafeQueryPool {
+        &self.pool
+    }
+
+    #[inline]
+    pub fn index(&self) -> u32 {
+        self.index
+    }
+}
+
+pub struct UnsafeQueriesRange<'a> {
+    pool: &'a UnsafeQueryPool,
+    first: u32,
+    count: u32,
+}
+
+impl<'a> UnsafeQueriesRange<'a> {
+    #[inline]
+    pub fn pool(&self) -> &'a UnsafeQueryPool {
+        &self.pool
+    }
+
+    #[inline]
+    pub fn first_index(&self) -> u32 {
+        self.first
+    }
+
+    #[inline]
+    pub fn count(&self) -> u32 {
+        self.count
+    }
+
+    pub fn get_results<T>(
+        &self,
+        data: &mut [T],
+        flags: QueryResultFlags,
+    ) -> Result<bool, GetResultsError>
+    where
+        T: QueryResultElement,
+    {
+        assert!(!data.is_empty());
+        debug_assert_eq!(std::mem::align_of_val(data), std::mem::size_of::<T>());
+
+        let per_query_len = self.pool.ty.data_size() + flags.with_availability as usize;
+        let required_len = per_query_len * self.count as usize;
+
+        if data.len() < required_len {
+            return Err(GetResultsError::BufferTooSmall {
+                required_len,
+                actual_len: data.len(),
+            });
+        }
+
+        let stride = per_query_len * std::mem::size_of::<T>();
+
+        let result = unsafe {
+            let vk = self.pool.device.pointers();
+            check_errors(vk.GetQueryPoolResults(
+                self.pool.device.internal_object(),
+                self.pool.internal_object(),
+                self.first,
+                self.count,
+                std::mem::size_of_val(data),
+                data as *mut _ as *mut c_void,
+                stride as vk::DeviceSize,
+                vk::QueryResultFlags::from(flags) | T::FLAG,
+            ))?
+        };
+
+        Ok(match result {
+            Success::Success => true,
+            Success::NotReady => false,
+            s => panic!("unexpected success value: {:?}", s),
+        })
+    }
+}
+
+/// Error that can happen when calling `UnsafeQueriesRange::get_results`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GetResultsError {
+    /// The buffer is too small for the operation.
+    BufferTooSmall {
+        /// Required number of elements in the buffer.
+        required_len: usize,
+        /// Actual number of elements in the buffer.
+        actual_len: usize,
+    },
+    /// The connection to the device has been lost.
+    DeviceLost,
+    /// Not enough memory.
+    OomError(OomError),
+}
+
+impl From<Error> for GetResultsError {
+    #[inline]
+    fn from(err: Error) -> Self {
+        match err {
+            Error::OutOfHostMemory | Error::OutOfDeviceMemory => {
+                Self::OomError(OomError::from(err))
+            }
+            Error::DeviceLost => Self::DeviceLost,
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl From<OomError> for GetResultsError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
+    }
+}
+
+impl fmt::Display for GetResultsError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::BufferTooSmall { .. } => {
+                    "the buffer is too small for the operation"
+                }
+                Self::DeviceLost => "the connection to the device has been lost",
+                Self::OomError(_) => "not enough memory available",
+            }
+        )
+    }
+}
+
+impl error::Error for GetResultsError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+pub unsafe trait QueryResultElement {
+    const FLAG: vk::QueryResultFlags;
+}
+
+unsafe impl QueryResultElement for u32 {
+    const FLAG: vk::QueryResultFlags = 0;
+}
+
+unsafe impl QueryResultElement for u64 {
+    const FLAG: vk::QueryResultFlags = vk::QUERY_RESULT_64_BIT;
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum QueryType {
+    Occlusion,
+    PipelineStatistics(QueryPipelineStatisticFlags),
+    Timestamp,
+}
+
+impl QueryType {
+    #[inline]
+    pub fn data_size(&self) -> usize {
+        match self {
+            Self::Occlusion | Self::Timestamp => 1,
+            Self::PipelineStatistics(flags) => flags.count_bits(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryControlFlags {
+    pub precise: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryPipelineStatisticFlags {
+    pub input_assembly_vertices: bool,
+    pub input_assembly_primitives: bool,
+    pub vertex_shader_invocations: bool,
+    pub geometry_shader_invocations: bool,
+    pub geometry_shader_primitives: bool,
+    pub clipping_invocations: bool,
+    pub clipping_primitives: bool,
+    pub fragment_shader_invocations: bool,
+    pub tessellation_control_shader_patches: bool,
+    pub tessellation_evaluation_shader_invocations: bool,
+    pub compute_shader_invocations: bool,
+}
+
+impl QueryPipelineStatisticFlags {
+    #[inline]
+    pub fn none() -> QueryPipelineStatisticFlags {
+        QueryPipelineStatisticFlags {
+            input_assembly_vertices: false,
+            input_assembly_primitives: false,
+            vertex_shader_invocations: false,
+            geometry_shader_invocations: false,
+            geometry_shader_primitives: false,
+            clipping_invocations: false,
+            clipping_primitives: false,
+            fragment_shader_invocations: false,
+            tessellation_control_shader_patches: false,
+            tessellation_evaluation_shader_invocations: false,
+            compute_shader_invocations: false,
+        }
+    }
+
+    #[inline]
+    pub fn count_bits(&self) -> usize {
+        let &Self {
+            input_assembly_vertices,
+            input_assembly_primitives,
+            vertex_shader_invocations,
+            geometry_shader_invocations,
+            geometry_shader_primitives,
+            clipping_invocations,
+            clipping_primitives,
+            fragment_shader_invocations,
+            tessellation_control_shader_patches,
+            tessellation_evaluation_shader_invocations,
+            compute_shader_invocations,
+        } = self;
+        input_assembly_vertices as usize
+            + input_assembly_primitives as usize
+            + vertex_shader_invocations as usize
+            + geometry_shader_invocations as usize
+            + geometry_shader_primitives as usize
+            + clipping_invocations as usize
+            + clipping_primitives as usize
+            + fragment_shader_invocations as usize
+            + tessellation_control_shader_patches as usize
+            + tessellation_evaluation_shader_invocations as usize
+            + compute_shader_invocations as usize
+    }
+}
+
+impl From<QueryPipelineStatisticFlags> for vk::QueryPipelineStatisticFlags {
+    fn from(value: QueryPipelineStatisticFlags) -> vk::QueryPipelineStatisticFlags {
+        let mut result = 0;
+        if value.input_assembly_vertices {
+            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT;
+        }
+        if value.input_assembly_primitives {
+            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT;
+        }
+        if value.vertex_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT;
+        }
+        if value.geometry_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT;
+        }
+        if value.geometry_shader_primitives {
+            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT;
+        }
+        if value.clipping_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT;
+        }
+        if value.clipping_primitives {
+            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT;
+        }
+        if value.fragment_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT;
+        }
+        if value.tessellation_control_shader_patches {
+            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT;
+        }
+        if value.tessellation_evaluation_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT;
+        }
+        if value.compute_shader_invocations {
+            result |= vk::QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
+        }
+        result
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryResultFlags {
+    pub wait: bool,
+    pub with_availability: bool,
+    pub partial: bool,
+}
+
+impl From<QueryResultFlags> for vk::QueryResultFlags {
+    #[inline]
+    fn from(value: QueryResultFlags) -> Self {
+        let mut result = 0;
+        if value.wait {
+            result |= vk::QUERY_RESULT_WAIT_BIT;
+        }
+        if value.with_availability {
+            result |= vk::QUERY_RESULT_WITH_AVAILABILITY_BIT;
+        }
+        if value.partial {
+            result |= vk::QUERY_RESULT_PARTIAL_BIT;
+        }
+        result
     }
 }
 
