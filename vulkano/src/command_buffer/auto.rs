@@ -267,10 +267,25 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::None)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::None,
+        )?)
     }
 
     /// Same as `secondary_compute_one_time_submit`, but allows specifying how queries are being inherited.
@@ -282,10 +297,25 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::OneTimeSubmit)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::OneTimeSubmit,
+        )?)
     }
 
     /// Same as `secondary_compute_simultaneous_use`, but allows specifying how queries are being inherited.
@@ -297,10 +327,25 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::SimultaneousUse)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::SimultaneousUse,
+        )?)
     }
 
     /// Starts building a secondary graphics command buffer.
@@ -398,11 +443,21 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     >
     where
         R: RenderPassAbstract + Clone + Send + Sync + 'static,
     {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
@@ -412,7 +467,12 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::None)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::None,
+        )?)
     }
 
     /// Same as `secondary_graphics_one_time_submit`, but allows specifying how queries are being inherited.
@@ -425,11 +485,21 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     >
     where
         R: RenderPassAbstract + Clone + Send + Sync + 'static,
     {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
@@ -439,7 +509,12 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::OneTimeSubmit)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::OneTimeSubmit,
+        )?)
     }
 
     /// Same as `secondary_graphics_simultaneous_use`, but allows specifying how queries are being inherited.
@@ -452,11 +527,21 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     >
     where
         R: RenderPassAbstract + Clone + Send + Sync + 'static,
     {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
@@ -466,7 +551,12 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::SimultaneousUse)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::SimultaneousUse,
+        )?)
     }
 }
 
@@ -544,6 +634,54 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 _data: PhantomData,
             })
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BeginError {
+    /// Occlusion query inheritance was requested, but the `inherited_queries` feature was not enabled.
+    InheritedQueriesFeatureNotEnabled,
+    /// Not enough memory.
+    OomError(OomError),
+    /// Pipeline statistics query inheritance was requested, but the `pipeline_statistics_query` feature was not enabled.
+    PipelineStatisticsQueryFeatureNotEnabled,
+}
+
+impl error::Error for BeginError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for BeginError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::InheritedQueriesFeatureNotEnabled => {
+                    "occlusion query inheritance was requested but the corresponding feature \
+                 wasn't enabled"
+                }
+                Self::OomError(_) => "not enough memory available",
+                Self::PipelineStatisticsQueryFeatureNotEnabled => {
+                    "pipeline statistics query inheritance was requested but the corresponding \
+                 feature wasn't enabled"
+                }
+            }
+        )
+    }
+}
+
+impl From<OomError> for BeginError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
 
@@ -1663,10 +1801,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Adds a command that begins a query.
     ///
-    /// The query will be active until [`end_query`] is called for the same query.
+    /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
     ///
     /// # Safety
-    /// - The query must be unavailable, ensured by calling [`reset_query_pool`].
+    /// - The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
     /// - A query of this type must not already be active.
     /// - Any secondary command buffers that are executed while this query is active must include
     ///   queries of this type in their [`CommandBufferInheritance`].
@@ -1707,8 +1845,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Adds a command that ends an active query.
     ///
     /// # Safety
-    /// - The query must currently be active, via [`begin_query`], which must have been called on
-    ///   this command buffer.
+    /// - The query must currently be active, via [`begin_query`](Self::begin_query),
+    ///   which must have been called on this command buffer.
     /// - If the query was begun outside a render pass, it must also end outside a render pass.
     /// - If the query was begun inside a render pass, it must end within the same subpass.
     pub unsafe fn end_query(

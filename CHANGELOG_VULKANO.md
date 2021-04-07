@@ -6,9 +6,10 @@
 - **Breaking** `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be create, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
 - **Breaking** `Kind` has been renamed to `CommandBufferLevel`, and for secondary command buffers it now contains a single `CommandBufferInheritance` value.
 - **Breaking** `CommandBufferInheritance::occlusion_query` and `UnsafeCommandBufferBuilder::begin_query` now take `QueryControlFlags` instead of a boolean.
-- Initial (still far from complete) support for queries:
+- Initial support for queries:
   - **Breaking** `UnsafeQueryPool`, `UnsafeQuery` and `UnsafeQueriesRange` have `Unsafe` removed from their names.
   - **Breaking** `QueriesRange` is now represented with a standard Rust `Range` in its API.
+  - **Breaking** The secondary command buffer constructors that have parameters for queries will check if the corresponding features are enabled, and return a different error type.
   - Removed `OcclusionQueriesPool`, which was incomplete and never did anything useful.
   - `get_results` has been added to `QueriesRange`, to copy query results to the CPU.
   - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `begin_query` (still unsafe), `end_query` (still unsafe), `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).

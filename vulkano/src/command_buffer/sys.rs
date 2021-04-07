@@ -171,11 +171,8 @@ impl UnsafeCommandBufferBuilder {
                 ..
             }) => {
                 let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
-                debug_assert!(ps == 0 || device.enabled_features().pipeline_statistics_query);
-
                 let (oqe, qf) = match occlusion_query {
                     Some(flags) => {
-                        debug_assert!(device.enabled_features().inherited_queries);
                         let qf = if flags.precise {
                             vk::QUERY_CONTROL_PRECISE_BIT
                         } else {

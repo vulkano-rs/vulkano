@@ -64,7 +64,7 @@ pub enum CheckBeginQueryError {
     InvalidFlags,
     /// This operation is not permitted on this query type.
     NotPermitted,
-    /// `QueryControlFlags::precise` was requested, but the occlusion_query_precise feature was not enabled.
+    /// `QueryControlFlags::precise` was requested, but the `occlusion_query_precise` feature was not enabled.
     OcclusionQueryPreciseFeatureNotEnabled,
     /// The provided query index is not valid for this pool.
     OutOfRange,
