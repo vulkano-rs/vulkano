@@ -121,3 +121,42 @@ impl fmt::Display for CheckCopyQueryPoolResultsError {
         )
     }
 }
+
+pub fn check_reset_query_pool(
+    device: &Device,
+    query_pool: &QueryPool,
+    queries: Range<u32>,
+) -> Result<(), CheckResetQueryPoolError> {
+    assert_eq!(
+        device.internal_object(),
+        query_pool.device().internal_object(),
+    );
+    query_pool
+        .queries_range(queries)
+        .ok_or(CheckResetQueryPoolError::OutOfRange)?;
+    Ok(())
+}
+
+/// Error that can happen from `check_reset_query_pool`.
+#[derive(Debug, Copy, Clone)]
+pub enum CheckResetQueryPoolError {
+    /// The provided queries range is not valid for this pool.
+    OutOfRange,
+}
+
+impl error::Error for CheckResetQueryPoolError {}
+
+impl fmt::Display for CheckResetQueryPoolError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::OutOfRange => {
+                    "the provided queries range is not valid for this pool"
+                }
+            }
+        )
+    }
+}

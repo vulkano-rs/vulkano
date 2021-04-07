@@ -1664,6 +1664,27 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
+    /// Adds a command to reset a range of queries on a query pool.
+    ///
+    /// The affected queries will be marked as "unavailable" after this command runs, and will no
+    /// longer return any results. They will be ready to have new results recorded for them.
+    ///
+    /// # Safety
+    /// The queries in the specified range must not be active.
+    pub unsafe fn reset_query_pool(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+    ) -> Result<&mut Self, ResetQueryPoolError> {
+        self.ensure_outside_render_pass()?;
+        check_reset_query_pool(self.device(), &query_pool, queries.clone())?;
+
+        // TODO: validity checks
+        self.inner.reset_query_pool(query_pool, queries);
+
+        Ok(self)
+    }
+
     /// Adds a command that writes data to a buffer.
     ///
     /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
@@ -2581,6 +2602,11 @@ err_gen!(DrawIndexedIndirectError {
 err_gen!(ExecuteCommandsError {
     AutoCommandBufferBuilderContextError,
     SyncCommandBufferBuilderError,
+});
+
+err_gen!(ResetQueryPoolError {
+    AutoCommandBufferBuilderContextError,
+    CheckResetQueryPoolError,
 });
 
 err_gen!(UpdateBufferError {

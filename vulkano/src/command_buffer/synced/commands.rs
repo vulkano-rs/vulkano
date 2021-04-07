@@ -1250,7 +1250,7 @@ impl SyncCommandBufferBuilder {
             }
 
             fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<D>(D);
+                struct Fin<D>(Arc<QueryPool>, D);
                 impl<D> FinalCommand for Fin<D>
                 where
                     D: BufferAccess + Send + Sync + 'static,
@@ -1260,7 +1260,7 @@ impl SyncCommandBufferBuilder {
                     }
                     fn buffer(&self, num: usize) -> &dyn BufferAccess {
                         assert_eq!(num, 0);
-                        &self.0
+                        &self.1
                     }
                     fn buffer_name(&self, num: usize) -> Cow<'static, str> {
                         assert_eq!(num, 0);
@@ -1270,7 +1270,7 @@ impl SyncCommandBufferBuilder {
 
                 // Note: borrow checker somehow doesn't accept `self.destination`
                 // without using an Option.
-                Box::new(Fin(self.destination.take().unwrap()))
+                Box::new(Fin(self.query_pool, self.destination.take().unwrap()))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -2024,6 +2024,44 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { event, stages }, &[]).unwrap();
+    }
+
+    /// Calls `vkCmdResetQueryPool` on the builder.
+    pub unsafe fn reset_query_pool(&mut self, query_pool: Arc<QueryPool>, queries: Range<u32>) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            queries: Range<u32>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdResetQueryPool"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.reset_query_pool(self.query_pool.queries_range(self.queries.clone()).unwrap());
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdResetQueryPool"
+                    }
+                }
+
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                queries,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
