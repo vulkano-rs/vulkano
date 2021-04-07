@@ -25,24 +25,25 @@ use std::error;
 use std::ffi::c_void;
 use std::fmt;
 use std::mem::MaybeUninit;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct UnsafeQueryPool {
+pub struct QueryPool {
     pool: vk::QueryPool,
     device: Arc<Device>,
     num_slots: u32,
     ty: QueryType,
 }
 
-impl UnsafeQueryPool {
+impl QueryPool {
     /// Builds a new query pool.
     pub fn new(
         device: Arc<Device>,
         ty: QueryType,
         num_slots: u32,
-    ) -> Result<UnsafeQueryPool, QueryPoolCreationError> {
+    ) -> Result<QueryPool, QueryPoolCreationError> {
         let (vk_ty, statistics) = match ty {
             QueryType::Occlusion => (vk::QUERY_TYPE_OCCLUSION, 0),
             QueryType::Timestamp => (vk::QUERY_TYPE_TIMESTAMP, 0),
@@ -76,7 +77,7 @@ impl UnsafeQueryPool {
             output.assume_init()
         };
 
-        Ok(UnsafeQueryPool {
+        Ok(QueryPool {
             pool,
             device,
             num_slots,
@@ -96,9 +97,9 @@ impl UnsafeQueryPool {
     }
 
     #[inline]
-    pub fn query(&self, index: u32) -> Option<UnsafeQuery> {
+    pub fn query(&self, index: u32) -> Option<Query> {
         if index < self.num_slots() {
-            Some(UnsafeQuery { pool: self, index })
+            Some(Query { pool: self, index })
         } else {
             None
         }
@@ -109,22 +110,18 @@ impl UnsafeQueryPool {
     ///
     /// Panics if `count` is 0.
     #[inline]
-    pub fn queries_range(&self, first_index: u32, count: u32) -> Option<UnsafeQueriesRange> {
-        assert!(count >= 1);
+    pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange> {
+        assert!(!range.is_empty());
 
-        if first_index + count < self.num_slots() {
-            Some(UnsafeQueriesRange {
-                pool: self,
-                first: first_index,
-                count,
-            })
+        if range.end <= self.num_slots() {
+            Some(QueriesRange { pool: self, range })
         } else {
             None
         }
     }
 }
 
-unsafe impl VulkanObject for UnsafeQueryPool {
+unsafe impl VulkanObject for QueryPool {
     type Object = vk::QueryPool;
 
     const TYPE: vk::ObjectType = vk::OBJECT_TYPE_QUERY_POOL;
@@ -135,14 +132,14 @@ unsafe impl VulkanObject for UnsafeQueryPool {
     }
 }
 
-unsafe impl DeviceOwned for UnsafeQueryPool {
+unsafe impl DeviceOwned for QueryPool {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl Drop for UnsafeQueryPool {
+impl Drop for QueryPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -206,14 +203,14 @@ impl From<Error> for QueryPoolCreationError {
     }
 }
 
-pub struct UnsafeQuery<'a> {
-    pool: &'a UnsafeQueryPool,
+pub struct Query<'a> {
+    pool: &'a QueryPool,
     index: u32,
 }
 
-impl<'a> UnsafeQuery<'a> {
+impl<'a> Query<'a> {
     #[inline]
-    pub fn pool(&self) -> &'a UnsafeQueryPool {
+    pub fn pool(&self) -> &'a QueryPool {
         &self.pool
     }
 
@@ -223,60 +220,49 @@ impl<'a> UnsafeQuery<'a> {
     }
 }
 
-pub struct UnsafeQueriesRange<'a> {
-    pool: &'a UnsafeQueryPool,
-    first: u32,
-    count: u32,
+#[derive(Clone, Debug)]
+pub struct QueriesRange<'a> {
+    pool: &'a QueryPool,
+    range: Range<u32>,
 }
 
-impl<'a> UnsafeQueriesRange<'a> {
+impl<'a> QueriesRange<'a> {
     #[inline]
-    pub fn pool(&self) -> &'a UnsafeQueryPool {
+    pub fn pool(&self) -> &'a QueryPool {
         &self.pool
     }
 
     #[inline]
-    pub fn first_index(&self) -> u32 {
-        self.first
+    pub fn range(&self) -> Range<u32> {
+        self.range.clone()
     }
 
-    #[inline]
-    pub fn count(&self) -> u32 {
-        self.count
-    }
-
+    /// Copies the results of a range of queries to a buffer on the CPU.
+    ///
+    /// See also [`copy_query_pool_results`](crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results).
     pub fn get_results<T>(
         &self,
-        data: &mut [T],
+        destination: &mut [T],
         flags: QueryResultFlags,
     ) -> Result<bool, GetResultsError>
     where
         T: QueryResultElement,
     {
-        assert!(!data.is_empty());
-        debug_assert_eq!(std::mem::align_of_val(data), std::mem::size_of::<T>());
-
-        let per_query_len = self.pool.ty.data_size() + flags.with_availability as usize;
-        let required_len = per_query_len * self.count as usize;
-
-        if data.len() < required_len {
-            return Err(GetResultsError::BufferTooSmall {
-                required_len,
-                actual_len: data.len(),
-            });
-        }
-
-        let stride = per_query_len * std::mem::size_of::<T>();
+        let stride = self.check_query_pool_results::<T>(
+            destination.as_ptr() as usize,
+            destination.len(),
+            flags,
+        )?;
 
         let result = unsafe {
             let vk = self.pool.device.pointers();
             check_errors(vk.GetQueryPoolResults(
                 self.pool.device.internal_object(),
                 self.pool.internal_object(),
-                self.first,
-                self.count,
-                std::mem::size_of_val(data),
-                data as *mut _ as *mut c_void,
+                self.range.start,
+                self.range.end - self.range.start,
+                std::mem::size_of_val(destination),
+                destination.as_mut_ptr() as *mut c_void,
                 stride as vk::DeviceSize,
                 vk::QueryResultFlags::from(flags) | T::FLAG,
             ))?
@@ -288,9 +274,45 @@ impl<'a> UnsafeQueriesRange<'a> {
             s => panic!("unexpected success value: {:?}", s),
         })
     }
+
+    pub(crate) fn check_query_pool_results<T>(
+        &self,
+        buffer_start: usize,
+        buffer_len: usize,
+        flags: QueryResultFlags,
+    ) -> Result<usize, GetResultsError>
+    where
+        T: QueryResultElement,
+    {
+        assert!(buffer_len > 0);
+        debug_assert!(buffer_start % std::mem::size_of::<T>() == 0);
+
+        let count = self.range.end - self.range.start;
+        let per_query_len = self.pool.ty.data_size() + flags.with_availability as usize;
+        let required_len = per_query_len * count as usize;
+
+        if buffer_len < required_len {
+            return Err(GetResultsError::BufferTooSmall {
+                required_len,
+                actual_len: buffer_len,
+            });
+        }
+
+        match self.pool.ty {
+            QueryType::Occlusion => (),
+            QueryType::PipelineStatistics(_) => (),
+            QueryType::Timestamp => {
+                if flags.partial {
+                    return Err(GetResultsError::InvalidFlags);
+                }
+            }
+        }
+
+        Ok(per_query_len * std::mem::size_of::<T>())
+    }
 }
 
-/// Error that can happen when calling `UnsafeQueriesRange::get_results`.
+/// Error that can happen when calling `QueriesRange::get_results`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GetResultsError {
     /// The buffer is too small for the operation.
@@ -302,6 +324,8 @@ pub enum GetResultsError {
     },
     /// The connection to the device has been lost.
     DeviceLost,
+    /// The provided flags are not allowed for this type of query.
+    InvalidFlags,
     /// Not enough memory.
     OomError(OomError),
 }
@@ -337,6 +361,9 @@ impl fmt::Display for GetResultsError {
                     "the buffer is too small for the operation"
                 }
                 Self::DeviceLost => "the connection to the device has been lost",
+                Self::InvalidFlags => {
+                    "the provided flags are not allowed for this type of query"
+                }
                 Self::OomError(_) => "not enough memory available",
             }
         )
@@ -513,69 +540,19 @@ impl From<QueryResultFlags> for vk::QueryResultFlags {
     }
 }
 
-pub struct OcclusionQueriesPool {
-    inner: UnsafeQueryPool,
-}
-
-impl OcclusionQueriesPool {
-    /// See the docs of new().
-    pub fn raw(device: Arc<Device>, num_slots: u32) -> Result<OcclusionQueriesPool, OomError> {
-        Ok(OcclusionQueriesPool {
-            inner: match UnsafeQueryPool::new(device, QueryType::Occlusion, num_slots) {
-                Ok(q) => q,
-                Err(QueryPoolCreationError::OomError(err)) => return Err(err),
-                Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => {
-                    unreachable!()
-                }
-            },
-        })
-    }
-
-    /// Builds a new query pool.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the device or host ran out of memory.
-    ///
-    #[inline]
-    pub fn new(device: Arc<Device>, num_slots: u32) -> Arc<OcclusionQueriesPool> {
-        Arc::new(OcclusionQueriesPool::raw(device, num_slots).unwrap())
-    }
-
-    /// Returns the number of slots of that query pool.
-    #[inline]
-    pub fn num_slots(&self) -> u32 {
-        self.inner.num_slots()
-    }
-}
-
-unsafe impl DeviceOwned for OcclusionQueriesPool {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::query::OcclusionQueriesPool;
     use crate::query::QueryPipelineStatisticFlags;
+    use crate::query::QueryPool;
     use crate::query::QueryPoolCreationError;
     use crate::query::QueryType;
-    use crate::query::UnsafeQueryPool;
-
-    #[test]
-    fn occlusion_create() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _ = OcclusionQueriesPool::new(device, 256);
-    }
 
     #[test]
     fn pipeline_statistics_feature() {
         let (device, _) = gfx_dev_and_queue!();
 
         let ty = QueryType::PipelineStatistics(QueryPipelineStatisticFlags::none());
-        match UnsafeQueryPool::new(device, ty, 256) {
+        match QueryPool::new(device, ty, 256) {
             Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled) => (),
             _ => panic!(),
         };

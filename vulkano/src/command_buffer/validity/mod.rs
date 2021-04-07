@@ -24,6 +24,7 @@ pub use self::fill_buffer::{check_fill_buffer, CheckFillBufferError};
 pub use self::index_buffer::{check_index_buffer, CheckIndexBuffer, CheckIndexBufferError};
 pub use self::indirect_buffer::{check_indirect_buffer, CheckIndirectBufferError};
 pub use self::push_constants::{check_push_constants_validity, CheckPushConstantsValidityError};
+pub use self::query_pool_results::{check_copy_query_pool_results, CheckCopyQueryPoolResultsError};
 pub use self::update_buffer::{check_update_buffer, CheckUpdateBufferError};
 pub use self::vertex_buffers::{check_vertex_buffers, CheckVertexBuffer, CheckVertexBufferError};
 
@@ -40,5 +41,6 @@ mod fill_buffer;
 mod index_buffer;
 mod indirect_buffer;
 mod push_constants;
+mod query_pool_results;
 mod update_buffer;
 mod vertex_buffers;

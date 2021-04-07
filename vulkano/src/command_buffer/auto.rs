@@ -65,6 +65,9 @@ use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
+use crate::query::QueryPool;
+use crate::query::QueryResultElement;
+use crate::query::QueryResultFlags;
 use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessFlagBits;
@@ -80,6 +83,7 @@ use std::fmt;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -1049,11 +1053,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /*
-    Adds a command that copies from an image to a buffer.
-    The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
-    This does not matter since the act of copying the image into a buffer converts it to linear form.
-    */
+    /// Adds a command that copies from an image to a buffer.
+    // The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
+    // This does not matter since the act of copying the image into a buffer converts it to linear form.
     pub fn copy_image_to_buffer<S, D, Px>(
         &mut self,
         source: S,
@@ -1125,6 +1127,36 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             )?;
             Ok(self)
         }
+    }
+
+    /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
+    ///
+    /// See also [`get_results`](crate::query::QueriesRange::get_results).
+    pub fn copy_query_pool_results<D, T>(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: D,
+        flags: QueryResultFlags,
+    ) -> Result<&mut Self, CopyQueryPoolResultsError>
+    where
+        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        T: QueryResultElement,
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+            let stride = check_copy_query_pool_results(
+                self.device(),
+                &query_pool,
+                queries.clone(),
+                &destination,
+                flags,
+            )?;
+            self.inner
+                .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
+        }
+
+        Ok(self)
     }
 
     /// Open a command buffer debug label region.
@@ -2466,6 +2498,12 @@ err_gen!(CopyBufferError {
 err_gen!(CopyBufferImageError {
     AutoCommandBufferBuilderContextError,
     CheckCopyBufferImageError,
+    SyncCommandBufferBuilderError,
+});
+
+err_gen!(CopyQueryPoolResultsError {
+    AutoCommandBufferBuilderContextError,
+    CheckCopyQueryPoolResultsError,
     SyncCommandBufferBuilderError,
 });
 

@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::synced::base::Command;
 use crate::command_buffer::synced::base::FinalCommand;
 use crate::command_buffer::synced::base::KeyTy;
@@ -38,6 +39,9 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::query::QueryPool;
+use crate::query::QueryResultElement;
+use crate::query::QueryResultFlags;
 use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
@@ -49,6 +53,7 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
@@ -1197,6 +1202,114 @@ impl SyncCommandBufferBuilder {
                     )),
                 ),
             ],
+        )?;
+
+        Ok(())
+    }
+
+    /// Calls `vkCmdCopyQueryPoolResults` on the builder.
+    ///
+    /// # Safety
+    /// `stride` must be at least the number of bytes that will be written by each query.
+    pub unsafe fn copy_query_pool_results<D, T>(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: D,
+        stride: usize,
+        flags: QueryResultFlags,
+    ) -> Result<(), SyncCommandBufferBuilderError>
+    where
+        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        T: QueryResultElement,
+    {
+        struct Cmd<D> {
+            query_pool: Arc<QueryPool>,
+            queries: Range<u32>,
+            destination: Option<D>,
+            stride: usize,
+            flags: QueryResultFlags,
+        }
+
+        impl<D, T> Command for Cmd<D>
+        where
+            D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+            T: QueryResultElement,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdCopyQueryPoolResults"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.copy_query_pool_results(
+                    self.query_pool.queries_range(self.queries.clone()).unwrap(),
+                    self.destination.as_ref().unwrap(),
+                    self.stride,
+                    self.flags,
+                );
+            }
+
+            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin<D>(D);
+                impl<D> FinalCommand for Fin<D>
+                where
+                    D: BufferAccess + Send + Sync + 'static,
+                {
+                    fn name(&self) -> &'static str {
+                        "vkCmdCopyQueryPoolResults"
+                    }
+                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                        assert_eq!(num, 0);
+                        &self.0
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "destination".into()
+                    }
+                }
+
+                // Note: borrow checker somehow doesn't accept `self.destination`
+                // without using an Option.
+                Box::new(Fin(self.destination.take().unwrap()))
+            }
+
+            fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                assert_eq!(num, 0);
+                self.destination.as_ref().unwrap()
+            }
+
+            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                assert_eq!(num, 0);
+                "destination".into()
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                queries,
+                destination: Some(destination),
+                stride,
+                flags,
+            },
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            transfer_write: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: true,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
         )?;
 
         Ok(())
