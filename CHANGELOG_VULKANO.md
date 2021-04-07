@@ -6,6 +6,13 @@
 - **Breaking** `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be create, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
 - **Breaking** `Kind` has been renamed to `CommandBufferLevel`, and for secondary command buffers it now contains a single `CommandBufferInheritance` value.
 - **Breaking** `CommandBufferInheritance::occlusion_query` and `UnsafeCommandBufferBuilder::begin_query` now take `QueryControlFlags` instead of a boolean.
+- Initial (still far from complete) support for queries:
+  - **Breaking** `UnsafeQueryPool`, `UnsafeQuery` and `UnsafeQueriesRange` have `Unsafe` removed from their names.
+  - **Breaking** `QueriesRange` is now represented with a standard Rust `Range` in its API.
+  - Removed `OcclusionQueriesPool`, which was incomplete and never did anything useful.
+  - `get_results` has been added to `QueriesRange`, to copy query results to the CPU.
+  - `copy_query_pool_results` has been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`, to copy query results to a buffer on the GPU.
+  - Better documentation of everything in the `query` module.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
 

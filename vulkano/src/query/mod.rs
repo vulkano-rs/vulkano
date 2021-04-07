@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! This module provides support for query pools.
+//! Gather information about rendering, held in query pools.
 //!
 //! In Vulkan, queries are not created individually. Instead you manipulate **query pools**, which
 //! represent a collection of queries. Whenever you use a query, you have to specify both the query
@@ -29,6 +29,7 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
+/// A collection of one or more queries of a particular type.
 #[derive(Debug)]
 pub struct QueryPool {
     pool: vk::QueryPool,
@@ -85,17 +86,19 @@ impl QueryPool {
         })
     }
 
+    /// Returns the [`QueryType`] that this query pool was created with.
     #[inline]
     pub fn ty(&self) -> QueryType {
         self.ty
     }
 
-    /// Returns the number of slots of that query pool.
+    /// Returns the number of query slots of this query pool.
     #[inline]
     pub fn num_slots(&self) -> u32 {
         self.num_slots
     }
 
+    /// Returns a reference to a single query slot, or `None` if the index is out of range.
     #[inline]
     pub fn query(&self, index: u32) -> Option<Query> {
         if index < self.num_slots() {
@@ -105,10 +108,11 @@ impl QueryPool {
         }
     }
 
+    /// Returns a reference to a range of queries, or `None` if out of range.
     ///
     /// # Panic
     ///
-    /// Panics if `count` is 0.
+    /// Panics if the range is empty.
     #[inline]
     pub fn queries_range(&self, range: Range<u32>) -> Option<QueriesRange> {
         assert!(!range.is_empty());
@@ -149,7 +153,7 @@ impl Drop for QueryPool {
     }
 }
 
-/// Error that can happen when creating a buffer.
+/// Error that can happen when creating a query pool.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum QueryPoolCreationError {
     /// Not enough memory.
@@ -203,23 +207,32 @@ impl From<Error> for QueryPoolCreationError {
     }
 }
 
+/// A reference to a single query slot.
+///
+/// This is created through [`QueryPool::query`].
+#[derive(Clone, Debug)]
 pub struct Query<'a> {
     pool: &'a QueryPool,
     index: u32,
 }
 
 impl<'a> Query<'a> {
+    /// Returns a reference to the query pool.
     #[inline]
     pub fn pool(&self) -> &'a QueryPool {
         &self.pool
     }
 
+    /// Returns the index of the query represented.
     #[inline]
     pub fn index(&self) -> u32 {
         self.index
     }
 }
 
+/// A reference to a range of queries.
+///
+/// This is created through [`QueryPool::queries_range`].
 #[derive(Clone, Debug)]
 pub struct QueriesRange<'a> {
     pool: &'a QueryPool,
@@ -227,17 +240,27 @@ pub struct QueriesRange<'a> {
 }
 
 impl<'a> QueriesRange<'a> {
+    /// Returns a reference to the query pool.
     #[inline]
     pub fn pool(&self) -> &'a QueryPool {
         &self.pool
     }
 
+    /// Returns the range of queries represented.
     #[inline]
     pub fn range(&self) -> Range<u32> {
         self.range.clone()
     }
 
-    /// Copies the results of a range of queries to a buffer on the CPU.
+    /// Copies the results of this range of queries to a buffer on the CPU.
+    ///
+    /// [`self.pool().ty().data_size()`](QueryType::data_size) elements
+    /// will be written for each query in the range, plus 1 extra element per query if
+    /// [`QueryResultFlags::with_availability`] is enabled.
+    /// The provided buffer must be large enough to hold the data.
+    ///
+    /// `true` is returned if every result was available and written to the buffer. `false`
+    /// is returned if some results were not yet available; these will not be written to the buffer.
     ///
     /// See also [`copy_query_pool_results`](crate::command_buffer::AutoCommandBufferBuilder::copy_query_pool_results).
     pub fn get_results<T>(
@@ -312,7 +335,7 @@ impl<'a> QueriesRange<'a> {
     }
 }
 
-/// Error that can happen when calling `QueriesRange::get_results`.
+/// Error that can happen when calling [`QueriesRange::get_results`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum GetResultsError {
     /// The buffer is too small for the operation.
@@ -380,6 +403,11 @@ impl error::Error for GetResultsError {
     }
 }
 
+/// A trait for elements of buffers that can be used as a destination for query results.
+///
+/// # Safety
+/// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
+/// not implement this trait for any other type.
 pub unsafe trait QueryResultElement {
     const FLAG: vk::QueryResultFlags;
 }
@@ -392,40 +420,68 @@ unsafe impl QueryResultElement for u64 {
     const FLAG: vk::QueryResultFlags = vk::QUERY_RESULT_64_BIT;
 }
 
+/// The type of query that a query pool should perform.
 #[derive(Debug, Copy, Clone)]
 pub enum QueryType {
+    /// Tracks the number of samples that pass per-fragment tests (e.g. the depth test).
     Occlusion,
+    /// Tracks statistics on pipeline invocations and their input data.
     PipelineStatistics(QueryPipelineStatisticFlags),
+    /// Writes timestamps at chosen points in a command buffer.
     Timestamp,
 }
 
 impl QueryType {
+    /// Returns the number of [`QueryResultElement`]s that are needed to hold the result of a
+    /// single query of this type.
+    ///
+    /// - For `Occlusion` and `Timestamp` queries, this returns 1.
+    /// - For `PipelineStatistics` queries, this returns the number of statistics flags enabled.
+    ///
+    /// If the results are retrieved with [`QueryResultFlags::with_availability`] enabled, then
+    /// an additional element is required per query.
     #[inline]
     pub fn data_size(&self) -> usize {
         match self {
             Self::Occlusion | Self::Timestamp => 1,
-            Self::PipelineStatistics(flags) => flags.count_bits(),
+            Self::PipelineStatistics(flags) => flags.count(),
         }
     }
 }
 
+/// Flags that control how a query is to be executed.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct QueryControlFlags {
+    /// For occlusion queries, specifies that the result must reflect the exact number of
+    /// tests passed. If not enabled, the query may return a result of 1 even if more fragments
+    /// passed the test.
     pub precise: bool,
 }
 
+/// For pipeline statistics queries, the statistics that should be gathered.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct QueryPipelineStatisticFlags {
+    /// Count the number of vertices processed by the input assembly.
     pub input_assembly_vertices: bool,
+    /// Count the number of primitives processed by the input assembly.
     pub input_assembly_primitives: bool,
+    /// Count the number of times a vertex shader is invoked.
     pub vertex_shader_invocations: bool,
+    /// Count the number of times a geometry shader is invoked.
     pub geometry_shader_invocations: bool,
+    /// Count the number of primitives generated by geometry shaders.
     pub geometry_shader_primitives: bool,
+    /// Count the number of times the clipping stage is invoked on a primitive.
     pub clipping_invocations: bool,
+    /// Count the number of primitives that are output by the clipping stage.
     pub clipping_primitives: bool,
+    /// Count the number of times a fragment shader is invoked.
     pub fragment_shader_invocations: bool,
+    /// Count the number of patches processed by a tessellation control shader.
     pub tessellation_control_shader_patches: bool,
+    /// Count the number of times a tessellation evaluation shader is invoked.
     pub tessellation_evaluation_shader_invocations: bool,
+    /// Count the number of times a compute shader is invoked.
     pub compute_shader_invocations: bool,
 }
 
@@ -447,8 +503,9 @@ impl QueryPipelineStatisticFlags {
         }
     }
 
+    /// Returns the number of flags that are set to `true`.
     #[inline]
-    pub fn count_bits(&self) -> usize {
+    pub fn count(&self) -> usize {
         let &Self {
             input_assembly_vertices,
             input_assembly_primitives,
@@ -516,10 +573,21 @@ impl From<QueryPipelineStatisticFlags> for vk::QueryPipelineStatisticFlags {
     }
 }
 
+/// Flags to control how the results of a query should be retrieved.
+///
+/// `VK_QUERY_RESULT_64_BIT` is not included, as it is determined automatically via the
+/// [`QueryResultElement`] trait.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct QueryResultFlags {
+    /// Wait for the results to become available before writing the results.
     pub wait: bool,
+    /// Write an additional element to the end of each query's results, indicating the availability
+    /// of the results:
+    /// - Nonzero: The results are available, and have been written to the element(s) preceding.
+    /// - Zero: The results are not yet available, and have not been written.
     pub with_availability: bool,
+    /// Allow writing partial results to the buffer, instead of waiting until they are fully
+    /// available.
     pub partial: bool,
 }
 

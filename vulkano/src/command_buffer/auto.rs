@@ -1131,6 +1131,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
     ///
+    /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
+    /// will be written for each query in the range, plus 1 extra element per query if
+    /// [`QueryResultFlags::with_availability`] is enabled.
+    /// The provided buffer must be large enough to hold the data.
+    ///
     /// See also [`get_results`](crate::query::QueriesRange::get_results).
     pub fn copy_query_pool_results<D, T>(
         &mut self,
