@@ -531,6 +531,44 @@ impl QueryPipelineStatisticFlags {
             + tessellation_evaluation_shader_invocations as usize
             + compute_shader_invocations as usize
     }
+
+    /// Returns `true` if any flags referring to compute operations are set to `true`.
+    #[inline]
+    pub fn is_compute(&self) -> bool {
+        let &Self {
+            compute_shader_invocations,
+            ..
+        } = self;
+        compute_shader_invocations
+    }
+
+    /// Returns `true` if any flags referring to graphics operations are set to `true`.
+    #[inline]
+    pub fn is_graphics(&self) -> bool {
+        let &Self {
+            input_assembly_vertices,
+            input_assembly_primitives,
+            vertex_shader_invocations,
+            geometry_shader_invocations,
+            geometry_shader_primitives,
+            clipping_invocations,
+            clipping_primitives,
+            fragment_shader_invocations,
+            tessellation_control_shader_patches,
+            tessellation_evaluation_shader_invocations,
+            ..
+        } = self;
+        input_assembly_vertices
+            || input_assembly_primitives
+            || vertex_shader_invocations
+            || geometry_shader_invocations
+            || geometry_shader_primitives
+            || clipping_invocations
+            || clipping_primitives
+            || fragment_shader_invocations
+            || tessellation_control_shader_patches
+            || tessellation_evaluation_shader_invocations
+    }
 }
 
 impl From<QueryPipelineStatisticFlags> for vk::QueryPipelineStatisticFlags {

@@ -68,6 +68,7 @@ use crate::query::QueryPipelineStatisticFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
+use crate::query::QueryType;
 use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessFlagBits;
@@ -1129,41 +1130,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
-    ///
-    /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
-    /// will be written for each query in the range, plus 1 extra element per query if
-    /// [`QueryResultFlags::with_availability`] is enabled.
-    /// The provided buffer must be large enough to hold the data.
-    ///
-    /// See also [`get_results`](crate::query::QueriesRange::get_results).
-    pub fn copy_query_pool_results<D, T>(
-        &mut self,
-        query_pool: Arc<QueryPool>,
-        queries: Range<u32>,
-        destination: D,
-        flags: QueryResultFlags,
-    ) -> Result<&mut Self, CopyQueryPoolResultsError>
-    where
-        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
-        T: QueryResultElement,
-    {
-        unsafe {
-            self.ensure_outside_render_pass()?;
-            let stride = check_copy_query_pool_results(
-                self.device(),
-                &query_pool,
-                queries.clone(),
-                &destination,
-                flags,
-            )?;
-            self.inner
-                .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
-        }
-
-        Ok(self)
-    }
-
     /// Open a command buffer debug label region.
     ///
     /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
@@ -1664,27 +1630,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /// Adds a command to reset a range of queries on a query pool.
-    ///
-    /// The affected queries will be marked as "unavailable" after this command runs, and will no
-    /// longer return any results. They will be ready to have new results recorded for them.
-    ///
-    /// # Safety
-    /// The queries in the specified range must not be active.
-    pub unsafe fn reset_query_pool(
-        &mut self,
-        query_pool: Arc<QueryPool>,
-        queries: Range<u32>,
-    ) -> Result<&mut Self, ResetQueryPoolError> {
-        self.ensure_outside_render_pass()?;
-        check_reset_query_pool(self.device(), &query_pool, queries.clone())?;
-
-        // TODO: validity checks
-        self.inner.reset_query_pool(query_pool, queries);
-
-        Ok(self)
-    }
-
     /// Adds a command that writes data to a buffer.
     ///
     /// If `data` is larger than the buffer, only the part of `data` that fits is written. If the
@@ -1714,6 +1659,125 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             Ok(self)
         }
+    }
+
+    /// Adds a command that begins a query.
+    ///
+    /// The query will be active until [`end_query`] is called for the same query.
+    ///
+    /// # Safety
+    /// - The query must be unavailable, ensured by calling [`reset_query_pool`].
+    /// - A query of this type must not already be active.
+    /// - Any secondary command buffers that are executed while this query is active must include
+    ///   queries of this type in their [`CommandBufferInheritance`].
+    pub unsafe fn begin_query(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> Result<&mut Self, BeginQueryError> {
+        check_begin_query(self.device(), &query_pool, query, flags)?;
+
+        match query_pool.ty() {
+            QueryType::Occlusion => {
+                if !self.graphics_allowed {
+                    return Err(
+                        AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
+                    );
+                }
+            }
+            QueryType::PipelineStatistics(flags) => {
+                if flags.is_compute() && !self.compute_allowed
+                    || flags.is_graphics() && !self.graphics_allowed
+                {
+                    return Err(
+                        AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
+                    );
+                }
+            }
+            QueryType::Timestamp => unreachable!(),
+        }
+
+        // TODO: validity checks
+        self.inner.begin_query(query_pool, query, flags);
+
+        Ok(self)
+    }
+
+    /// Adds a command that ends an active query.
+    ///
+    /// # Safety
+    /// - The query must currently be active, via [`begin_query`], which must have been called on
+    ///   this command buffer.
+    /// - If the query was begun outside a render pass, it must also end outside a render pass.
+    /// - If the query was begun inside a render pass, it must end within the same subpass.
+    pub unsafe fn end_query(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+    ) -> Result<&mut Self, EndQueryError> {
+        check_end_query(self.device(), &query_pool, query)?;
+
+        // TODO: validity checks
+        self.inner.end_query(query_pool, query);
+
+        Ok(self)
+    }
+
+    /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
+    ///
+    /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
+    /// will be written for each query in the range, plus 1 extra element per query if
+    /// [`QueryResultFlags::with_availability`] is enabled.
+    /// The provided buffer must be large enough to hold the data.
+    ///
+    /// See also [`get_results`](crate::query::QueriesRange::get_results).
+    pub fn copy_query_pool_results<D, T>(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: D,
+        flags: QueryResultFlags,
+    ) -> Result<&mut Self, CopyQueryPoolResultsError>
+    where
+        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        T: QueryResultElement,
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+            let stride = check_copy_query_pool_results(
+                self.device(),
+                &query_pool,
+                queries.clone(),
+                &destination,
+                flags,
+            )?;
+            self.inner
+                .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
+        }
+
+        Ok(self)
+    }
+
+    /// Adds a command to reset a range of queries on a query pool.
+    ///
+    /// The affected queries will be marked as "unavailable" after this command runs, and will no
+    /// longer return any results. They will be ready to have new results recorded for them.
+    ///
+    /// # Safety
+    /// The queries in the specified range must not be active.
+    pub unsafe fn reset_query_pool(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+    ) -> Result<&mut Self, ResetQueryPoolError> {
+        self.ensure_outside_render_pass()?;
+        check_reset_query_pool(self.device(), &query_pool, queries.clone())?;
+
+        // TODO: validity checks
+        self.inner.reset_query_pool(query_pool, queries);
+
+        Ok(self)
     }
 }
 
@@ -2602,6 +2666,16 @@ err_gen!(DrawIndexedIndirectError {
 err_gen!(ExecuteCommandsError {
     AutoCommandBufferBuilderContextError,
     SyncCommandBufferBuilderError,
+});
+
+err_gen!(BeginQueryError {
+    AutoCommandBufferBuilderContextError,
+    CheckBeginQueryError,
+});
+
+err_gen!(EndQueryError {
+    AutoCommandBufferBuilderContextError,
+    CheckEndQueryError,
 });
 
 err_gen!(ResetQueryPoolError {

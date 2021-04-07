@@ -39,6 +39,7 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
@@ -58,6 +59,51 @@ use std::ptr;
 use std::sync::Arc;
 
 impl SyncCommandBufferBuilder {
+    /// Calls `vkCmdBeginQuery` on the builder.
+    #[inline]
+    pub unsafe fn begin_query(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        flags: QueryControlFlags,
+    ) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            query: u32,
+            flags: QueryControlFlags,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdBeginQuery"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.begin_query(self.query_pool.query(self.query).unwrap(), self.flags);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBeginQuery"
+                    }
+                }
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                query,
+                flags,
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
     /// Calls `vkBeginRenderPass` on the builder.
     // TODO: it shouldn't be possible to get an error if the framebuffer checked conflicts already
     // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
@@ -1785,6 +1831,37 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
+    /// Calls `vkCmdEndQuery` on the builder.
+    #[inline]
+    pub unsafe fn end_query(&mut self, query_pool: Arc<QueryPool>, query: u32) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            query: u32,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdEndQuery"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.end_query(self.query_pool.query(self.query).unwrap());
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdEndQuery"
+                    }
+                }
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(Cmd { query_pool, query }, &[]).unwrap();
+    }
+
     /// Calls `vkCmdEndRenderPass` on the builder.
     #[inline]
     pub unsafe fn end_render_pass(&mut self) {
@@ -2027,6 +2104,7 @@ impl SyncCommandBufferBuilder {
     }
 
     /// Calls `vkCmdResetQueryPool` on the builder.
+    #[inline]
     pub unsafe fn reset_query_pool(&mut self, query_pool: Arc<QueryPool>, queries: Range<u32>) {
         struct Cmd {
             query_pool: Arc<QueryPool>,

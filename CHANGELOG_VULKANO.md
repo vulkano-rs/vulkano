@@ -11,7 +11,7 @@
   - **Breaking** `QueriesRange` is now represented with a standard Rust `Range` in its API.
   - Removed `OcclusionQueriesPool`, which was incomplete and never did anything useful.
   - `get_results` has been added to `QueriesRange`, to copy query results to the CPU.
-  - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).
+  - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `begin_query` (still unsafe), `end_query` (still unsafe), `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).
   - Better documentation of everything in the `query` module.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.

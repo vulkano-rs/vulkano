@@ -11,20 +11,142 @@ use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::query::GetResultsError;
+use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
+use crate::query::QueryType;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
 use std::ops::Range;
 
-/// Checks whether a copy query pool results command is valid.
+/// Checks whether a `begin_query` command is valid.
 ///
 /// # Panic
 ///
-/// - Panics if the buffer was not created with `device`.
+/// - Panics if the query pool was not created with `device`.
+pub fn check_begin_query(
+    device: &Device,
+    query_pool: &QueryPool,
+    query: u32,
+    flags: QueryControlFlags,
+) -> Result<(), CheckBeginQueryError> {
+    assert_eq!(
+        device.internal_object(),
+        query_pool.device().internal_object(),
+    );
+    query_pool
+        .query(query)
+        .ok_or(CheckBeginQueryError::OutOfRange)?;
+
+    match query_pool.ty() {
+        QueryType::Occlusion => {
+            if flags.precise && !device.enabled_features().occlusion_query_precise {
+                return Err(CheckBeginQueryError::OcclusionQueryPreciseFeatureNotEnabled);
+            }
+        }
+        QueryType::PipelineStatistics(_) => {
+            if flags.precise {
+                return Err(CheckBeginQueryError::InvalidFlags);
+            }
+        }
+        QueryType::Timestamp => return Err(CheckBeginQueryError::NotPermitted),
+    }
+
+    Ok(())
+}
+
+/// Error that can happen from `check_begin_query`.
+#[derive(Debug, Copy, Clone)]
+pub enum CheckBeginQueryError {
+    /// The provided flags are not allowed for this type of query.
+    InvalidFlags,
+    /// This operation is not permitted on this query type.
+    NotPermitted,
+    /// `QueryControlFlags::precise` was requested, but the occlusion_query_precise feature was not enabled.
+    OcclusionQueryPreciseFeatureNotEnabled,
+    /// The provided query index is not valid for this pool.
+    OutOfRange,
+}
+
+impl error::Error for CheckBeginQueryError {}
+
+impl fmt::Display for CheckBeginQueryError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::InvalidFlags => {
+                    "the provided flags are not allowed for this type of query"
+                }
+                Self::NotPermitted => {
+                    "this operation is not permitted on this query type"
+                }
+                Self::OcclusionQueryPreciseFeatureNotEnabled => {
+                    "QueryControlFlags::precise was requested, but the occlusion_query_precise feature was not enabled"
+                }
+                Self::OutOfRange => {
+                    "the provided query index is not valid for this pool"
+                }
+            }
+        )
+    }
+}
+
+/// Checks whether a `end_query` command is valid.
 ///
+/// # Panic
+///
+/// - Panics if the query pool was not created with `device`.
+pub fn check_end_query(
+    device: &Device,
+    query_pool: &QueryPool,
+    query: u32,
+) -> Result<(), CheckEndQueryError> {
+    assert_eq!(
+        device.internal_object(),
+        query_pool.device().internal_object(),
+    );
+
+    query_pool
+        .query(query)
+        .ok_or(CheckEndQueryError::OutOfRange)?;
+
+    Ok(())
+}
+
+/// Error that can happen from `check_end_query`.
+#[derive(Debug, Copy, Clone)]
+pub enum CheckEndQueryError {
+    /// The provided query index is not valid for this pool.
+    OutOfRange,
+}
+
+impl error::Error for CheckEndQueryError {}
+
+impl fmt::Display for CheckEndQueryError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::OutOfRange => {
+                    "the provided query index is not valid for this pool"
+                }
+            }
+        )
+    }
+}
+
+/// Checks whether a `copy_query_pool_results` command is valid.
+///
+/// # Panic
+///
+/// - Panics if the query pool or buffer was not created with `device`.
 pub fn check_copy_query_pool_results<D, T>(
     device: &Device,
     query_pool: &QueryPool,
@@ -122,6 +244,11 @@ impl fmt::Display for CheckCopyQueryPoolResultsError {
     }
 }
 
+/// Checks whether a `reset_query_pool` command is valid.
+///
+/// # Panic
+///
+/// - Panics if the query pool was not created with `device`.
 pub fn check_reset_query_pool(
     device: &Device,
     query_pool: &QueryPool,
