@@ -16,6 +16,7 @@ use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::query::QueryType;
+use crate::sync::PipelineStage;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -136,6 +137,86 @@ impl fmt::Display for CheckEndQueryError {
             match *self {
                 Self::OutOfRange => {
                     "the provided query index is not valid for this pool"
+                }
+            }
+        )
+    }
+}
+
+/// Checks whether a `write_timestamp` command is valid.
+///
+/// # Panic
+///
+/// - Panics if the query pool was not created with `device`.
+pub fn check_write_timestamp(
+    device: &Device,
+    query_pool: &QueryPool,
+    query: u32,
+    stage: PipelineStage,
+) -> Result<(), CheckWriteTimestampError> {
+    assert_eq!(
+        device.internal_object(),
+        query_pool.device().internal_object(),
+    );
+
+    if !matches!(query_pool.ty(), QueryType::Timestamp) {
+        return Err(CheckWriteTimestampError::NotPermitted);
+    }
+
+    query_pool
+        .query(query)
+        .ok_or(CheckWriteTimestampError::OutOfRange)?;
+
+    match stage {
+        PipelineStage::GeometryShader => {
+            if !device.enabled_features().geometry_shader {
+                return Err(CheckWriteTimestampError::GeometryShaderFeatureNotEnabled);
+            }
+        }
+        PipelineStage::TessellationControlShader | PipelineStage::TessellationEvaluationShader => {
+            if !device.enabled_features().tessellation_shader {
+                return Err(CheckWriteTimestampError::TessellationShaderFeatureNotEnabled);
+            }
+        }
+        _ => (),
+    }
+
+    Ok(())
+}
+
+/// Error that can happen from `check_write_timestamp`.
+#[derive(Debug, Copy, Clone)]
+pub enum CheckWriteTimestampError {
+    /// The geometry shader stage was requested, but the `geometry_shader` feature was not enabled.
+    GeometryShaderFeatureNotEnabled,
+    /// This operation is not permitted on this query type.
+    NotPermitted,
+    /// The provided query index is not valid for this pool.
+    OutOfRange,
+    /// A tessellation shader stage was requested, but the `tessellation_shader` feature was not enabled.
+    TessellationShaderFeatureNotEnabled,
+}
+
+impl error::Error for CheckWriteTimestampError {}
+
+impl fmt::Display for CheckWriteTimestampError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::GeometryShaderFeatureNotEnabled => {
+                    "the geometry shader stage was requested, but the geometry_shader feature was not enabled"
+                }
+                Self::NotPermitted => {
+                    "this operation is not permitted on this query type"
+                }
+                Self::OutOfRange => {
+                    "the provided query index is not valid for this pool"
+                }
+                Self::TessellationShaderFeatureNotEnabled => {
+                    "a tessellation shader stage was requested, but the tessellation_shader feature was not enabled"
                 }
             }
         )

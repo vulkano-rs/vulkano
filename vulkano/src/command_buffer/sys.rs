@@ -42,6 +42,7 @@ use crate::query::QueryResultFlags;
 use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
+use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::vk;
 use crate::OomError;
@@ -1485,12 +1486,12 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
     #[inline]
-    pub unsafe fn write_timestamp(&mut self, query: Query, stages: PipelineStages) {
+    pub unsafe fn write_timestamp(&mut self, query: Query, stage: PipelineStage) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdWriteTimestamp(
             cmd,
-            stages.into_vulkan_bits(),
+            stage as u32,
             query.pool().internal_object(),
             query.index(),
         );

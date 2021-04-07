@@ -47,6 +47,7 @@ use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
 use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::SafeDeref;
 use crate::VulkanObject;
@@ -2533,6 +2534,51 @@ impl SyncCommandBufferBuilder {
                     ImageLayout::Undefined,
                 )),
             )],
+        )
+        .unwrap();
+    }
+
+    /// Calls `vkCmdWriteTimestamp` on the builder.
+    #[inline]
+    pub unsafe fn write_timestamp(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        stage: PipelineStage,
+    ) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            query: u32,
+            stage: PipelineStage,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdWriteTimestamp"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.write_timestamp(self.query_pool.query(self.query).unwrap(), self.stage);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdWriteTimestamp"
+                    }
+                }
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                query,
+                stage,
+            },
+            &[],
         )
         .unwrap();
     }

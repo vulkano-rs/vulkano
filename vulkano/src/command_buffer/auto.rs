@@ -74,6 +74,7 @@ use crate::sync::AccessCheckError;
 use crate::sync::AccessFlagBits;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
@@ -1862,6 +1863,27 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(self)
     }
 
+    /// Adds a command that writes a timestamp to a timestamp query.
+    ///
+    /// # Safety
+    /// - The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    /// - For the queue family that this command buffer was created for:
+    ///   - `stage` must be a valid stage
+    ///   - `timestamp_valid_bits` value must be `Some`
+    pub unsafe fn write_timestamp(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        stage: PipelineStage,
+    ) -> Result<&mut Self, WriteTimestampError> {
+        check_write_timestamp(self.device(), &query_pool, query, stage)?;
+
+        // TODO: validity checks
+        self.inner.write_timestamp(query_pool, query, stage);
+
+        Ok(self)
+    }
+
     /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
     ///
     /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
@@ -2814,6 +2836,11 @@ err_gen!(BeginQueryError {
 err_gen!(EndQueryError {
     AutoCommandBufferBuilderContextError,
     CheckEndQueryError,
+});
+
+err_gen!(WriteTimestampError {
+    AutoCommandBufferBuilderContextError,
+    CheckWriteTimestampError,
 });
 
 err_gen!(ResetQueryPoolError {
