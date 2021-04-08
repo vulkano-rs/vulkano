@@ -100,11 +100,8 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     pool_builder_alloc: P, // Safety: must be dropped after `inner`
     state_cacher: StateCacher,
 
-    // True if the queue family supports graphics operations.
-    graphics_allowed: bool,
-
-    // True if the queue family supports compute operations.
-    compute_allowed: bool,
+    // The queue family that this command buffer is being created for.
+    queue_family_id: u32,
 
     // The inheritance for secondary command buffers.
     inheritance: Option<
@@ -627,8 +624,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 inner,
                 pool_builder_alloc,
                 state_cacher: StateCacher::new(),
-                graphics_allowed: queue_family.supports_graphics(),
-                compute_allowed: queue_family.supports_compute(),
+                queue_family_id: queue_family.id(),
                 render_pass_state,
                 inheritance,
                 flags,
@@ -782,6 +778,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Ok(())
     }
 
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.device()
+            .physical_device()
+            .queue_family_by_id(self.queue_family_id)
+            .unwrap()
+    }
+
     /// Adds a command that copies an image to another.
     ///
     /// Copy operations have several restrictions:
@@ -922,7 +926,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         D: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
-            if !self.graphics_allowed {
+            if !self.queue_family().supports_graphics() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1018,7 +1022,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         I: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
-            if !self.graphics_allowed && !self.compute_allowed {
+            if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1278,7 +1282,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         name: &'static CStr,
         color: [f32; 4],
     ) -> Result<&mut Self, DebugMarkerError> {
-        if !self.graphics_allowed && self.compute_allowed {
+        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
@@ -1297,7 +1301,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
     #[inline]
     pub fn debug_marker_end(&mut self) -> Result<&mut Self, DebugMarkerError> {
-        if !self.graphics_allowed && self.compute_allowed {
+        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
@@ -1319,7 +1323,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         name: &'static CStr,
         color: [f32; 4],
     ) -> Result<&mut Self, DebugMarkerError> {
-        if !self.graphics_allowed && self.compute_allowed {
+        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
@@ -1349,7 +1353,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
-            if !self.compute_allowed {
+            if !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1402,7 +1406,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
-            if !self.compute_allowed {
+            if !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1487,7 +1491,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 vb_infos.vertex_buffers,
             )?;
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw(
                 vb_infos.vertex_count as u32,
@@ -1565,7 +1569,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 vb_infos.vertex_buffers,
             )?;
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indirect(
                 indirect_buffer,
@@ -1644,7 +1648,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             )?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indexed(
                 ib_infos.num_indices as u32,
@@ -1735,7 +1739,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 vb_infos.vertex_buffers,
             )?;
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indexed_indirect(
                 indirect_buffer,
@@ -1819,15 +1823,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         match query_pool.ty() {
             QueryType::Occlusion => {
-                if !self.graphics_allowed {
+                if !self.queue_family().supports_graphics() {
                     return Err(
                         AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
                     );
                 }
             }
             QueryType::PipelineStatistics(flags) => {
-                if flags.is_compute() && !self.compute_allowed
-                    || flags.is_graphics() && !self.graphics_allowed
+                if flags.is_compute() && !self.queue_family().supports_compute()
+                    || flags.is_graphics() && !self.queue_family().supports_graphics()
                 {
                     return Err(
                         AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
@@ -1866,17 +1870,27 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Adds a command that writes a timestamp to a timestamp query.
     ///
     /// # Safety
-    /// - The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
-    /// - For the queue family that this command buffer was created for:
-    ///   - `stage` must be a valid stage
-    ///   - `timestamp_valid_bits` value must be `Some`
+    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
     pub unsafe fn write_timestamp(
         &mut self,
         query_pool: Arc<QueryPool>,
         query: u32,
         stage: PipelineStage,
     ) -> Result<&mut Self, WriteTimestampError> {
-        check_write_timestamp(self.device(), &query_pool, query, stage)?;
+        check_write_timestamp(
+            self.device(),
+            self.queue_family(),
+            &query_pool,
+            query,
+            stage,
+        )?;
+
+        if !(self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute()
+            || self.queue_family().explicitly_supports_transfers())
+        {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
 
         // TODO: validity checks
         self.inner.write_timestamp(query_pool, query, stage);
@@ -1967,7 +1981,7 @@ where
         F: FramebufferAbstract + RenderPassDescClearValues<C> + Clone + Send + Sync + 'static,
     {
         unsafe {
-            if !self.graphics_allowed {
+            if !self.queue_family().supports_graphics() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -2056,7 +2070,7 @@ where
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.end_render_pass();
             self.render_pass_state = None;
@@ -2215,7 +2229,7 @@ where
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.next_subpass(contents);
             Ok(self)

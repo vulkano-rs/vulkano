@@ -10,6 +10,7 @@
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::instance::QueueFamily;
 use crate::query::GetResultsError;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
@@ -150,6 +151,7 @@ impl fmt::Display for CheckEndQueryError {
 /// - Panics if the query pool was not created with `device`.
 pub fn check_write_timestamp(
     device: &Device,
+    queue_family: QueueFamily,
     query_pool: &QueryPool,
     query: u32,
     stage: PipelineStage,
@@ -166,6 +168,14 @@ pub fn check_write_timestamp(
     query_pool
         .query(query)
         .ok_or(CheckWriteTimestampError::OutOfRange)?;
+
+    if queue_family.timestamp_valid_bits().is_none() {
+        return Err(CheckWriteTimestampError::NoTimestampValidBits);
+    }
+
+    if !queue_family.supports_stage(stage) {
+        return Err(CheckWriteTimestampError::StageNotSupported);
+    }
 
     match stage {
         PipelineStage::GeometryShader => {
@@ -189,10 +199,14 @@ pub fn check_write_timestamp(
 pub enum CheckWriteTimestampError {
     /// The geometry shader stage was requested, but the `geometry_shader` feature was not enabled.
     GeometryShaderFeatureNotEnabled,
+    /// The queue family's `timestamp_valid_bits` value is `None`.
+    NoTimestampValidBits,
     /// This operation is not permitted on this query type.
     NotPermitted,
     /// The provided query index is not valid for this pool.
     OutOfRange,
+    /// The provided stage is not supported by the queue family.
+    StageNotSupported,
     /// A tessellation shader stage was requested, but the `tessellation_shader` feature was not enabled.
     TessellationShaderFeatureNotEnabled,
 }
@@ -209,11 +223,17 @@ impl fmt::Display for CheckWriteTimestampError {
                 Self::GeometryShaderFeatureNotEnabled => {
                     "the geometry shader stage was requested, but the geometry_shader feature was not enabled"
                 }
+                Self::NoTimestampValidBits => {
+                    "the queue family's timestamp_valid_bits value is None"
+                }
                 Self::NotPermitted => {
                     "this operation is not permitted on this query type"
                 }
                 Self::OutOfRange => {
                     "the provided query index is not valid for this pool"
+                }
+                Self::StageNotSupported => {
+                    "the provided stage is not supported by the queue family"
                 }
                 Self::TessellationShaderFeatureNotEnabled => {
                     "a tessellation shader stage was requested, but the tessellation_shader feature was not enabled"
