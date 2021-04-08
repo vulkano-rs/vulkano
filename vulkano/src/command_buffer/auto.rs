@@ -78,6 +78,7 @@ use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
+use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::error;
 use std::ffi::CStr;
@@ -117,6 +118,9 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     // If we're inside a render pass, contains the render pass state.
     render_pass_state: Option<RenderPassState>,
 
+    // If any queries are active, this hashmap contains their state.
+    query_state: FnvHashMap<vk::QueryType, QueryState>,
+
     _data: PhantomData<L>,
 }
 
@@ -125,6 +129,15 @@ struct RenderPassState {
     subpass: (Box<dyn RenderPassAbstract + Send + Sync>, u32),
     contents: SubpassContents,
     framebuffer: vk::Framebuffer, // Always null for secondary command buffers
+}
+
+// The state of an active query.
+struct QueryState {
+    query_pool: vk::QueryPool,
+    query: u32,
+    ty: QueryType,
+    flags: QueryControlFlags,
+    in_subpass: bool,
 }
 
 impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder> {
@@ -626,6 +639,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 state_cacher: StateCacher::new(),
                 queue_family_id: queue_family.id(),
                 render_pass_state,
+                query_state: FnvHashMap::default(),
                 inheritance,
                 flags,
                 _data: PhantomData,
@@ -1809,10 +1823,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
     ///
     /// # Safety
-    /// - The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
-    /// - A query of this type must not already be active.
-    /// - Any secondary command buffers that are executed while this query is active must include
-    ///   queries of this type in their [`CommandBufferInheritance`].
+    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
     pub unsafe fn begin_query(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -1841,28 +1852,49 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             QueryType::Timestamp => unreachable!(),
         }
 
+        let ty = query_pool.ty();
+        let raw_ty = ty.into();
+        let raw_query_pool = query_pool.internal_object();
+        if self.query_state.contains_key(&raw_ty) {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
         // TODO: validity checks
         self.inner.begin_query(query_pool, query, flags);
+        self.query_state.insert(
+            raw_ty,
+            QueryState {
+                query_pool: raw_query_pool,
+                query,
+                ty,
+                flags,
+                in_subpass: self.render_pass_state.is_some(),
+            },
+        );
 
         Ok(self)
     }
 
     /// Adds a command that ends an active query.
-    ///
-    /// # Safety
-    /// - The query must currently be active, via [`begin_query`](Self::begin_query),
-    ///   which must have been called on this command buffer.
-    /// - If the query was begun outside a render pass, it must also end outside a render pass.
-    /// - If the query was begun inside a render pass, it must end within the same subpass.
-    pub unsafe fn end_query(
+    pub fn end_query(
         &mut self,
         query_pool: Arc<QueryPool>,
         query: u32,
     ) -> Result<&mut Self, EndQueryError> {
-        check_end_query(self.device(), &query_pool, query)?;
+        unsafe {
+            check_end_query(self.device(), &query_pool, query)?;
 
-        // TODO: validity checks
-        self.inner.end_query(query_pool, query);
+            let raw_ty = query_pool.ty().into();
+            let raw_query_pool = query_pool.internal_object();
+            if !self.query_state.get(&raw_ty).map_or(false, |state| {
+                state.query_pool == raw_query_pool && state.query == query
+            }) {
+                return Err(AutoCommandBufferBuilderContextError::QueryNotActive.into());
+            }
+
+            self.inner.end_query(query_pool, query);
+            self.query_state.remove(&raw_ty);
+        }
 
         Ok(self)
     }
@@ -1939,7 +1971,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// longer return any results. They will be ready to have new results recorded for them.
     ///
     /// # Safety
-    /// The queries in the specified range must not be active.
+    /// The queries in the specified range must not be active in another command buffer.
     pub unsafe fn reset_query_pool(
         &mut self,
         query_pool: Arc<QueryPool>,
@@ -1948,7 +1980,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         self.ensure_outside_render_pass()?;
         check_reset_query_pool(self.device(), &query_pool, queries.clone())?;
 
+        let raw_query_pool = query_pool.internal_object();
+        if self
+            .query_state
+            .values()
+            .any(|state| state.query_pool == raw_query_pool && queries.contains(&state.query))
+        {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
         // TODO: validity checks
+        // Do other command buffers actually matter here? Not sure on the Vulkan spec.
         self.inner.reset_query_pool(query_pool, queries);
 
         Ok(self)
@@ -2070,6 +2112,10 @@ where
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
 
+            if self.query_state.values().any(|state| state.in_subpass) {
+                return Err(AutoCommandBufferBuilderContextError::QueryIsActive);
+            }
+
             debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.end_render_pass();
@@ -2153,11 +2199,35 @@ where
         C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         if let Some(render_pass) = command_buffer.inheritance().render_pass {
-            // TODO: If support for queries is added, their compatibility should be checked
-            // here too per vkCmdExecuteCommands specs
             self.ensure_inside_render_pass_secondary(&render_pass)?;
         } else {
             self.ensure_outside_render_pass()?;
+        }
+
+        for state in self.query_state.values() {
+            match state.ty {
+                QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
+                    Some(inherited_flags) => {
+                        let inherited_flags = vk::QueryControlFlags::from(inherited_flags);
+                        let state_flags = vk::QueryControlFlags::from(state.flags);
+
+                        if inherited_flags & state_flags != state_flags {
+                            return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
+                        }
+                    }
+                    None => return Err(AutoCommandBufferBuilderContextError::QueryNotInherited),
+                },
+                QueryType::PipelineStatistics(state_flags) => {
+                    let inherited_flags = command_buffer.inheritance().query_statistics_flags;
+                    let inherited_flags = vk::QueryPipelineStatisticFlags::from(inherited_flags);
+                    let state_flags = vk::QueryPipelineStatisticFlags::from(state_flags);
+
+                    if inherited_flags & state_flags != state_flags {
+                        return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
+                    }
+                }
+                _ => (),
+            }
         }
 
         Ok(())
@@ -2227,6 +2297,10 @@ where
                 }
             } else {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
+            }
+
+            if self.query_state.values().any(|state| state.in_subpass) {
+                return Err(AutoCommandBufferBuilderContextError::QueryIsActive);
             }
 
             debug_assert!(self.queue_family().supports_graphics());
@@ -2873,6 +2947,12 @@ pub enum AutoCommandBufferBuilderContextError {
     ForbiddenInsideRenderPass,
     /// Operation forbidden outside of a render pass.
     ForbiddenOutsideRenderPass,
+    /// Tried to use a secondary command buffer with a specified framebuffer that is
+    /// incompatible with the current framebuffer.
+    IncompatibleFramebuffer,
+    /// Tried to use a graphics pipeline or secondary command buffer whose render pass
+    /// is incompatible with the current render pass.
+    IncompatibleRenderPass,
     /// The queue family doesn't allow this operation.
     NotSupportedByQueueFamily,
     /// Tried to end a render pass with subpasses remaining, or tried to go to next subpass with no
@@ -2883,18 +2963,18 @@ pub enum AutoCommandBufferBuilderContextError {
         /// Current subpass index before the failing command.
         current: u32,
     },
-    /// Tried to execute a secondary command buffer inside a subpass that only allows inline
-    /// commands, or a draw command in a subpass that only allows secondary command buffers.
-    WrongSubpassType,
+    /// This query, or a query of the same type, was active.
+    QueryIsActive,
+    /// This query was not active.
+    QueryNotActive,
+    /// A query is active that is not included in the `inheritance` of the secondary command buffer.
+    QueryNotInherited,
     /// Tried to use a graphics pipeline or secondary command buffer whose subpass index
     /// didn't match the current subpass index.
     WrongSubpassIndex,
-    /// Tried to use a secondary command buffer with a specified framebuffer that is
-    /// incompatible with the current framebuffer.
-    IncompatibleFramebuffer,
-    /// Tried to use a graphics pipeline or secondary command buffer whose render pass
-    /// is incompatible with the current render pass.
-    IncompatibleRenderPass,
+    /// Tried to execute a secondary command buffer inside a subpass that only allows inline
+    /// commands, or a draw command in a subpass that only allows secondary command buffers.
+    WrongSubpassType,
 }
 
 impl error::Error for AutoCommandBufferBuilderContextError {}
@@ -2912,22 +2992,6 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
                 AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass => {
                     "operation forbidden outside of a render pass"
                 }
-                AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
-                    "the queue family doesn't allow this operation"
-                }
-                AutoCommandBufferBuilderContextError::NumSubpassesMismatch { .. } => {
-                    "tried to end a render pass with subpasses remaining, or tried to go to next \
-                 subpass with no subpass remaining"
-                }
-                AutoCommandBufferBuilderContextError::WrongSubpassType => {
-                    "tried to execute a secondary command buffer inside a subpass that only allows \
-                 inline commands, or a draw command in a subpass that only allows secondary \
-                 command buffers"
-                }
-                AutoCommandBufferBuilderContextError::WrongSubpassIndex => {
-                    "tried to use a graphics pipeline whose subpass index didn't match the current \
-                 subpass index"
-                }
                 AutoCommandBufferBuilderContextError::IncompatibleFramebuffer => {
                     "tried to use a secondary command buffer with a specified framebuffer that is \
                  incompatible with the current framebuffer"
@@ -2935,6 +2999,31 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
                 AutoCommandBufferBuilderContextError::IncompatibleRenderPass => {
                     "tried to use a graphics pipeline or secondary command buffer whose render pass \
                   is incompatible with the current render pass"
+                }
+                AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
+                    "the queue family doesn't allow this operation"
+                }
+                AutoCommandBufferBuilderContextError::NumSubpassesMismatch { .. } => {
+                    "tried to end a render pass with subpasses remaining, or tried to go to next \
+                 subpass with no subpass remaining"
+                }
+                AutoCommandBufferBuilderContextError::QueryIsActive => {
+                    "this query, or a query of the same type, was active"
+                }
+                AutoCommandBufferBuilderContextError::QueryNotActive => {
+                    "this query was not active"
+                }
+                AutoCommandBufferBuilderContextError::QueryNotInherited => {
+                    "a query is active that is not included in the inheritance of the secondary command buffer"
+                }
+                AutoCommandBufferBuilderContextError::WrongSubpassIndex => {
+                    "tried to use a graphics pipeline whose subpass index didn't match the current \
+                 subpass index"
+                }
+                AutoCommandBufferBuilderContextError::WrongSubpassType => {
+                    "tried to execute a secondary command buffer inside a subpass that only allows \
+                 inline commands, or a draw command in a subpass that only allows secondary \
+                 command buffers"
                 }
             }
         )

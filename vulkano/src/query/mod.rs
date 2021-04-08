@@ -45,16 +45,15 @@ impl QueryPool {
         ty: QueryType,
         num_slots: u32,
     ) -> Result<QueryPool, QueryPoolCreationError> {
-        let (vk_ty, statistics) = match ty {
-            QueryType::Occlusion => (vk::QUERY_TYPE_OCCLUSION, 0),
-            QueryType::Timestamp => (vk::QUERY_TYPE_TIMESTAMP, 0),
+        let statistics = match ty {
             QueryType::PipelineStatistics(flags) => {
                 if !device.enabled_features().pipeline_statistics_query {
                     return Err(QueryPoolCreationError::PipelineStatisticsQueryFeatureNotEnabled);
                 }
 
-                (vk::QUERY_TYPE_PIPELINE_STATISTICS, flags.into())
+                flags.into()
             }
+            QueryType::Occlusion | QueryType::Timestamp => 0,
         };
 
         let pool = unsafe {
@@ -62,7 +61,7 @@ impl QueryPool {
                 sType: vk::STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0, // reserved
-                queryType: vk_ty,
+                queryType: ty.into(),
                 queryCount: num_slots,
                 pipelineStatistics: statistics,
             };
@@ -449,6 +448,17 @@ impl QueryType {
     }
 }
 
+impl From<QueryType> for vk::QueryType {
+    #[inline]
+    fn from(value: QueryType) -> Self {
+        match value {
+            QueryType::Occlusion => vk::QUERY_TYPE_OCCLUSION,
+            QueryType::PipelineStatistics(_) => vk::QUERY_TYPE_PIPELINE_STATISTICS,
+            QueryType::Timestamp => vk::QUERY_TYPE_TIMESTAMP,
+        }
+    }
+}
+
 /// Flags that control how a query is to be executed.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct QueryControlFlags {
@@ -456,6 +466,17 @@ pub struct QueryControlFlags {
     /// tests passed. If not enabled, the query may return a result of 1 even if more fragments
     /// passed the test.
     pub precise: bool,
+}
+
+impl From<QueryControlFlags> for vk::QueryControlFlags {
+    #[inline]
+    fn from(value: QueryControlFlags) -> Self {
+        let mut result = 0;
+        if value.precise {
+            result |= vk::QUERY_CONTROL_PRECISE_BIT;
+        }
+        result
+    }
 }
 
 /// For pipeline statistics queries, the statistics that should be gathered.
