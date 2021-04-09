@@ -707,6 +707,10 @@ where
             return Err(AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass.into());
         }
 
+        if !self.query_state.is_empty() {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
         let submit_state = match self.flags {
             Flags::None => SubmitState::ExclusiveUse {
                 in_use: AtomicBool::new(false),
@@ -732,6 +736,10 @@ where
     /// Builds the command buffer.
     #[inline]
     pub fn build(self) -> Result<SecondaryAutoCommandBuffer<P::Alloc>, BuildError> {
+        if !self.query_state.is_empty() {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
         let submit_state = match self.flags {
             Flags::None => SubmitState::ExclusiveUse {
                 in_use: AtomicBool::new(false),
@@ -2963,7 +2971,7 @@ pub enum AutoCommandBufferBuilderContextError {
         /// Current subpass index before the failing command.
         current: u32,
     },
-    /// This query, or a query of the same type, was active.
+    /// A query is active that conflicts with the current operation.
     QueryIsActive,
     /// This query was not active.
     QueryNotActive,
@@ -3008,7 +3016,7 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
                  subpass with no subpass remaining"
                 }
                 AutoCommandBufferBuilderContextError::QueryIsActive => {
-                    "this query, or a query of the same type, was active"
+                    "a query is active that conflicts with the current operation"
                 }
                 AutoCommandBufferBuilderContextError::QueryNotActive => {
                     "this query was not active"
