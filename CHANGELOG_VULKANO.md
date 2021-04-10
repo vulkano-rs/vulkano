@@ -33,8 +33,9 @@
   - Better documentation of everything in the `query` module.
   - An example demonstrating occlusion queries.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
-- Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
 - Fixed bug in descriptor array layers check when the image is a cubemap.
+- Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
+- Vulkano-shaders: Added support for StoragePushConstant8 SPIR-V capability.
 
 # Version 0.22.0 (2021-03-31)
 
