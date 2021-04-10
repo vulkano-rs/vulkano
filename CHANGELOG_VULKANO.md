@@ -14,6 +14,7 @@
   - Storage image and input attachment descriptors now check for identity swizzling when being built.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
+- Fixed bug in descriptor array layers check when the image is a cubemap.
 
 # Version 0.22.0 (2021-03-31)
 
