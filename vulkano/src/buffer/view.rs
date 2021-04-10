@@ -42,8 +42,8 @@ use crate::buffer::TypedBufferAccess;
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::format::AcceptsPixels;
 use crate::format::Format;
+use crate::format::Pixel;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -72,10 +72,10 @@ where
 {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new<T>(buffer: B, format: Format) -> Result<BufferView<B>, BufferViewCreationError>
+    pub fn new<Px>(buffer: B, format: Format) -> Result<BufferView<B>, BufferViewCreationError>
     where
-        B: TypedBufferAccess<Content = [T]>,
-        Format: AcceptsPixels<T> + 'static,
+        B: TypedBufferAccess<Content = [Px]>,
+        Px: Pixel,
     {
         unsafe { BufferView::unchecked(buffer, format) }
     }

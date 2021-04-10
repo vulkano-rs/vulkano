@@ -13,9 +13,9 @@ use std::fmt;
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::format::AcceptsPixels;
 use crate::format::Format;
 use crate::format::IncompatiblePixelsType;
+use crate::format::Pixel;
 use crate::image::ImageAccess;
 use crate::VulkanObject;
 
@@ -33,7 +33,7 @@ pub enum CheckCopyBufferImageTy {
 ///
 /// - Panics if the buffer and image were not created with `device`.
 ///
-pub fn check_copy_buffer_image<B, I, P>(
+pub fn check_copy_buffer_image<B, I, Px>(
     device: &Device,
     buffer: &B,
     image: &I,
@@ -46,8 +46,8 @@ pub fn check_copy_buffer_image<B, I, P>(
 ) -> Result<(), CheckCopyBufferImageError>
 where
     I: ?Sized + ImageAccess,
-    B: ?Sized + TypedBufferAccess<Content = [P]>,
-    Format: AcceptsPixels<P>, // TODO: use a trait on the image itself instead
+    B: ?Sized + TypedBufferAccess<Content = [Px]>,
+    Px: Pixel, // TODO: use a trait on the image itself instead
 {
     let buffer_inner = buffer.inner();
     let image_inner = image.inner();
@@ -105,10 +105,11 @@ where
         return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
     }
 
-    image.format().ensure_accepts()?;
+    Px::ensure_accepts(image.format())?;
 
     {
-        let required_len = required_len_for_format(image.format(), image_size, image_num_layers);
+        let required_len =
+            required_len_for_format::<Px>(image.format(), image_size, image_num_layers);
         if required_len > buffer.len() {
             return Err(CheckCopyBufferImageError::BufferTooSmall {
                 required_len,
@@ -124,16 +125,16 @@ where
 
 /// Computes the minimum required len in elements for buffer with image data in specified
 /// format of specified size.
-fn required_len_for_format<P>(format: Format, image_size: [u32; 3], image_num_layers: u32) -> usize
+fn required_len_for_format<Px>(format: Format, image_size: [u32; 3], image_num_layers: u32) -> usize
 where
-    Format: AcceptsPixels<P>,
+    Px: Pixel,
 {
     let (block_width, block_height) = format.block_dimensions();
     let num_blocks = (image_size[0] + block_width - 1) / block_width
         * ((image_size[1] + block_height - 1) / block_height)
         * image_size[2]
         * image_num_layers;
-    let required_len = num_blocks as usize * format.rate() as usize;
+    let required_len = num_blocks as usize * Px::rate(format) as usize;
 
     return required_len;
 }

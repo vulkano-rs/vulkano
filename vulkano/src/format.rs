@@ -425,18 +425,29 @@ impl Format {
     }
 }
 
-pub unsafe trait AcceptsPixels<T> {
-    /// Returns an error if `T` cannot be used as a source of pixels for `Self`.
-    fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType>;
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub enum FormatTy {
+    Float,
+    Uint,
+    Sint,
+    Depth,
+    Stencil,
+    DepthStencil,
+    Compressed,
+    Ycbcr,
+}
 
-    /// The number of `T`s which make up a single pixel.
+/// Trait for Rust types that can represent a pixel in an image.
+pub unsafe trait Pixel {
+    /// Returns an error if `Self` cannot be used as a source of pixels for `format`.
+    fn ensure_accepts(format: Format) -> Result<(), IncompatiblePixelsType>;
+
+    /// The number of `Self`s which make up a single pixel.
     ///
     /// # Panics
     ///
     /// May panic if `ensure_accepts` would not return `Ok(())`.
-    fn rate(&self) -> u32 {
-        1
-    }
+    fn rate(format: Format) -> u32;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -468,17 +479,18 @@ macro_rules! impl_pixel {
         $(impl_pixel!(inner ($ty, $ty, $ty, $ty));)*
     };
     (inner $ty:ty) => {
-        unsafe impl AcceptsPixels<$ty> for Format {
-            fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType> {
+        unsafe impl Pixel for $ty {
+            fn ensure_accepts(format: Format) -> Result<(), IncompatiblePixelsType> {
                 // TODO: Be more strict: accept only if the format has a matching AcceptsPixels impl.
-                if self.size().map_or(false, |x| x % mem::size_of::<$ty>() == 0) {
+                if format.size().map_or(false, |x| x % mem::size_of::<$ty>() == 0) {
                     Ok(())
                 } else {
                     Err(IncompatiblePixelsType)
                 }
             }
-            fn rate(&self) -> u32 {
-                (self.size().expect("this format cannot accept pixels") / mem::size_of::<$ty>()) as u32
+
+            fn rate(format: Format) -> u32 {
+                (format.size().expect("this format cannot accept pixels") / mem::size_of::<$ty>()) as u32
             }
         }
     }
@@ -486,18 +498,6 @@ macro_rules! impl_pixel {
 
 impl_pixel! {
     u8; i8; u16; i16; u32; i32; u64; i64; f16; f32; f64;
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum FormatTy {
-    Float,
-    Uint,
-    Sint,
-    Depth,
-    Stencil,
-    DepthStencil,
-    Compressed,
-    Ycbcr,
 }
 
 /// Describes a uniform value that will be used to fill an image.

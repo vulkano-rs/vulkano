@@ -17,8 +17,8 @@ use crate::command_buffer::PrimaryAutoCommandBuffer;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
 use crate::device::Queue;
-use crate::format::AcceptsPixels;
 use crate::format::Format;
+use crate::format::Pixel;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
@@ -314,7 +314,7 @@ impl ImmutableImage {
 
     /// Construct an ImmutableImage from the contents of `iter`.
     #[inline]
-    pub fn from_iter<P, I>(
+    pub fn from_iter<Px, I>(
         iter: I,
         dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
@@ -328,9 +328,8 @@ impl ImmutableImage {
         ImageCreationError,
     >
     where
-        P: Send + Sync + Clone + 'static,
-        Format: AcceptsPixels<P> + 'static + Send + Sync,
-        I: ExactSizeIterator<Item = P>,
+        Px: Pixel + Send + Sync + Clone + 'static,
+        I: ExactSizeIterator<Item = Px>,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
@@ -342,7 +341,7 @@ impl ImmutableImage {
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
-    pub fn from_buffer<B, P>(
+    pub fn from_buffer<B, Px>(
         source: B,
         dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
@@ -356,9 +355,8 @@ impl ImmutableImage {
         ImageCreationError,
     >
     where
-        B: BufferAccess + TypedBufferAccess<Content = [P]> + 'static + Clone + Send + Sync,
-        P: Send + Sync + Clone + 'static,
-        Format: AcceptsPixels<P> + 'static + Send + Sync,
+        B: BufferAccess + TypedBufferAccess<Content = [Px]> + 'static + Clone + Send + Sync,
+        Px: Pixel + Send + Sync + Clone + 'static,
     {
         let need_to_generate_mipmaps = has_mipmaps(mipmaps);
         let usage = ImageUsage {

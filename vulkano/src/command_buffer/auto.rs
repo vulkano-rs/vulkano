@@ -43,10 +43,9 @@ use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::format::AcceptsPixels;
 use crate::format::ClearValue;
-use crate::format::Format;
 use crate::format::FormatTy;
+use crate::format::Pixel;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::instance::QueueFamily;
@@ -1121,7 +1120,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
 
@@ -1143,7 +1142,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
@@ -1201,7 +1200,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
 
@@ -1223,7 +1222,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
