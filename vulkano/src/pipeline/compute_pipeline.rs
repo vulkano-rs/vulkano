@@ -421,10 +421,10 @@ mod tests {
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
-    use std::ffi::CStr;
-    use std::sync::Arc;
     use crate::sync::now;
     use crate::sync::GpuFuture;
+    use std::ffi::CStr;
+    use std::sync::Arc;
 
     // TODO: test for basic creation
     // TODO: test for pipeline layout error

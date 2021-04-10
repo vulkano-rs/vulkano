@@ -276,8 +276,8 @@ mod tests {
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
     use crate::command_buffer::pool::StandardCommandPool;
     use crate::device::Device;
-    use std::sync::Arc;
     use crate::VulkanObject;
+    use std::sync::Arc;
 
     #[test]
     fn reuse_command_buffers() {

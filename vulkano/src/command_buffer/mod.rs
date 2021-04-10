@@ -100,11 +100,11 @@ pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 pub use self::traits::PrimaryCommandBuffer;
 pub use self::traits::SecondaryCommandBuffer;
-use crate::framebuffer::{EmptySinglePassRenderPassDesc, Framebuffer, RenderPass, Subpass};
 use crate::pipeline::depth_stencil::DynamicStencilValue;
 use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
+use crate::render_pass::{Framebuffer, Subpass};
 use std::sync::Arc;
 
 mod auto;
@@ -188,25 +188,25 @@ pub enum SubpassContents {
 
 /// Determines the kind of command buffer to create.
 #[derive(Debug, Clone)]
-pub enum CommandBufferLevel<R, F> {
+pub enum CommandBufferLevel<F> {
     /// Primary command buffers can be executed on a queue, and can call secondary command buffers.
     /// Render passes must begin and end within the same primary command buffer.
     Primary,
 
     /// Secondary command buffers cannot be executed on a queue, but can be executed by a primary
     /// command buffer. If created for a render pass, they must fit within a single render subpass.
-    Secondary(CommandBufferInheritance<R, F>),
+    Secondary(CommandBufferInheritance<F>),
 }
 
 /// The context that a secondary command buffer can inherit from the primary command
 /// buffer it's executed in.
 #[derive(Clone, Debug, Default)]
-pub struct CommandBufferInheritance<R, F> {
+pub struct CommandBufferInheritance<F> {
     /// If `Some`, the secondary command buffer is required to be executed within a specific
     /// render subpass, and can only call draw operations.
     /// If `None`, it must be executed outside a render pass, and can execute dispatch and transfer
     /// operations, but not drawing operations.
-    render_pass: Option<CommandBufferInheritanceRenderPass<R, F>>,
+    render_pass: Option<CommandBufferInheritanceRenderPass<F>>,
 
     /// If `Some`, the secondary command buffer is allowed to be executed within a primary that has
     /// an occlusion query active. The inner `QueryControlFlags` specifies which flags the
@@ -227,31 +227,23 @@ pub struct CommandBufferInheritance<R, F> {
 
 /// The render pass context that a secondary command buffer is created for.
 #[derive(Debug, Clone)]
-pub struct CommandBufferInheritanceRenderPass<R, F> {
+pub struct CommandBufferInheritanceRenderPass<F> {
     /// The render subpass that this secondary command buffer must be executed within.
-    pub subpass: Subpass<R>,
+    pub subpass: Subpass,
 
     /// The framebuffer object that will be used when calling the command buffer.
     /// This parameter is optional and is an optimization hint for the implementation.
     pub framebuffer: Option<F>,
 }
 
-impl
-    CommandBufferLevel<
-        RenderPass<EmptySinglePassRenderPassDesc>,
-        Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>,
-    >
-{
+impl CommandBufferLevel<Framebuffer<()>> {
     /// Equivalent to `Kind::Primary`.
     ///
     /// > **Note**: If you use `let kind = Kind::Primary;` in your code, you will probably get a
     /// > compilation error because the Rust compiler couldn't determine the template parameters
     /// > of `Kind`. To solve that problem in an easy way you can use this function instead.
     #[inline]
-    pub fn primary() -> CommandBufferLevel<
-        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-        Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
-    > {
+    pub fn primary() -> CommandBufferLevel<Arc<Framebuffer<()>>> {
         CommandBufferLevel::Primary
     }
 
@@ -264,10 +256,7 @@ impl
     pub fn secondary(
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> CommandBufferLevel<
-        Arc<RenderPass<EmptySinglePassRenderPassDesc>>,
-        Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>,
-    > {
+    ) -> CommandBufferLevel<Arc<Framebuffer<()>>> {
         CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: None,
             occlusion_query,

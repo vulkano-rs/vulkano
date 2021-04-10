@@ -13,10 +13,10 @@ use crate::descriptor::DescriptorSet;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
-use smallvec::SmallVec;
-use std::ops::Range;
 use crate::vk;
 use crate::VulkanObject;
+use smallvec::SmallVec;
+use std::ops::Range;
 
 /// Keep track of the state of a command buffer builder, so that you don't need to bind objects
 /// that were already bound.

@@ -54,11 +54,11 @@ use crate::memory::Content;
 use crate::memory::CpuAccess as MemCpuAccess;
 use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemoryAllocError;
+use crate::sync::AccessError;
+use crate::sync::Sharing;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 use parking_lot::RwLockWriteGuard;
-use crate::sync::AccessError;
-use crate::sync::Sharing;
 
 /// Buffer whose content is accessible by the CPU.
 ///

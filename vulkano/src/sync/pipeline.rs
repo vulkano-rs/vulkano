@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::ops;
 use crate::vk;
+use std::ops;
 
 macro_rules! pipeline_stages {
     ($($elem:ident => $val:expr,)+) => (

@@ -42,9 +42,9 @@ use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
 use crate::memory::{DedicatedAlloc, MemoryRequirements};
 use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
-use std::fs::File;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use std::fs::File;
 
 /// Buffer whose content is in device-local memory.
 ///

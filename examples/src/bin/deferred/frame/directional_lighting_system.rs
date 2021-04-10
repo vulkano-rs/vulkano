@@ -15,8 +15,6 @@ use vulkano::command_buffer::DynamicState;
 use vulkano::command_buffer::SecondaryAutoCommandBuffer;
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
-use vulkano::framebuffer::RenderPassAbstract;
-use vulkano::framebuffer::Subpass;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;
 use vulkano::pipeline::blend::BlendFactor;
@@ -24,6 +22,7 @@ use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::pipeline::GraphicsPipelineAbstract;
+use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
 
@@ -36,10 +35,7 @@ pub struct DirectionalLightingSystem {
 
 impl DirectionalLightingSystem {
     /// Initializes the directional lighting system.
-    pub fn new<R>(gfx_queue: Arc<Queue>, subpass: Subpass<R>) -> DirectionalLightingSystem
-    where
-        R: RenderPassAbstract + Send + Sync + 'static,
-    {
+    pub fn new(gfx_queue: Arc<Queue>, subpass: Subpass) -> DirectionalLightingSystem {
         // TODO: vulkano doesn't allow us to draw without a vertex buffer, otherwise we could
         //       hard-code these values in the shader
         let vertex_buffer = {
@@ -160,7 +156,7 @@ impl DirectionalLightingSystem {
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
-            self.pipeline.clone().subpass(),
+            self.pipeline.subpass().clone(),
         )
         .unwrap();
         builder

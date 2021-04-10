@@ -83,7 +83,7 @@ mod features;
 pub mod format;
 mod version;
 #[macro_use]
-pub mod framebuffer;
+pub mod render_pass;
 pub mod image;
 pub mod instance;
 pub mod memory;
