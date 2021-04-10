@@ -13,6 +13,19 @@
 //! an image and describes how the GPU should interpret the data. It is needed when an image is
 //! to be used in a shader descriptor or as a framebuffer attachment.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::format::Format;
+use crate::format::FormatTy;
+use crate::image::sys::UnsafeImage;
+use crate::image::ImageAccess;
+use crate::image::ImageDimensions;
+use crate::memory::DeviceMemoryAllocError;
+use crate::sampler::Sampler;
+use crate::vk;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 use std::error;
 use std::fmt;
 use std::hash::Hash;
@@ -22,21 +35,6 @@ use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::device::Device;
-use crate::format::Format;
-use crate::format::FormatTy;
-use crate::image::sys::UnsafeImage;
-use crate::image::ImageAccess;
-use crate::image::ImageDimensions;
-use crate::memory::DeviceMemoryAllocError;
-use crate::sampler::Sampler;
-
-use crate::check_errors;
-use crate::vk;
-use crate::OomError;
-use crate::SafeDeref;
-use crate::VulkanObject;
-
 /// A safe image view that checks for validity and keeps its attached image alive.
 pub struct ImageView<I>
 where
@@ -44,23 +42,25 @@ where
 {
     image: I,
     inner: UnsafeImageView,
-
-    array_layers: Range<u32>,
     format: Format,
-    identity_swizzle: bool,
+
     ty: ImageViewType,
+    component_mapping: ComponentMapping,
+    array_layers: Range<u32>,
 }
 
 impl<I> ImageView<I>
 where
     I: ImageAccess,
 {
-    /// Creates a new image view spanning all mipmap levels and array layers in the image.
-    ///
-    /// The view type is automatically determined from the image, based on its dimensions and
-    /// number of layers.
+    /// Creates a default `ImageView`. Equivalent to `ImageView::start(image).build()`.
     #[inline]
     pub fn new(image: I) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+        Self::start(image).build()
+    }
+
+    /// Begins building an `ImageView`.
+    pub fn start(image: I) -> ImageViewBuilder<I> {
         let ty = match image.dimensions() {
             ImageDimensions::Dim1d {
                 array_layers: 1, ..
@@ -72,39 +72,92 @@ where
             ImageDimensions::Dim2d { .. } => ImageViewType::Dim2dArray,
             ImageDimensions::Dim3d { .. } => ImageViewType::Dim3d,
         };
-        Self::with_type(image, ty)
-    }
-
-    /// Crates a new image view with a custom type.
-    pub fn with_type(
-        image: I,
-        ty: ImageViewType,
-    ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         let mipmap_levels = 0..image.mipmap_levels();
         let array_layers = 0..image.dimensions().array_layers();
-        Self::with_type_ranges(image, ty, mipmap_levels, array_layers)
+
+        ImageViewBuilder {
+            image,
+            ty,
+            component_mapping: ComponentMapping::default(),
+            mipmap_levels,
+            array_layers,
+        }
     }
 
-    /// Creates a new image view with a custom type and ranges of mipmap levels and array layers.
-    pub fn with_type_ranges(
-        image: I,
-        ty: ImageViewType,
-        mipmap_levels: Range<u32>,
-        array_layers: Range<u32>,
-    ) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
-        let dimensions = image.dimensions();
-        let format = image.format();
-        let image_inner = image.inner().image;
+    /// Returns the wrapped image that this image view was created from.
+    pub fn image(&self) -> &I {
+        &self.image
+    }
+}
+
+#[derive(Debug)]
+pub struct ImageViewBuilder<I> {
+    image: I,
+    ty: ImageViewType,
+    component_mapping: ComponentMapping,
+    mipmap_levels: Range<u32>,
+    array_layers: Range<u32>,
+}
+
+impl<I> ImageViewBuilder<I>
+where
+    I: ImageAccess,
+{
+    /// Sets the image view type.
+    ///
+    /// By default, this is determined from the image, based on its dimensions and number of layers.
+    /// The value of `ty` must be compatible with the dimensions of the image and the selected
+    /// array layers.
+    #[inline]
+    pub fn with_type(mut self, ty: ImageViewType) -> Self {
+        self.ty = ty;
+        self
+    }
+
+    /// Sets how to map components of each pixel.
+    ///
+    /// By default, this is the identity mapping, with every component mapped directly.
+    #[inline]
+    pub fn with_component_mapping(mut self, component_mapping: ComponentMapping) -> Self {
+        self.component_mapping = component_mapping;
+        self
+    }
+
+    /// Sets the range of mipmap levels that the view should cover.
+    ///
+    /// By default, this is the full range of mipmaps present in the image.
+    #[inline]
+    pub fn with_mipmap_levels(mut self, mipmap_levels: Range<u32>) -> Self {
+        self.mipmap_levels = mipmap_levels;
+        self
+    }
+
+    /// Sets the range of array layers that the view should cover.
+    ///
+    /// By default, this is the full range of array layers present in the image.
+    #[inline]
+    pub fn with_array_layers(mut self, array_layers: Range<u32>) -> Self {
+        self.array_layers = array_layers;
+        self
+    }
+
+    /// Builds the `ImageView`.
+    pub fn build(self) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
+        let dimensions = self.image.dimensions();
+        let format = self.image.format();
+        let image_inner = self.image.inner().image;
         let usage = image_inner.usage();
         let flags = image_inner.flags();
 
-        if mipmap_levels.end <= mipmap_levels.start
-            || mipmap_levels.end > image_inner.mipmap_levels()
+        if self.mipmap_levels.end <= self.mipmap_levels.start
+            || self.mipmap_levels.end > image_inner.mipmap_levels()
         {
             return Err(ImageViewCreationError::MipMapLevelsOutOfRange);
         }
 
-        if array_layers.end <= array_layers.start || array_layers.end > dimensions.array_layers() {
+        if self.array_layers.end <= self.array_layers.start
+            || self.array_layers.end > dimensions.array_layers()
+        {
             return Err(ImageViewCreationError::ArrayLayersOutOfRange);
         }
 
@@ -120,10 +173,10 @@ where
 
         // Check for compatibility with the image
         match (
-            ty,
-            image.dimensions(),
-            array_layers.end - array_layers.start,
-            mipmap_levels.end - mipmap_levels.start,
+            self.ty,
+            self.image.dimensions(),
+            self.array_layers.end - self.array_layers.start,
+            self.mipmap_levels.end - self.mipmap_levels.start,
         ) {
             (ImageViewType::Dim1d, ImageDimensions::Dim1d { .. }, 1, _) => (),
             (ImageViewType::Dim1dArray, ImageDimensions::Dim1d { .. }, _, _) => (),
@@ -153,22 +206,25 @@ where
             _ => return Err(ImageViewCreationError::IncompatibleType),
         }
 
-        let inner =
-            unsafe { UnsafeImageView::new(image_inner, ty, mipmap_levels, array_layers.clone())? };
+        let inner = unsafe {
+            UnsafeImageView::new(
+                image_inner,
+                self.ty,
+                self.component_mapping,
+                self.mipmap_levels,
+                self.array_layers.clone(),
+            )?
+        };
 
         Ok(Arc::new(ImageView {
-            image,
+            image: self.image,
             inner,
-            array_layers,
             format,
-            identity_swizzle: true, // FIXME:
-            ty,
-        }))
-    }
 
-    /// Returns the wrapped image that this image view was created from.
-    pub fn image(&self) -> &I {
-        &self.image
+            ty: self.ty,
+            component_mapping: self.component_mapping,
+            array_layers: self.array_layers,
+        }))
     }
 }
 
@@ -247,6 +303,7 @@ impl UnsafeImageView {
     pub unsafe fn new(
         image: &UnsafeImage,
         ty: ImageViewType,
+        component_mapping: ComponentMapping,
         mipmap_levels: Range<u32>,
         array_layers: Range<u32>,
     ) -> Result<UnsafeImageView, OomError> {
@@ -276,12 +333,7 @@ impl UnsafeImageView {
                 image: image.internal_object(),
                 viewType: ty.into(),
                 format: image.format() as u32,
-                components: vk::ComponentMapping {
-                    r: 0,
-                    g: 0,
-                    b: 0,
-                    a: 0,
-                }, // FIXME:
+                components: component_mapping.into(),
                 subresourceRange: vk::ImageSubresourceRange {
                     aspectMask: aspect_mask,
                     baseMipLevel: mipmap_levels.start,
@@ -379,6 +431,79 @@ impl From<ImageViewType> for vk::ImageViewType {
     }
 }
 
+/// Specifies how the components of an image must be mapped.
+///
+/// When creating an image view, it is possible to ask the implementation to modify the value
+/// returned when accessing a given component from within a shader.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ComponentMapping {
+    /// First component.
+    pub r: ComponentSwizzle,
+    /// Second component.
+    pub g: ComponentSwizzle,
+    /// Third component.
+    pub b: ComponentSwizzle,
+    /// Fourth component.
+    pub a: ComponentSwizzle,
+}
+
+impl ComponentMapping {
+    /// Returns `true` if the component mapping is identity swizzled,
+    /// meaning that all the members are `Identity`.
+    ///
+    /// Certain operations require views that are identity swizzled, and will return an error
+    /// otherwise. For example, attaching a view to a framebuffer is only possible if the view is
+    /// identity swizzled.
+    #[inline]
+    pub fn is_identity(&self) -> bool {
+        self.r == ComponentSwizzle::Identity
+            && self.g == ComponentSwizzle::Identity
+            && self.b == ComponentSwizzle::Identity
+            && self.a == ComponentSwizzle::Identity
+    }
+}
+
+impl From<ComponentMapping> for vk::ComponentMapping {
+    #[inline]
+    fn from(value: ComponentMapping) -> Self {
+        Self {
+            r: value.r as u32,
+            g: value.g as u32,
+            b: value.b as u32,
+            a: value.a as u32,
+        }
+    }
+}
+
+/// Describes the value that an individual component must return when being accessed.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ComponentSwizzle {
+    /// Returns the value that this component should normally have.
+    ///
+    /// This is the `Default` value.
+    Identity = vk::COMPONENT_SWIZZLE_IDENTITY,
+    /// Always return zero.
+    Zero = vk::COMPONENT_SWIZZLE_ZERO,
+    /// Always return one.
+    One = vk::COMPONENT_SWIZZLE_ONE,
+    /// Returns the value of the first component.
+    Red = vk::COMPONENT_SWIZZLE_R,
+    /// Returns the value of the second component.
+    Green = vk::COMPONENT_SWIZZLE_G,
+    /// Returns the value of the third component.
+    Blue = vk::COMPONENT_SWIZZLE_B,
+    /// Returns the value of the fourth component.
+    Alpha = vk::COMPONENT_SWIZZLE_A,
+}
+
+impl Default for ComponentSwizzle {
+    #[inline]
+    fn default() -> ComponentSwizzle {
+        ComponentSwizzle::Identity
+    }
+}
+
 /// Trait for types that represent the GPU can access an image view.
 pub unsafe trait ImageViewAbstract {
     /// Returns the wrapped image that this image view was created from.
@@ -393,11 +518,8 @@ pub unsafe trait ImageViewAbstract {
     /// Returns the format of this view. This can be different from the parent's format.
     fn format(&self) -> Format;
 
-    /// Returns true if the view doesn't use components swizzling.
-    ///
-    /// Must be true when the view is used as a framebuffer attachment or TODO: I don't remember
-    /// the other thing.
-    fn identity_swizzle(&self) -> bool;
+    /// Returns the component mapping of this view.
+    fn component_mapping(&self) -> ComponentMapping;
 
     /// Returns the [`ImageViewType`] of this image view.
     fn ty(&self) -> ImageViewType;
@@ -438,8 +560,8 @@ where
     }
 
     #[inline]
-    fn identity_swizzle(&self) -> bool {
-        self.identity_swizzle
+    fn component_mapping(&self) -> ComponentMapping {
+        self.component_mapping
     }
 
     #[inline]
@@ -474,8 +596,8 @@ where
     }
 
     #[inline]
-    fn identity_swizzle(&self) -> bool {
-        (**self).identity_swizzle()
+    fn component_mapping(&self) -> ComponentMapping {
+        (**self).component_mapping()
     }
 
     #[inline]

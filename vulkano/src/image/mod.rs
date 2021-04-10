@@ -168,53 +168,6 @@ impl From<vk::ImageFormatProperties> for ImageFormatProperties {
     }
 }
 
-/// Specifies how the components of an image must be swizzled.
-///
-/// When creating an image view, it is possible to ask the implementation to modify the value
-/// returned when accessing a given component from within a shader.
-///
-/// If all the members are `Identity`, then the view is said to have identity swizzling. This is
-/// what the `Default` trait implementation of this struct returns.
-/// Views that don't have identity swizzling may not be supported for some operations. For example
-/// attaching a view to a framebuffer is only possible if the view is identity-swizzled.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
-pub struct Swizzle {
-    /// First component.
-    pub r: ComponentSwizzle,
-    /// Second component.
-    pub g: ComponentSwizzle,
-    /// Third component.
-    pub b: ComponentSwizzle,
-    /// Fourth component.
-    pub a: ComponentSwizzle,
-}
-
-/// Describes the value that an individual component must return when being accessed.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum ComponentSwizzle {
-    /// Returns the value that this component should normally have.
-    Identity,
-    /// Always return zero.
-    Zero,
-    /// Always return one.
-    One,
-    /// Returns the value of the first component.
-    Red,
-    /// Returns the value of the second component.
-    Green,
-    /// Returns the value of the third component.
-    Blue,
-    /// Returns the value of the fourth component.
-    Alpha,
-}
-
-impl Default for ComponentSwizzle {
-    #[inline]
-    fn default() -> ComponentSwizzle {
-        ComponentSwizzle::Identity
-    }
-}
-
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct ImageCreateFlags {
     pub sparse_binding: bool,
