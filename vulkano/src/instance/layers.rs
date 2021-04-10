@@ -173,7 +173,7 @@ pub enum LayersListError {
 
 impl error::Error for LayersListError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             LayersListError::LoadingError(ref err) => Some(err),
             LayersListError::OomError(ref err) => Some(err),

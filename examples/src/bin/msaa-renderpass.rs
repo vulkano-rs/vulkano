@@ -71,7 +71,7 @@ use std::path::Path;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBuffer, DynamicState, SubpassContents,
+    AutoCommandBufferBuilder, DynamicState, PrimaryCommandBuffer, SubpassContents,
 };
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::ClearValue;

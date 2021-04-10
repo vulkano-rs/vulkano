@@ -181,7 +181,12 @@ pub enum QueryType {
     Timestamp,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Clone, Copy, Debug, Default)]
+pub struct QueryControlFlags {
+    pub precise: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
 pub struct QueryPipelineStatisticFlags {
     pub input_assembly_vertices: bool,
     pub input_assembly_primitives: bool,
@@ -276,7 +281,7 @@ pub enum QueryPoolCreationError {
 
 impl error::Error for QueryPoolCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             QueryPoolCreationError::OomError(ref err) => Some(err),
             _ => None,

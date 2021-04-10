@@ -712,7 +712,7 @@ pub enum SurfaceCreationError {
 
 impl error::Error for SurfaceCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SurfaceCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -767,7 +767,7 @@ pub enum CapabilitiesError {
 
 impl error::Error for CapabilitiesError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CapabilitiesError::OomError(ref err) => Some(err),
             _ => None,

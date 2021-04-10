@@ -11,7 +11,7 @@ use crate::buffer::BufferAccess;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
-use crate::command_buffer::Kind;
+use crate::command_buffer::CommandBufferInheritance;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -37,17 +37,9 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-pub unsafe trait CommandBuffer: DeviceOwned {
+pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
     fn inner(&self) -> &UnsafeCommandBuffer;
-
-    /*/// Returns the queue family of the command buffer.
-    #[inline]
-    fn queue_family(&self) -> QueueFamily
-        where Self::PoolAlloc: CommandPoolAlloc
-    {
-        self.inner().queue_family()
-    }*/
 
     /// Checks whether this command buffer is allowed to be submitted after the `future` and on
     /// the given queue, and if so locks it.
@@ -59,17 +51,11 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError>;
 
-    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
-    /// and if so locks it.
-    ///
-    /// If you call this function, then you should call `unlock` afterwards.
-    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
-
     /// Unlocks the command buffer. Should be called once for each call to `lock_submit`.
     ///
     /// # Safety
     ///
-    /// Must not be called if you haven't called `lock_submit` or `lock_record` before.
+    /// Must not be called if you haven't called `lock_submit` before.
     unsafe fn unlock(&self);
 
     /// Executes this command buffer on a queue.
@@ -168,39 +154,12 @@ pub unsafe trait CommandBuffer: DeviceOwned {
         exclusive: bool,
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
-
-    /// Returns a `Kind` value describing the command buffer.
-    fn kind(&self) -> Kind<&dyn FramebufferAbstract>;
-
-    /// Returns the number of buffers accessed by this command buffer.
-    fn num_buffers(&self) -> usize;
-
-    /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
-    ///
-    /// The valid range is between 0 and `num_buffers()`.
-    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)>;
-
-    /// Returns the number of images accessed by this command buffer.
-    fn num_images(&self) -> usize;
-
-    /// Returns the `index`th image of this command buffer, or `None` if out of range.
-    ///
-    /// The valid range is between 0 and `num_images()`.
-    fn image(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &dyn ImageAccess,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-    )>;
 }
 
-unsafe impl<T> CommandBuffer for T
+unsafe impl<T> PrimaryCommandBuffer for T
 where
     T: SafeDeref,
-    T::Target: CommandBuffer,
+    T::Target: PrimaryCommandBuffer,
 {
     #[inline]
     fn inner(&self) -> &UnsafeCommandBuffer {
@@ -214,11 +173,6 @@ where
         queue: &Queue,
     ) -> Result<(), CommandBufferExecError> {
         (**self).lock_submit(future, queue)
-    }
-
-    #[inline]
-    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
-        (**self).lock_record()
     }
 
     #[inline]
@@ -246,10 +200,77 @@ where
     ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
+}
+
+pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
+    /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
+    fn inner(&self) -> &UnsafeCommandBuffer;
+
+    /// Checks whether this command buffer is allowed to be recorded to a command buffer,
+    /// and if so locks it.
+    ///
+    /// If you call this function, then you should call `unlock` afterwards.
+    fn lock_record(&self) -> Result<(), CommandBufferExecError>;
+
+    /// Unlocks the command buffer. Should be called once for each call to `lock_record`.
+    ///
+    /// # Safety
+    ///
+    /// Must not be called if you haven't called `lock_record` before.
+    unsafe fn unlock(&self);
+
+    /// Returns a `CommandBufferInheritance` value describing the properties that the command
+    /// buffer inherits from its parent primary command buffer.
+    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract>;
+
+    /// Returns the number of buffers accessed by this command buffer.
+    fn num_buffers(&self) -> usize;
+
+    /// Returns the `index`th buffer of this command buffer, or `None` if out of range.
+    ///
+    /// The valid range is between 0 and `num_buffers()`.
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)>;
+
+    /// Returns the number of images accessed by this command buffer.
+    fn num_images(&self) -> usize;
+
+    /// Returns the `index`th image of this command buffer, or `None` if out of range.
+    ///
+    /// The valid range is between 0 and `num_images()`.
+    fn image(
+        &self,
+        index: usize,
+    ) -> Option<(
+        &dyn ImageAccess,
+        PipelineMemoryAccess,
+        ImageLayout,
+        ImageLayout,
+    )>;
+}
+
+unsafe impl<T> SecondaryCommandBuffer for T
+where
+    T: SafeDeref,
+    T::Target: SecondaryCommandBuffer,
+{
+    #[inline]
+    fn inner(&self) -> &UnsafeCommandBuffer {
+        (**self).inner()
+    }
 
     #[inline]
-    fn kind(&self) -> Kind<&dyn FramebufferAbstract> {
-        (**self).kind()
+    fn lock_record(&self) -> Result<(), CommandBufferExecError> {
+        (**self).lock_record()
+    }
+
+    #[inline]
+    unsafe fn unlock(&self) {
+        (**self).unlock();
+    }
+
+    #[inline]
+    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract> {
+        (**self).inheritance()
     }
 
     #[inline]
@@ -287,7 +308,7 @@ where
 pub struct CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     previous: F,
     command_buffer: Cb,
@@ -302,7 +323,7 @@ where
 unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn cleanup_finished(&mut self) {
@@ -422,7 +443,7 @@ where
 unsafe impl<F, Cb> DeviceOwned for CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     #[inline]
     fn device(&self) -> &Arc<Device> {
@@ -433,7 +454,7 @@ where
 impl<F, Cb> Drop for CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
-    Cb: CommandBuffer,
+    Cb: PrimaryCommandBuffer,
 {
     fn drop(&mut self) {
         unsafe {
@@ -472,7 +493,7 @@ pub enum CommandBufferExecError {
 
 impl error::Error for CommandBufferExecError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             CommandBufferExecError::AccessError { ref error, .. } => Some(error),
             _ => None,
@@ -491,12 +512,12 @@ impl fmt::Display for CommandBufferExecError {
                     "access to a resource has been denied",
                 CommandBufferExecError::OneTimeSubmitAlreadySubmitted => {
                     "the command buffer or one of the secondary command buffers it executes was \
-                 created with the \"one time submit\" flag, but has already been submitted it \
+                 created with the \"one time submit\" flag, but has already been submitted in \
                  the past"
                 }
                 CommandBufferExecError::ExclusiveAlreadyInUse => {
                     "the command buffer or one of the secondary command buffers it executes is \
-                 already in use by the GPU and was not created with the \"concurrent\" flag"
+                 already in use was not created with the \"concurrent\" flag"
                 }
             }
         )

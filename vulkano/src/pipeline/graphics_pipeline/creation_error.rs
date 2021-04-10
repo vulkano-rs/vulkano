@@ -186,7 +186,7 @@ pub enum GraphicsPipelineCreationError {
 
 impl error::Error for GraphicsPipelineCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),

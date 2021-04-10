@@ -949,7 +949,7 @@ pub enum SwapchainCreationError {
 
 impl error::Error for SwapchainCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SwapchainCreationError::OomError(ref err) => Some(err),
             _ => None,
@@ -1226,7 +1226,7 @@ impl From<OomError> for FullscreenExclusiveError {
 
 impl error::Error for FullscreenExclusiveError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             FullscreenExclusiveError::OomError(ref err) => Some(err),
             _ => None,
@@ -1286,7 +1286,7 @@ pub enum AcquireError {
 
 impl error::Error for AcquireError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             AcquireError::OomError(ref err) => Some(err),
             _ => None,

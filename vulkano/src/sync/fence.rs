@@ -365,7 +365,7 @@ pub enum FenceWaitError {
 
 impl error::Error for FenceWaitError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             FenceWaitError::OomError(ref err) => Some(err),
             _ => None,

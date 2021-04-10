@@ -7,8 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::io::Error as IoError;
+use std::iter::Iterator;
 use std::path::Path;
+use std::{
+    cell::{RefCell, RefMut},
+    io::Error as IoError,
+};
 
 use proc_macro2::{Span, TokenStream};
 use shaderc::{CompileOptions, Compiler, TargetEnv};
@@ -28,6 +32,13 @@ use crate::spec_consts;
 use crate::structs;
 use crate::TypesMeta;
 
+pub(super) fn path_to_str(path: &Path) -> &str {
+    path.to_str().expect(
+        "Could not stringify the file to be included. Make sure the path consists of \
+                 valid unicode characters.",
+    )
+}
+
 fn include_callback(
     requested_source_path_raw: &str,
     directive_type: IncludeType,
@@ -36,6 +47,7 @@ fn include_callback(
     include_directories: &[impl AsRef<Path>],
     root_source_has_path: bool,
     base_path: &impl AsRef<Path>,
+    mut includes_tracker: RefMut<Vec<String>>,
 ) -> Result<ResolvedInclude, String> {
     let file_to_include = match directive_type {
         IncludeType::Relative => {
@@ -121,13 +133,7 @@ fn include_callback(
         }
     };
 
-    let file_to_include_string = file_to_include
-        .to_str()
-        .expect(
-            "Could not stringify the file to be included. Make sure the path consists of \
-                 valid unicode characters.",
-        )
-        .to_string();
+    let file_to_include_string = path_to_str(file_to_include.as_path()).to_string();
     let content = read_file_to_string(file_to_include.as_path()).map_err(|_| {
         format!(
             "Could not read the contents of file `{}` to be included in the \
@@ -135,6 +141,8 @@ fn include_callback(
             &file_to_include_string
         )
     })?;
+
+    includes_tracker.push(file_to_include_string.clone());
 
     Ok(ResolvedInclude {
         resolved_name: file_to_include_string,
@@ -149,7 +157,8 @@ pub fn compile(
     ty: ShaderKind,
     include_directories: &[impl AsRef<Path>],
     macro_defines: &[(impl AsRef<str>, impl AsRef<str>)],
-) -> Result<CompilationArtifact, String> {
+) -> Result<(CompilationArtifact, Vec<String>), String> {
+    let includes_tracker = RefCell::new(Vec::new());
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
     const ENV_VULKAN_VERSION: u32 = (1 << 22) | (1 << 12);
@@ -172,6 +181,7 @@ pub fn compile(
                 include_directories,
                 path.is_some(),
                 base_path,
+                includes_tracker.borrow_mut(),
             )
         },
     );
@@ -184,16 +194,21 @@ pub fn compile(
         .compile_into_spirv(&code, ty, root_source_path, "main", Some(&compile_options))
         .map_err(|e| e.to_string())?;
 
-    Ok(content)
+    let includes = includes_tracker.borrow().clone();
+
+    Ok((content, includes))
 }
 
-pub(super) fn reflect(
+pub(super) fn reflect<'a, I>(
     name: &str,
     spirv: &[u32],
     types_meta: TypesMeta,
-    full_path: Option<&str>,
+    input_paths: I,
     dump: bool,
-) -> Result<TokenStream, Error> {
+) -> Result<TokenStream, Error>
+where
+    I: Iterator<Item = &'a str>,
+{
     let struct_name = Ident::new(&name, Span::call_site());
     let doc = parse::parse_spirv(spirv)?;
 
@@ -256,15 +271,13 @@ pub(super) fn reflect(
         }
     }
 
-    let include_bytes = full_path
-        .map(|s| {
-            quote! {
-                // using include_bytes here ensures that changing the shader will force recompilation.
-                // The bytes themselves can be optimized out by the compiler as they are unused.
-                let _bytes = ::std::include_bytes!( #s );
-            }
-        })
-        .unwrap_or(TokenStream::new());
+    let include_bytes = input_paths.map(|s| {
+        quote! {
+            // using include_bytes here ensures that changing the shader will force recompilation.
+            // The bytes themselves can be optimized out by the compiler as they are unused.
+            ::std::include_bytes!( #s )
+        }
+    });
 
     let structs = structs::write_structs(&doc, &types_meta);
     let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);
@@ -319,7 +332,7 @@ pub(super) fn reflect(
             pub fn load(device: ::std::sync::Arc<::vulkano::device::Device>)
                         -> Result<#struct_name, ::vulkano::OomError>
             {
-                #include_bytes
+                let _bytes = ( #( #include_bytes),* );
 
                 #( #cap_checks )*
                 static WORDS: &[u32] = &[ #( #spirv ),* ];
@@ -525,6 +538,23 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
 
+    #[cfg(not(target_os = "windows"))]
+    pub fn path_separator() -> &'static str {
+        "/"
+    }
+
+    #[cfg(target_os = "windows")]
+    pub fn path_separator() -> &'static str {
+        "\\"
+    }
+
+    fn convert_paths(root_path: &Path, paths: &[String]) -> Vec<String> {
+        paths
+            .iter()
+            .map(|p| path_to_str(root_path.join(p).as_path()).to_owned())
+            .collect()
+    }
+
     #[test]
     fn test_bad_alignment() {
         // vec3/mat3/mat3x* are problematic in arrays since their rust
@@ -535,7 +565,7 @@ mod tests {
         // create an error instead of generating incorrect code.
         let includes: [PathBuf; 0] = [];
         let defines: [(String, String); 0] = [];
-        let comp = compile(
+        let (comp, _) = compile(
             None,
             &Path::new(""),
             "
@@ -561,7 +591,7 @@ mod tests {
     fn test_trivial_alignment() {
         let includes: [PathBuf; 0] = [];
         let defines: [(String, String); 0] = [];
-        let comp = compile(
+        let (comp, _) = compile(
             None,
             &Path::new(""),
             "
@@ -588,7 +618,7 @@ mod tests {
         // so we should make sure it works.
         let includes: [PathBuf; 0] = [];
         let defines: [(String, String); 0] = [];
-        let comp = compile(
+        let (comp, _) = compile(
             None,
             &Path::new(""),
             "
@@ -618,7 +648,7 @@ mod tests {
         let root_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         let empty_includes: [PathBuf; 0] = [];
         let defines: [(String, String); 0] = [];
-        let _compile_relative = compile(
+        let (_compile_relative, _) = compile(
             Some(String::from("tests/include_test.glsl")),
             &root_path,
             "
@@ -633,7 +663,7 @@ mod tests {
         )
         .expect("Cannot resolve include files");
 
-        let _compile_include_paths = compile(
+        let (_compile_include_paths, includes) = compile(
             Some(String::from("tests/include_test.glsl")),
             &root_path,
             "
@@ -644,14 +674,24 @@ mod tests {
         ",
             ShaderKind::Vertex,
             &[
-                root_path.join("tests/include_dir_a"),
-                root_path.join("tests/include_dir_b"),
+                root_path.join("tests").join("include_dir_a"),
+                root_path.join("tests").join("include_dir_b"),
             ],
             &defines,
         )
         .expect("Cannot resolve include files");
+        assert_eq!(
+            includes,
+            convert_paths(
+                &root_path,
+                &[
+                    vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator()),
+                    vec!["tests", "include_dir_b", "target_b.glsl"].join(path_separator()),
+                ]
+            )
+        );
 
-        let _compile_include_paths_with_relative = compile(
+        let (_compile_include_paths_with_relative, includes_with_relative) = compile(
             Some(String::from("tests/include_test.glsl")),
             &root_path,
             "
@@ -661,16 +701,30 @@ mod tests {
         void main() {}
         ",
             ShaderKind::Vertex,
-            &[root_path.join("tests/include_dir_a")],
+            &[root_path.join("tests").join("include_dir_a")],
             &defines,
         )
         .expect("Cannot resolve include files");
+        assert_eq!(
+            includes_with_relative,
+            convert_paths(
+                &root_path,
+                &[
+                    vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator()),
+                    vec!["tests", "include_dir_a", "../include_dir_b/target_b.glsl"]
+                        .join(path_separator()),
+                ]
+            )
+        );
 
-        let absolute_path = root_path.join("tests/include_dir_a/target_a.glsl");
+        let absolute_path = root_path
+            .join("tests")
+            .join("include_dir_a")
+            .join("target_a.glsl");
         let absolute_path_str = absolute_path
             .to_str()
             .expect("Cannot run tests in a folder with non unicode characters");
-        let _compile_absolute_path = compile(
+        let (_compile_absolute_path, includes_absolute_path) = compile(
             Some(String::from("tests/include_test.glsl")),
             &root_path,
             &format!(
@@ -686,8 +740,15 @@ mod tests {
             &defines,
         )
         .expect("Cannot resolve include files");
+        assert_eq!(
+            includes_absolute_path,
+            convert_paths(
+                &root_path,
+                &[vec!["tests", "include_dir_a", "target_a.glsl"].join(path_separator())]
+            )
+        );
 
-        let _compile_recursive = compile(
+        let (_compile_recursive_, includes_recursive) = compile(
             Some(String::from("tests/include_test.glsl")),
             &root_path,
             "
@@ -697,12 +758,24 @@ mod tests {
         ",
             ShaderKind::Vertex,
             &[
-                root_path.join("tests/include_dir_b"),
-                root_path.join("tests/include_dir_c"),
+                root_path.join("tests").join("include_dir_b"),
+                root_path.join("tests").join("include_dir_c"),
             ],
             &defines,
         )
         .expect("Cannot resolve include files");
+        assert_eq!(
+            includes_recursive,
+            convert_paths(
+                &root_path,
+                &[
+                    vec!["tests", "include_dir_c", "target_c.glsl"].join(path_separator()),
+                    vec!["tests", "include_dir_c", "../include_dir_a/target_a.glsl"]
+                        .join(path_separator()),
+                    vec!["tests", "include_dir_b", "target_b.glsl"].join(path_separator()),
+                ]
+            )
+        );
     }
 
     #[test]

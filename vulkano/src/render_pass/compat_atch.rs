@@ -51,7 +51,7 @@ where
         });
     }
 
-    if !image_view.identity_swizzle() {
+    if !image_view.component_mapping().is_identity() {
         return Err(IncompatibleRenderPassAttachmentError::NotIdentitySwizzled);
     }
 
@@ -155,7 +155,7 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
                  number of samples"
                 }
                 IncompatibleRenderPassAttachmentError::NotIdentitySwizzled => {
-                    "the image view does not use identity swizzling"
+                    "the image view's component mapping is not identity swizzled"
                 }
                 IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage => {
                     "the image is used as a color attachment but is missing the color attachment usage"

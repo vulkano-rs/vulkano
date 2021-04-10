@@ -340,7 +340,7 @@ pub enum ComputePipelineCreationError {
 
 impl error::Error for ComputePipelineCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
             ComputePipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),

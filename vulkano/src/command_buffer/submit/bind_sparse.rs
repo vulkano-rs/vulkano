@@ -480,7 +480,7 @@ pub enum SubmitBindSparseError {
 
 impl error::Error for SubmitBindSparseError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             SubmitBindSparseError::OomError(ref err) => Some(err),
             _ => None,

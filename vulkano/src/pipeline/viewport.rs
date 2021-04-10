@@ -169,7 +169,7 @@ pub struct Scissor {
 }
 
 impl Scissor {
-    /// Defines a scissor box that it outside of the image.
+    /// Returns a scissor that, when used, will instruct the pipeline to draw to the entire framebuffer.
     #[inline]
     pub fn irrelevant() -> Scissor {
         Scissor {

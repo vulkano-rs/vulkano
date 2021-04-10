@@ -20,8 +20,8 @@ use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
-use crate::command_buffer::CommandBuffer;
 use crate::command_buffer::CommandBufferExecError;
+use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::DescriptorDescTy;
 use crate::descriptor::descriptor::ShaderStages;
@@ -2656,7 +2656,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
 /// Prototype for a `vkCmdExecuteCommands`.
 pub struct SyncCommandBufferBuilderExecuteCommands<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
-    inner: Vec<Box<dyn CommandBuffer + Send + Sync>>,
+    inner: Vec<Box<dyn SecondaryCommandBuffer + Send + Sync>>,
 }
 
 impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
@@ -2664,16 +2664,16 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
     #[inline]
     pub fn add<C>(&mut self, command_buffer: C)
     where
-        C: CommandBuffer + Send + Sync + 'static,
+        C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         self.inner.push(Box::new(command_buffer));
     }
 
     #[inline]
     pub unsafe fn submit(self) -> Result<(), SyncCommandBufferBuilderError> {
-        struct DropUnlock(Box<dyn CommandBuffer + Send + Sync>);
+        struct DropUnlock(Box<dyn SecondaryCommandBuffer + Send + Sync>);
         impl std::ops::Deref for DropUnlock {
-            type Target = Box<dyn CommandBuffer + Send + Sync>;
+            type Target = Box<dyn SecondaryCommandBuffer + Send + Sync>;
 
             fn deref(&self) -> &Self::Target {
                 &self.0

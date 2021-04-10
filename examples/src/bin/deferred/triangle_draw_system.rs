@@ -9,9 +9,9 @@
 
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
-use vulkano::command_buffer::AutoCommandBuffer;
 use vulkano::command_buffer::AutoCommandBufferBuilder;
 use vulkano::command_buffer::DynamicState;
+use vulkano::command_buffer::SecondaryAutoCommandBuffer;
 use vulkano::device::Queue;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
@@ -79,7 +79,7 @@ impl TriangleDrawSystem {
     }
 
     /// Builds a secondary command buffer that draws the triangle on the current subpass.
-    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> AutoCommandBuffer {
+    pub fn draw(&self, viewport_dimensions: [u32; 2]) -> SecondaryAutoCommandBuffer {
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),

@@ -241,7 +241,7 @@
 //! # let mut swapchain: ::std::sync::Arc<swapchain::Swapchain<()>> = return;
 //! // let mut (swapchain, images) = Swapchain::new(...);
 //! loop {
-//!     # let mut command_buffer: ::vulkano::command_buffer::AutoCommandBuffer<()> = return;
+//!     # let mut command_buffer: ::vulkano::command_buffer::PrimaryAutoCommandBuffer<()> = return;
 //!     let (image_num, suboptimal, acquire_future)
 //!         = swapchain::acquire_next_image(swapchain.clone(), None).unwrap();
 //!

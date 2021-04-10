@@ -668,7 +668,7 @@ pub enum InstanceCreationError {
 
 impl error::Error for InstanceCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             InstanceCreationError::LoadingError(ref err) => Some(err),
             InstanceCreationError::OomError(ref err) => Some(err),

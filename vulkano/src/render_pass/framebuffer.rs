@@ -522,7 +522,7 @@ impl From<OomError> for FramebufferCreationError {
 
 impl error::Error for FramebufferCreationError {
     #[inline]
-    fn cause(&self) -> Option<&dyn error::Error> {
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             FramebufferCreationError::OomError(ref err) => Some(err),
             FramebufferCreationError::IncompatibleAttachment(ref err) => Some(err),
