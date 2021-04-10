@@ -310,7 +310,7 @@ impl<'a> QueriesRange<'a> {
         debug_assert!(buffer_start % std::mem::size_of::<T>() == 0);
 
         let count = self.range.end - self.range.start;
-        let per_query_len = self.pool.ty.data_size() + flags.with_availability as usize;
+        let per_query_len = self.pool.ty.result_size() + flags.with_availability as usize;
         let required_len = per_query_len * count as usize;
 
         if buffer_len < required_len {
@@ -440,7 +440,7 @@ impl QueryType {
     /// If the results are retrieved with [`QueryResultFlags::with_availability`] enabled, then
     /// an additional element is required per query.
     #[inline]
-    pub fn data_size(&self) -> usize {
+    pub const fn result_size(&self) -> usize {
         match self {
             Self::Occlusion | Self::Timestamp => 1,
             Self::PipelineStatistics(flags) => flags.count(),
@@ -526,7 +526,7 @@ impl QueryPipelineStatisticFlags {
 
     /// Returns the number of flags that are set to `true`.
     #[inline]
-    pub fn count(&self) -> usize {
+    pub const fn count(&self) -> usize {
         let &Self {
             input_assembly_vertices,
             input_assembly_primitives,
@@ -555,7 +555,7 @@ impl QueryPipelineStatisticFlags {
 
     /// Returns `true` if any flags referring to compute operations are set to `true`.
     #[inline]
-    pub fn is_compute(&self) -> bool {
+    pub const fn is_compute(&self) -> bool {
         let &Self {
             compute_shader_invocations,
             ..
@@ -565,7 +565,7 @@ impl QueryPipelineStatisticFlags {
 
     /// Returns `true` if any flags referring to graphics operations are set to `true`.
     #[inline]
-    pub fn is_graphics(&self) -> bool {
+    pub const fn is_graphics(&self) -> bool {
         let &Self {
             input_assembly_vertices,
             input_assembly_primitives,
