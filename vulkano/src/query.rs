@@ -310,7 +310,7 @@ impl<'a> QueriesRange<'a> {
         debug_assert!(buffer_start % std::mem::size_of::<T>() == 0);
 
         let count = self.range.end - self.range.start;
-        let per_query_len = self.pool.ty.data_size() + flags.with_availability as usize;
+        let per_query_len = self.pool.ty.result_size() + flags.with_availability as usize;
         let required_len = per_query_len * count as usize;
 
         if buffer_len < required_len {
@@ -440,7 +440,7 @@ impl QueryType {
     /// If the results are retrieved with [`QueryResultFlags::with_availability`] enabled, then
     /// an additional element is required per query.
     #[inline]
-    pub fn data_size(&self) -> usize {
+    pub fn result_size(&self) -> usize {
         match self {
             Self::Occlusion | Self::Timestamp => 1,
             Self::PipelineStatistics(flags) => flags.count(),
