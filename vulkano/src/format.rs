@@ -409,23 +409,8 @@ formats! {
     G8B8R8_2PLANE420Unorm => FORMAT_G8_B8R8_2PLANE_420_UNORM [(1, 1)] [None] [ycbcr],
 }
 
-pub unsafe trait FormatDesc {
-    type ClearValue;
-
-    fn format(&self) -> Format;
-
-    fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue;
-}
-
-unsafe impl FormatDesc for Format {
-    type ClearValue = ClearValue;
-
-    #[inline]
-    fn format(&self) -> Format {
-        *self
-    }
-
-    fn decode_clear_value(&self, value: Self::ClearValue) -> ClearValue {
+impl Format {
+    pub fn decode_clear_value(&self, value: ClearValue) -> ClearValue {
         match (self.ty(), value) {
             (FormatTy::Float, f @ ClearValue::Float(_)) => f,
             (FormatTy::Compressed, f @ ClearValue::Float(_)) => f,

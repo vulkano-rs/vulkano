@@ -43,7 +43,7 @@ use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::AcceptsPixels;
-use crate::format::FormatDesc;
+use crate::format::Format;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -51,33 +51,31 @@ use crate::SafeDeref;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
-use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
-pub struct BufferView<F, B>
+pub struct BufferView<B>
 where
     B: BufferAccess,
 {
     view: vk::BufferView,
     buffer: B,
-    marker: PhantomData<F>,
     atomic_accesses: bool,
 }
 
-impl<F, B> BufferView<F, B>
+impl<B> BufferView<B>
 where
     B: BufferAccess,
 {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new<T>(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
+    pub fn new<T>(buffer: B, format: Format) -> Result<BufferView<B>, BufferViewCreationError>
     where
         B: TypedBufferAccess<Content = [T]>,
-        F: AcceptsPixels<T> + FormatDesc + 'static,
+        Format: AcceptsPixels<T> + 'static,
     {
         unsafe { BufferView::unchecked(buffer, format) }
     }
@@ -85,18 +83,16 @@ where
     /// Builds a new buffer view without checking that the format is correct.
     pub unsafe fn unchecked(
         org_buffer: B,
-        format: F,
-    ) -> Result<BufferView<F, B>, BufferViewCreationError>
+        format: Format,
+    ) -> Result<BufferView<B>, BufferViewCreationError>
     where
         B: BufferAccess,
-        F: FormatDesc + 'static,
     {
         let (view, format_props) = {
             let size = org_buffer.size();
             let BufferInner { buffer, offset } = org_buffer.inner();
 
             let device = buffer.device();
-            let format = format.format();
 
             if (offset
                 % device
@@ -173,7 +169,6 @@ where
         Ok(BufferView {
             view,
             buffer: org_buffer,
-            marker: PhantomData,
             atomic_accesses: (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT)
                 != 0,
         })
@@ -204,7 +199,7 @@ where
     }
 }
 
-unsafe impl<F, B> VulkanObject for BufferView<F, B>
+unsafe impl<B> VulkanObject for BufferView<B>
 where
     B: BufferAccess,
 {
@@ -218,7 +213,7 @@ where
     }
 }
 
-unsafe impl<F, B> DeviceOwned for BufferView<F, B>
+unsafe impl<B> DeviceOwned for BufferView<B>
 where
     B: BufferAccess,
 {
@@ -228,7 +223,7 @@ where
     }
 }
 
-impl<F, B> fmt::Debug for BufferView<F, B>
+impl<B> fmt::Debug for BufferView<B>
 where
     B: BufferAccess + fmt::Debug,
 {
@@ -240,7 +235,7 @@ where
     }
 }
 
-impl<F, B> Drop for BufferView<F, B>
+impl<B> Drop for BufferView<B>
 where
     B: BufferAccess,
 {
@@ -259,34 +254,31 @@ where
 
 pub unsafe trait BufferViewRef {
     type BufferAccess: BufferAccess;
-    type Format;
 
-    fn view(&self) -> &BufferView<Self::Format, Self::BufferAccess>;
+    fn view(&self) -> &BufferView<Self::BufferAccess>;
 }
 
-unsafe impl<F, B> BufferViewRef for BufferView<F, B>
+unsafe impl<B> BufferViewRef for BufferView<B>
 where
     B: BufferAccess,
 {
     type BufferAccess = B;
-    type Format = F;
 
     #[inline]
-    fn view(&self) -> &BufferView<F, B> {
+    fn view(&self) -> &BufferView<B> {
         self
     }
 }
 
-unsafe impl<T, F, B> BufferViewRef for T
+unsafe impl<T, B> BufferViewRef for T
 where
-    T: SafeDeref<Target = BufferView<F, B>>,
+    T: SafeDeref<Target = BufferView<B>>,
     B: BufferAccess,
 {
     type BufferAccess = B;
-    type Format = F;
 
     #[inline]
-    fn view(&self) -> &BufferView<F, B> {
+    fn view(&self) -> &BufferView<B> {
         &**self
     }
 }

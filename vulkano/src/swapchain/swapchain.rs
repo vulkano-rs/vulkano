@@ -7,17 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::atomic::AtomicBool;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::time::Duration;
-
 use crate::buffer::BufferAccess;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitPresentBuilder;
@@ -27,7 +16,6 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::format::Format;
-use crate::format::FormatDesc;
 use crate::image::swapchain::SwapchainImage;
 use crate::image::sys::UnsafeImage;
 use crate::image::ImageAccess;
@@ -55,6 +43,16 @@ use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;
 use crate::sync::SharingMode;
+use std::error;
+use std::fmt;
+use std::mem;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::time::Duration;
 
 use crate::check_errors;
 use crate::vk;
@@ -284,11 +282,11 @@ impl<W> Swapchain<W> {
     ///
     // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     #[inline]
-    pub fn new<F, S>(
+    pub fn new<S>(
         device: Arc<Device>,
         surface: Arc<Surface<W>>,
         num_images: u32,
-        format: F,
+        format: Format,
         dimensions: [u32; 2],
         layers: u32,
         usage: ImageUsage,
@@ -301,14 +299,13 @@ impl<W> Swapchain<W> {
         color_space: ColorSpace,
     ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
     where
-        F: FormatDesc,
         S: Into<SharingMode>,
     {
         Swapchain::new_inner(
             device,
             surface,
             num_images,
-            format.format(),
+            format,
             color_space,
             Some(dimensions),
             layers,
@@ -325,11 +322,11 @@ impl<W> Swapchain<W> {
 
     /// Same as Swapchain::new but requires an old swapchain for the creation
     #[inline]
-    pub fn with_old_swapchain<F, S>(
+    pub fn with_old_swapchain<S>(
         device: Arc<Device>,
         surface: Arc<Surface<W>>,
         num_images: u32,
-        format: F,
+        format: Format,
         dimensions: [u32; 2],
         layers: u32,
         usage: ImageUsage,
@@ -343,14 +340,13 @@ impl<W> Swapchain<W> {
         old_swapchain: Arc<Swapchain<W>>,
     ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError>
     where
-        F: FormatDesc,
         S: Into<SharingMode>,
     {
         Swapchain::new_inner(
             device,
             surface,
             num_images,
-            format.format(),
+            format,
             ColorSpace::SrgbNonLinear,
             Some(dimensions),
             layers,

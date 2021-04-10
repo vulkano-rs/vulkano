@@ -7,14 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
-
 use crate::buffer::BufferAccess;
 use crate::format::ClearValue;
-use crate::format::Format;
-use crate::format::FormatDesc;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
@@ -23,8 +17,10 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::swapchain::Swapchain;
 use crate::sync::AccessError;
-
 use crate::OomError;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
 
 /// An image that is part of a swapchain.
 ///
@@ -173,9 +169,9 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 }
 
-unsafe impl<W> ImageClearValue<<Format as FormatDesc>::ClearValue> for SwapchainImage<W> {
+unsafe impl<W> ImageClearValue<ClearValue> for SwapchainImage<W> {
     #[inline]
-    fn decode(&self, value: <Format as FormatDesc>::ClearValue) -> Option<ClearValue> {
+    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
         Some(self.swapchain.format().decode_clear_value(value))
     }
 }
