@@ -99,7 +99,7 @@ development forward as quick as possible, but the review process sometimes may t
 please be patient as the maintainers need time to check everything properly.
 
 If something needs to get promoted urgently, please ping current Vulkano
-maintainer([@Eliah-Lakhin](https://github.com/Eliah-Lakhin/jonathan-hoag)) in the PR's
+maintainer([@Eliah-Lakhin](https://github.com/Eliah-Lakhin/)) in the PR's
 or Issue's comments.
 
 If your change adds, removes or modifies a trait or a function, please add an entry to the
