@@ -31,6 +31,7 @@
   - `get_results` has been added to `QueriesRange`, to copy query results to the CPU.
   - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `begin_query` (still unsafe), `end_query` (safe), `write_timestamp` (still unsafe), `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).
   - Better documentation of everything in the `query` module.
+  - An example demonstrating occlusion queries.
 - **Breaking** Removed the separate structs for each image format. Now, only the `Format` enum exists.
   - Traits that no longer make sense in this context have been removed: `FormatDesc`, the `Possible*FormatDesc` traits, `StrongStorage`.
   - In types that had a type parameter for the format type, it has been removed.

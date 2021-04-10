@@ -134,7 +134,7 @@ macro_rules! formats {
             /// this will be the size of a single block. Returns `None` if the
             /// size is irrelevant.
             #[inline]
-            pub fn size(&self) -> Option<usize> {
+            pub const fn size(&self) -> Option<usize> {
                 match *self {
                     $(
                         Format::$name => $sz,
@@ -145,7 +145,7 @@ macro_rules! formats {
             /// Returns (width, height) of the dimensions for block based formats. For
             /// non block formats will return (1,1)
             #[inline]
-            pub fn block_dimensions(&self) -> (u32, u32) {
+            pub const fn block_dimensions(&self) -> (u32, u32) {
                 match *self {
                     $(
                         Format::$name => $bdim,
@@ -154,7 +154,7 @@ macro_rules! formats {
             }
 
             #[inline]
-            pub fn ty(&self) -> FormatTy {
+            pub const fn ty(&self) -> FormatTy {
                 match *self {
                     $(
                         Format::$name => formats!(__inner_ty__ $name $($f_ty)*),
