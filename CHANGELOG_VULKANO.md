@@ -3,7 +3,6 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
-
 - **Breaking** `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be create, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
 - **Breaking** `Kind` has been renamed to `CommandBufferLevel`, and for secondary command buffers it now contains a single `CommandBufferInheritance` value.
 - **Breaking** `CommandBufferInheritance::occlusion_query` and `UnsafeCommandBufferBuilder::begin_query` now take `QueryControlFlags` instead of a boolean.
@@ -24,6 +23,14 @@
     - `GraphicsPipeline` and `Framebuffer` no longer have a render pass type parameter.
     - `GraphicsPipelineAbstract` and `FramebufferAbstract` have trait methods to retrieve the render pass instead.
   - The `ordered_passes_renderpass!` and `single_pass_renderpass!` macros are unchanged externally.
+- Support for queries:
+  - **Breaking** `UnsafeQueryPool`, `UnsafeQuery` and `UnsafeQueriesRange` have `Unsafe` removed from their names.
+  - **Breaking** `QueriesRange` is now represented with a standard Rust `Range` in its API.
+  - **Breaking** The secondary command buffer constructors that have parameters for queries will check if the corresponding features are enabled, and return a different error type.
+  - Removed `OcclusionQueriesPool`, which was incomplete and never did anything useful.
+  - `get_results` has been added to `QueriesRange`, to copy query results to the CPU.
+  - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `begin_query` (still unsafe), `end_query` (safe), `write_timestamp` (still unsafe), `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).
+  - Better documentation of everything in the `query` module.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
 - Fixed bug in descriptor array layers check when the image is a cubemap.

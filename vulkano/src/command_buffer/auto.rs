@@ -56,6 +56,10 @@ use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
+use crate::query::QueryPool;
+use crate::query::QueryResultElement;
+use crate::query::QueryResultFlags;
+use crate::query::QueryType;
 use crate::render_pass::Framebuffer;
 use crate::render_pass::FramebufferAbstract;
 use crate::render_pass::LoadOp;
@@ -66,9 +70,11 @@ use crate::sync::AccessCheckError;
 use crate::sync::AccessFlagBits;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
+use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::error;
 use std::ffi::CStr;
@@ -76,6 +82,7 @@ use std::fmt;
 use std::iter;
 use std::marker::PhantomData;
 use std::mem;
+use std::ops::Range;
 use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
@@ -90,11 +97,8 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     pool_builder_alloc: P, // Safety: must be dropped after `inner`
     state_cacher: StateCacher,
 
-    // True if the queue family supports graphics operations.
-    graphics_allowed: bool,
-
-    // True if the queue family supports compute operations.
-    compute_allowed: bool,
+    // The queue family that this command buffer is being created for.
+    queue_family_id: u32,
 
     // The inheritance for secondary command buffers.
     inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>>,
@@ -105,6 +109,9 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     // If we're inside a render pass, contains the render pass state.
     render_pass_state: Option<RenderPassState>,
 
+    // If any queries are active, this hashmap contains their state.
+    query_state: FnvHashMap<vk::QueryType, QueryState>,
+
     _data: PhantomData<L>,
 }
 
@@ -113,6 +120,15 @@ struct RenderPassState {
     subpass: (Arc<RenderPass>, u32),
     contents: SubpassContents,
     framebuffer: vk::Framebuffer, // Always null for secondary command buffers
+}
+
+// The state of an active query.
+struct QueryState {
+    query_pool: vk::QueryPool,
+    query: u32,
+    ty: QueryType,
+    flags: QueryControlFlags,
+    in_subpass: bool,
 }
 
 impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder> {
@@ -253,10 +269,25 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::None)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::None,
+        )?)
     }
 
     /// Same as `secondary_compute_one_time_submit`, but allows specifying how queries are being inherited.
@@ -268,10 +299,25 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::OneTimeSubmit)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::OneTimeSubmit,
+        )?)
     }
 
     /// Same as `secondary_compute_simultaneous_use`, but allows specifying how queries are being inherited.
@@ -283,10 +329,25 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::SimultaneousUse)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::SimultaneousUse,
+        )?)
     }
 
     /// Starts building a secondary graphics command buffer.
@@ -367,7 +428,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
 
     /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_inherit_queries<R>(
+    pub fn secondary_graphics_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
         subpass: Subpass,
@@ -375,8 +436,18 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
@@ -386,12 +457,17 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::None)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::None,
+        )?)
     }
 
     /// Same as `secondary_graphics_one_time_submit`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_one_time_submit_inherit_queries<R>(
+    pub fn secondary_graphics_one_time_submit_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
         subpass: Subpass,
@@ -399,8 +475,18 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
@@ -410,12 +496,17 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::OneTimeSubmit)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::OneTimeSubmit,
+        )?)
     }
 
     /// Same as `secondary_graphics_simultaneous_use`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_simultaneous_use_inherit_queries<R>(
+    pub fn secondary_graphics_simultaneous_use_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
         subpass: Subpass,
@@ -423,8 +514,18 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
+        BeginError,
     > {
+        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
+            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
+        }
+
+        if query_statistics_flags.count() > 0
+            && !device.enabled_features().pipeline_statistics_query
+        {
+            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
+        }
+
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
@@ -434,7 +535,12 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::SimultaneousUse)
+        Ok(AutoCommandBufferBuilder::with_flags(
+            device,
+            queue_family,
+            level,
+            Flags::SimultaneousUse,
+        )?)
     }
 }
 
@@ -497,14 +603,62 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 inner,
                 pool_builder_alloc,
                 state_cacher: StateCacher::new(),
-                graphics_allowed: queue_family.supports_graphics(),
-                compute_allowed: queue_family.supports_compute(),
+                queue_family_id: queue_family.id(),
                 render_pass_state,
+                query_state: FnvHashMap::default(),
                 inheritance,
                 flags,
                 _data: PhantomData,
             })
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum BeginError {
+    /// Occlusion query inheritance was requested, but the `inherited_queries` feature was not enabled.
+    InheritedQueriesFeatureNotEnabled,
+    /// Not enough memory.
+    OomError(OomError),
+    /// Pipeline statistics query inheritance was requested, but the `pipeline_statistics_query` feature was not enabled.
+    PipelineStatisticsQueryFeatureNotEnabled,
+}
+
+impl error::Error for BeginError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            Self::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for BeginError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::InheritedQueriesFeatureNotEnabled => {
+                    "occlusion query inheritance was requested but the corresponding feature \
+                 wasn't enabled"
+                }
+                Self::OomError(_) => "not enough memory available",
+                Self::PipelineStatisticsQueryFeatureNotEnabled => {
+                    "pipeline statistics query inheritance was requested but the corresponding \
+                 feature wasn't enabled"
+                }
+            }
+        )
+    }
+}
+
+impl From<OomError> for BeginError {
+    #[inline]
+    fn from(err: OomError) -> Self {
+        Self::OomError(err)
     }
 }
 
@@ -517,6 +671,10 @@ where
     pub fn build(self) -> Result<PrimaryAutoCommandBuffer<P::Alloc>, BuildError> {
         if self.render_pass_state.is_some() {
             return Err(AutoCommandBufferBuilderContextError::ForbiddenInsideRenderPass.into());
+        }
+
+        if !self.query_state.is_empty() {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
         }
 
         let submit_state = match self.flags {
@@ -544,6 +702,10 @@ where
     /// Builds the command buffer.
     #[inline]
     pub fn build(self) -> Result<SecondaryAutoCommandBuffer<P::Alloc>, BuildError> {
+        if !self.query_state.is_empty() {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
         let submit_state = match self.flags {
             Flags::None => SubmitState::ExclusiveUse {
                 in_use: AtomicBool::new(false),
@@ -607,6 +769,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         Ok(())
+    }
+
+    #[inline]
+    fn queue_family(&self) -> QueueFamily {
+        self.device()
+            .physical_device()
+            .queue_family_by_id(self.queue_family_id)
+            .unwrap()
     }
 
     /// Adds a command that copies an image to another.
@@ -749,7 +919,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         D: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
-            if !self.graphics_allowed {
+            if !self.queue_family().supports_graphics() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -845,7 +1015,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         I: ImageAccess + Send + Sync + 'static,
     {
         unsafe {
-            if !self.graphics_allowed && !self.compute_allowed {
+            if !self.queue_family().supports_graphics() && !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1020,11 +1190,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /*
-    Adds a command that copies from an image to a buffer.
-    The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
-    This does not matter since the act of copying the image into a buffer converts it to linear form.
-    */
+    /// Adds a command that copies from an image to a buffer.
+    // The data layout of the image on the gpu is opaque, as in, it is non of our business how the gpu stores the image.
+    // This does not matter since the act of copying the image into a buffer converts it to linear form.
     pub fn copy_image_to_buffer<S, D, Px>(
         &mut self,
         source: S,
@@ -1107,7 +1275,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         name: &'static CStr,
         color: [f32; 4],
     ) -> Result<&mut Self, DebugMarkerError> {
-        if !self.graphics_allowed && self.compute_allowed {
+        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
@@ -1126,7 +1294,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Note: you need to enable `VK_EXT_debug_utils` extension when creating an instance.
     #[inline]
     pub fn debug_marker_end(&mut self) -> Result<&mut Self, DebugMarkerError> {
-        if !self.graphics_allowed && self.compute_allowed {
+        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
@@ -1148,7 +1316,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         name: &'static CStr,
         color: [f32; 4],
     ) -> Result<&mut Self, DebugMarkerError> {
-        if !self.graphics_allowed && self.compute_allowed {
+        if !self.queue_family().supports_graphics() && self.queue_family().supports_compute() {
             return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
         }
 
@@ -1178,7 +1346,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
-            if !self.compute_allowed {
+            if !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1231,7 +1399,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
         unsafe {
-            if !self.compute_allowed {
+            if !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1316,7 +1484,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 vb_infos.vertex_buffers,
             )?;
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw(
                 vb_infos.vertex_count as u32,
@@ -1394,7 +1562,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 vb_infos.vertex_buffers,
             )?;
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indirect(
                 indirect_buffer,
@@ -1473,7 +1641,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             )?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indexed(
                 ib_infos.num_indices as u32,
@@ -1564,7 +1732,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 vb_infos.vertex_buffers,
             )?;
 
-            debug_assert!(self.graphics_allowed);
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indexed_indirect(
                 indirect_buffer,
@@ -1628,6 +1796,184 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             Ok(self)
         }
     }
+
+    /// Adds a command that begins a query.
+    ///
+    /// The query will be active until [`end_query`](Self::end_query) is called for the same query.
+    ///
+    /// # Safety
+    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    pub unsafe fn begin_query(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        flags: QueryControlFlags,
+    ) -> Result<&mut Self, BeginQueryError> {
+        check_begin_query(self.device(), &query_pool, query, flags)?;
+
+        match query_pool.ty() {
+            QueryType::Occlusion => {
+                if !self.queue_family().supports_graphics() {
+                    return Err(
+                        AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
+                    );
+                }
+            }
+            QueryType::PipelineStatistics(flags) => {
+                if flags.is_compute() && !self.queue_family().supports_compute()
+                    || flags.is_graphics() && !self.queue_family().supports_graphics()
+                {
+                    return Err(
+                        AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into(),
+                    );
+                }
+            }
+            QueryType::Timestamp => unreachable!(),
+        }
+
+        let ty = query_pool.ty();
+        let raw_ty = ty.into();
+        let raw_query_pool = query_pool.internal_object();
+        if self.query_state.contains_key(&raw_ty) {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
+        // TODO: validity checks
+        self.inner.begin_query(query_pool, query, flags);
+        self.query_state.insert(
+            raw_ty,
+            QueryState {
+                query_pool: raw_query_pool,
+                query,
+                ty,
+                flags,
+                in_subpass: self.render_pass_state.is_some(),
+            },
+        );
+
+        Ok(self)
+    }
+
+    /// Adds a command that ends an active query.
+    pub fn end_query(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+    ) -> Result<&mut Self, EndQueryError> {
+        unsafe {
+            check_end_query(self.device(), &query_pool, query)?;
+
+            let raw_ty = query_pool.ty().into();
+            let raw_query_pool = query_pool.internal_object();
+            if !self.query_state.get(&raw_ty).map_or(false, |state| {
+                state.query_pool == raw_query_pool && state.query == query
+            }) {
+                return Err(AutoCommandBufferBuilderContextError::QueryNotActive.into());
+            }
+
+            self.inner.end_query(query_pool, query);
+            self.query_state.remove(&raw_ty);
+        }
+
+        Ok(self)
+    }
+
+    /// Adds a command that writes a timestamp to a timestamp query.
+    ///
+    /// # Safety
+    /// The query must be unavailable, ensured by calling [`reset_query_pool`](Self::reset_query_pool).
+    pub unsafe fn write_timestamp(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        stage: PipelineStage,
+    ) -> Result<&mut Self, WriteTimestampError> {
+        check_write_timestamp(
+            self.device(),
+            self.queue_family(),
+            &query_pool,
+            query,
+            stage,
+        )?;
+
+        if !(self.queue_family().supports_graphics()
+            || self.queue_family().supports_compute()
+            || self.queue_family().explicitly_supports_transfers())
+        {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
+
+        // TODO: validity checks
+        self.inner.write_timestamp(query_pool, query, stage);
+
+        Ok(self)
+    }
+
+    /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
+    ///
+    /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
+    /// will be written for each query in the range, plus 1 extra element per query if
+    /// [`QueryResultFlags::with_availability`] is enabled.
+    /// The provided buffer must be large enough to hold the data.
+    ///
+    /// See also [`get_results`](crate::query::QueriesRange::get_results).
+    pub fn copy_query_pool_results<D, T>(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: D,
+        flags: QueryResultFlags,
+    ) -> Result<&mut Self, CopyQueryPoolResultsError>
+    where
+        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        T: QueryResultElement,
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+            let stride = check_copy_query_pool_results(
+                self.device(),
+                &query_pool,
+                queries.clone(),
+                &destination,
+                flags,
+            )?;
+            self.inner
+                .copy_query_pool_results(query_pool, queries, destination, stride, flags)?;
+        }
+
+        Ok(self)
+    }
+
+    /// Adds a command to reset a range of queries on a query pool.
+    ///
+    /// The affected queries will be marked as "unavailable" after this command runs, and will no
+    /// longer return any results. They will be ready to have new results recorded for them.
+    ///
+    /// # Safety
+    /// The queries in the specified range must not be active in another command buffer.
+    pub unsafe fn reset_query_pool(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+    ) -> Result<&mut Self, ResetQueryPoolError> {
+        self.ensure_outside_render_pass()?;
+        check_reset_query_pool(self.device(), &query_pool, queries.clone())?;
+
+        let raw_query_pool = query_pool.internal_object();
+        if self
+            .query_state
+            .values()
+            .any(|state| state.query_pool == raw_query_pool && queries.contains(&state.query))
+        {
+            return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
+        }
+
+        // TODO: validity checks
+        // Do other command buffers actually matter here? Not sure on the Vulkan spec.
+        self.inner.reset_query_pool(query_pool, queries);
+
+        Ok(self)
+    }
 }
 
 /// Commands that can only be executed on primary command buffers
@@ -1657,7 +2003,7 @@ where
         I: IntoIterator<Item = ClearValue>,
     {
         unsafe {
-            if !self.graphics_allowed {
+            if !self.queue_family().supports_graphics() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
@@ -1755,7 +2101,11 @@ where
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
 
-            debug_assert!(self.graphics_allowed);
+            if self.query_state.values().any(|state| state.in_subpass) {
+                return Err(AutoCommandBufferBuilderContextError::QueryIsActive);
+            }
+
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.end_render_pass();
             self.render_pass_state = None;
@@ -1838,11 +2188,35 @@ where
         C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         if let Some(render_pass) = command_buffer.inheritance().render_pass {
-            // TODO: If support for queries is added, their compatibility should be checked
-            // here too per vkCmdExecuteCommands specs
             self.ensure_inside_render_pass_secondary(&render_pass)?;
         } else {
             self.ensure_outside_render_pass()?;
+        }
+
+        for state in self.query_state.values() {
+            match state.ty {
+                QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
+                    Some(inherited_flags) => {
+                        let inherited_flags = vk::QueryControlFlags::from(inherited_flags);
+                        let state_flags = vk::QueryControlFlags::from(state.flags);
+
+                        if inherited_flags & state_flags != state_flags {
+                            return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
+                        }
+                    }
+                    None => return Err(AutoCommandBufferBuilderContextError::QueryNotInherited),
+                },
+                QueryType::PipelineStatistics(state_flags) => {
+                    let inherited_flags = command_buffer.inheritance().query_statistics_flags;
+                    let inherited_flags = vk::QueryPipelineStatisticFlags::from(inherited_flags);
+                    let state_flags = vk::QueryPipelineStatisticFlags::from(state_flags);
+
+                    if inherited_flags & state_flags != state_flags {
+                        return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
+                    }
+                }
+                _ => (),
+            }
         }
 
         Ok(())
@@ -1913,7 +2287,11 @@ where
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
             }
 
-            debug_assert!(self.graphics_allowed);
+            if self.query_state.values().any(|state| state.in_subpass) {
+                return Err(AutoCommandBufferBuilderContextError::QueryIsActive);
+            }
+
+            debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.next_subpass(contents);
             Ok(self)
@@ -2440,6 +2818,12 @@ err_gen!(CopyBufferImageError {
     SyncCommandBufferBuilderError,
 });
 
+err_gen!(CopyQueryPoolResultsError {
+    AutoCommandBufferBuilderContextError,
+    CheckCopyQueryPoolResultsError,
+    SyncCommandBufferBuilderError,
+});
+
 err_gen!(FillBufferError {
     AutoCommandBufferBuilderContextError,
     CheckFillBufferError,
@@ -2511,6 +2895,26 @@ err_gen!(ExecuteCommandsError {
     SyncCommandBufferBuilderError,
 });
 
+err_gen!(BeginQueryError {
+    AutoCommandBufferBuilderContextError,
+    CheckBeginQueryError,
+});
+
+err_gen!(EndQueryError {
+    AutoCommandBufferBuilderContextError,
+    CheckEndQueryError,
+});
+
+err_gen!(WriteTimestampError {
+    AutoCommandBufferBuilderContextError,
+    CheckWriteTimestampError,
+});
+
+err_gen!(ResetQueryPoolError {
+    AutoCommandBufferBuilderContextError,
+    CheckResetQueryPoolError,
+});
+
 err_gen!(UpdateBufferError {
     AutoCommandBufferBuilderContextError,
     CheckUpdateBufferError,
@@ -2522,6 +2926,12 @@ pub enum AutoCommandBufferBuilderContextError {
     ForbiddenInsideRenderPass,
     /// Operation forbidden outside of a render pass.
     ForbiddenOutsideRenderPass,
+    /// Tried to use a secondary command buffer with a specified framebuffer that is
+    /// incompatible with the current framebuffer.
+    IncompatibleFramebuffer,
+    /// Tried to use a graphics pipeline or secondary command buffer whose render pass
+    /// is incompatible with the current render pass.
+    IncompatibleRenderPass,
     /// The queue family doesn't allow this operation.
     NotSupportedByQueueFamily,
     /// Tried to end a render pass with subpasses remaining, or tried to go to next subpass with no
@@ -2532,18 +2942,18 @@ pub enum AutoCommandBufferBuilderContextError {
         /// Current subpass index before the failing command.
         current: u32,
     },
-    /// Tried to execute a secondary command buffer inside a subpass that only allows inline
-    /// commands, or a draw command in a subpass that only allows secondary command buffers.
-    WrongSubpassType,
+    /// A query is active that conflicts with the current operation.
+    QueryIsActive,
+    /// This query was not active.
+    QueryNotActive,
+    /// A query is active that is not included in the `inheritance` of the secondary command buffer.
+    QueryNotInherited,
     /// Tried to use a graphics pipeline or secondary command buffer whose subpass index
     /// didn't match the current subpass index.
     WrongSubpassIndex,
-    /// Tried to use a secondary command buffer with a specified framebuffer that is
-    /// incompatible with the current framebuffer.
-    IncompatibleFramebuffer,
-    /// Tried to use a graphics pipeline or secondary command buffer whose render pass
-    /// is incompatible with the current render pass.
-    IncompatibleRenderPass,
+    /// Tried to execute a secondary command buffer inside a subpass that only allows inline
+    /// commands, or a draw command in a subpass that only allows secondary command buffers.
+    WrongSubpassType,
 }
 
 impl error::Error for AutoCommandBufferBuilderContextError {}
@@ -2561,22 +2971,6 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
                 AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass => {
                     "operation forbidden outside of a render pass"
                 }
-                AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
-                    "the queue family doesn't allow this operation"
-                }
-                AutoCommandBufferBuilderContextError::NumSubpassesMismatch { .. } => {
-                    "tried to end a render pass with subpasses remaining, or tried to go to next \
-                 subpass with no subpass remaining"
-                }
-                AutoCommandBufferBuilderContextError::WrongSubpassType => {
-                    "tried to execute a secondary command buffer inside a subpass that only allows \
-                 inline commands, or a draw command in a subpass that only allows secondary \
-                 command buffers"
-                }
-                AutoCommandBufferBuilderContextError::WrongSubpassIndex => {
-                    "tried to use a graphics pipeline whose subpass index didn't match the current \
-                 subpass index"
-                }
                 AutoCommandBufferBuilderContextError::IncompatibleFramebuffer => {
                     "tried to use a secondary command buffer with a specified framebuffer that is \
                  incompatible with the current framebuffer"
@@ -2584,6 +2978,31 @@ impl fmt::Display for AutoCommandBufferBuilderContextError {
                 AutoCommandBufferBuilderContextError::IncompatibleRenderPass => {
                     "tried to use a graphics pipeline or secondary command buffer whose render pass \
                   is incompatible with the current render pass"
+                }
+                AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily => {
+                    "the queue family doesn't allow this operation"
+                }
+                AutoCommandBufferBuilderContextError::NumSubpassesMismatch { .. } => {
+                    "tried to end a render pass with subpasses remaining, or tried to go to next \
+                 subpass with no subpass remaining"
+                }
+                AutoCommandBufferBuilderContextError::QueryIsActive => {
+                    "a query is active that conflicts with the current operation"
+                }
+                AutoCommandBufferBuilderContextError::QueryNotActive => {
+                    "this query was not active"
+                }
+                AutoCommandBufferBuilderContextError::QueryNotInherited => {
+                    "a query is active that is not included in the inheritance of the secondary command buffer"
+                }
+                AutoCommandBufferBuilderContextError::WrongSubpassIndex => {
+                    "tried to use a graphics pipeline whose subpass index didn't match the current \
+                 subpass index"
+                }
+                AutoCommandBufferBuilderContextError::WrongSubpassType => {
+                    "tried to execute a secondary command buffer inside a subpass that only allows \
+                 inline commands, or a draw command in a subpass that only allows secondary \
+                 command buffers"
                 }
             }
         )
