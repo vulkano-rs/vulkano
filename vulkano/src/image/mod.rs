@@ -439,7 +439,7 @@ impl ImageDimensions {
 
 #[cfg(test)]
 mod tests {
-    use crate::format;
+    use crate::format::Format;
     use crate::image::ImageDimensions;
     use crate::image::ImmutableImage;
     use crate::image::MipmapsCount;
@@ -562,7 +562,7 @@ mod tests {
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::One,
-                format::R8Unorm,
+                Format::R8Unorm,
                 queue.clone(),
             )
             .unwrap();
@@ -577,7 +577,7 @@ mod tests {
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::Log2,
-                format::R8Unorm,
+                Format::R8Unorm,
                 queue.clone(),
             )
             .unwrap();

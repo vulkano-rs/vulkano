@@ -22,7 +22,7 @@
 //! use vulkano::buffer::immutable::ImmutableBuffer;
 //! use vulkano::buffer::BufferUsage;
 //! use vulkano::buffer::BufferView;
-//! use vulkano::format;
+//! use vulkano::format::Format;
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
@@ -33,30 +33,28 @@
 //!
 //! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             queue.clone()).unwrap();
-//! let _view = BufferView::new(buffer, format::R32Uint).unwrap();
+//! let _view = BufferView::new(buffer, Format::R32Uint).unwrap();
 //! ```
 
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferInner;
+use crate::buffer::TypedBufferAccess;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::format::AcceptsPixels;
+use crate::format::FormatDesc;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 use std::error;
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
-
-use crate::buffer::BufferAccess;
-use crate::buffer::BufferInner;
-use crate::buffer::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::format::FormatDesc;
-use crate::format::StrongStorage;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::SafeDeref;
-use crate::VulkanObject;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
@@ -76,10 +74,10 @@ where
 {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
+    pub fn new<T>(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
     where
-        B: TypedBufferAccess<Content = [F::Pixel]>,
-        F: StrongStorage + 'static,
+        B: TypedBufferAccess<Content = [T]>,
+        F: AcceptsPixels<T> + FormatDesc + 'static,
     {
         unsafe { BufferView::unchecked(buffer, format) }
     }
@@ -370,7 +368,7 @@ mod tests {
     use crate::buffer::view::BufferViewCreationError;
     use crate::buffer::BufferUsage;
     use crate::buffer::BufferView;
-    use crate::format;
+    use crate::format::Format;
 
     #[test]
     fn create_uniform() {
@@ -385,7 +383,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, Format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.uniform_texel_buffer());
     }
@@ -403,7 +401,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, Format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.storage_texel_buffer());
     }
@@ -420,7 +418,7 @@ mod tests {
 
         let (buffer, _) =
             ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
-        let view = BufferView::new(buffer, format::R32Uint).unwrap();
+        let view = BufferView::new(buffer, Format::R32Uint).unwrap();
 
         assert!(view.storage_texel_buffer());
         assert!(view.storage_texel_buffer_atomic());
@@ -438,7 +436,7 @@ mod tests {
         )
         .unwrap();
 
-        match BufferView::new(buffer, format::R8G8B8A8Unorm) {
+        match BufferView::new(buffer, Format::R8G8B8A8Unorm) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
             _ => panic!(),
         }
@@ -462,7 +460,7 @@ mod tests {
         .unwrap();
 
         // TODO: what if R64G64B64A64Sfloat is supported?
-        match BufferView::new(buffer, format::R64G64B64A64Sfloat) {
+        match BufferView::new(buffer, Format::R64G64B64A64Sfloat) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
             _ => panic!(),
         }

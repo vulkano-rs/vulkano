@@ -161,12 +161,6 @@ pub unsafe trait AcceptsPixels<T> {
 
     /// The number of `T`s which make up a single pixel.
     ///
-    /// ```
-    /// use vulkano::format::{AcceptsPixels, R8G8B8A8Srgb};
-    /// assert_eq!(<R8G8B8A8Srgb as AcceptsPixels<[u8; 4]>>::rate(&R8G8B8A8Srgb), 1);
-    /// assert_eq!(<R8G8B8A8Srgb as AcceptsPixels<u8>>::rate(&R8G8B8A8Srgb), 4);
-    /// ```
-    ///
     /// # Panics
     ///
     /// May panic if `ensure_accepts` would not return `Ok(())`.
@@ -176,7 +170,7 @@ pub unsafe trait AcceptsPixels<T> {
 }
 
 macro_rules! formats {
-    ($($name:ident => $vk:ident [$bdim:expr] [$sz:expr] [$($f_ty:tt)*] {$($d_ty:tt)*},)+) => (
+    ($($name:ident => $vk:ident [$bdim:expr] [$sz:expr] [$($f_ty:tt)*],)+) => (
         /// An enumeration of all the possible formats.
         #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
         #[repr(u32)]
@@ -266,192 +260,7 @@ macro_rules! formats {
                 }
             }
         }
-
-        $(
-            #[derive(Debug, Copy, Clone, Default)]
-            #[allow(missing_docs)]
-            #[allow(non_camel_case_types)]
-            pub struct $name;
-
-            formats!(__inner_impl__ $name $($f_ty)*);
-            formats!(__inner_strongstorage__ $name $($d_ty)*);
-        )+
     );
-
-    (__inner_impl__ $name:ident float=$num:expr) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = [f32; $num];
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-        unsafe impl PossibleFloatFormatDesc for $name {
-            #[inline(always)]
-            fn is_float(&self) -> bool { true }
-        }
-        unsafe impl PossibleFloatOrCompressedFormatDesc for $name {
-            #[inline(always)]
-            fn is_float_or_compressed(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident uint=$num:expr) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = [u32; $num];
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-
-        unsafe impl PossibleUintFormatDesc for $name {
-            #[inline(always)]
-            fn is_uint(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident sint=$num:expr) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = [i32; $num];
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-
-        unsafe impl PossibleSintFormatDesc for $name {
-            #[inline(always)]
-            fn is_sint(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident depth) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = f32;
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-
-        unsafe impl PossibleDepthFormatDesc for $name {
-            #[inline(always)]
-            fn is_depth(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident stencil) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = u32;      // FIXME: shouldn't stencil be i32?
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-
-        unsafe impl PossibleStencilFormatDesc for $name {
-            #[inline(always)]
-            fn is_stencil(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident depthstencil) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = (f32, u32);       // FIXME: shouldn't stencil be i32?
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-
-        unsafe impl PossibleDepthStencilFormatDesc for $name {
-            #[inline(always)]
-            fn is_depth_stencil(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident compressed = $feature:ident) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = [f32; 4];
-
-            #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                val.into()
-            }
-        }
-
-        unsafe impl PossibleCompressedFormatDesc for $name {
-            #[inline(always)]
-            fn is_compressed(&self) -> bool { true }
-        }
-        unsafe impl PossibleFloatOrCompressedFormatDesc for $name {
-            #[inline(always)]
-            fn is_float_or_compressed(&self) -> bool { true }
-        }
-    };
-
-    (__inner_impl__ $name:ident ycbcr) => {
-        unsafe impl FormatDesc for $name {
-            type ClearValue = [f32; 4];
-
-	    #[inline]
-            fn format(&self) -> Format {
-                Format::$name
-            }
-
-            #[inline]
-            fn decode_clear_value(&self, val: Self::ClearValue) -> ClearValue {
-                ClearValue::None
-            }
-        }
-
-        unsafe impl PossibleYcbcrFormatDesc for $name {
-            #[inline(always)]
-            fn is_ycbcr(&self) -> bool { true }
-        }
-    };
 
     (__inner_ty__ $name:ident float=$num:tt) => { FormatTy::Float };
     (__inner_ty__ $name:ident uint=$num:tt) => { FormatTy::Uint };
@@ -461,217 +270,195 @@ macro_rules! formats {
     (__inner_ty__ $name:ident depthstencil) => { FormatTy::DepthStencil };
     (__inner_ty__ $name:ident compressed=$f:tt) => { FormatTy::Compressed };
     (__inner_ty__ $name:ident ycbcr) => { FormatTy::Ycbcr };
-
-
-    (__inner_strongstorage__ $name:ident [$ty:ty; $dim:expr]) => {
-        formats!(__inner_strongstorage_common__ $name [$ty; $dim]);
-        unsafe impl AcceptsPixels<$ty> for $name {
-            fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType> { Ok(()) }
-            fn rate(&self) -> u32 { $dim }
-        }
-    };
-    (__inner_strongstorage__ $name:ident $ty:ty) => {
-        formats!(__inner_strongstorage_common__ $name $ty);
-    };
-    (__inner_strongstorage__ $name:ident ) => {};
-
-    (__inner_strongstorage_common__ $name:ident $ty:ty) => {
-        unsafe impl StrongStorage for $name {
-            type Pixel = $ty;
-        }
-        unsafe impl AcceptsPixels<$ty> for $name {
-            fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType> { Ok(()) }
-        }
-    };
 }
 
 formats! {
-    R4G4UnormPack8 => FORMAT_R4G4_UNORM_PACK8 [(1, 1)] [Some(1)] [float=2] {u8},
-    R4G4B4A4UnormPack16 => FORMAT_R4G4B4A4_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4] {u16},
-    B4G4R4A4UnormPack16 => FORMAT_B4G4R4A4_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4] {u16},
-    R5G6B5UnormPack16 => FORMAT_R5G6B5_UNORM_PACK16 [(1, 1)] [Some(2)] [float=3] {u16},
-    B5G6R5UnormPack16 => FORMAT_B5G6R5_UNORM_PACK16 [(1, 1)] [Some(2)] [float=3] {u16},
-    R5G5B5A1UnormPack16 => FORMAT_R5G5B5A1_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4] {u16},
-    B5G5R5A1UnormPack16 => FORMAT_B5G5R5A1_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4] {u16},
-    A1R5G5B5UnormPack16 => FORMAT_A1R5G5B5_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4] {u16},
-    R8Unorm => FORMAT_R8_UNORM [(1, 1)] [Some(1)] [float=1] {u8},
-    R8Snorm => FORMAT_R8_SNORM [(1, 1)] [Some(1)] [float=1] {i8},
-    R8Uscaled => FORMAT_R8_USCALED [(1, 1)] [Some(1)] [float=1] {u8},
-    R8Sscaled => FORMAT_R8_SSCALED [(1, 1)] [Some(1)] [float=1] {i8},
-    R8Uint => FORMAT_R8_UINT [(1, 1)] [Some(1)] [uint=1] {u8},
-    R8Sint => FORMAT_R8_SINT [(1, 1)] [Some(1)] [sint=1] {i8},
-    R8Srgb => FORMAT_R8_SRGB [(1, 1)] [Some(1)] [float=1] {u8},
-    R8G8Unorm => FORMAT_R8G8_UNORM [(1, 1)] [Some(2)] [float=2] {[u8; 2]},
-    R8G8Snorm => FORMAT_R8G8_SNORM [(1, 1)] [Some(2)] [float=2] {[i8; 2]},
-    R8G8Uscaled => FORMAT_R8G8_USCALED [(1, 1)] [Some(2)] [float=2] {[u8; 2]},
-    R8G8Sscaled => FORMAT_R8G8_SSCALED [(1, 1)] [Some(2)] [float=2] {[i8; 2]},
-    R8G8Uint => FORMAT_R8G8_UINT [(1, 1)] [Some(2)] [uint=2] {[u8; 2]},
-    R8G8Sint => FORMAT_R8G8_SINT [(1, 1)] [Some(2)] [sint=2] {[i8; 2]},
-    R8G8Srgb => FORMAT_R8G8_SRGB [(1, 1)] [Some(2)] [float=2] {[u8; 2]},
-    R8G8B8Unorm => FORMAT_R8G8B8_UNORM [(1, 1)] [Some(3)] [float=3] {[u8; 3]},
-    R8G8B8Snorm => FORMAT_R8G8B8_SNORM [(1, 1)] [Some(3)] [float=3] {[i8; 3]},
-    R8G8B8Uscaled => FORMAT_R8G8B8_USCALED [(1, 1)] [Some(3)] [float=3] {[u8; 3]},
-    R8G8B8Sscaled => FORMAT_R8G8B8_SSCALED [(1, 1)] [Some(3)] [float=3] {[i8; 3]},
-    R8G8B8Uint => FORMAT_R8G8B8_UINT [(1, 1)] [Some(3)] [uint=3] {[u8; 3]},
-    R8G8B8Sint => FORMAT_R8G8B8_SINT [(1, 1)] [Some(3)] [sint=3] {[i8; 3]},
-    R8G8B8Srgb => FORMAT_R8G8B8_SRGB [(1, 1)] [Some(3)] [float=3] {[u8; 3]},
-    B8G8R8Unorm => FORMAT_B8G8R8_UNORM [(1, 1)] [Some(3)] [float=3] {[u8; 3]},
-    B8G8R8Snorm => FORMAT_B8G8R8_SNORM [(1, 1)] [Some(3)] [float=3] {[i8; 3]},
-    B8G8R8Uscaled => FORMAT_B8G8R8_USCALED [(1, 1)] [Some(3)] [float=3] {[u8; 3]},
-    B8G8R8Sscaled => FORMAT_B8G8R8_SSCALED [(1, 1)] [Some(3)] [float=3] {[i8; 3]},
-    B8G8R8Uint => FORMAT_B8G8R8_UINT [(1, 1)] [Some(3)] [uint=3] {[u8; 3]},
-    B8G8R8Sint => FORMAT_B8G8R8_SINT [(1, 1)] [Some(3)] [sint=3] {[i8; 3]},
-    B8G8R8Srgb => FORMAT_B8G8R8_SRGB [(1, 1)] [Some(3)] [float=3] {[u8; 3]},
-    R8G8B8A8Unorm => FORMAT_R8G8B8A8_UNORM [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    R8G8B8A8Snorm => FORMAT_R8G8B8A8_SNORM [(1, 1)] [Some(4)] [float=4] {[i8; 4]},
-    R8G8B8A8Uscaled => FORMAT_R8G8B8A8_USCALED [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    R8G8B8A8Sscaled => FORMAT_R8G8B8A8_SSCALED [(1, 1)] [Some(4)] [float=4] {[i8; 4]},
-    R8G8B8A8Uint => FORMAT_R8G8B8A8_UINT [(1, 1)] [Some(4)] [uint=4] {[u8; 4]},
-    R8G8B8A8Sint => FORMAT_R8G8B8A8_SINT [(1, 1)] [Some(4)] [sint=4] {[i8; 4]},
-    R8G8B8A8Srgb => FORMAT_R8G8B8A8_SRGB [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    B8G8R8A8Unorm => FORMAT_B8G8R8A8_UNORM [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    B8G8R8A8Snorm => FORMAT_B8G8R8A8_SNORM [(1, 1)] [Some(4)] [float=4] {[i8; 4]},
-    B8G8R8A8Uscaled => FORMAT_B8G8R8A8_USCALED [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    B8G8R8A8Sscaled => FORMAT_B8G8R8A8_SSCALED [(1, 1)] [Some(4)] [float=4] {[i8; 4]},
-    B8G8R8A8Uint => FORMAT_B8G8R8A8_UINT [(1, 1)] [Some(4)] [uint=4] {[u8; 4]},
-    B8G8R8A8Sint => FORMAT_B8G8R8A8_SINT [(1, 1)] [Some(4)] [sint=4] {[i8; 4]},
-    B8G8R8A8Srgb => FORMAT_B8G8R8A8_SRGB [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    A8B8G8R8UnormPack32 => FORMAT_A8B8G8R8_UNORM_PACK32 [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    A8B8G8R8SnormPack32 => FORMAT_A8B8G8R8_SNORM_PACK32 [(1, 1)] [Some(4)] [float=4] {[i8; 4]},
-    A8B8G8R8UscaledPack32 => FORMAT_A8B8G8R8_USCALED_PACK32 [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    A8B8G8R8SscaledPack32 => FORMAT_A8B8G8R8_SSCALED_PACK32 [(1, 1)] [Some(4)] [float=4] {[i8; 4]},
-    A8B8G8R8UintPack32 => FORMAT_A8B8G8R8_UINT_PACK32 [(1, 1)] [Some(4)] [uint=4] {[u8; 4]},
-    A8B8G8R8SintPack32 => FORMAT_A8B8G8R8_SINT_PACK32 [(1, 1)] [Some(4)] [sint=4] {[i8; 4]},
-    A8B8G8R8SrgbPack32 => FORMAT_A8B8G8R8_SRGB_PACK32 [(1, 1)] [Some(4)] [float=4] {[u8; 4]},
-    A2R10G10B10UnormPack32 => FORMAT_A2R10G10B10_UNORM_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2R10G10B10SnormPack32 => FORMAT_A2R10G10B10_SNORM_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2R10G10B10UscaledPack32 => FORMAT_A2R10G10B10_USCALED_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2R10G10B10SscaledPack32 => FORMAT_A2R10G10B10_SSCALED_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2R10G10B10UintPack32 => FORMAT_A2R10G10B10_UINT_PACK32 [(1, 1)] [Some(4)] [uint=4] {u32},
-    A2R10G10B10SintPack32 => FORMAT_A2R10G10B10_SINT_PACK32 [(1, 1)] [Some(4)] [sint=4] {u32},
-    A2B10G10R10UnormPack32 => FORMAT_A2B10G10R10_UNORM_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2B10G10R10SnormPack32 => FORMAT_A2B10G10R10_SNORM_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2B10G10R10UscaledPack32 => FORMAT_A2B10G10R10_USCALED_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2B10G10R10SscaledPack32 => FORMAT_A2B10G10R10_SSCALED_PACK32 [(1, 1)] [Some(4)] [float=4] {u32},
-    A2B10G10R10UintPack32 => FORMAT_A2B10G10R10_UINT_PACK32 [(1, 1)] [Some(4)] [uint=4] {u32},
-    A2B10G10R10SintPack32 => FORMAT_A2B10G10R10_SINT_PACK32 [(1, 1)] [Some(4)] [sint=4] {u32},
-    R16Unorm => FORMAT_R16_UNORM [(1, 1)] [Some(2)] [float=1] {u16},
-    R16Snorm => FORMAT_R16_SNORM [(1, 1)] [Some(2)] [float=1] {i16},
-    R16Uscaled => FORMAT_R16_USCALED [(1, 1)] [Some(2)] [float=1] {u16},
-    R16Sscaled => FORMAT_R16_SSCALED [(1, 1)] [Some(2)] [float=1] {i16},
-    R16Uint => FORMAT_R16_UINT [(1, 1)] [Some(2)] [uint=1] {u16},
-    R16Sint => FORMAT_R16_SINT [(1, 1)] [Some(2)] [sint=1] {i16},
-    R16Sfloat => FORMAT_R16_SFLOAT [(1, 1)] [Some(2)] [float=1] {f16},
-    R16G16Unorm => FORMAT_R16G16_UNORM [(1, 1)] [Some(4)] [float=2] {[u16; 2]},
-    R16G16Snorm => FORMAT_R16G16_SNORM [(1, 1)] [Some(4)] [float=2] {[i16; 2]},
-    R16G16Uscaled => FORMAT_R16G16_USCALED [(1, 1)] [Some(4)] [float=2] {[u16; 2]},
-    R16G16Sscaled => FORMAT_R16G16_SSCALED [(1, 1)] [Some(4)] [float=2] {[i16; 2]},
-    R16G16Uint => FORMAT_R16G16_UINT [(1, 1)] [Some(4)] [uint=2] {[u16; 2]},
-    R16G16Sint => FORMAT_R16G16_SINT [(1, 1)] [Some(4)] [sint=2] {[i16; 2]},
-    R16G16Sfloat => FORMAT_R16G16_SFLOAT [(1, 1)] [Some(4)] [float=2] {[f16; 2]},
-    R16G16B16Unorm => FORMAT_R16G16B16_UNORM [(1, 1)] [Some(6)] [float=3] {[u16; 3]},
-    R16G16B16Snorm => FORMAT_R16G16B16_SNORM [(1, 1)] [Some(6)] [float=3] {[i16; 3]},
-    R16G16B16Uscaled => FORMAT_R16G16B16_USCALED [(1, 1)] [Some(6)] [float=3] {[u16; 3]},
-    R16G16B16Sscaled => FORMAT_R16G16B16_SSCALED [(1, 1)] [Some(6)] [float=3] {[i16; 3]},
-    R16G16B16Uint => FORMAT_R16G16B16_UINT [(1, 1)] [Some(6)] [uint=3] {[u16; 3]},
-    R16G16B16Sint => FORMAT_R16G16B16_SINT [(1, 1)] [Some(6)] [sint=3] {[i16; 3]},
-    R16G16B16Sfloat => FORMAT_R16G16B16_SFLOAT [(1, 1)] [Some(6)] [float=3] {[f16; 3]},
-    R16G16B16A16Unorm => FORMAT_R16G16B16A16_UNORM [(1, 1)] [Some(8)] [float=4] {[u16; 4]},
-    R16G16B16A16Snorm => FORMAT_R16G16B16A16_SNORM [(1, 1)] [Some(8)] [float=4] {[i16; 4]},
-    R16G16B16A16Uscaled => FORMAT_R16G16B16A16_USCALED [(1, 1)] [Some(8)] [float=4] {[u16; 4]},
-    R16G16B16A16Sscaled => FORMAT_R16G16B16A16_SSCALED [(1, 1)] [Some(8)] [float=4] {[i16; 4]},
-    R16G16B16A16Uint => FORMAT_R16G16B16A16_UINT [(1, 1)] [Some(8)] [uint=4] {[u16; 4]},
-    R16G16B16A16Sint => FORMAT_R16G16B16A16_SINT [(1, 1)] [Some(8)] [sint=4] {[i16; 4]},
-    R16G16B16A16Sfloat => FORMAT_R16G16B16A16_SFLOAT [(1, 1)] [Some(8)] [float=4] {[f16; 4]},
-    R32Uint => FORMAT_R32_UINT [(1, 1)] [Some(4)] [uint=1] {u32},
-    R32Sint => FORMAT_R32_SINT [(1, 1)] [Some(4)] [sint=1] {i32},
-    R32Sfloat => FORMAT_R32_SFLOAT [(1, 1)] [Some(4)] [float=1] {f32},
-    R32G32Uint => FORMAT_R32G32_UINT [(1, 1)] [Some(8)] [uint=2] {[u32; 2]},
-    R32G32Sint => FORMAT_R32G32_SINT [(1, 1)] [Some(8)] [sint=2] {[i32; 2]},
-    R32G32Sfloat => FORMAT_R32G32_SFLOAT [(1, 1)] [Some(8)] [float=2] {[f32; 2]},
-    R32G32B32Uint => FORMAT_R32G32B32_UINT [(1, 1)] [Some(12)] [uint=3] {[u32; 3]},
-    R32G32B32Sint => FORMAT_R32G32B32_SINT [(1, 1)] [Some(12)] [sint=3] {[i32; 3]},
-    R32G32B32Sfloat => FORMAT_R32G32B32_SFLOAT [(1, 1)] [Some(12)] [float=3] {[f32; 3]},
-    R32G32B32A32Uint => FORMAT_R32G32B32A32_UINT [(1, 1)] [Some(16)] [uint=4] {[u32; 4]},
-    R32G32B32A32Sint => FORMAT_R32G32B32A32_SINT [(1, 1)] [Some(16)] [sint=4] {[i32; 4]},
-    R32G32B32A32Sfloat => FORMAT_R32G32B32A32_SFLOAT [(1, 1)] [Some(16)] [float=4] {[f32; 4]},
-    R64Uint => FORMAT_R64_UINT [(1, 1)] [Some(8)] [uint=1] {u64},
-    R64Sint => FORMAT_R64_SINT [(1, 1)] [Some(8)] [sint=1] {i64},
-    R64Sfloat => FORMAT_R64_SFLOAT [(1, 1)] [Some(8)] [float=1] {f64},
-    R64G64Uint => FORMAT_R64G64_UINT [(1, 1)] [Some(16)] [uint=2] {[u64; 2]},
-    R64G64Sint => FORMAT_R64G64_SINT [(1, 1)] [Some(16)] [sint=2] {[i64; 2]},
-    R64G64Sfloat => FORMAT_R64G64_SFLOAT [(1, 1)] [Some(16)] [float=2] {[f64; 2]},
-    R64G64B64Uint => FORMAT_R64G64B64_UINT [(1, 1)] [Some(24)] [uint=3] {[u64; 3]},
-    R64G64B64Sint => FORMAT_R64G64B64_SINT [(1, 1)] [Some(24)] [sint=3] {[i64; 3]},
-    R64G64B64Sfloat => FORMAT_R64G64B64_SFLOAT [(1, 1)] [Some(24)] [float=3] {[f64; 3]},
-    R64G64B64A64Uint => FORMAT_R64G64B64A64_UINT [(1, 1)] [Some(32)] [uint=4] {[u64; 4]},
-    R64G64B64A64Sint => FORMAT_R64G64B64A64_SINT [(1, 1)] [Some(32)] [sint=4] {[i64; 4]},
-    R64G64B64A64Sfloat => FORMAT_R64G64B64A64_SFLOAT [(1, 1)] [Some(32)] [float=4] {[f64; 4]},
-    B10G11R11UfloatPack32 => FORMAT_B10G11R11_UFLOAT_PACK32 [(1, 1)] [Some(4)] [float=3] {u32},
-    E5B9G9R9UfloatPack32 => FORMAT_E5B9G9R9_UFLOAT_PACK32 [(1, 1)] [Some(4)] [float=3] {u32},
-    D16Unorm => FORMAT_D16_UNORM [(1, 1)] [Some(2)] [depth] {},
-    X8_D24UnormPack32 => FORMAT_X8_D24_UNORM_PACK32 [(1, 1)] [Some(4)] [depth] {},
-    D32Sfloat => FORMAT_D32_SFLOAT [(1, 1)] [Some(4)] [depth] {},
-    S8Uint => FORMAT_S8_UINT [(1, 1)] [Some(1)] [stencil] {},
-    D16Unorm_S8Uint => FORMAT_D16_UNORM_S8_UINT [(1, 1)] [None] [depthstencil] {},
-    D24Unorm_S8Uint => FORMAT_D24_UNORM_S8_UINT [(1, 1)] [None] [depthstencil] {},
-    D32Sfloat_S8Uint => FORMAT_D32_SFLOAT_S8_UINT [(1, 1)] [None] [depthstencil] {},
-    BC1_RGBUnormBlock => FORMAT_BC1_RGB_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc] {u8},
-    BC1_RGBSrgbBlock => FORMAT_BC1_RGB_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc] {u8},
-    BC1_RGBAUnormBlock => FORMAT_BC1_RGBA_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc] {u8},
-    BC1_RGBASrgbBlock => FORMAT_BC1_RGBA_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc] {u8},
-    BC2UnormBlock => FORMAT_BC2_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC2SrgbBlock => FORMAT_BC2_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC3UnormBlock => FORMAT_BC3_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC3SrgbBlock => FORMAT_BC3_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC4UnormBlock => FORMAT_BC4_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc] {u8},
-    BC4SnormBlock => FORMAT_BC4_SNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc] {u8},
-    BC5UnormBlock => FORMAT_BC5_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC5SnormBlock => FORMAT_BC5_SNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC6HUfloatBlock => FORMAT_BC6H_UFLOAT_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC6HSfloatBlock => FORMAT_BC6H_SFLOAT_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC7UnormBlock => FORMAT_BC7_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    BC7SrgbBlock => FORMAT_BC7_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc] {u8},
-    ETC2_R8G8B8UnormBlock => FORMAT_ETC2_R8G8B8_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2] {u8},
-    ETC2_R8G8B8SrgbBlock => FORMAT_ETC2_R8G8B8_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2] {u8},
-    ETC2_R8G8B8A1UnormBlock => FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2] {u8},
-    ETC2_R8G8B8A1SrgbBlock => FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2] {u8},
-    ETC2_R8G8B8A8UnormBlock => FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2] {u8},
-    ETC2_R8G8B8A8SrgbBlock => FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2] {u8},
-    EAC_R11UnormBlock => FORMAT_EAC_R11_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2] {u8},
-    EAC_R11SnormBlock => FORMAT_EAC_R11_SNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2] {u8},
-    EAC_R11G11UnormBlock => FORMAT_EAC_R11G11_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2] {u8},
-    EAC_R11G11SnormBlock => FORMAT_EAC_R11G11_SNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2] {u8},
-    ASTC_4x4UnormBlock => FORMAT_ASTC_4x4_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_4x4SrgbBlock => FORMAT_ASTC_4x4_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_5x4UnormBlock => FORMAT_ASTC_5x4_UNORM_BLOCK [(5, 4)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_5x4SrgbBlock => FORMAT_ASTC_5x4_SRGB_BLOCK [(5, 4)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_5x5UnormBlock => FORMAT_ASTC_5x5_UNORM_BLOCK [(5, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_5x5SrgbBlock => FORMAT_ASTC_5x5_SRGB_BLOCK [(5, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_6x5UnormBlock => FORMAT_ASTC_6x5_UNORM_BLOCK [(6, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_6x5SrgbBlock => FORMAT_ASTC_6x5_SRGB_BLOCK [(6, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_6x6UnormBlock => FORMAT_ASTC_6x6_UNORM_BLOCK [(6, 6)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_6x6SrgbBlock => FORMAT_ASTC_6x6_SRGB_BLOCK [(6, 6)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_8x5UnormBlock => FORMAT_ASTC_8x5_UNORM_BLOCK [(8, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_8x5SrgbBlock => FORMAT_ASTC_8x5_SRGB_BLOCK [(8, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_8x6UnormBlock => FORMAT_ASTC_8x6_UNORM_BLOCK [(8, 6)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_8x6SrgbBlock => FORMAT_ASTC_8x6_SRGB_BLOCK [(8, 6)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_8x8UnormBlock => FORMAT_ASTC_8x8_UNORM_BLOCK [(8, 8)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_8x8SrgbBlock => FORMAT_ASTC_8x8_SRGB_BLOCK [(8, 8)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x5UnormBlock => FORMAT_ASTC_10x5_UNORM_BLOCK [(10, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x5SrgbBlock => FORMAT_ASTC_10x5_SRGB_BLOCK [(10, 5)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x6UnormBlock => FORMAT_ASTC_10x6_UNORM_BLOCK [(10, 6)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x6SrgbBlock => FORMAT_ASTC_10x6_SRGB_BLOCK [(10, 6)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x8UnormBlock => FORMAT_ASTC_10x8_UNORM_BLOCK [(10, 8)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x8SrgbBlock => FORMAT_ASTC_10x8_SRGB_BLOCK [(10, 8)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x10UnormBlock => FORMAT_ASTC_10x10_UNORM_BLOCK [(10, 10)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_10x10SrgbBlock => FORMAT_ASTC_10x10_SRGB_BLOCK [(10, 10)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_12x10UnormBlock => FORMAT_ASTC_12x10_UNORM_BLOCK [(12, 10)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_12x10SrgbBlock => FORMAT_ASTC_12x10_SRGB_BLOCK [(12, 10)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_12x12UnormBlock => FORMAT_ASTC_12x12_UNORM_BLOCK [(12, 12)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    ASTC_12x12SrgbBlock => FORMAT_ASTC_12x12_SRGB_BLOCK [(12, 12)] [Some(16)] [compressed=texture_compression_astc_ldr] {u8},
-    G8B8R8_3PLANE420Unorm => FORMAT_G8_B8_R8_3PLANE_420_UNORM [(1, 1)] [None] [ycbcr] {},
-    G8B8R8_2PLANE420Unorm => FORMAT_G8_B8R8_2PLANE_420_UNORM [(1, 1)] [None] [ycbcr] {},
+    R4G4UnormPack8 => FORMAT_R4G4_UNORM_PACK8 [(1, 1)] [Some(1)] [float=2],
+    R4G4B4A4UnormPack16 => FORMAT_R4G4B4A4_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4],
+    B4G4R4A4UnormPack16 => FORMAT_B4G4R4A4_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4],
+    R5G6B5UnormPack16 => FORMAT_R5G6B5_UNORM_PACK16 [(1, 1)] [Some(2)] [float=3],
+    B5G6R5UnormPack16 => FORMAT_B5G6R5_UNORM_PACK16 [(1, 1)] [Some(2)] [float=3],
+    R5G5B5A1UnormPack16 => FORMAT_R5G5B5A1_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4],
+    B5G5R5A1UnormPack16 => FORMAT_B5G5R5A1_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4],
+    A1R5G5B5UnormPack16 => FORMAT_A1R5G5B5_UNORM_PACK16 [(1, 1)] [Some(2)] [float=4],
+    R8Unorm => FORMAT_R8_UNORM [(1, 1)] [Some(1)] [float=1],
+    R8Snorm => FORMAT_R8_SNORM [(1, 1)] [Some(1)] [float=1],
+    R8Uscaled => FORMAT_R8_USCALED [(1, 1)] [Some(1)] [float=1],
+    R8Sscaled => FORMAT_R8_SSCALED [(1, 1)] [Some(1)] [float=1],
+    R8Uint => FORMAT_R8_UINT [(1, 1)] [Some(1)] [uint=1],
+    R8Sint => FORMAT_R8_SINT [(1, 1)] [Some(1)] [sint=1],
+    R8Srgb => FORMAT_R8_SRGB [(1, 1)] [Some(1)] [float=1],
+    R8G8Unorm => FORMAT_R8G8_UNORM [(1, 1)] [Some(2)] [float=2],
+    R8G8Snorm => FORMAT_R8G8_SNORM [(1, 1)] [Some(2)] [float=2],
+    R8G8Uscaled => FORMAT_R8G8_USCALED [(1, 1)] [Some(2)] [float=2],
+    R8G8Sscaled => FORMAT_R8G8_SSCALED [(1, 1)] [Some(2)] [float=2],
+    R8G8Uint => FORMAT_R8G8_UINT [(1, 1)] [Some(2)] [uint=2],
+    R8G8Sint => FORMAT_R8G8_SINT [(1, 1)] [Some(2)] [sint=2],
+    R8G8Srgb => FORMAT_R8G8_SRGB [(1, 1)] [Some(2)] [float=2],
+    R8G8B8Unorm => FORMAT_R8G8B8_UNORM [(1, 1)] [Some(3)] [float=3],
+    R8G8B8Snorm => FORMAT_R8G8B8_SNORM [(1, 1)] [Some(3)] [float=3],
+    R8G8B8Uscaled => FORMAT_R8G8B8_USCALED [(1, 1)] [Some(3)] [float=3],
+    R8G8B8Sscaled => FORMAT_R8G8B8_SSCALED [(1, 1)] [Some(3)] [float=3],
+    R8G8B8Uint => FORMAT_R8G8B8_UINT [(1, 1)] [Some(3)] [uint=3],
+    R8G8B8Sint => FORMAT_R8G8B8_SINT [(1, 1)] [Some(3)] [sint=3],
+    R8G8B8Srgb => FORMAT_R8G8B8_SRGB [(1, 1)] [Some(3)] [float=3],
+    B8G8R8Unorm => FORMAT_B8G8R8_UNORM [(1, 1)] [Some(3)] [float=3],
+    B8G8R8Snorm => FORMAT_B8G8R8_SNORM [(1, 1)] [Some(3)] [float=3],
+    B8G8R8Uscaled => FORMAT_B8G8R8_USCALED [(1, 1)] [Some(3)] [float=3],
+    B8G8R8Sscaled => FORMAT_B8G8R8_SSCALED [(1, 1)] [Some(3)] [float=3],
+    B8G8R8Uint => FORMAT_B8G8R8_UINT [(1, 1)] [Some(3)] [uint=3],
+    B8G8R8Sint => FORMAT_B8G8R8_SINT [(1, 1)] [Some(3)] [sint=3],
+    B8G8R8Srgb => FORMAT_B8G8R8_SRGB [(1, 1)] [Some(3)] [float=3],
+    R8G8B8A8Unorm => FORMAT_R8G8B8A8_UNORM [(1, 1)] [Some(4)] [float=4],
+    R8G8B8A8Snorm => FORMAT_R8G8B8A8_SNORM [(1, 1)] [Some(4)] [float=4],
+    R8G8B8A8Uscaled => FORMAT_R8G8B8A8_USCALED [(1, 1)] [Some(4)] [float=4],
+    R8G8B8A8Sscaled => FORMAT_R8G8B8A8_SSCALED [(1, 1)] [Some(4)] [float=4],
+    R8G8B8A8Uint => FORMAT_R8G8B8A8_UINT [(1, 1)] [Some(4)] [uint=4],
+    R8G8B8A8Sint => FORMAT_R8G8B8A8_SINT [(1, 1)] [Some(4)] [sint=4],
+    R8G8B8A8Srgb => FORMAT_R8G8B8A8_SRGB [(1, 1)] [Some(4)] [float=4],
+    B8G8R8A8Unorm => FORMAT_B8G8R8A8_UNORM [(1, 1)] [Some(4)] [float=4],
+    B8G8R8A8Snorm => FORMAT_B8G8R8A8_SNORM [(1, 1)] [Some(4)] [float=4],
+    B8G8R8A8Uscaled => FORMAT_B8G8R8A8_USCALED [(1, 1)] [Some(4)] [float=4],
+    B8G8R8A8Sscaled => FORMAT_B8G8R8A8_SSCALED [(1, 1)] [Some(4)] [float=4],
+    B8G8R8A8Uint => FORMAT_B8G8R8A8_UINT [(1, 1)] [Some(4)] [uint=4],
+    B8G8R8A8Sint => FORMAT_B8G8R8A8_SINT [(1, 1)] [Some(4)] [sint=4],
+    B8G8R8A8Srgb => FORMAT_B8G8R8A8_SRGB [(1, 1)] [Some(4)] [float=4],
+    A8B8G8R8UnormPack32 => FORMAT_A8B8G8R8_UNORM_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A8B8G8R8SnormPack32 => FORMAT_A8B8G8R8_SNORM_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A8B8G8R8UscaledPack32 => FORMAT_A8B8G8R8_USCALED_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A8B8G8R8SscaledPack32 => FORMAT_A8B8G8R8_SSCALED_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A8B8G8R8UintPack32 => FORMAT_A8B8G8R8_UINT_PACK32 [(1, 1)] [Some(4)] [uint=4],
+    A8B8G8R8SintPack32 => FORMAT_A8B8G8R8_SINT_PACK32 [(1, 1)] [Some(4)] [sint=4],
+    A8B8G8R8SrgbPack32 => FORMAT_A8B8G8R8_SRGB_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2R10G10B10UnormPack32 => FORMAT_A2R10G10B10_UNORM_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2R10G10B10SnormPack32 => FORMAT_A2R10G10B10_SNORM_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2R10G10B10UscaledPack32 => FORMAT_A2R10G10B10_USCALED_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2R10G10B10SscaledPack32 => FORMAT_A2R10G10B10_SSCALED_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2R10G10B10UintPack32 => FORMAT_A2R10G10B10_UINT_PACK32 [(1, 1)] [Some(4)] [uint=4],
+    A2R10G10B10SintPack32 => FORMAT_A2R10G10B10_SINT_PACK32 [(1, 1)] [Some(4)] [sint=4],
+    A2B10G10R10UnormPack32 => FORMAT_A2B10G10R10_UNORM_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2B10G10R10SnormPack32 => FORMAT_A2B10G10R10_SNORM_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2B10G10R10UscaledPack32 => FORMAT_A2B10G10R10_USCALED_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2B10G10R10SscaledPack32 => FORMAT_A2B10G10R10_SSCALED_PACK32 [(1, 1)] [Some(4)] [float=4],
+    A2B10G10R10UintPack32 => FORMAT_A2B10G10R10_UINT_PACK32 [(1, 1)] [Some(4)] [uint=4],
+    A2B10G10R10SintPack32 => FORMAT_A2B10G10R10_SINT_PACK32 [(1, 1)] [Some(4)] [sint=4],
+    R16Unorm => FORMAT_R16_UNORM [(1, 1)] [Some(2)] [float=1],
+    R16Snorm => FORMAT_R16_SNORM [(1, 1)] [Some(2)] [float=1],
+    R16Uscaled => FORMAT_R16_USCALED [(1, 1)] [Some(2)] [float=1],
+    R16Sscaled => FORMAT_R16_SSCALED [(1, 1)] [Some(2)] [float=1],
+    R16Uint => FORMAT_R16_UINT [(1, 1)] [Some(2)] [uint=1],
+    R16Sint => FORMAT_R16_SINT [(1, 1)] [Some(2)] [sint=1],
+    R16Sfloat => FORMAT_R16_SFLOAT [(1, 1)] [Some(2)] [float=1],
+    R16G16Unorm => FORMAT_R16G16_UNORM [(1, 1)] [Some(4)] [float=2],
+    R16G16Snorm => FORMAT_R16G16_SNORM [(1, 1)] [Some(4)] [float=2],
+    R16G16Uscaled => FORMAT_R16G16_USCALED [(1, 1)] [Some(4)] [float=2],
+    R16G16Sscaled => FORMAT_R16G16_SSCALED [(1, 1)] [Some(4)] [float=2],
+    R16G16Uint => FORMAT_R16G16_UINT [(1, 1)] [Some(4)] [uint=2],
+    R16G16Sint => FORMAT_R16G16_SINT [(1, 1)] [Some(4)] [sint=2],
+    R16G16Sfloat => FORMAT_R16G16_SFLOAT [(1, 1)] [Some(4)] [float=2],
+    R16G16B16Unorm => FORMAT_R16G16B16_UNORM [(1, 1)] [Some(6)] [float=3],
+    R16G16B16Snorm => FORMAT_R16G16B16_SNORM [(1, 1)] [Some(6)] [float=3],
+    R16G16B16Uscaled => FORMAT_R16G16B16_USCALED [(1, 1)] [Some(6)] [float=3],
+    R16G16B16Sscaled => FORMAT_R16G16B16_SSCALED [(1, 1)] [Some(6)] [float=3],
+    R16G16B16Uint => FORMAT_R16G16B16_UINT [(1, 1)] [Some(6)] [uint=3],
+    R16G16B16Sint => FORMAT_R16G16B16_SINT [(1, 1)] [Some(6)] [sint=3],
+    R16G16B16Sfloat => FORMAT_R16G16B16_SFLOAT [(1, 1)] [Some(6)] [float=3],
+    R16G16B16A16Unorm => FORMAT_R16G16B16A16_UNORM [(1, 1)] [Some(8)] [float=4],
+    R16G16B16A16Snorm => FORMAT_R16G16B16A16_SNORM [(1, 1)] [Some(8)] [float=4],
+    R16G16B16A16Uscaled => FORMAT_R16G16B16A16_USCALED [(1, 1)] [Some(8)] [float=4],
+    R16G16B16A16Sscaled => FORMAT_R16G16B16A16_SSCALED [(1, 1)] [Some(8)] [float=4],
+    R16G16B16A16Uint => FORMAT_R16G16B16A16_UINT [(1, 1)] [Some(8)] [uint=4],
+    R16G16B16A16Sint => FORMAT_R16G16B16A16_SINT [(1, 1)] [Some(8)] [sint=4],
+    R16G16B16A16Sfloat => FORMAT_R16G16B16A16_SFLOAT [(1, 1)] [Some(8)] [float=4],
+    R32Uint => FORMAT_R32_UINT [(1, 1)] [Some(4)] [uint=1],
+    R32Sint => FORMAT_R32_SINT [(1, 1)] [Some(4)] [sint=1],
+    R32Sfloat => FORMAT_R32_SFLOAT [(1, 1)] [Some(4)] [float=1],
+    R32G32Uint => FORMAT_R32G32_UINT [(1, 1)] [Some(8)] [uint=2],
+    R32G32Sint => FORMAT_R32G32_SINT [(1, 1)] [Some(8)] [sint=2],
+    R32G32Sfloat => FORMAT_R32G32_SFLOAT [(1, 1)] [Some(8)] [float=2],
+    R32G32B32Uint => FORMAT_R32G32B32_UINT [(1, 1)] [Some(12)] [uint=3],
+    R32G32B32Sint => FORMAT_R32G32B32_SINT [(1, 1)] [Some(12)] [sint=3],
+    R32G32B32Sfloat => FORMAT_R32G32B32_SFLOAT [(1, 1)] [Some(12)] [float=3],
+    R32G32B32A32Uint => FORMAT_R32G32B32A32_UINT [(1, 1)] [Some(16)] [uint=4],
+    R32G32B32A32Sint => FORMAT_R32G32B32A32_SINT [(1, 1)] [Some(16)] [sint=4],
+    R32G32B32A32Sfloat => FORMAT_R32G32B32A32_SFLOAT [(1, 1)] [Some(16)] [float=4],
+    R64Uint => FORMAT_R64_UINT [(1, 1)] [Some(8)] [uint=1],
+    R64Sint => FORMAT_R64_SINT [(1, 1)] [Some(8)] [sint=1],
+    R64Sfloat => FORMAT_R64_SFLOAT [(1, 1)] [Some(8)] [float=1],
+    R64G64Uint => FORMAT_R64G64_UINT [(1, 1)] [Some(16)] [uint=2],
+    R64G64Sint => FORMAT_R64G64_SINT [(1, 1)] [Some(16)] [sint=2],
+    R64G64Sfloat => FORMAT_R64G64_SFLOAT [(1, 1)] [Some(16)] [float=2],
+    R64G64B64Uint => FORMAT_R64G64B64_UINT [(1, 1)] [Some(24)] [uint=3],
+    R64G64B64Sint => FORMAT_R64G64B64_SINT [(1, 1)] [Some(24)] [sint=3],
+    R64G64B64Sfloat => FORMAT_R64G64B64_SFLOAT [(1, 1)] [Some(24)] [float=3],
+    R64G64B64A64Uint => FORMAT_R64G64B64A64_UINT [(1, 1)] [Some(32)] [uint=4],
+    R64G64B64A64Sint => FORMAT_R64G64B64A64_SINT [(1, 1)] [Some(32)] [sint=4],
+    R64G64B64A64Sfloat => FORMAT_R64G64B64A64_SFLOAT [(1, 1)] [Some(32)] [float=4],
+    B10G11R11UfloatPack32 => FORMAT_B10G11R11_UFLOAT_PACK32 [(1, 1)] [Some(4)] [float=3],
+    E5B9G9R9UfloatPack32 => FORMAT_E5B9G9R9_UFLOAT_PACK32 [(1, 1)] [Some(4)] [float=3],
+    D16Unorm => FORMAT_D16_UNORM [(1, 1)] [Some(2)] [depth],
+    X8_D24UnormPack32 => FORMAT_X8_D24_UNORM_PACK32 [(1, 1)] [Some(4)] [depth],
+    D32Sfloat => FORMAT_D32_SFLOAT [(1, 1)] [Some(4)] [depth],
+    S8Uint => FORMAT_S8_UINT [(1, 1)] [Some(1)] [stencil],
+    D16Unorm_S8Uint => FORMAT_D16_UNORM_S8_UINT [(1, 1)] [None] [depthstencil],
+    D24Unorm_S8Uint => FORMAT_D24_UNORM_S8_UINT [(1, 1)] [None] [depthstencil],
+    D32Sfloat_S8Uint => FORMAT_D32_SFLOAT_S8_UINT [(1, 1)] [None] [depthstencil],
+    BC1_RGBUnormBlock => FORMAT_BC1_RGB_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc],
+    BC1_RGBSrgbBlock => FORMAT_BC1_RGB_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc],
+    BC1_RGBAUnormBlock => FORMAT_BC1_RGBA_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc],
+    BC1_RGBASrgbBlock => FORMAT_BC1_RGBA_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc],
+    BC2UnormBlock => FORMAT_BC2_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC2SrgbBlock => FORMAT_BC2_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC3UnormBlock => FORMAT_BC3_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC3SrgbBlock => FORMAT_BC3_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC4UnormBlock => FORMAT_BC4_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc],
+    BC4SnormBlock => FORMAT_BC4_SNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_bc],
+    BC5UnormBlock => FORMAT_BC5_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC5SnormBlock => FORMAT_BC5_SNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC6HUfloatBlock => FORMAT_BC6H_UFLOAT_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC6HSfloatBlock => FORMAT_BC6H_SFLOAT_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC7UnormBlock => FORMAT_BC7_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    BC7SrgbBlock => FORMAT_BC7_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_bc],
+    ETC2_R8G8B8UnormBlock => FORMAT_ETC2_R8G8B8_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2],
+    ETC2_R8G8B8SrgbBlock => FORMAT_ETC2_R8G8B8_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2],
+    ETC2_R8G8B8A1UnormBlock => FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2],
+    ETC2_R8G8B8A1SrgbBlock => FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2],
+    ETC2_R8G8B8A8UnormBlock => FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2],
+    ETC2_R8G8B8A8SrgbBlock => FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2],
+    EAC_R11UnormBlock => FORMAT_EAC_R11_UNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2],
+    EAC_R11SnormBlock => FORMAT_EAC_R11_SNORM_BLOCK [(4, 4)] [Some(8)] [compressed=texture_compression_etc2],
+    EAC_R11G11UnormBlock => FORMAT_EAC_R11G11_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2],
+    EAC_R11G11SnormBlock => FORMAT_EAC_R11G11_SNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_etc2],
+    ASTC_4x4UnormBlock => FORMAT_ASTC_4x4_UNORM_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_4x4SrgbBlock => FORMAT_ASTC_4x4_SRGB_BLOCK [(4, 4)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_5x4UnormBlock => FORMAT_ASTC_5x4_UNORM_BLOCK [(5, 4)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_5x4SrgbBlock => FORMAT_ASTC_5x4_SRGB_BLOCK [(5, 4)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_5x5UnormBlock => FORMAT_ASTC_5x5_UNORM_BLOCK [(5, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_5x5SrgbBlock => FORMAT_ASTC_5x5_SRGB_BLOCK [(5, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_6x5UnormBlock => FORMAT_ASTC_6x5_UNORM_BLOCK [(6, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_6x5SrgbBlock => FORMAT_ASTC_6x5_SRGB_BLOCK [(6, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_6x6UnormBlock => FORMAT_ASTC_6x6_UNORM_BLOCK [(6, 6)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_6x6SrgbBlock => FORMAT_ASTC_6x6_SRGB_BLOCK [(6, 6)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_8x5UnormBlock => FORMAT_ASTC_8x5_UNORM_BLOCK [(8, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_8x5SrgbBlock => FORMAT_ASTC_8x5_SRGB_BLOCK [(8, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_8x6UnormBlock => FORMAT_ASTC_8x6_UNORM_BLOCK [(8, 6)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_8x6SrgbBlock => FORMAT_ASTC_8x6_SRGB_BLOCK [(8, 6)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_8x8UnormBlock => FORMAT_ASTC_8x8_UNORM_BLOCK [(8, 8)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_8x8SrgbBlock => FORMAT_ASTC_8x8_SRGB_BLOCK [(8, 8)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x5UnormBlock => FORMAT_ASTC_10x5_UNORM_BLOCK [(10, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x5SrgbBlock => FORMAT_ASTC_10x5_SRGB_BLOCK [(10, 5)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x6UnormBlock => FORMAT_ASTC_10x6_UNORM_BLOCK [(10, 6)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x6SrgbBlock => FORMAT_ASTC_10x6_SRGB_BLOCK [(10, 6)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x8UnormBlock => FORMAT_ASTC_10x8_UNORM_BLOCK [(10, 8)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x8SrgbBlock => FORMAT_ASTC_10x8_SRGB_BLOCK [(10, 8)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x10UnormBlock => FORMAT_ASTC_10x10_UNORM_BLOCK [(10, 10)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_10x10SrgbBlock => FORMAT_ASTC_10x10_SRGB_BLOCK [(10, 10)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_12x10UnormBlock => FORMAT_ASTC_12x10_UNORM_BLOCK [(12, 10)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_12x10SrgbBlock => FORMAT_ASTC_12x10_SRGB_BLOCK [(12, 10)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_12x12UnormBlock => FORMAT_ASTC_12x12_UNORM_BLOCK [(12, 12)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    ASTC_12x12SrgbBlock => FORMAT_ASTC_12x12_SRGB_BLOCK [(12, 12)] [Some(16)] [compressed=texture_compression_astc_ldr],
+    G8B8R8_3PLANE420Unorm => FORMAT_G8_B8_R8_3PLANE_420_UNORM [(1, 1)] [None] [ycbcr],
+    G8B8R8_2PLANE420Unorm => FORMAT_G8_B8R8_2PLANE_420_UNORM [(1, 1)] [None] [ycbcr],
 }
 
 pub unsafe trait FormatDesc {
@@ -840,10 +627,6 @@ macro_rules! impl_pixel {
 
 impl_pixel! {
     u8; i8; u16; i16; u32; i32; u64; i64; f16; f32; f64;
-}
-
-pub unsafe trait StrongStorage: FormatDesc {
-    type Pixel: Copy;
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
