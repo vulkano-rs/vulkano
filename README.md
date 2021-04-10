@@ -35,7 +35,7 @@ Comparison to other well-known Graphics APIs in Rust ecosystem.
 | Name | Open-sourced Since | API Level | Notable Features |
 | ---- | ------------------ | --------- | ------------- |
 | Vulkano | March, 2016 | Fully safe high-level Rust API wrapping Vulkan/Metal APIs. | Type-safe compile-time shaders. Transparent interoperability with glsl and spir-v shader code types in Rust code. Automatically generated safe types for shader's Layout. |
-| [Wgpu-rs](https://github.com/gfx-rs/wgpu-rs) | May, 2019 | Partially unsafe high-level Rust API with multiple backends. | Fully safe run-time shaders. Supports multiple backends: Vulkan, Metal, DirectX, WebGPU, and other. Following WebGPU specification. With async/await API. |
+| [Wgpu-rs](https://github.com/gfx-rs/wgpu-rs) | May, 2019 | Partially unsafe high-level Rust API with multiple backends. | Fully safe run-time shaders. Supports multiple backends: Vulkan, Metal, DirectX, WebGPU, and other. Follows WebGPU specification. With async/await API. |
 | [Miniquad](https://github.com/not-fl3/miniquad) | March, 2020 | Safe high-level minimalistic Rust API with multiple backends. | Relatively minimalistic API well suited for small to medium graphics projects. Supports multiple backends, including browser target. |
 | [Sierra](https://github.com/zakarumych/sierra) | March, 2021 | Partially safe high-level Rust API for Vulkan/Metal APIs. | Layouts, Descriptors and shader Types construction in Rust code through the macro system in safe way. Built on top of [Erupt](https://gitlab.com/Friz64/erupt), but fully hiding it's unsafe API. |
 | [Glium](https://github.com/glium/glium) | October, 2014 | Safe high-level Rust API wrapping OpenGL | OpenGL only. |
