@@ -7,14 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-use std::mem::MaybeUninit;
-use std::os::raw::c_ulong;
-use std::ptr;
-use std::sync::atomic::AtomicBool;
-use std::sync::Arc;
-
+use crate::check_errors;
 use crate::format::Format;
 use crate::image::ImageUsage;
 use crate::instance::Instance;
@@ -25,12 +18,18 @@ use crate::swapchain::display::DisplayMode;
 use crate::swapchain::display::DisplayPlane;
 use crate::swapchain::Capabilities;
 use crate::swapchain::SurfaceSwapchainLock;
-
-use crate::check_errors;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
+use std::convert::TryFrom;
+use std::error;
+use std::fmt;
+use std::mem::MaybeUninit;
+use std::os::raw::c_ulong;
+use std::ptr;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 /// Represents a surface on the screen.
 ///
@@ -57,8 +56,8 @@ impl<W> Surface<W> {
     ) -> Surface<W> {
         Surface {
             window: win,
-            instance: instance,
-            surface: surface,
+            instance,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }
     }
@@ -126,7 +125,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: (),
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -176,7 +175,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -209,7 +208,7 @@ impl<W> Surface<W> {
                 pNext: ptr::null(),
                 flags: 0, // reserved
                 connection: connection as *mut _,
-                window: window,
+                window,
             };
 
             let mut output = MaybeUninit::uninit();
@@ -225,7 +224,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -258,7 +257,7 @@ impl<W> Surface<W> {
                 pNext: ptr::null(),
                 flags: 0, // reserved
                 dpy: display as *mut _,
-                window: window,
+                window,
             };
 
             let mut output = MaybeUninit::uninit();
@@ -274,7 +273,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -323,7 +322,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -368,7 +367,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -414,7 +413,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -460,7 +459,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -505,7 +504,7 @@ impl<W> Surface<W> {
         Ok(Arc::new(Surface {
             window: win,
             instance: instance.clone(),
-            surface: surface,
+            surface,
             has_swapchain: AtomicBool::new(false),
         }))
     }
@@ -640,7 +639,7 @@ impl<W> Surface<W> {
                     .into_iter()
                     .filter_map(|f| {
                         // TODO: Change the way capabilities not supported in vk-sys are handled
-                        Format::from_vulkan_num(f.format).map(|format| {
+                        Format::try_from(f.format).ok().map(|format| {
                             (format, capabilities::color_space_from_num(f.colorSpace))
                         })
                     })

@@ -23,7 +23,6 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::format::FormatTy;
-use crate::format::PossibleCompressedFormatDesc;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaceFlags;
@@ -474,15 +473,17 @@ impl UnsafeCommandBufferBuilder {
         // TODO: The correct check here is that the uncompressed element size of the source is
         // equal to the compressed element size of the destination.
         debug_assert!(
-            source.format().is_compressed()
-                || destination.format().is_compressed()
+            source.format().ty() == FormatTy::Compressed
+                || destination.format().ty() == FormatTy::Compressed
                 || source.format().size() == destination.format().size()
         );
 
         // Depth/Stencil formats are required to match exactly.
         debug_assert!(
-            !source.format().ty().is_depth_and_or_stencil()
-                || source.format() == destination.format()
+            !matches!(
+                source.format().ty(),
+                FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+            ) || source.format() == destination.format()
         );
 
         debug_assert_eq!(source.samples(), destination.samples());
@@ -585,7 +586,13 @@ impl UnsafeCommandBufferBuilder {
         D: ?Sized + ImageAccess,
         R: Iterator<Item = UnsafeCommandBufferBuilderImageBlit>,
     {
-        debug_assert!(filter == Filter::Nearest || !source.format().ty().is_depth_and_or_stencil());
+        debug_assert!(
+            filter == Filter::Nearest
+                || !matches!(
+                    source.format().ty(),
+                    FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+                )
+        );
         debug_assert!(
             (source.format().ty() == FormatTy::Uint)
                 == (destination.format().ty() == FormatTy::Uint)
@@ -596,7 +603,10 @@ impl UnsafeCommandBufferBuilder {
         );
         debug_assert!(
             source.format() == destination.format()
-                || !source.format().ty().is_depth_and_or_stencil()
+                || !matches!(
+                    source.format().ty(),
+                    FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+                )
         );
 
         debug_assert_eq!(source.samples(), 1);

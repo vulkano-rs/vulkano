@@ -79,7 +79,10 @@ where
     let source_format_ty = source.format().ty();
     let destination_format_ty = destination.format().ty();
 
-    if source_format_ty.is_depth_and_or_stencil() {
+    if matches!(
+        source_format_ty,
+        FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+    ) {
         if source.format() != destination.format() {
             return Err(CheckBlitImageError::DepthStencilFormatMismatch);
         }

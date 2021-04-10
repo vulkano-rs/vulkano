@@ -7,26 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::hash::Hash;
-use std::hash::Hasher;
-
 use crate::buffer::BufferAccess;
 use crate::format::ClearValue;
 use crate::format::Format;
-use crate::format::PossibleCompressedFormatDesc;
-use crate::format::PossibleDepthFormatDesc;
-use crate::format::PossibleDepthStencilFormatDesc;
-use crate::format::PossibleFloatFormatDesc;
-use crate::format::PossibleSintFormatDesc;
-use crate::format::PossibleStencilFormatDesc;
-use crate::format::PossibleUintFormatDesc;
+use crate::format::FormatTy;
 use crate::image::sys::UnsafeImage;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
 use crate::image::ImageLayout;
 use crate::sync::AccessError;
-
 use crate::SafeDeref;
+use std::hash::Hash;
+use std::hash::Hasher;
 
 /// Trait for types that represent the way a GPU can access an image.
 pub unsafe trait ImageAccess {
@@ -42,24 +34,27 @@ pub unsafe trait ImageAccess {
     /// Returns true if the image is a color image.
     #[inline]
     fn has_color(&self) -> bool {
-        let format = self.format();
-        format.is_float() || format.is_uint() || format.is_sint() || format.is_compressed()
+        matches!(
+            self.format().ty(),
+            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed
+        )
     }
 
     /// Returns true if the image has a depth component. In other words, if it is a depth or a
     /// depth-stencil format.
     #[inline]
     fn has_depth(&self) -> bool {
-        let format = self.format();
-        format.is_depth() || format.is_depth_stencil()
+        matches!(self.format().ty(), FormatTy::Depth | FormatTy::DepthStencil)
     }
 
     /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
     /// depth-stencil format.
     #[inline]
     fn has_stencil(&self) -> bool {
-        let format = self.format();
-        format.is_stencil() || format.is_depth_stencil()
+        matches!(
+            self.format().ty(),
+            FormatTy::Stencil | FormatTy::DepthStencil
+        )
     }
 
     /// Returns the number of mipmap levels of this image.

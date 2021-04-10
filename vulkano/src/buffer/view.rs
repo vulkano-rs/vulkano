@@ -171,7 +171,7 @@ where
         };
 
         Ok(BufferView {
-            view: view,
+            view,
             buffer: org_buffer,
             marker: PhantomData,
             atomic_accesses: (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT)

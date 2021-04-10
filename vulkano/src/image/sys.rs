@@ -13,6 +13,24 @@
 //! other image types of this library, and all custom image types
 //! that you create must wrap around the types in this module.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::format::Format;
+use crate::format::FormatFeatures;
+use crate::format::FormatTy;
+use crate::image::ImageAspect;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageDimensions;
+use crate::image::ImageUsage;
+use crate::image::MipmapsCount;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MemoryRequirements;
+use crate::sync::Sharing;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -23,27 +41,6 @@ use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-
-use crate::device::Device;
-use crate::format::Format;
-use crate::format::FormatFeatures;
-use crate::format::FormatTy;
-use crate::format::PossibleYcbcrFormatDesc;
-use crate::image::ImageAspect;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageDimensions;
-use crate::image::ImageUsage;
-use crate::image::MipmapsCount;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
-use crate::memory::MemoryRequirements;
-use crate::sync::Sharing;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// A storage for pixels or arbitrary data.
 ///
@@ -789,7 +786,7 @@ impl UnsafeImage {
                 | vk::IMAGE_ASPECT_PLANE_2_BIT)
             != 0
         {
-            assert!(self.format.is_ycbcr());
+            assert_eq!(self.format.ty(), FormatTy::Ycbcr);
             if bits & vk::IMAGE_ASPECT_PLANE_2_BIT != 0 {
                 // Vulkano only supports NV12 and YV12 currently.  If that changes, this will too.
                 assert!(self.format == Format::G8B8R8_3PLANE420Unorm);

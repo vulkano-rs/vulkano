@@ -7,15 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::device::Device;
 use crate::format::FormatTy;
-use crate::format::PossibleCompressedFormatDesc;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
 
 /// Checks whether a copy image command is valid.
 ///
@@ -69,7 +67,10 @@ where
     let source_format_ty = source.format().ty();
     let destination_format_ty = destination.format().ty();
 
-    if source_format_ty.is_depth_and_or_stencil() {
+    if matches!(
+        source_format_ty,
+        FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+    ) {
         if source.format() != destination.format() {
             return Err(CheckCopyImageError::DepthStencilFormatMismatch);
         }
@@ -78,8 +79,8 @@ where
     // TODO: The correct check here is that the uncompressed element size of the source is
     // equal to the compressed element size of the destination.  However, format doesn't
     // currently expose this information, so to be safe, we simply disallow compressed formats.
-    if source.format().is_compressed()
-        || destination.format().is_compressed()
+    if source.format().ty() == FormatTy::Compressed
+        || destination.format().ty() == FormatTy::Compressed
         || (source.format().size() != destination.format().size())
     {
         return Err(CheckCopyImageError::SizeIncompatibleFormatsTypes {

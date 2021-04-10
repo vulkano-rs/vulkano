@@ -102,72 +102,14 @@
 //! // TODO: storage formats
 //!
 
+use crate::instance::PhysicalDevice;
+use crate::vk;
+use crate::VulkanObject;
+use half::f16;
+use std::convert::TryFrom;
 use std::mem::MaybeUninit;
 use std::vec::IntoIter as VecIntoIter;
 use std::{error, fmt, mem};
-
-use crate::instance::PhysicalDevice;
-use half::f16;
-
-use crate::vk;
-use crate::VulkanObject;
-
-// TODO: add enumerations for color, depth, stencil and depthstencil formats
-
-/// Some data whose type must be known by the library.
-///
-/// This trait is unsafe to implement because bad things will happen if `ty()` returns a wrong
-/// value.
-pub unsafe trait Data {
-    /// Returns the type of the data from an enum.
-    fn ty() -> Format;
-
-    // TODO "is_supported" functions that redirect to `Self::ty().is_supported()`
-}
-
-// TODO: that's just an example ; implement for all common data types
-unsafe impl Data for i8 {
-    #[inline]
-    fn ty() -> Format {
-        Format::R8Sint
-    }
-}
-unsafe impl Data for u8 {
-    #[inline]
-    fn ty() -> Format {
-        Format::R8Uint
-    }
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct IncompatiblePixelsType;
-
-impl error::Error for IncompatiblePixelsType {}
-
-impl fmt::Display for IncompatiblePixelsType {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            "supplied pixels' type is incompatible with this format"
-        )
-    }
-}
-
-pub unsafe trait AcceptsPixels<T> {
-    /// Returns an error if `T` cannot be used as a source of pixels for `Self`.
-    fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType>;
-
-    /// The number of `T`s which make up a single pixel.
-    ///
-    /// # Panics
-    ///
-    /// May panic if `ensure_accepts` would not return `Ok(())`.
-    fn rate(&self) -> u32 {
-        1
-    }
-}
 
 macro_rules! formats {
     ($($name:ident => $vk:ident [$bdim:expr] [$sz:expr] [$($f_ty:tt)*],)+) => (
@@ -211,25 +153,6 @@ macro_rules! formats {
                 }
             }
 
-            /// Returns the `Format` corresponding to a Vulkan constant.
-            pub(crate) fn from_vulkan_num(val: u32) -> Option<Format> {
-                match val {
-                    $(
-                        vk::$vk => Some(Format::$name),
-                    )+
-                    _ => None,
-                }
-            }
-
-            /// Returns the Vulkan constant corresponding to the `Format`.
-            pub(crate) fn to_vulkan_num(&self) -> u32 {
-                match *self {
-                    $(
-                        Format::$name => vk::$vk,
-                    )+
-                }
-            }
-
             #[inline]
             pub fn ty(&self) -> FormatTy {
                 match *self {
@@ -247,16 +170,41 @@ macro_rules! formats {
                     let mut output = MaybeUninit::uninit();
                     vk_i.GetPhysicalDeviceFormatProperties(
                         device.internal_object(),
-                        self.to_vulkan_num(),
+                        (*self).into(),
                         output.as_mut_ptr(),
                     );
                     output.assume_init()
                 };
 
                 FormatProperties {
-                    linear_tiling_features: FormatFeatures::from_bits(vk_properties.linearTilingFeatures),
-                    optimal_tiling_features: FormatFeatures::from_bits(vk_properties.optimalTilingFeatures),
-                    buffer_features: FormatFeatures::from_bits(vk_properties.bufferFeatures),
+                    linear_tiling_features: vk_properties.linearTilingFeatures.into(),
+                    optimal_tiling_features: vk_properties.optimalTilingFeatures.into(),
+                    buffer_features: vk_properties.bufferFeatures.into(),
+                }
+            }
+        }
+
+        impl TryFrom<vk::Format> for Format {
+            type Error = ();
+
+            #[inline]
+            fn try_from(val: vk::Format) -> Result<Format, ()> {
+                match val {
+                $(
+                    vk::$vk => Ok(Format::$name),
+                )+
+                    _ => Err(()),
+                }
+            }
+        }
+
+        impl From<Format> for vk::Format {
+            #[inline]
+            fn from(val: Format) -> Self {
+                match val {
+                $(
+                    Format::$name => vk::$vk,
+                )+
                 }
             }
         }
@@ -491,108 +439,33 @@ unsafe impl FormatDesc for Format {
     }
 }
 
-/// Trait for types that can possibly describe a float attachment.
-pub unsafe trait PossibleFloatFormatDesc: FormatDesc {
-    /// Returns true if the format is a float format.
-    fn is_float(&self) -> bool;
-}
+pub unsafe trait AcceptsPixels<T> {
+    /// Returns an error if `T` cannot be used as a source of pixels for `Self`.
+    fn ensure_accepts(&self) -> Result<(), IncompatiblePixelsType>;
 
-unsafe impl PossibleFloatFormatDesc for Format {
-    #[inline]
-    fn is_float(&self) -> bool {
-        self.ty() == FormatTy::Float
+    /// The number of `T`s which make up a single pixel.
+    ///
+    /// # Panics
+    ///
+    /// May panic if `ensure_accepts` would not return `Ok(())`.
+    fn rate(&self) -> u32 {
+        1
     }
 }
 
-pub unsafe trait PossibleUintFormatDesc: FormatDesc {
-    fn is_uint(&self) -> bool;
-}
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct IncompatiblePixelsType;
 
-unsafe impl PossibleUintFormatDesc for Format {
+impl error::Error for IncompatiblePixelsType {}
+
+impl fmt::Display for IncompatiblePixelsType {
     #[inline]
-    fn is_uint(&self) -> bool {
-        self.ty() == FormatTy::Uint
-    }
-}
-
-pub unsafe trait PossibleSintFormatDesc: FormatDesc {
-    fn is_sint(&self) -> bool;
-}
-
-unsafe impl PossibleSintFormatDesc for Format {
-    #[inline]
-    fn is_sint(&self) -> bool {
-        self.ty() == FormatTy::Sint
-    }
-}
-
-pub unsafe trait PossibleDepthFormatDesc: FormatDesc {
-    fn is_depth(&self) -> bool;
-}
-
-unsafe impl PossibleDepthFormatDesc for Format {
-    #[inline]
-    fn is_depth(&self) -> bool {
-        self.ty() == FormatTy::Depth
-    }
-}
-
-pub unsafe trait PossibleStencilFormatDesc: FormatDesc {
-    fn is_stencil(&self) -> bool;
-}
-
-unsafe impl PossibleStencilFormatDesc for Format {
-    #[inline]
-    fn is_stencil(&self) -> bool {
-        self.ty() == FormatTy::Stencil
-    }
-}
-
-pub unsafe trait PossibleDepthStencilFormatDesc: FormatDesc {
-    fn is_depth_stencil(&self) -> bool;
-}
-
-unsafe impl PossibleDepthStencilFormatDesc for Format {
-    #[inline]
-    fn is_depth_stencil(&self) -> bool {
-        self.ty() == FormatTy::DepthStencil
-    }
-}
-
-pub unsafe trait PossibleCompressedFormatDesc: FormatDesc {
-    fn is_compressed(&self) -> bool;
-}
-
-unsafe impl PossibleCompressedFormatDesc for Format {
-    #[inline]
-    fn is_compressed(&self) -> bool {
-        self.ty() == FormatTy::Compressed
-    }
-}
-
-/// Trait for types that can possibly describe a float or compressed attachment.
-pub unsafe trait PossibleFloatOrCompressedFormatDesc: FormatDesc {
-    /// Returns true if the format is a float or compressed format.
-    fn is_float_or_compressed(&self) -> bool;
-}
-
-unsafe impl PossibleFloatOrCompressedFormatDesc for Format {
-    #[inline]
-    fn is_float_or_compressed(&self) -> bool {
-        self.ty() == FormatTy::Float || self.ty() == FormatTy::Compressed
-    }
-}
-
-/// Trait for types that can possibly describe a Ycbcr format.
-pub unsafe trait PossibleYcbcrFormatDesc: FormatDesc {
-    /// Trait for types that can possibly describe a Ycbcr format.
-    fn is_ycbcr(&self) -> bool;
-}
-
-unsafe impl PossibleYcbcrFormatDesc for Format {
-    #[inline]
-    fn is_ycbcr(&self) -> bool {
-        self.ty() == FormatTy::Ycbcr
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            "supplied pixels' type is incompatible with this format"
+        )
     }
 }
 
@@ -639,17 +512,6 @@ pub enum FormatTy {
     DepthStencil,
     Compressed,
     Ycbcr,
-}
-
-impl FormatTy {
-    /// Returns true if `Depth`, `Stencil`, `DepthStencil`. False otherwise.
-    #[inline]
-    pub fn is_depth_and_or_stencil(&self) -> bool {
-        match *self {
-            FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil => true,
-            _ => false,
-        }
-    }
 }
 
 /// Describes a uniform value that will be used to fill an image.
@@ -864,10 +726,10 @@ pub struct FormatFeatures {
     pub ext_fragment_density_map: bool,
 }
 
-impl FormatFeatures {
+impl From<vk::FormatFeatureFlags> for FormatFeatures {
     #[inline]
     #[rustfmt::skip]
-    pub(crate) fn from_bits(val: u32) -> FormatFeatures {
+    fn from(val: vk::FormatFeatureFlags) -> FormatFeatures {
         FormatFeatures {
             sampled_image: (val & vk::FORMAT_FEATURE_SAMPLED_IMAGE_BIT) != 0,
             storage_image: (val & vk::FORMAT_FEATURE_STORAGE_IMAGE_BIT) != 0,
