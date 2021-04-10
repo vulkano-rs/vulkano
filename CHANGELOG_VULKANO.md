@@ -12,7 +12,18 @@
   - A non-default component mapping can now be specified for image views, via the new builder. A `ComponentMapping` parameter has been added to `UnsafeImageView` as well.
   - The `identity_swizzle` method on the `ImageViewAbstract` trait has been replaced with `component_mapping`, which returns a `ComponentMapping` directly.
   - Storage image and input attachment descriptors now check for identity swizzling when being built.
-- Initial support for queries:
+- **Breaking** Major rearranging of framebuffer and render pass-related types:
+  - The `framebuffer` module is renamed to `render_pass`.
+  - `RenderPassDesc` is now a struct, not a trait. The methods have been simplified, returning a slice reference to the `attachments`, `subpasses` and `dependencies`.
+    - Renamed: `AttachmentDescription` > `AttachmentDesc`, `PassDescription` > `SubpassDesc`, `PassDependencyDescription` > `SubpassDependencyDesc`.
+    - `EmptySinglePassRenderPassDesc` is replaced with the `RenderPassDesc::empty` constructor, or its `Default` implementation.
+    - The `RenderPassCompatible`, `RenderPassDescClearValues` and `RenderPassSubpassInterface` traits are removed, their functionality is moved to `RenderPassDesc`.
+  - `RenderPass` takes a concrete `RenderPassDesc` value for construction, and no longer has a type parameter.
+    - The `RenderPassAbstract` trait is removed.
+    - `GraphicsPipeline` and `Framebuffer` no longer have a render pass type parameter.
+    - `GraphicsPipelineAbstract` and `FramebufferAbstract` have trait methods to retrieve the render pass instead.
+  - The `ordered_passes_renderpass!` and `single_pass_renderpass!` macros are unchanged externally.
+- Support for queries:
   - **Breaking** `UnsafeQueryPool`, `UnsafeQuery` and `UnsafeQueriesRange` have `Unsafe` removed from their names.
   - **Breaking** `QueriesRange` is now represented with a standard Rust `Range` in its API.
   - **Breaking** The secondary command buffer constructors that have parameters for queries will check if the corresponding features are enabled, and return a different error type.

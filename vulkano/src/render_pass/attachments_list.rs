@@ -8,8 +8,8 @@
 // according to those terms.
 
 use crate::image::view::ImageViewAbstract;
-use std::sync::Arc;
 use crate::SafeDeref;
+use std::sync::Arc;
 //use sync::AccessFlagBits;
 //use sync::PipelineStages;
 

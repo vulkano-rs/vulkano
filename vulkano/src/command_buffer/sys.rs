@@ -24,8 +24,6 @@ use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::format::FormatTy;
 use crate::format::PossibleCompressedFormatDesc;
-use crate::framebuffer::FramebufferAbstract;
-use crate::framebuffer::RenderPassAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaceFlags;
@@ -39,6 +37,7 @@ use crate::query::Query;
 use crate::query::QueryControlFlags;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
+use crate::render_pass::FramebufferAbstract;
 use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
@@ -109,13 +108,12 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
     /// > submit invalid commands.
-    pub unsafe fn new<R, F>(
+    pub unsafe fn new<F>(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel<R, F>,
+        level: CommandBufferLevel<F>,
         flags: Flags,
     ) -> Result<UnsafeCommandBufferBuilder, OomError>
     where
-        R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
         let secondary = match level {
@@ -259,8 +257,8 @@ impl UnsafeCommandBufferBuilder {
         let cmd = self.internal_object();
 
         // TODO: allow passing a different render pass
-        let raw_render_pass = RenderPassAbstract::inner(&framebuffer).internal_object();
-        let raw_framebuffer = FramebufferAbstract::inner(&framebuffer).internal_object();
+        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
+        let raw_framebuffer = framebuffer.inner().internal_object();
 
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
             .map(|clear_value| match clear_value {

@@ -7,6 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
+use crate::render_pass::ensure_image_view_compatible;
+use crate::render_pass::AttachmentsList;
+use crate::render_pass::IncompatibleRenderPassAttachmentError;
+use crate::render_pass::RenderPass;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::cmp;
 use std::error;
@@ -16,29 +29,11 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::format::ClearValue;
-use crate::framebuffer::ensure_image_view_compatible;
-use crate::framebuffer::AttachmentDescription;
-use crate::framebuffer::AttachmentsList;
-use crate::framebuffer::FramebufferAbstract;
-use crate::framebuffer::IncompatibleRenderPassAttachmentError;
-use crate::framebuffer::PassDependencyDescription;
-use crate::framebuffer::PassDescription;
-use crate::framebuffer::RenderPassAbstract;
-use crate::framebuffer::RenderPassDesc;
-use crate::framebuffer::RenderPassDescClearValues;
-use crate::framebuffer::RenderPassSys;
-use crate::image::view::ImageViewAbstract;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-
-/// Contains a render pass and the image views that are attached to it.
+/// The image views that are attached to a render pass during drawing.
+///
+/// A framebuffer is a collection of images, and supplies the actual inputs and outputs of each
+/// subpass within a render pass. It is created from a subpass and must match it: each attachment
+/// point in the subpass must have a matching image in the framebuffer.
 ///
 /// Creating a framebuffer is done by calling `Framebuffer::start`, which returns a
 /// `FramebufferBuilder` object. You can then add the framebuffer attachments one by one by
@@ -50,10 +45,10 @@ use crate::VulkanObject;
 ///
 /// ```
 /// # use std::sync::Arc;
-/// # use vulkano::framebuffer::RenderPassAbstract;
-/// use vulkano::framebuffer::Framebuffer;
+/// # use vulkano::render_pass::RenderPass;
+/// use vulkano::render_pass::Framebuffer;
 ///
-/// # let render_pass: Arc<RenderPassAbstract + Send + Sync> = return;
+/// # let render_pass: Arc<RenderPass> = return;
 /// # let view: Arc<vulkano::image::view::ImageView<Arc<vulkano::image::AttachmentImage<vulkano::format::Format>>>> = return;
 /// // let render_pass: Arc<_> = ...;
 /// let framebuffer = Framebuffer::start(render_pass.clone())
@@ -61,9 +56,8 @@ use crate::VulkanObject;
 ///     .build().unwrap();
 /// ```
 ///
-/// Just like render pass objects implement the `RenderPassAbstract` trait, all framebuffer
-/// objects implement the `FramebufferAbstract` trait. This means that you can cast any
-/// `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
+/// All framebuffer objects implement the `FramebufferAbstract` trait. This means that you can cast
+/// any `Arc<Framebuffer<..>>` into an `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
 ///
 /// ## Framebuffer dimensions
 ///
@@ -80,17 +74,17 @@ use crate::VulkanObject;
 /// only the top-left hand corner of the image will be drawn to.
 ///
 #[derive(Debug)]
-pub struct Framebuffer<Rp, A> {
+pub struct Framebuffer<A> {
     device: Arc<Device>,
-    render_pass: Rp,
+    render_pass: Arc<RenderPass>,
     framebuffer: vk::Framebuffer,
     dimensions: [u32; 3],
     resources: A,
 }
 
-impl<Rp> Framebuffer<Rp, ()> {
+impl Framebuffer<()> {
     /// Starts building a framebuffer.
-    pub fn start(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
+    pub fn start(render_pass: Arc<RenderPass>) -> FramebufferBuilder<()> {
         FramebufferBuilder {
             render_pass,
             raw_ids: SmallVec::new(),
@@ -101,7 +95,7 @@ impl<Rp> Framebuffer<Rp, ()> {
 
     /// Starts building a framebuffer. The dimensions of the framebuffer will automatically be
     /// the intersection of the dimensions of all the attachments.
-    pub fn with_intersecting_dimensions(render_pass: Rp) -> FramebufferBuilder<Rp, ()> {
+    pub fn with_intersecting_dimensions(render_pass: Arc<RenderPass>) -> FramebufferBuilder<()> {
         FramebufferBuilder {
             render_pass,
             raw_ids: SmallVec::new(),
@@ -111,7 +105,10 @@ impl<Rp> Framebuffer<Rp, ()> {
     }
 
     /// Starts building a framebuffer.
-    pub fn with_dimensions(render_pass: Rp, dimensions: [u32; 3]) -> FramebufferBuilder<Rp, ()> {
+    pub fn with_dimensions(
+        render_pass: Arc<RenderPass>,
+        dimensions: [u32; 3],
+    ) -> FramebufferBuilder<()> {
         FramebufferBuilder {
             render_pass,
             raw_ids: SmallVec::new(),
@@ -122,16 +119,15 @@ impl<Rp> Framebuffer<Rp, ()> {
 }
 
 /// Prototype of a framebuffer.
-pub struct FramebufferBuilder<Rp, A> {
-    render_pass: Rp,
+pub struct FramebufferBuilder<A> {
+    render_pass: Arc<RenderPass>,
     raw_ids: SmallVec<[vk::ImageView; 8]>,
     dimensions: FramebufferBuilderDimensions,
     attachments: A,
 }
 
-impl<Rp, A> fmt::Debug for FramebufferBuilder<Rp, A>
+impl<A> fmt::Debug for FramebufferBuilder<A>
 where
-    Rp: fmt::Debug,
     A: fmt::Debug,
 {
     #[inline]
@@ -151,9 +147,8 @@ enum FramebufferBuilderDimensions {
     Specific([u32; 3]),
 }
 
-impl<Rp, A> FramebufferBuilder<Rp, A>
+impl<A> FramebufferBuilder<A>
 where
-    Rp: RenderPassAbstract,
     A: AttachmentsList,
 {
     /// Appends an attachment to the prototype of the framebuffer.
@@ -162,18 +157,19 @@ where
     pub fn add<T>(
         self,
         attachment: T,
-    ) -> Result<FramebufferBuilder<Rp, (A, T)>, FramebufferCreationError>
+    ) -> Result<FramebufferBuilder<(A, T)>, FramebufferCreationError>
     where
         T: ImageViewAbstract,
     {
-        if self.raw_ids.len() >= self.render_pass.num_attachments() {
+        if self.raw_ids.len() >= self.render_pass.desc().attachments().len() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: self.render_pass.num_attachments(),
+                expected: self.render_pass.desc().attachments().len(),
                 obtained: self.raw_ids.len() + 1,
             });
         }
 
-        match ensure_image_view_compatible(&self.render_pass, self.raw_ids.len(), &attachment) {
+        match ensure_image_view_compatible(self.render_pass.desc(), self.raw_ids.len(), &attachment)
+        {
             Ok(()) => (),
             Err(err) => return Err(FramebufferCreationError::IncompatibleAttachment(err)),
         };
@@ -248,7 +244,7 @@ where
     /// > **Note**: This is a very rare corner case and you shouldn't have to use this function
     /// > in most situations.
     #[inline]
-    pub fn boxed(self) -> FramebufferBuilder<Rp, Box<dyn AttachmentsList>>
+    pub fn boxed(self) -> FramebufferBuilder<Box<dyn AttachmentsList>>
     where
         A: 'static,
     {
@@ -261,13 +257,13 @@ where
     }
 
     /// Builds the framebuffer.
-    pub fn build(self) -> Result<Framebuffer<Rp, A>, FramebufferCreationError> {
+    pub fn build(self) -> Result<Framebuffer<A>, FramebufferCreationError> {
         let device = self.render_pass.device().clone();
 
         // Check the number of attachments.
-        if self.raw_ids.len() != self.render_pass.num_attachments() {
+        if self.raw_ids.len() != self.render_pass.desc().attachments().len() {
             return Err(FramebufferCreationError::AttachmentsCountMismatch {
-                expected: self.render_pass.num_attachments(),
+                expected: self.render_pass.desc().attachments().len(),
                 obtained: self.raw_ids.len(),
             });
         }
@@ -331,7 +327,7 @@ where
     }
 }
 
-impl<Rp, A> Framebuffer<Rp, A> {
+impl<A> Framebuffer<A> {
     /// Returns the width, height and layers of this framebuffer.
     #[inline]
     pub fn dimensions(&self) -> [u32; 3] {
@@ -364,14 +360,77 @@ impl<Rp, A> Framebuffer<Rp, A> {
 
     /// Returns the renderpass that was used to create this framebuffer.
     #[inline]
-    pub fn render_pass(&self) -> &Rp {
+    pub fn render_pass(&self) -> &Arc<RenderPass> {
         &self.render_pass
     }
 }
 
-unsafe impl<Rp, A> FramebufferAbstract for Framebuffer<Rp, A>
+/// Trait for objects that contain a Vulkan framebuffer object.
+///
+/// Any `Framebuffer` object implements this trait. You can therefore turn a `Arc<Framebuffer<_>>`
+/// into a `Arc<FramebufferAbstract + Send + Sync>` for easier storage.
+pub unsafe trait FramebufferAbstract {
+    /// Returns an opaque struct that represents the framebuffer's internals.
+    fn inner(&self) -> FramebufferSys;
+
+    /// Returns the width, height and array layers of the framebuffer.
+    fn dimensions(&self) -> [u32; 3];
+
+    /// Returns the render pass this framebuffer was created for.
+    fn render_pass(&self) -> &Arc<RenderPass>;
+
+    /// Returns the attachment of the framebuffer with the given index.
+    ///
+    /// If the `index` is not between `0` and `num_attachments`, then `None` should be returned.
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract>;
+
+    /// Returns the width of the framebuffer in pixels.
+    #[inline]
+    fn width(&self) -> u32 {
+        self.dimensions()[0]
+    }
+
+    /// Returns the height of the framebuffer in pixels.
+    #[inline]
+    fn height(&self) -> u32 {
+        self.dimensions()[1]
+    }
+
+    /// Returns the number of layers (or depth) of the framebuffer.
+    #[inline]
+    fn layers(&self) -> u32 {
+        self.dimensions()[2]
+    }
+}
+
+unsafe impl<T> FramebufferAbstract for T
 where
-    Rp: RenderPassAbstract,
+    T: SafeDeref,
+    T::Target: FramebufferAbstract,
+{
+    #[inline]
+    fn inner(&self) -> FramebufferSys {
+        FramebufferAbstract::inner(&**self)
+    }
+
+    #[inline]
+    fn dimensions(&self) -> [u32; 3] {
+        (**self).dimensions()
+    }
+
+    #[inline]
+    fn render_pass(&self) -> &Arc<RenderPass> {
+        (**self).render_pass()
+    }
+
+    #[inline]
+    fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
+        (**self).attached_image_view(index)
+    }
+}
+
+unsafe impl<A> FramebufferAbstract for Framebuffer<A>
+where
     A: AttachmentsList,
 {
     #[inline]
@@ -385,74 +444,24 @@ where
     }
 
     #[inline]
+    fn render_pass(&self) -> &Arc<RenderPass> {
+        &self.render_pass
+    }
+
+    #[inline]
     fn attached_image_view(&self, index: usize) -> Option<&dyn ImageViewAbstract> {
         self.resources.as_image_view_access(index)
     }
 }
 
-unsafe impl<Rp, A> RenderPassDesc for Framebuffer<Rp, A>
-where
-    Rp: RenderPassDesc,
-{
-    #[inline]
-    fn num_attachments(&self) -> usize {
-        self.render_pass.num_attachments()
-    }
-
-    #[inline]
-    fn attachment_desc(&self, num: usize) -> Option<AttachmentDescription> {
-        self.render_pass.attachment_desc(num)
-    }
-
-    #[inline]
-    fn num_subpasses(&self) -> usize {
-        self.render_pass.num_subpasses()
-    }
-
-    #[inline]
-    fn subpass_desc(&self, num: usize) -> Option<PassDescription> {
-        self.render_pass.subpass_desc(num)
-    }
-
-    #[inline]
-    fn num_dependencies(&self) -> usize {
-        self.render_pass.num_dependencies()
-    }
-
-    #[inline]
-    fn dependency_desc(&self, num: usize) -> Option<PassDependencyDescription> {
-        self.render_pass.dependency_desc(num)
-    }
-}
-
-unsafe impl<C, Rp, A> RenderPassDescClearValues<C> for Framebuffer<Rp, A>
-where
-    Rp: RenderPassDescClearValues<C>,
-{
-    #[inline]
-    fn convert_clear_values(&self, vals: C) -> Box<dyn Iterator<Item = ClearValue>> {
-        self.render_pass.convert_clear_values(vals)
-    }
-}
-
-unsafe impl<Rp, A> RenderPassAbstract for Framebuffer<Rp, A>
-where
-    Rp: RenderPassAbstract,
-{
-    #[inline]
-    fn inner(&self) -> RenderPassSys {
-        self.render_pass.inner()
-    }
-}
-
-unsafe impl<Rp, A> DeviceOwned for Framebuffer<Rp, A> {
+unsafe impl<A> DeviceOwned for Framebuffer<A> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl<Rp, A> Drop for Framebuffer<Rp, A> {
+impl<A> Drop for Framebuffer<A> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
@@ -560,12 +569,11 @@ impl From<Error> for FramebufferCreationError {
 #[cfg(test)]
 mod tests {
     use crate::format::Format;
-    use crate::framebuffer::EmptySinglePassRenderPassDesc;
-    use crate::framebuffer::Framebuffer;
-    use crate::framebuffer::FramebufferCreationError;
-    use crate::framebuffer::RenderPassDesc;
     use crate::image::attachment::AttachmentImage;
     use crate::image::view::ImageView;
+    use crate::render_pass::Framebuffer;
+    use crate::render_pass::FramebufferCreationError;
+    use crate::render_pass::RenderPass;
     use std::sync::Arc;
 
     #[test]
@@ -605,9 +613,7 @@ mod tests {
     fn check_device_limits() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
-            .build_render_pass(device)
-            .unwrap();
+        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
         let res = Framebuffer::with_dimensions(rp, [0xffffffff, 0xffffffff, 0xffffffff]).build();
         match res {
             Err(FramebufferCreationError::DimensionsTooLarge) => (),
@@ -919,9 +925,7 @@ mod tests {
     fn empty_working() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
-            .build_render_pass(device)
-            .unwrap();
+        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
         let _ = Framebuffer::with_dimensions(rp, [512, 512, 1])
             .build()
             .unwrap();
@@ -931,9 +935,7 @@ mod tests {
     fn cant_determine_dimensions_auto() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
-            .build_render_pass(device)
-            .unwrap();
+        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
         let res = Framebuffer::start(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),
@@ -945,9 +947,7 @@ mod tests {
     fn cant_determine_dimensions_intersect() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc
-            .build_render_pass(device)
-            .unwrap();
+        let rp = Arc::new(RenderPass::empty_single_pass(device).unwrap());
         let res = Framebuffer::with_intersecting_dimensions(rp).build();
         match res {
             Err(FramebufferCreationError::CantDetermineDimensions) => (),

@@ -47,15 +47,6 @@ use crate::format::AcceptsPixels;
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
-use crate::framebuffer::EmptySinglePassRenderPassDesc;
-use crate::framebuffer::Framebuffer;
-use crate::framebuffer::FramebufferAbstract;
-use crate::framebuffer::LoadOp;
-use crate::framebuffer::RenderPass;
-use crate::framebuffer::RenderPassAbstract;
-use crate::framebuffer::RenderPassCompatible;
-use crate::framebuffer::RenderPassDescClearValues;
-use crate::framebuffer::Subpass;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::instance::QueueFamily;
@@ -69,6 +60,11 @@ use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::query::QueryType;
+use crate::render_pass::Framebuffer;
+use crate::render_pass::FramebufferAbstract;
+use crate::render_pass::LoadOp;
+use crate::render_pass::RenderPass;
+use crate::render_pass::Subpass;
 use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessFlagBits;
@@ -105,12 +101,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     queue_family_id: u32,
 
     // The inheritance for secondary command buffers.
-    inheritance: Option<
-        CommandBufferInheritance<
-            Box<dyn RenderPassAbstract + Send + Sync>,
-            Box<dyn FramebufferAbstract + Send + Sync>,
-        >,
-    >,
+    inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>>,
 
     // Flags passed when creating the command buffer.
     flags: Flags,
@@ -126,7 +117,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 
 // The state of the current render pass, specifying the pass, subpass index and its intended contents.
 struct RenderPassState {
-    subpass: (Box<dyn RenderPassAbstract + Send + Sync>, u32),
+    subpass: (Arc<RenderPass>, u32),
     contents: SubpassContents,
     framebuffer: vk::Framebuffer, // Always null for secondary command buffers
 }
@@ -364,21 +355,18 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     /// The final command buffer can only be executed once at a time. In other words, it is as if
     /// executing the command buffer modifies it.
     #[inline]
-    pub fn secondary_graphics<R>(
+    pub fn secondary_graphics(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        subpass: Subpass<R>,
+        subpass: Subpass,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
-    >
-    where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
-    {
+    > {
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<()>>>,
             }),
             occlusion_query: None,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -396,18 +384,15 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     pub fn secondary_graphics_one_time_submit<R>(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        subpass: Subpass<R>,
+        subpass: Subpass,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
-    >
-    where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
-    {
+    > {
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<()>>>,
             }),
             occlusion_query: None,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -424,18 +409,15 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     pub fn secondary_graphics_simultaneous_use<R>(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        subpass: Subpass<R>,
+        subpass: Subpass,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
-    >
-    where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
-    {
+    > {
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<()>>>,
             }),
             occlusion_query: None,
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
@@ -446,19 +428,16 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
 
     /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_inherit_queries<R>(
+    pub fn secondary_graphics_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        subpass: Subpass<R>,
+        subpass: Subpass,
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         BeginError,
-    >
-    where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
-    {
+    > {
         if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
             return Err(BeginError::InheritedQueriesFeatureNotEnabled);
         }
@@ -472,7 +451,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<()>>>,
             }),
             occlusion_query,
             query_statistics_flags,
@@ -488,19 +467,16 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
 
     /// Same as `secondary_graphics_one_time_submit`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_one_time_submit_inherit_queries<R>(
+    pub fn secondary_graphics_one_time_submit_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        subpass: Subpass<R>,
+        subpass: Subpass,
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         BeginError,
-    >
-    where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
-    {
+    > {
         if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
             return Err(BeginError::InheritedQueriesFeatureNotEnabled);
         }
@@ -514,7 +490,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<()>>>,
             }),
             occlusion_query,
             query_statistics_flags,
@@ -530,19 +506,16 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
 
     /// Same as `secondary_graphics_simultaneous_use`, but allows specifying how queries are being inherited.
     #[inline]
-    pub fn secondary_graphics_simultaneous_use_inherit_queries<R>(
+    pub fn secondary_graphics_simultaneous_use_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        subpass: Subpass<R>,
+        subpass: Subpass,
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         BeginError,
-    >
-    where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
-    {
+    > {
         if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
             return Err(BeginError::InheritedQueriesFeatureNotEnabled);
         }
@@ -556,7 +529,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
             render_pass: Some(CommandBufferInheritanceRenderPass {
                 subpass,
-                framebuffer: None::<Arc<Framebuffer<RenderPass<EmptySinglePassRenderPassDesc>, ()>>>,
+                framebuffer: None::<Arc<Framebuffer<()>>>,
             }),
             occlusion_query,
             query_statistics_flags,
@@ -573,14 +546,13 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
 
 impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // Actual constructor. Private.
-    fn with_flags<R, F>(
+    fn with_flags<F>(
         device: Arc<Device>,
         queue_family: QueueFamily,
-        level: CommandBufferLevel<R, F>,
+        level: CommandBufferLevel<F>,
         flags: Flags,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError>
     where
-        R: RenderPassAbstract + Clone + Send + Sync + 'static,
         F: FramebufferAbstract + Clone + Send + Sync + 'static,
     {
         let (inheritance, render_pass_state) = match &level {
@@ -592,20 +564,14 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         framebuffer,
                     }) => {
                         let render_pass = CommandBufferInheritanceRenderPass {
-                            subpass: Subpass::from(
-                                Box::new(subpass.render_pass().clone()) as Box<_>,
-                                subpass.index(),
-                            )
-                            .unwrap(),
+                            subpass: Subpass::from(subpass.render_pass().clone(), subpass.index())
+                                .unwrap(),
                             framebuffer: framebuffer
                                 .as_ref()
                                 .map(|f| Box::new(f.clone()) as Box<_>),
                         };
                         let render_pass_state = RenderPassState {
-                            subpass: (
-                                Box::new(subpass.render_pass().clone()) as Box<_>,
-                                subpass.index(),
-                            ),
+                            subpass: (subpass.render_pass().clone(), subpass.index()),
                             contents: SubpassContents::Inline,
                             framebuffer: 0, // Only needed for primary command buffers
                         };
@@ -788,12 +754,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
 
         // Subpasses must be the same.
-        if pipeline.subpass_index() != render_pass_state.subpass.1 {
+        if pipeline.subpass().index() != render_pass_state.subpass.1 {
             return Err(AutoCommandBufferBuilderContextError::WrongSubpassIndex);
         }
 
         // Render passes must be compatible.
-        if !RenderPassCompatible::is_compatible_with(pipeline, &*render_pass_state.subpass.0) {
+        if !pipeline
+            .subpass()
+            .render_pass()
+            .desc()
+            .is_compatible_with_desc(&render_pass_state.subpass.0.desc())
+        {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
 
@@ -2021,14 +1992,15 @@ where
     ///
     /// You must call this before you can add draw commands.
     #[inline]
-    pub fn begin_render_pass<F, C>(
+    pub fn begin_render_pass<F, I>(
         &mut self,
         framebuffer: F,
         contents: SubpassContents,
-        clear_values: C,
+        clear_values: I,
     ) -> Result<&mut Self, BeginRenderPassError>
     where
-        F: FramebufferAbstract + RenderPassDescClearValues<C> + Clone + Send + Sync + 'static,
+        F: FramebufferAbstract + Clone + Send + Sync + 'static,
+        I: IntoIterator<Item = ClearValue>,
     {
         unsafe {
             if !self.queue_family().supports_graphics() {
@@ -2037,11 +2009,20 @@ where
 
             self.ensure_outside_render_pass()?;
 
-            let clear_values = framebuffer.convert_clear_values(clear_values);
+            let clear_values = framebuffer
+                .render_pass()
+                .desc()
+                .convert_clear_values(clear_values);
             let clear_values = clear_values.collect::<Vec<_>>().into_iter(); // TODO: necessary for Send + Sync ; needs an API rework of convert_clear_values
             let mut clear_values_copy = clear_values.clone().enumerate(); // TODO: Proper errors for clear value errors instead of panics
 
-            for (atch_i, atch_desc) in framebuffer.attachment_descs().enumerate() {
+            for (atch_i, atch_desc) in framebuffer
+                .render_pass()
+                .desc()
+                .attachments()
+                .into_iter()
+                .enumerate()
+            {
                 match clear_values_copy.next() {
                     Some((clear_i, clear_value)) => {
                         if atch_desc.load == LoadOp::Clear {
@@ -2092,7 +2073,7 @@ where
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
             self.render_pass_state = Some(RenderPassState {
-                subpass: (Box::new(framebuffer) as Box<_>, 0),
+                subpass: (framebuffer.render_pass().clone(), 0),
                 contents,
                 framebuffer: framebuffer_object,
             });
@@ -2110,9 +2091,9 @@ where
             if let Some(render_pass_state) = self.render_pass_state.as_ref() {
                 let (ref rp, index) = render_pass_state.subpass;
 
-                if rp.num_subpasses() as u32 != index + 1 {
+                if rp.desc().subpasses().len() as u32 != index + 1 {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.num_subpasses() as u32,
+                        actual: rp.desc().subpasses().len() as u32,
                         current: index,
                     });
                 }
@@ -2244,10 +2225,7 @@ where
     #[inline]
     fn ensure_inside_render_pass_secondary(
         &self,
-        render_pass: &CommandBufferInheritanceRenderPass<
-            &dyn RenderPassAbstract,
-            &dyn FramebufferAbstract,
-        >,
+        render_pass: &CommandBufferInheritanceRenderPass<&dyn FramebufferAbstract>,
     ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
@@ -2264,10 +2242,12 @@ where
         }
 
         // Render passes must be compatible.
-        if !RenderPassCompatible::is_compatible_with(
-            render_pass.subpass.render_pass(),
-            &render_pass_state.subpass.0,
-        ) {
+        if !render_pass
+            .subpass
+            .render_pass()
+            .desc()
+            .is_compatible_with_desc(render_pass_state.subpass.0.desc())
+        {
             return Err(AutoCommandBufferBuilderContextError::IncompatibleRenderPass);
         }
 
@@ -2294,9 +2274,9 @@ where
             if let Some(render_pass_state) = self.render_pass_state.as_mut() {
                 let (ref rp, ref mut index) = render_pass_state.subpass;
 
-                if *index + 1 >= rp.num_subpasses() as u32 {
+                if *index + 1 >= rp.desc().subpasses().len() as u32 {
                     return Err(AutoCommandBufferBuilderContextError::NumSubpassesMismatch {
-                        actual: rp.num_subpasses() as u32,
+                        actual: rp.desc().subpasses().len() as u32,
                         current: *index,
                     });
                 } else {
@@ -2628,10 +2608,7 @@ unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
 pub struct SecondaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
     inner: SyncCommandBuffer,
     pool_alloc: P, // Safety: must be dropped after `inner`
-    inheritance: CommandBufferInheritance<
-        Box<dyn RenderPassAbstract + Send + Sync>,
-        Box<dyn FramebufferAbstract + Send + Sync>,
-    >,
+    inheritance: CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>,
 
     // Tracks usage of the command buffer on the GPU.
     submit_state: SubmitState,
@@ -2689,9 +2666,7 @@ unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
         };
     }
 
-    fn inheritance(
-        &self,
-    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract> {
         CommandBufferInheritance {
             render_pass: self.inheritance.render_pass.as_ref().map(
                 |CommandBufferInheritanceRenderPass {
@@ -2699,11 +2674,7 @@ unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
                      framebuffer,
                  }| {
                     CommandBufferInheritanceRenderPass {
-                        subpass: Subpass::from(
-                            subpass.render_pass().as_ref() as &_,
-                            subpass.index(),
-                        )
-                        .unwrap(),
+                        subpass: subpass.clone(),
                         framebuffer: framebuffer.as_ref().map(|f| f.as_ref() as &_),
                     }
                 },

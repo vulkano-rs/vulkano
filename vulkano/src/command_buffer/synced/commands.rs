@@ -29,7 +29,6 @@ use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::DescriptorSet;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::format::ClearValue;
-use crate::framebuffer::FramebufferAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::DynamicStencilValue;
@@ -43,6 +42,7 @@ use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
+use crate::render_pass::FramebufferAbstract;
 use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
@@ -171,9 +171,12 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let resources = (0..framebuffer.num_attachments())
-            .map(|atch| {
-                let desc = framebuffer.attachment_desc(atch).unwrap();
+        let resources = framebuffer
+            .render_pass()
+            .desc()
+            .attachments()
+            .iter()
+            .map(|desc| {
                 (
                     KeyTy::Image,
                     Some((
