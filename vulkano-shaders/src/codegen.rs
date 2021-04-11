@@ -503,6 +503,9 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::CapabilityStorageInputOutput8 => {
             DeviceRequirement::Extensions(&["khr_8bit_storage"])
         }
+        Capability::CapabilityStoragePushConstant8 => {
+            DeviceRequirement::Extensions(&["khr_8bit_storage"])
+        }
     }
 }
 
