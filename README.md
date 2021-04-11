@@ -90,7 +90,7 @@ Contributions are very welcome! Feel free to submit pull requests, to open quest
 in the [Issues](https://github.com/vulkano-rs/vulkano/issues) section.
 
 The project was initially developed by Pierre Krieger(Tomaka), who established Vulkano's base
-design goals, and the code structure. In the meantime the development is driven by Vulkano
+design goals, and the code structure. In the meantime development is driven by Vulkano
 community members.
 
 **New Pull Requests are usually scheduled for review by the end of each week.**
@@ -107,7 +107,7 @@ changelog file(s) as part of your pull request.
 
 Every PR must pass tests in order to be merged to `master`.
 
-Minor releases are usually happening between 1 to 3 months averagely depending on the grow
+Minor releases are usually happening between 1 to 3 months averagely depending on grow
 of unreleased and breaking changes in `master`
 
 ### Repository Structure
@@ -126,9 +126,9 @@ driver is up to date before doing so.
 ### Hall of Fame
 
 We would love to mention some members, who put significant contributions to this project:
-- Pierre Krieger. The initial developer. [Patron page](https://www.patreon.com/tomaka).
-- Lucas Kent. Maintainer. [Patron page](https://www.patreon.com/rukai).
-- Austin Johnson. Maintainer. [Patron page](https://www.patreon.com/austinj235).
+- Pierre Krieger. The initial developer. [Patreon page](https://www.patreon.com/tomaka).
+- Lucas Kent. Maintainer. [Patreon page](https://www.patreon.com/rukai).
+- Austin Johnson. Maintainer. [Patreon page](https://www.patreon.com/austinj235).
 - Rua. An active developer, who put a lot of efforts to improve Vulkano and constantly keeping it up to date.
 - **You!** Thanks to your help, contributions, improvements, bug reports and use experience
   to make this project one of the major Rust graphics API library in Rust!
