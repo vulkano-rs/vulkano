@@ -46,10 +46,8 @@
 //! To be written.
 //!
 
-use std::cmp;
-use std::convert::TryFrom;
-
 pub use self::aspect::ImageAspect;
+pub use self::aspect::ImageAspects;
 pub use self::attachment::AttachmentImage;
 pub use self::immutable::ImmutableImage;
 pub use self::layout::ImageDescriptorLayouts;
@@ -61,6 +59,8 @@ pub use self::traits::ImageAccess;
 pub use self::traits::ImageInner;
 pub use self::usage::ImageUsage;
 pub use self::view::ImageViewAbstract;
+use std::cmp;
+use std::convert::TryFrom;
 
 mod aspect;
 pub mod attachment; // TODO: make private

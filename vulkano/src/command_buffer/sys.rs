@@ -24,6 +24,8 @@ use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::format::FormatTy;
 use crate::image::ImageAccess;
+use crate::image::ImageAspect;
+use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaceFlags;
 use crate::pipeline::input_assembly::IndexType;
@@ -520,7 +522,7 @@ impl UnsafeCommandBufferBuilder {
 
                 Some(vk::ImageCopy {
                     srcSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.aspect.to_vk_bits(),
+                        aspectMask: copy.aspects.into(),
                         mipLevel: copy.source_mip_level,
                         baseArrayLayer: copy.source_base_array_layer + source.first_layer as u32,
                         layerCount: copy.layer_count,
@@ -531,7 +533,7 @@ impl UnsafeCommandBufferBuilder {
                         z: copy.source_offset[2],
                     },
                     dstSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.aspect.to_vk_bits(),
+                        aspectMask: copy.aspects.into(),
                         mipLevel: copy.destination_mip_level,
                         baseArrayLayer: copy.destination_base_array_layer
                             + destination.first_layer as u32,
@@ -646,7 +648,7 @@ impl UnsafeCommandBufferBuilder {
 
                 Some(vk::ImageBlit {
                     srcSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: blit.aspect.to_vk_bits(),
+                        aspectMask: blit.aspects.into(),
                         mipLevel: blit.source_mip_level,
                         baseArrayLayer: blit.source_base_array_layer + source.first_layer as u32,
                         layerCount: blit.layer_count,
@@ -664,7 +666,7 @@ impl UnsafeCommandBufferBuilder {
                         },
                     ],
                     dstSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: blit.aspect.to_vk_bits(),
+                        aspectMask: blit.aspects.into(),
                         mipLevel: blit.destination_mip_level,
                         baseArrayLayer: blit.destination_base_array_layer
                             + destination.first_layer as u32,
@@ -880,7 +882,7 @@ impl UnsafeCommandBufferBuilder {
                     bufferRowLength: copy.buffer_row_length,
                     bufferImageHeight: copy.buffer_image_height,
                     imageSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.image_aspect.to_vk_bits(),
+                        aspectMask: copy.image_aspect.into(),
                         mipLevel: copy.image_mip_level + destination.first_mipmap_level as u32,
                         baseArrayLayer: copy.image_base_array_layer
                             + destination.first_layer as u32,
@@ -954,7 +956,7 @@ impl UnsafeCommandBufferBuilder {
                     bufferRowLength: copy.buffer_row_length,
                     bufferImageHeight: copy.buffer_image_height,
                     imageSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.image_aspect.to_vk_bits(),
+                        aspectMask: copy.image_aspect.into(),
                         mipLevel: copy.image_mip_level + source.first_mipmap_level as u32,
                         baseArrayLayer: copy.image_base_array_layer + source.first_layer as u32,
                         layerCount: copy.image_layer_count,
@@ -1637,30 +1639,6 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
 
 // TODO: move somewhere else?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct UnsafeCommandBufferBuilderImageAspect {
-    pub color: bool,
-    pub depth: bool,
-    pub stencil: bool,
-}
-
-impl UnsafeCommandBufferBuilderImageAspect {
-    pub(crate) fn to_vk_bits(&self) -> vk::ImageAspectFlagBits {
-        let mut out = 0;
-        if self.color {
-            out |= vk::IMAGE_ASPECT_COLOR_BIT
-        };
-        if self.depth {
-            out |= vk::IMAGE_ASPECT_DEPTH_BIT
-        };
-        if self.stencil {
-            out |= vk::IMAGE_ASPECT_STENCIL_BIT
-        };
-        out
-    }
-}
-
-// TODO: move somewhere else?
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct UnsafeCommandBufferBuilderColorImageClear {
     pub base_mip_level: u32,
     pub level_count: u32,
@@ -1674,7 +1652,7 @@ pub struct UnsafeCommandBufferBuilderBufferImageCopy {
     pub buffer_offset: usize,
     pub buffer_row_length: u32,
     pub buffer_image_height: u32,
-    pub image_aspect: UnsafeCommandBufferBuilderImageAspect,
+    pub image_aspect: ImageAspect,
     pub image_mip_level: u32,
     pub image_base_array_layer: u32,
     pub image_layer_count: u32,
@@ -1685,7 +1663,7 @@ pub struct UnsafeCommandBufferBuilderBufferImageCopy {
 // TODO: move somewhere else?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct UnsafeCommandBufferBuilderImageCopy {
-    pub aspect: UnsafeCommandBufferBuilderImageAspect,
+    pub aspects: ImageAspects,
     pub source_mip_level: u32,
     pub destination_mip_level: u32,
     pub source_base_array_layer: u32,
@@ -1699,7 +1677,7 @@ pub struct UnsafeCommandBufferBuilderImageCopy {
 // TODO: move somewhere else?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct UnsafeCommandBufferBuilderImageBlit {
-    pub aspect: UnsafeCommandBufferBuilderImageAspect,
+    pub aspects: ImageAspects,
     pub source_mip_level: u32,
     pub destination_mip_level: u32,
     pub source_base_array_layer: u32,
@@ -1937,18 +1915,12 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
         };
 
-        let aspect_mask = if image.has_color() {
-            vk::IMAGE_ASPECT_COLOR_BIT
-        } else if image.has_depth() && image.has_stencil() {
-            vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT
-        } else if image.has_depth() {
-            vk::IMAGE_ASPECT_DEPTH_BIT
-        } else if image.has_stencil() {
-            vk::IMAGE_ASPECT_STENCIL_BIT
-        } else {
-            unreachable!()
-        };
+        if image.format().ty() == FormatTy::Ycbcr {
+            unimplemented!();
+        }
 
+        // TODO: Let user choose
+        let aspects = image.format().aspects();
         let image = image.inner();
 
         self.image_barriers.push(vk::ImageMemoryBarrier {
@@ -1962,7 +1934,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             dstQueueFamilyIndex: dest_queue,
             image: image.image.internal_object(),
             subresourceRange: vk::ImageSubresourceRange {
-                aspectMask: aspect_mask,
+                aspectMask: aspects.into(),
                 baseMipLevel: mipmaps.start + image.first_mipmap_level as u32,
                 levelCount: mipmaps.end - mipmaps.start,
                 baseArrayLayer: layers.start + image.first_layer as u32,

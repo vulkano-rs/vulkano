@@ -314,16 +314,12 @@ impl UnsafeImageView {
         debug_assert!(array_layers.end > array_layers.start);
         debug_assert!(array_layers.end <= image.dimensions().array_layers());
 
-        let aspect_mask = match image.format().ty() {
-            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed => {
-                vk::IMAGE_ASPECT_COLOR_BIT
-            }
-            FormatTy::Depth => vk::IMAGE_ASPECT_DEPTH_BIT,
-            FormatTy::Stencil => vk::IMAGE_ASPECT_STENCIL_BIT,
-            FormatTy::DepthStencil => vk::IMAGE_ASPECT_DEPTH_BIT | vk::IMAGE_ASPECT_STENCIL_BIT,
-            // Not yet supported --> would require changes to ImmutableImage API :-)
-            FormatTy::Ycbcr => unimplemented!(),
-        };
+        if image.format().ty() == FormatTy::Ycbcr {
+            unimplemented!();
+        }
+
+        // TODO: Let user choose
+        let aspects = image.format().aspects();
 
         let view = {
             let infos = vk::ImageViewCreateInfo {
@@ -335,7 +331,7 @@ impl UnsafeImageView {
                 format: image.format() as u32,
                 components: component_mapping.into(),
                 subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: aspect_mask,
+                    aspectMask: aspects.into(),
                     baseMipLevel: mipmap_levels.start,
                     levelCount: mipmap_levels.end - mipmap_levels.start,
                     baseArrayLayer: array_layers.start,
