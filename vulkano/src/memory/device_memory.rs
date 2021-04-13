@@ -208,7 +208,8 @@ impl<'a> DeviceMemoryBuilder<'a> {
     fn push_next<T: ExtendsMemoryAllocateInfo>(mut self, next: &mut T) -> DeviceMemoryBuilder<'a> {
         unsafe {
             let next_ptr = next as *mut T as *mut BaseOutStructure;
-            let last_next = ptr_chain_iter(&mut self.allocate.pNext).last().unwrap();
+            let mut prev = self.allocate.pNext as *mut BaseOutStructure;
+            let last_next = ptr_chain_iter(&mut prev).last().unwrap();
             (*last_next).p_next = next_ptr as _;
         }
 
