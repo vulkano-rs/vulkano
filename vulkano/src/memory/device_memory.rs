@@ -36,6 +36,7 @@ use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
 
+#[repr(C)]
 pub struct BaseOutStructure {
     pub s_type: i32,
     pub p_next: *mut BaseOutStructure,
