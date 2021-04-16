@@ -6,8 +6,37 @@
 - **Breaking** `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be create, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
 - **Breaking** `Kind` has been renamed to `CommandBufferLevel`, and for secondary command buffers it now contains a single `CommandBufferInheritance` value.
 - **Breaking** `CommandBufferInheritance::occlusion_query` and `UnsafeCommandBufferBuilder::begin_query` now take `QueryControlFlags` instead of a boolean.
+- **Breaking** The non-default constructors of `ImageView` have been replaced with a builder, created with `ImageView::start(image)`.
+- **Breaking** Added support for component mapping/swizzling on image views.
+  - `image::Swizzle` is moved and renamed to `image::view::ComponentMapping`. It now has an `is_identity` method.
+  - A non-default component mapping can now be specified for image views, via the new builder. A `ComponentMapping` parameter has been added to `UnsafeImageView` as well.
+  - The `identity_swizzle` method on the `ImageViewAbstract` trait has been replaced with `component_mapping`, which returns a `ComponentMapping` directly.
+  - Storage image and input attachment descriptors now check for identity swizzling when being built.
+- **Breaking** Major rearranging of framebuffer and render pass-related types:
+  - The `framebuffer` module is renamed to `render_pass`.
+  - `RenderPassDesc` is now a struct, not a trait. The methods have been simplified, returning a slice reference to the `attachments`, `subpasses` and `dependencies`.
+    - Renamed: `AttachmentDescription` > `AttachmentDesc`, `PassDescription` > `SubpassDesc`, `PassDependencyDescription` > `SubpassDependencyDesc`.
+    - `EmptySinglePassRenderPassDesc` is replaced with the `RenderPassDesc::empty` constructor, or its `Default` implementation.
+    - The `RenderPassCompatible`, `RenderPassDescClearValues` and `RenderPassSubpassInterface` traits are removed, their functionality is moved to `RenderPassDesc`.
+  - `RenderPass` takes a concrete `RenderPassDesc` value for construction, and no longer has a type parameter.
+    - The `RenderPassAbstract` trait is removed.
+    - `GraphicsPipeline` and `Framebuffer` no longer have a render pass type parameter.
+    - `GraphicsPipelineAbstract` and `FramebufferAbstract` have trait methods to retrieve the render pass instead.
+  - The `ordered_passes_renderpass!` and `single_pass_renderpass!` macros are unchanged externally.
+- Support for queries:
+  - **Breaking** `UnsafeQueryPool`, `UnsafeQuery` and `UnsafeQueriesRange` have `Unsafe` removed from their names.
+  - **Breaking** `QueriesRange` is now represented with a standard Rust `Range` in its API.
+  - **Breaking** The secondary command buffer constructors that have parameters for queries will check if the corresponding features are enabled, and return a different error type.
+  - Removed `OcclusionQueriesPool`, which was incomplete and never did anything useful.
+  - `get_results` has been added to `QueriesRange`, to copy query results to the CPU.
+  - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `begin_query` (still unsafe), `end_query` (safe), `write_timestamp` (still unsafe), `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).
+  - Better documentation of everything in the `query` module.
+  - An example demonstrating occlusion queries.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
+- Fixed bug in descriptor array layers check when the image is a cubemap.
 - Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.
+- Vulkano-shaders: Added support for StoragePushConstant8 SPIR-V capability.
+- Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
 
 # Version 0.22.0 (2021-03-31)

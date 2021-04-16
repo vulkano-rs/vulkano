@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::ops::BitOr;
 use crate::vk;
+use std::ops::BitOr;
 
 /// Describes how an aspect of the image that be used to query Vulkan.  This is **not** just a suggestion.
 /// Check out VkImageAspectFlagBits in the Vulkan spec.

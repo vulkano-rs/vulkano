@@ -140,8 +140,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::format::Format;
     use crate::command_buffer::validity::copy_image_buffer::required_len_for_format;
+    use crate::format::Format;
 
     #[test]
     fn test_required_len_for_format() {

@@ -120,6 +120,7 @@ pub use self::future::NowFuture;
 pub use self::future::SemaphoreSignalFuture;
 pub use self::pipeline::AccessFlagBits;
 pub use self::pipeline::PipelineMemoryAccess;
+pub use self::pipeline::PipelineStage;
 pub use self::pipeline::PipelineStages;
 pub use self::semaphore::Semaphore;
 

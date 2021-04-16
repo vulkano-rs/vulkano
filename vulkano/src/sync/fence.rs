@@ -402,9 +402,9 @@ impl From<Error> for FenceWaitError {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
     use crate::sync::Fence;
     use crate::VulkanObject;
+    use std::time::Duration;
 
     #[test]
     fn fence_create() {

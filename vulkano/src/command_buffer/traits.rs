@@ -15,9 +15,9 @@ use crate::command_buffer::CommandBufferInheritance;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::framebuffer::{FramebufferAbstract, RenderPassAbstract};
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
+use crate::render_pass::FramebufferAbstract;
 use crate::sync::now;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
@@ -221,9 +221,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
 
     /// Returns a `CommandBufferInheritance` value describing the properties that the command
     /// buffer inherits from its parent primary command buffer.
-    fn inheritance(
-        &self,
-    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract>;
+    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract>;
 
     /// Returns the number of buffers accessed by this command buffer.
     fn num_buffers(&self) -> usize;
@@ -271,9 +269,7 @@ where
     }
 
     #[inline]
-    fn inheritance(
-        &self,
-    ) -> CommandBufferInheritance<&dyn RenderPassAbstract, &dyn FramebufferAbstract> {
+    fn inheritance(&self) -> CommandBufferInheritance<&dyn FramebufferAbstract> {
         (**self).inheritance()
     }
 

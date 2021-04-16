@@ -106,8 +106,8 @@ use std::mem::MaybeUninit;
 use std::vec::IntoIter as VecIntoIter;
 use std::{error, fmt, mem};
 
-use half::f16;
 use crate::instance::PhysicalDevice;
+use half::f16;
 
 use crate::vk;
 use crate::VulkanObject;

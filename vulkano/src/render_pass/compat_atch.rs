@@ -11,8 +11,8 @@
 //! an image view can be used as a render pass attachment.
 
 use crate::format::Format;
-use crate::framebuffer::RenderPassDesc;
 use crate::image::view::ImageViewAbstract;
+use crate::render_pass::RenderPassDesc;
 use std::error;
 use std::fmt;
 
@@ -24,17 +24,17 @@ use std::fmt;
 /// Panics if the attachment number is out of range.
 // TODO: add a specializable trait instead, that uses this function
 // TODO: ImageView instead of ImageViewAbstract?
-pub fn ensure_image_view_compatible<Rp, I>(
-    render_pass: &Rp,
+pub fn ensure_image_view_compatible<I>(
+    render_pass_desc: &RenderPassDesc,
     attachment_num: usize,
     image_view: &I,
 ) -> Result<(), IncompatibleRenderPassAttachmentError>
 where
-    Rp: ?Sized + RenderPassDesc,
     I: ?Sized + ImageViewAbstract,
 {
-    let attachment_desc = render_pass
-        .attachment_desc(attachment_num)
+    let attachment_desc = render_pass_desc
+        .attachments()
+        .get(attachment_num)
         .expect("Attachment num out of range");
 
     if image_view.format() != attachment_desc.format {
@@ -51,15 +51,11 @@ where
         });
     }
 
-    if !image_view.identity_swizzle() {
+    if !image_view.component_mapping().is_identity() {
         return Err(IncompatibleRenderPassAttachmentError::NotIdentitySwizzled);
     }
 
-    for subpass_num in 0..render_pass.num_subpasses() {
-        let subpass = render_pass
-            .subpass_desc(subpass_num)
-            .expect("Subpass num out of range ; wrong RenderPassDesc trait impl");
-
+    for subpass in render_pass_desc.subpasses() {
         if subpass
             .color_attachments
             .iter()
@@ -159,7 +155,7 @@ impl fmt::Display for IncompatibleRenderPassAttachmentError {
                  number of samples"
                 }
                 IncompatibleRenderPassAttachmentError::NotIdentitySwizzled => {
-                    "the image view does not use identity swizzling"
+                    "the image view's component mapping is not identity swizzled"
                 }
                 IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage => {
                     "the image is used as a color attachment but is missing the color attachment usage"
@@ -182,9 +178,9 @@ mod tests {
     use super::ensure_image_view_compatible;
     use super::IncompatibleRenderPassAttachmentError;
     use crate::format::Format;
-    use crate::framebuffer::EmptySinglePassRenderPassDesc;
     use crate::image::view::ImageView;
     use crate::image::AttachmentImage;
+    use crate::render_pass::RenderPassDesc;
 
     #[test]
     fn basic_ok() {
@@ -211,7 +207,7 @@ mod tests {
         )
         .unwrap();
 
-        ensure_image_view_compatible(&rp, 0, &view).unwrap();
+        ensure_image_view_compatible(rp.desc(), 0, &view).unwrap();
     }
 
     #[test]
@@ -239,7 +235,7 @@ mod tests {
         )
         .unwrap();
 
-        match ensure_image_view_compatible(&rp, 0, &view) {
+        match ensure_image_view_compatible(rp.desc(), 0, &view) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
                 expected: Format::R16G16Sfloat,
                 obtained: Format::R8G8B8A8Unorm,
@@ -252,7 +248,7 @@ mod tests {
     fn attachment_out_of_range() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let rp = EmptySinglePassRenderPassDesc;
+        let rp = RenderPassDesc::empty();
         let view = ImageView::new(
             AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
         )

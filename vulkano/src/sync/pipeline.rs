@@ -7,13 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::ops;
 use crate::vk;
+use std::ops;
 
 macro_rules! pipeline_stages {
-    ($($elem:ident => $val:expr,)+) => (
+    ($($elem:ident, $var:ident => $val:expr, $queue:expr;)+) => (
         #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-        #[allow(missing_docs)]
         pub struct PipelineStages {
             $(
                 pub $elem: bool,
@@ -61,27 +60,46 @@ macro_rules! pipeline_stages {
                 )+
             }
         }
+
+        #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+        #[repr(u32)]
+        pub enum PipelineStage {
+            $(
+                $var = $val,
+            )+
+        }
+
+        impl PipelineStage {
+            #[inline]
+            pub fn required_queue_flags(&self) -> vk::QueueFlags {
+                match self {
+                    $(
+                        Self::$var => $queue,
+                    )+
+                }
+            }
+        }
     );
 }
 
 pipeline_stages! {
-    top_of_pipe => vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-    draw_indirect => vk::PIPELINE_STAGE_DRAW_INDIRECT_BIT,
-    vertex_input => vk::PIPELINE_STAGE_VERTEX_INPUT_BIT,
-    vertex_shader => vk::PIPELINE_STAGE_VERTEX_SHADER_BIT,
-    tessellation_control_shader => vk::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT,
-    tessellation_evaluation_shader => vk::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT,
-    geometry_shader => vk::PIPELINE_STAGE_GEOMETRY_SHADER_BIT,
-    fragment_shader => vk::PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-    early_fragment_tests => vk::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT,
-    late_fragment_tests => vk::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-    color_attachment_output => vk::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-    compute_shader => vk::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-    transfer => vk::PIPELINE_STAGE_TRANSFER_BIT,
-    bottom_of_pipe => vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-    host => vk::PIPELINE_STAGE_HOST_BIT,
-    all_graphics => vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT,
-    all_commands => vk::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+    top_of_pipe, TopOfPipe => vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0;
+    draw_indirect, DrawIndirect => vk::PIPELINE_STAGE_DRAW_INDIRECT_BIT, vk::QUEUE_GRAPHICS_BIT | vk::QUEUE_COMPUTE_BIT;
+    vertex_input, VertexInput => vk::PIPELINE_STAGE_VERTEX_INPUT_BIT, vk::QUEUE_GRAPHICS_BIT;
+    vertex_shader, VertexShader => vk::PIPELINE_STAGE_VERTEX_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
+    tessellation_control_shader, TessellationControlShader => vk::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
+    tessellation_evaluation_shader, TessellationEvaluationShader => vk::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
+    geometry_shader, GeometryShader => vk::PIPELINE_STAGE_GEOMETRY_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
+    fragment_shader, FragmentShader => vk::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
+    early_fragment_tests, EarlyFragmentTests => vk::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, vk::QUEUE_GRAPHICS_BIT;
+    late_fragment_tests, LateFragmentTests => vk::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, vk::QUEUE_GRAPHICS_BIT;
+    color_attachment_output, ColorAttachmentOutput => vk::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, vk::QUEUE_GRAPHICS_BIT;
+    compute_shader, ComputeShader => vk::PIPELINE_STAGE_COMPUTE_SHADER_BIT, vk::QUEUE_COMPUTE_BIT;
+    transfer, Transfer => vk::PIPELINE_STAGE_TRANSFER_BIT, vk::QUEUE_GRAPHICS_BIT | vk::QUEUE_COMPUTE_BIT | vk::QUEUE_TRANSFER_BIT;
+    bottom_of_pipe, BottomOfPipe => vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0;
+    host, Host => vk::PIPELINE_STAGE_HOST_BIT, 0;
+    all_graphics, AllGraphics => vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT, vk::QUEUE_GRAPHICS_BIT;
+    all_commands, AllCommands => vk::PIPELINE_STAGE_ALL_COMMANDS_BIT, 0;
 }
 
 macro_rules! access_flags {

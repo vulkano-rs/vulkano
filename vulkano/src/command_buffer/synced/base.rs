@@ -18,10 +18,9 @@ use crate::command_buffer::CommandBufferLevel;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::framebuffer::FramebufferAbstract;
-use crate::framebuffer::RenderPassAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
+use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlagBits;
@@ -424,13 +423,12 @@ impl SyncCommandBufferBuilder {
     /// # Safety
     ///
     /// See `UnsafeCommandBufferBuilder::new()`.
-    pub unsafe fn new<R, F>(
+    pub unsafe fn new<F>(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel<R, F>,
+        level: CommandBufferLevel<F>,
         flags: Flags,
     ) -> Result<SyncCommandBufferBuilder, OomError>
     where
-        R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
         let (is_secondary, inside_render_pass) = match level {

@@ -7,6 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::check_errors;
+use crate::features::{Features, FeaturesFfi};
+use crate::instance::limits::Limits;
+use crate::instance::loader;
+use crate::instance::loader::FunctionPointers;
+use crate::instance::loader::Loader;
+use crate::instance::loader::LoadingError;
+use crate::instance::{InstanceExtensions, RawInstanceExtensions};
+use crate::sync::PipelineStage;
+use crate::version::Version;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::error;
@@ -21,21 +35,6 @@ use std::ops::Deref;
 use std::ptr;
 use std::slice;
 use std::sync::Arc;
-
-use crate::check_errors;
-use crate::instance::limits::Limits;
-use crate::instance::loader;
-use crate::instance::loader::FunctionPointers;
-use crate::instance::loader::Loader;
-use crate::instance::loader::LoadingError;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-
-use crate::features::{Features, FeaturesFfi};
-use crate::instance::{InstanceExtensions, RawInstanceExtensions};
-use crate::version::Version;
 
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
@@ -314,13 +313,13 @@ impl Instance {
         };
 
         Ok(Arc::new(Instance {
-            instance: instance,
+            instance,
             //alloc: None,
-            physical_devices: physical_devices,
-            vk: vk,
-            extensions: extensions,
-            layers: layers,
-            function_pointers: function_pointers,
+            physical_devices,
+            vk,
+            extensions,
+            layers,
+            function_pointers,
         }))
     }
 
@@ -805,7 +804,7 @@ impl<'a> PhysicalDevice<'a> {
     #[inline]
     pub fn enumerate(instance: &'a Arc<Instance>) -> PhysicalDevicesIter<'a> {
         PhysicalDevicesIter {
-            instance: instance,
+            instance,
             current_id: 0,
         }
     }
@@ -828,7 +827,7 @@ impl<'a> PhysicalDevice<'a> {
     pub fn from_index(instance: &'a Arc<Instance>, index: usize) -> Option<PhysicalDevice<'a>> {
         if instance.physical_devices.len() > index {
             Some(PhysicalDevice {
-                instance: instance,
+                instance,
                 device: index,
             })
         } else {
@@ -931,7 +930,7 @@ impl<'a> PhysicalDevice<'a> {
         if (id as usize) < self.infos().queue_families.len() {
             Some(QueueFamily {
                 physical_device: *self,
-                id: id,
+                id,
             })
         } else {
             None
@@ -953,7 +952,7 @@ impl<'a> PhysicalDevice<'a> {
         if id < self.infos().memory.memoryTypeCount {
             Some(MemoryType {
                 physical_device: *self,
-                id: id,
+                id,
             })
         } else {
             None
@@ -975,7 +974,7 @@ impl<'a> PhysicalDevice<'a> {
         if id < self.infos().memory.memoryHeapCount {
             Some(MemoryHeap {
                 physical_device: *self,
-                id: id,
+                id,
             })
         } else {
             None
@@ -1149,19 +1148,19 @@ impl<'a> QueueFamily<'a> {
         [granularity.width, granularity.height, granularity.depth]
     }
 
-    /// Returns true if queues of this family can execute graphics operations.
+    /// Returns `true` if queues of this family can execute graphics operations.
     #[inline]
     pub fn supports_graphics(&self) -> bool {
         (self.flags() & vk::QUEUE_GRAPHICS_BIT) != 0
     }
 
-    /// Returns true if queues of this family can execute compute operations.
+    /// Returns `true` if queues of this family can execute compute operations.
     #[inline]
     pub fn supports_compute(&self) -> bool {
         (self.flags() & vk::QUEUE_COMPUTE_BIT) != 0
     }
 
-    /// Returns true if queues of this family can execute transfer operations.
+    /// Returns `true` if queues of this family can execute transfer operations.
     /// > **Note**: While all queues that can perform graphics or compute operations can implicitly perform
     /// > transfer operations, graphics & compute queues only optionally indicate support for tranfers.
     /// > Many discrete cards will have one queue family that exclusively sets the VK_QUEUE_TRANSFER_BIT
@@ -1171,10 +1170,16 @@ impl<'a> QueueFamily<'a> {
         (self.flags() & vk::QUEUE_TRANSFER_BIT) != 0
     }
 
-    /// Returns true if queues of this family can execute sparse resources binding operations.
+    /// Returns `true` if queues of this family can execute sparse resources binding operations.
     #[inline]
     pub fn supports_sparse_binding(&self) -> bool {
         (self.flags() & vk::QUEUE_SPARSE_BINDING_BIT) != 0
+    }
+
+    /// Returns `true` if the queues of this family support a particular pipeline stage.
+    #[inline]
+    pub fn supports_stage(&self, stage: PipelineStage) -> bool {
+        (self.flags() & stage.required_queue_flags()) != 0
     }
 
     /// Internal utility function that returns the flags of this queue family.

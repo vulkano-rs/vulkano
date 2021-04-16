@@ -9,6 +9,7 @@
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
+use crate::buffer::TypedBufferAccess;
 use crate::check_errors;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
 use crate::command_buffer::CommandBufferInheritance;
@@ -23,8 +24,6 @@ use crate::device::DeviceOwned;
 use crate::format::ClearValue;
 use crate::format::FormatTy;
 use crate::format::PossibleCompressedFormatDesc;
-use crate::framebuffer::FramebufferAbstract;
-use crate::framebuffer::RenderPassAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaceFlags;
@@ -33,12 +32,16 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::query::QueriesRange;
+use crate::query::Query;
 use crate::query::QueryControlFlags;
-use crate::query::UnsafeQueriesRange;
-use crate::query::UnsafeQuery;
+use crate::query::QueryResultElement;
+use crate::query::QueryResultFlags;
+use crate::render_pass::FramebufferAbstract;
 use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
+use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::vk;
 use crate::OomError;
@@ -105,13 +108,12 @@ impl UnsafeCommandBufferBuilder {
     ///
     /// > **Note**: Some checks are still made with `debug_assert!`. Do not expect to be able to
     /// > submit invalid commands.
-    pub unsafe fn new<R, F>(
+    pub unsafe fn new<F>(
         pool_alloc: &UnsafeCommandPoolAlloc,
-        level: CommandBufferLevel<R, F>,
+        level: CommandBufferLevel<F>,
         flags: Flags,
     ) -> Result<UnsafeCommandBufferBuilder, OomError>
     where
-        R: RenderPassAbstract,
         F: FramebufferAbstract,
     {
         let secondary = match level {
@@ -168,11 +170,8 @@ impl UnsafeCommandBufferBuilder {
                 ..
             }) => {
                 let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
-                debug_assert!(ps == 0 || device.enabled_features().pipeline_statistics_query);
-
                 let (oqe, qf) = match occlusion_query {
                     Some(flags) => {
-                        debug_assert!(device.enabled_features().inherited_queries);
                         let qf = if flags.precise {
                             vk::QUERY_CONTROL_PRECISE_BIT
                         } else {
@@ -232,7 +231,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBeginQuery` on the builder.
     #[inline]
-    pub unsafe fn begin_query(&mut self, query: UnsafeQuery, flags: QueryControlFlags) {
+    pub unsafe fn begin_query(&mut self, query: Query, flags: QueryControlFlags) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         let flags = if flags.precise {
@@ -258,8 +257,8 @@ impl UnsafeCommandBufferBuilder {
         let cmd = self.internal_object();
 
         // TODO: allow passing a different render pass
-        let raw_render_pass = RenderPassAbstract::inner(&framebuffer).internal_object();
-        let raw_framebuffer = FramebufferAbstract::inner(&framebuffer).internal_object();
+        let raw_render_pass = framebuffer.render_pass().inner().internal_object();
+        let raw_framebuffer = framebuffer.inner().internal_object();
 
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
             .map(|clear_value| match clear_value {
@@ -982,29 +981,34 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdCopyQueryPoolResults` on the builder.
     #[inline]
-    pub unsafe fn copy_query_pool_results(
+    pub unsafe fn copy_query_pool_results<D, T>(
         &mut self,
-        queries: UnsafeQueriesRange,
-        destination: &dyn BufferAccess,
+        queries: QueriesRange,
+        destination: D,
         stride: usize,
-    ) {
+        flags: QueryResultFlags,
+    ) where
+        D: BufferAccess + TypedBufferAccess<Content = [T]>,
+        T: QueryResultElement,
+    {
         let destination = destination.inner();
+        let range = queries.range();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage_transfer_destination());
-
-        let flags = 0; // FIXME:
+        debug_assert!(destination.offset % std::mem::size_of::<T>() == 0);
+        debug_assert!(stride % std::mem::size_of::<T>() == 0);
 
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdCopyQueryPoolResults(
             cmd,
             queries.pool().internal_object(),
-            queries.first_index(),
-            queries.count(),
+            range.start,
+            range.end - range.start,
             destination.buffer.internal_object(),
             destination.offset as vk::DeviceSize,
             stride as vk::DeviceSize,
-            flags,
+            vk::QueryResultFlags::from(flags) | T::FLAG,
         );
     }
 
@@ -1142,7 +1146,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
-    pub unsafe fn end_query(&mut self, query: UnsafeQuery) {
+    pub unsafe fn end_query(&mut self, query: Query) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdEndQuery(cmd, query.pool().internal_object(), query.index());
@@ -1286,14 +1290,15 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdResetQueryPool` on the builder.
     #[inline]
-    pub unsafe fn reset_query_pool(&mut self, queries: UnsafeQueriesRange) {
+    pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange) {
+        let range = queries.range();
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdResetQueryPool(
             cmd,
             queries.pool().internal_object(),
-            queries.first_index(),
-            queries.count(),
+            range.start,
+            range.end - range.start,
         );
     }
 
@@ -1479,12 +1484,12 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdWriteTimestamp` on the builder.
     #[inline]
-    pub unsafe fn write_timestamp(&mut self, query: UnsafeQuery, stages: PipelineStages) {
+    pub unsafe fn write_timestamp(&mut self, query: Query, stage: PipelineStage) {
         let vk = self.device().pointers();
         let cmd = self.internal_object();
         vk.CmdWriteTimestamp(
             cmd,
-            stages.into_vulkan_bits(),
+            stage as u32,
             query.pool().internal_object(),
             query.index(),
         );

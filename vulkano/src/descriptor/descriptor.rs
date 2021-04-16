@@ -43,13 +43,13 @@
 
 use crate::format::Format;
 use crate::image::view::ImageViewType;
+use crate::sync::AccessFlagBits;
+use crate::sync::PipelineStages;
+use crate::vk;
 use std::cmp;
 use std::error;
 use std::fmt;
 use std::ops::BitOr;
-use crate::sync::AccessFlagBits;
-use crate::sync::PipelineStages;
-use crate::vk;
 
 /// Contains the exact description of a single descriptor.
 ///

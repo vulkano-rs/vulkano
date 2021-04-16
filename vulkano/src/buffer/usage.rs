@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::ops::BitOr;
 use crate::vk;
+use std::ops::BitOr;
 
 /// Describes how a buffer is going to be used. This is **not** just an optimization.
 ///

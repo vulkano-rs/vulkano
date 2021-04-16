@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::synced::base::Command;
 use crate::command_buffer::synced::base::FinalCommand;
 use crate::command_buffer::synced::base::KeyTy;
@@ -28,7 +29,6 @@ use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::DescriptorSet;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::format::ClearValue;
-use crate::framebuffer::FramebufferAbstract;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::DynamicStencilValue;
@@ -38,10 +38,16 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::query::QueryControlFlags;
+use crate::query::QueryPool;
+use crate::query::QueryResultElement;
+use crate::query::QueryResultFlags;
+use crate::render_pass::FramebufferAbstract;
 use crate::sampler::Filter;
 use crate::sync::AccessFlagBits;
 use crate::sync::Event;
 use crate::sync::PipelineMemoryAccess;
+use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
 use crate::SafeDeref;
 use crate::VulkanObject;
@@ -49,10 +55,56 @@ use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::mem;
+use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
 
 impl SyncCommandBufferBuilder {
+    /// Calls `vkCmdBeginQuery` on the builder.
+    #[inline]
+    pub unsafe fn begin_query(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        flags: QueryControlFlags,
+    ) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            query: u32,
+            flags: QueryControlFlags,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdBeginQuery"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.begin_query(self.query_pool.query(self.query).unwrap(), self.flags);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBeginQuery"
+                    }
+                }
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                query,
+                flags,
+            },
+            &[],
+        )
+        .unwrap();
+    }
+
     /// Calls `vkBeginRenderPass` on the builder.
     // TODO: it shouldn't be possible to get an error if the framebuffer checked conflicts already
     // TODO: after begin_render_pass has been called, flushing should be forbidden and an error
@@ -119,9 +171,12 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        let resources = (0..framebuffer.num_attachments())
-            .map(|atch| {
-                let desc = framebuffer.attachment_desc(atch).unwrap();
+        let resources = framebuffer
+            .render_pass()
+            .desc()
+            .attachments()
+            .iter()
+            .map(|desc| {
                 (
                     KeyTy::Image,
                     Some((
@@ -1202,6 +1257,114 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
+    /// Calls `vkCmdCopyQueryPoolResults` on the builder.
+    ///
+    /// # Safety
+    /// `stride` must be at least the number of bytes that will be written by each query.
+    pub unsafe fn copy_query_pool_results<D, T>(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        queries: Range<u32>,
+        destination: D,
+        stride: usize,
+        flags: QueryResultFlags,
+    ) -> Result<(), SyncCommandBufferBuilderError>
+    where
+        D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+        T: QueryResultElement,
+    {
+        struct Cmd<D> {
+            query_pool: Arc<QueryPool>,
+            queries: Range<u32>,
+            destination: Option<D>,
+            stride: usize,
+            flags: QueryResultFlags,
+        }
+
+        impl<D, T> Command for Cmd<D>
+        where
+            D: BufferAccess + TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
+            T: QueryResultElement,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdCopyQueryPoolResults"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.copy_query_pool_results(
+                    self.query_pool.queries_range(self.queries.clone()).unwrap(),
+                    self.destination.as_ref().unwrap(),
+                    self.stride,
+                    self.flags,
+                );
+            }
+
+            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin<D>(Arc<QueryPool>, D);
+                impl<D> FinalCommand for Fin<D>
+                where
+                    D: BufferAccess + Send + Sync + 'static,
+                {
+                    fn name(&self) -> &'static str {
+                        "vkCmdCopyQueryPoolResults"
+                    }
+                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                        assert_eq!(num, 0);
+                        &self.1
+                    }
+                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "destination".into()
+                    }
+                }
+
+                // Note: borrow checker somehow doesn't accept `self.destination`
+                // without using an Option.
+                Box::new(Fin(self.query_pool, self.destination.take().unwrap()))
+            }
+
+            fn buffer(&self, num: usize) -> &dyn BufferAccess {
+                assert_eq!(num, 0);
+                self.destination.as_ref().unwrap()
+            }
+
+            fn buffer_name(&self, num: usize) -> Cow<'static, str> {
+                assert_eq!(num, 0);
+                "destination".into()
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                queries,
+                destination: Some(destination),
+                stride,
+                flags,
+            },
+            &[(
+                KeyTy::Buffer,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            transfer: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlagBits {
+                            transfer_write: true,
+                            ..AccessFlagBits::none()
+                        },
+                        exclusive: true,
+                    },
+                    ImageLayout::Undefined,
+                    ImageLayout::Undefined,
+                )),
+            )],
+        )?;
+
+        Ok(())
+    }
+
     /// Calls `vkCmdBeginDebugUtilsLabelEXT` on the builder.
     ///
     /// # Safety
@@ -1672,6 +1835,37 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
+    /// Calls `vkCmdEndQuery` on the builder.
+    #[inline]
+    pub unsafe fn end_query(&mut self, query_pool: Arc<QueryPool>, query: u32) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            query: u32,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdEndQuery"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.end_query(self.query_pool.query(self.query).unwrap());
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdEndQuery"
+                    }
+                }
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(Cmd { query_pool, query }, &[]).unwrap();
+    }
+
     /// Calls `vkCmdEndRenderPass` on the builder.
     #[inline]
     pub unsafe fn end_render_pass(&mut self) {
@@ -1911,6 +2105,45 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { event, stages }, &[]).unwrap();
+    }
+
+    /// Calls `vkCmdResetQueryPool` on the builder.
+    #[inline]
+    pub unsafe fn reset_query_pool(&mut self, query_pool: Arc<QueryPool>, queries: Range<u32>) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            queries: Range<u32>,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdResetQueryPool"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.reset_query_pool(self.query_pool.queries_range(self.queries.clone()).unwrap());
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdResetQueryPool"
+                    }
+                }
+
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                queries,
+            },
+            &[],
+        )
+        .unwrap();
     }
 
     /// Calls `vkCmdSetBlendConstants` on the builder.
@@ -2304,6 +2537,51 @@ impl SyncCommandBufferBuilder {
                     ImageLayout::Undefined,
                 )),
             )],
+        )
+        .unwrap();
+    }
+
+    /// Calls `vkCmdWriteTimestamp` on the builder.
+    #[inline]
+    pub unsafe fn write_timestamp(
+        &mut self,
+        query_pool: Arc<QueryPool>,
+        query: u32,
+        stage: PipelineStage,
+    ) {
+        struct Cmd {
+            query_pool: Arc<QueryPool>,
+            query: u32,
+            stage: PipelineStage,
+        }
+
+        impl Command for Cmd {
+            fn name(&self) -> &'static str {
+                "vkCmdWriteTimestamp"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.write_timestamp(self.query_pool.query(self.query).unwrap(), self.stage);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin(Arc<QueryPool>);
+                impl FinalCommand for Fin {
+                    fn name(&self) -> &'static str {
+                        "vkCmdWriteTimestamp"
+                    }
+                }
+                Box::new(Fin(self.query_pool))
+            }
+        }
+
+        self.append_command(
+            Cmd {
+                query_pool,
+                query,
+                stage,
+            },
+            &[],
         )
         .unwrap();
     }
