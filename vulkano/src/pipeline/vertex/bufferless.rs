@@ -20,12 +20,14 @@ use crate::pipeline::vertex::VertexSource;
 ///
 /// This is only useful if your shaders come up with vertex data on their own, e.g. by inspecting
 /// `gl_VertexIndex`
+#[derive(Copy, Clone)]
 pub struct BufferlessDefinition;
 
 /// Value to be passed as the vertex source for bufferless draw commands.
 ///
 /// Note that the concrete type of the graphics pipeline using `BufferlessDefinition` must be
 /// visible to the command buffer builder for this to be usable.
+#[derive(Copy, Clone)]
 pub struct BufferlessVertices {
     pub vertices: usize,
     pub instances: usize,
