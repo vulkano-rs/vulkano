@@ -22,7 +22,7 @@
 //! use vulkano::buffer::immutable::ImmutableBuffer;
 //! use vulkano::buffer::BufferUsage;
 //! use vulkano::buffer::BufferView;
-//! use vulkano::format;
+//! use vulkano::format::Format;
 //!
 //! # let device: Arc<vulkano::device::Device> = return;
 //! # let queue: Arc<vulkano::device::Queue> = return;
@@ -33,53 +33,49 @@
 //!
 //! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             queue.clone()).unwrap();
-//! let _view = BufferView::new(buffer, format::R32Uint).unwrap();
+//! let _view = BufferView::new(buffer, Format::R32Uint).unwrap();
 //! ```
-
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
 use crate::buffer::TypedBufferAccess;
+use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::format::FormatDesc;
-use crate::format::StrongStorage;
-
-use crate::check_errors;
+use crate::format::Format;
+use crate::format::Pixel;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// Represents a way for the GPU to interpret buffer data. See the documentation of the
 /// `view` module.
-pub struct BufferView<F, B>
+pub struct BufferView<B>
 where
     B: BufferAccess,
 {
     view: vk::BufferView,
     buffer: B,
-    marker: PhantomData<F>,
     atomic_accesses: bool,
 }
 
-impl<F, B> BufferView<F, B>
+impl<B> BufferView<B>
 where
     B: BufferAccess,
 {
     /// Builds a new buffer view.
     #[inline]
-    pub fn new(buffer: B, format: F) -> Result<BufferView<F, B>, BufferViewCreationError>
+    pub fn new<Px>(buffer: B, format: Format) -> Result<BufferView<B>, BufferViewCreationError>
     where
-        B: TypedBufferAccess<Content = [F::Pixel]>,
-        F: StrongStorage + 'static,
+        B: TypedBufferAccess<Content = [Px]>,
+        Px: Pixel,
     {
         unsafe { BufferView::unchecked(buffer, format) }
     }
@@ -87,18 +83,16 @@ where
     /// Builds a new buffer view without checking that the format is correct.
     pub unsafe fn unchecked(
         org_buffer: B,
-        format: F,
-    ) -> Result<BufferView<F, B>, BufferViewCreationError>
+        format: Format,
+    ) -> Result<BufferView<B>, BufferViewCreationError>
     where
         B: BufferAccess,
-        F: FormatDesc + 'static,
     {
         let (view, format_props) = {
             let size = org_buffer.size();
             let BufferInner { buffer, offset } = org_buffer.inner();
 
             let device = buffer.device();
-            let format = format.format();
 
             if (offset
                 % device
@@ -173,9 +167,8 @@ where
         };
 
         Ok(BufferView {
-            view: view,
+            view,
             buffer: org_buffer,
-            marker: PhantomData,
             atomic_accesses: (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT)
                 != 0,
         })
@@ -206,7 +199,7 @@ where
     }
 }
 
-unsafe impl<F, B> VulkanObject for BufferView<F, B>
+unsafe impl<B> VulkanObject for BufferView<B>
 where
     B: BufferAccess,
 {
@@ -220,7 +213,7 @@ where
     }
 }
 
-unsafe impl<F, B> DeviceOwned for BufferView<F, B>
+unsafe impl<B> DeviceOwned for BufferView<B>
 where
     B: BufferAccess,
 {
@@ -230,7 +223,7 @@ where
     }
 }
 
-impl<F, B> fmt::Debug for BufferView<F, B>
+impl<B> fmt::Debug for BufferView<B>
 where
     B: BufferAccess + fmt::Debug,
 {
@@ -242,7 +235,7 @@ where
     }
 }
 
-impl<F, B> Drop for BufferView<F, B>
+impl<B> Drop for BufferView<B>
 where
     B: BufferAccess,
 {
@@ -261,34 +254,31 @@ where
 
 pub unsafe trait BufferViewRef {
     type BufferAccess: BufferAccess;
-    type Format;
 
-    fn view(&self) -> &BufferView<Self::Format, Self::BufferAccess>;
+    fn view(&self) -> &BufferView<Self::BufferAccess>;
 }
 
-unsafe impl<F, B> BufferViewRef for BufferView<F, B>
+unsafe impl<B> BufferViewRef for BufferView<B>
 where
     B: BufferAccess,
 {
     type BufferAccess = B;
-    type Format = F;
 
     #[inline]
-    fn view(&self) -> &BufferView<F, B> {
+    fn view(&self) -> &BufferView<B> {
         self
     }
 }
 
-unsafe impl<T, F, B> BufferViewRef for T
+unsafe impl<T, B> BufferViewRef for T
 where
-    T: SafeDeref<Target = BufferView<F, B>>,
+    T: SafeDeref<Target = BufferView<B>>,
     B: BufferAccess,
 {
     type BufferAccess = B;
-    type Format = F;
 
     #[inline]
-    fn view(&self) -> &BufferView<F, B> {
+    fn view(&self) -> &BufferView<B> {
         &**self
     }
 }
@@ -370,7 +360,7 @@ mod tests {
     use crate::buffer::view::BufferViewCreationError;
     use crate::buffer::BufferUsage;
     use crate::buffer::BufferView;
-    use crate::format;
+    use crate::format::Format;
 
     #[test]
     fn create_uniform() {
@@ -385,7 +375,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, Format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.uniform_texel_buffer());
     }
@@ -403,7 +393,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, Format::R8G8B8A8Unorm).unwrap();
 
         assert!(view.storage_texel_buffer());
     }
@@ -420,7 +410,7 @@ mod tests {
 
         let (buffer, _) =
             ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
-        let view = BufferView::new(buffer, format::R32Uint).unwrap();
+        let view = BufferView::new(buffer, Format::R32Uint).unwrap();
 
         assert!(view.storage_texel_buffer());
         assert!(view.storage_texel_buffer_atomic());
@@ -438,7 +428,7 @@ mod tests {
         )
         .unwrap();
 
-        match BufferView::new(buffer, format::R8G8B8A8Unorm) {
+        match BufferView::new(buffer, Format::R8G8B8A8Unorm) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
             _ => panic!(),
         }
@@ -462,7 +452,7 @@ mod tests {
         .unwrap();
 
         // TODO: what if R64G64B64A64Sfloat is supported?
-        match BufferView::new(buffer, format::R64G64B64A64Sfloat) {
+        match BufferView::new(buffer, Format::R64G64B64A64Sfloat) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
             _ => panic!(),
         }

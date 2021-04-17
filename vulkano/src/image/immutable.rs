@@ -17,9 +17,8 @@ use crate::command_buffer::PrimaryAutoCommandBuffer;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
 use crate::device::Queue;
-use crate::format::AcceptsPixels;
 use crate::format::Format;
-use crate::format::FormatDesc;
+use crate::format::Pixel;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
@@ -55,11 +54,11 @@ use std::sync::Arc;
 /// but then you must only ever read from it.
 // TODO: type (2D, 3D, array, etc.) as template parameter
 #[derive(Debug)]
-pub struct ImmutableImage<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+pub struct ImmutableImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
     image: UnsafeImage,
     dimensions: ImageDimensions,
     memory: A,
-    format: F,
+    format: Format,
     initialized: AtomicBool,
     layout: ImageLayout,
 }
@@ -105,8 +104,8 @@ impl SubImage {
 }
 
 // Must not implement Clone, as that would lead to multiple `used` values.
-pub struct ImmutableImageInitialization<F, A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
-    image: Arc<ImmutableImage<F, A>>,
+pub struct ImmutableImageInitialization<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>> {
+    image: Arc<ImmutableImage<A>>,
     used: AtomicBool,
     mip_levels_access: std::ops::Range<u32>,
     layer_levels_access: std::ops::Range<u32>,
@@ -174,17 +173,16 @@ fn generate_mipmaps<L, Img>(
     }
 }
 
-impl<F> ImmutableImage<F> {
+impl ImmutableImage {
     #[deprecated(note = "use ImmutableImage::uninitialized instead")]
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
-        format: F,
+        format: Format,
         queue_families: I,
-    ) -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+    ) -> Result<Arc<ImmutableImage>, ImageCreationError>
     where
-        F: FormatDesc,
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
         #[allow(deprecated)]
@@ -202,12 +200,11 @@ impl<F> ImmutableImage<F> {
     pub fn with_mipmaps<'a, I, M>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
-        format: F,
+        format: Format,
         mipmaps: M,
         queue_families: I,
-    ) -> Result<Arc<ImmutableImage<F>>, ImageCreationError>
+    ) -> Result<Arc<ImmutableImage>, ImageCreationError>
     where
-        F: FormatDesc,
         I: IntoIterator<Item = QueueFamily<'a>>,
         M: Into<MipmapsCount>,
     {
@@ -240,15 +237,14 @@ impl<F> ImmutableImage<F> {
     pub fn uninitialized<'a, I, M>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
-        format: F,
+        format: Format,
         mipmaps: M,
         usage: ImageUsage,
         flags: ImageCreateFlags,
         layout: ImageLayout,
         queue_families: I,
-    ) -> Result<(Arc<ImmutableImage<F>>, ImmutableImageInitialization<F>), ImageCreationError>
+    ) -> Result<(Arc<ImmutableImage>, ImmutableImageInitialization), ImageCreationError>
     where
-        F: FormatDesc,
         I: IntoIterator<Item = QueueFamily<'a>>,
         M: Into<MipmapsCount>,
     {
@@ -267,7 +263,7 @@ impl<F> ImmutableImage<F> {
             UnsafeImage::new(
                 device.clone(),
                 usage,
-                format.format(),
+                format,
                 flags,
                 dimensions,
                 1,
@@ -318,11 +314,11 @@ impl<F> ImmutableImage<F> {
 
     /// Construct an ImmutableImage from the contents of `iter`.
     #[inline]
-    pub fn from_iter<P, I>(
+    pub fn from_iter<Px, I>(
         iter: I,
         dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
-        format: F,
+        format: Format,
         queue: Arc<Queue>,
     ) -> Result<
         (
@@ -332,10 +328,8 @@ impl<F> ImmutableImage<F> {
         ImageCreationError,
     >
     where
-        P: Send + Sync + Clone + 'static,
-        F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
-        I: ExactSizeIterator<Item = P>,
-        Format: AcceptsPixels<P>,
+        Px: Pixel + Send + Sync + Clone + 'static,
+        I: ExactSizeIterator<Item = Px>,
     {
         let source = CpuAccessibleBuffer::from_iter(
             queue.device().clone(),
@@ -347,11 +341,11 @@ impl<F> ImmutableImage<F> {
     }
 
     /// Construct an ImmutableImage containing a copy of the data in `source`.
-    pub fn from_buffer<B, P>(
+    pub fn from_buffer<B, Px>(
         source: B,
         dimensions: ImageDimensions,
         mipmaps: MipmapsCount,
-        format: F,
+        format: Format,
         queue: Arc<Queue>,
     ) -> Result<
         (
@@ -361,10 +355,8 @@ impl<F> ImmutableImage<F> {
         ImageCreationError,
     >
     where
-        B: BufferAccess + TypedBufferAccess<Content = [P]> + 'static + Clone + Send + Sync,
-        P: Send + Sync + Clone + 'static,
-        F: FormatDesc + AcceptsPixels<P> + 'static + Send + Sync,
-        Format: AcceptsPixels<P>,
+        B: BufferAccess + TypedBufferAccess<Content = [Px]> + 'static + Clone + Send + Sync,
+        Px: Pixel + Send + Sync + Clone + 'static,
     {
         let need_to_generate_mipmaps = has_mipmaps(mipmaps);
         let usage = ImageUsage {
@@ -430,7 +422,7 @@ impl<F> ImmutableImage<F> {
     }
 }
 
-impl<F, A> ImmutableImage<F, A> {
+impl<A> ImmutableImage<A> {
     /// Returns the dimensions of the image.
     #[inline]
     pub fn dimensions(&self) -> ImageDimensions {
@@ -444,10 +436,7 @@ impl<F, A> ImmutableImage<F, A> {
     }
 }
 
-unsafe impl<F, A> ImageAccess for ImmutableImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
+unsafe impl<A> ImageAccess for ImmutableImage<A> {
     #[inline]
     fn inner(&self) -> ImageInner {
         ImageInner {
@@ -537,10 +526,7 @@ where
     }
 }
 
-unsafe impl<P, F, A> ImageContent<P> for ImmutableImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
+unsafe impl<P, A> ImageContent<P> for ImmutableImage<A> {
     #[inline]
     fn matches_format(&self) -> bool {
         true // FIXME:
@@ -620,32 +606,23 @@ unsafe impl ImageAccess for SubImage {
     }
 }
 
-impl<F, A> PartialEq for ImmutableImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
+impl<A> PartialEq for ImmutableImage<A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         ImageAccess::inner(self) == ImageAccess::inner(other)
     }
 }
 
-impl<F, A> Eq for ImmutableImage<F, A> where F: 'static + Send + Sync {}
+impl<A> Eq for ImmutableImage<A> {}
 
-impl<F, A> Hash for ImmutableImage<F, A>
-where
-    F: 'static + Send + Sync,
-{
+impl<A> Hash for ImmutableImage<A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         ImageAccess::inner(self).hash(state);
     }
 }
 
-unsafe impl<F, A> ImageAccess for ImmutableImageInitialization<F, A>
-where
-    F: 'static + Send + Sync,
-{
+unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     #[inline]
     fn inner(&self) -> ImageInner {
         ImageAccess::inner(&self.image)
@@ -728,22 +705,16 @@ where
     }
 }
 
-impl<F, A> PartialEq for ImmutableImageInitialization<F, A>
-where
-    F: 'static + Send + Sync,
-{
+impl<A> PartialEq for ImmutableImageInitialization<A> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         ImageAccess::inner(self) == ImageAccess::inner(other)
     }
 }
 
-impl<F, A> Eq for ImmutableImageInitialization<F, A> where F: 'static + Send + Sync {}
+impl<A> Eq for ImmutableImageInitialization<A> {}
 
-impl<F, A> Hash for ImmutableImageInitialization<F, A>
-where
-    F: 'static + Send + Sync,
-{
+impl<A> Hash for ImmutableImageInitialization<A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         ImageAccess::inner(self).hash(state);

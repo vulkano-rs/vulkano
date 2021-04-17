@@ -32,6 +32,12 @@
   - The following functions have been added to both `SyncCommandBufferBuilder` and `AutoCommandBufferBuilder`: `begin_query` (still unsafe), `end_query` (safe), `write_timestamp` (still unsafe), `copy_query_pool_results` (safe), `reset_command_pool` (still unsafe).
   - Better documentation of everything in the `query` module.
   - An example demonstrating occlusion queries.
+- **Breaking** Improved the handling of image aspects a little, with the enum `ImageAspect` and the struct `ImageAspects`. `UnsafeCommandBufferBuilderImageAspect` has been removed.
+- **Breaking** Removed the separate structs for each image format. Now, only the `Format` enum exists.
+  - Traits that no longer make sense in this context have been removed: `FormatDesc`, the `Possible*FormatDesc` traits, `StrongStorage`.
+  - In types that had a type parameter for the format type, it has been removed.
+  - `AcceptsPixels` has been converted to `Pixel`, which is implemented on the pixel type rather than on the format type.
+- Added two methods to `Format`: `planes` to query the number of planes in the format, and `aspects` to query what aspects an image of this type has.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Fixed bug in descriptor array layers check when the image is a cubemap.
 - Vulkano-shaders: Fixed and refined the generation of the `readonly` descriptor attribute. It should now correctly mark uniforms and sampled images as read-only, but storage buffers and images only if explicitly marked as `readonly` in the shader.

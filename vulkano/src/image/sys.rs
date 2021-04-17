@@ -13,6 +13,24 @@
 //! other image types of this library, and all custom image types
 //! that you create must wrap around the types in this module.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::format::Format;
+use crate::format::FormatFeatures;
+use crate::format::FormatTy;
+use crate::image::ImageAspect;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageDimensions;
+use crate::image::ImageUsage;
+use crate::image::MipmapsCount;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MemoryRequirements;
+use crate::sync::Sharing;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -23,27 +41,6 @@ use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-
-use crate::device::Device;
-use crate::format::Format;
-use crate::format::FormatFeatures;
-use crate::format::FormatTy;
-use crate::format::PossibleYcbcrFormatDesc;
-use crate::image::ImageAspect;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageDimensions;
-use crate::image::ImageUsage;
-use crate::image::MipmapsCount;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
-use crate::memory::MemoryRequirements;
-use crate::sync::Sharing;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// A storage for pixels or arbitrary data.
 ///
@@ -727,7 +724,7 @@ impl UnsafeImage {
     ///
     #[inline]
     pub unsafe fn color_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_COLOR_BIT)
+        self.linear_layout_impl(mip_level, ImageAspect::Color)
     }
 
     /// Same as `color_linear_layout`, except that it retrieves the depth component of the image.
@@ -743,7 +740,7 @@ impl UnsafeImage {
     ///
     #[inline]
     pub unsafe fn depth_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_DEPTH_BIT)
+        self.linear_layout_impl(mip_level, ImageAspect::Depth)
     }
 
     /// Same as `color_linear_layout`, except that it retrieves the stencil component of the image.
@@ -759,7 +756,7 @@ impl UnsafeImage {
     ///
     #[inline]
     pub unsafe fn stencil_linear_layout(&self, mip_level: u32) -> LinearLayout {
-        self.linear_layout_impl(mip_level, vk::IMAGE_ASPECT_STENCIL_BIT)
+        self.linear_layout_impl(mip_level, ImageAspect::Stencil)
     }
 
     /// Same as `color_linear_layout`, except that it retrieves layout for the requested ycbcr
@@ -773,40 +770,34 @@ impl UnsafeImage {
     #[inline]
     pub unsafe fn multiplane_color_layout(&self, aspect: ImageAspect) -> LinearLayout {
         // This function only supports color and planar aspects currently.
-        let bits = aspect.to_aspect_bits();
-        let unsupported = bits
-            & !(vk::IMAGE_ASPECT_COLOR_BIT
-                | vk::IMAGE_ASPECT_PLANE_0_BIT
-                | vk::IMAGE_ASPECT_PLANE_1_BIT
-                | vk::IMAGE_ASPECT_PLANE_2_BIT);
-
-        assert!(unsupported == 0);
+        assert!(matches!(
+            aspect,
+            ImageAspect::Color | ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
+        ));
         assert!(self.mipmaps == 1);
 
-        if bits
-            & (vk::IMAGE_ASPECT_PLANE_0_BIT
-                | vk::IMAGE_ASPECT_PLANE_1_BIT
-                | vk::IMAGE_ASPECT_PLANE_2_BIT)
-            != 0
-        {
-            assert!(self.format.is_ycbcr());
-            if bits & vk::IMAGE_ASPECT_PLANE_2_BIT != 0 {
+        if matches!(
+            aspect,
+            ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
+        ) {
+            assert_eq!(self.format.ty(), FormatTy::Ycbcr);
+            if aspect == ImageAspect::Plane2 {
                 // Vulkano only supports NV12 and YV12 currently.  If that changes, this will too.
                 assert!(self.format == Format::G8B8R8_3PLANE420Unorm);
             }
         }
 
-        self.linear_layout_impl(0, bits)
+        self.linear_layout_impl(0, aspect)
     }
 
     // Implementation of the `*_layout` functions.
-    unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: u32) -> LinearLayout {
+    unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: ImageAspect) -> LinearLayout {
         let vk = self.device.pointers();
 
         assert!(mip_level < self.mipmaps);
 
         let subresource = vk::ImageSubresource {
-            aspectMask: aspect,
+            aspectMask: vk::ImageAspectFlags::from(aspect),
             mipLevel: mip_level,
             arrayLayer: 0,
         };

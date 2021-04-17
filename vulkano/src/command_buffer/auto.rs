@@ -20,7 +20,6 @@ use crate::command_buffer::sys::Flags;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
-use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageAspect;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use crate::command_buffer::validity::*;
@@ -43,11 +42,12 @@ use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::format::AcceptsPixels;
 use crate::format::ClearValue;
-use crate::format::Format;
 use crate::format::FormatTy;
+use crate::format::Pixel;
 use crate::image::ImageAccess;
+use crate::image::ImageAspect;
+use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::instance::QueueFamily;
 use crate::pipeline::input_assembly::Index;
@@ -838,12 +838,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let copy = UnsafeCommandBufferBuilderImageCopy {
                 // TODO: Allowing choosing a subset of the image aspects, but note that if color
                 // is included, neither depth nor stencil may.
-                aspect: UnsafeCommandBufferBuilderImageAspect {
+                aspects: ImageAspects {
                     color: source.has_color(),
                     depth: !source.has_color() && source.has_depth() && destination.has_depth(),
                     stencil: !source.has_color()
                         && source.has_stencil()
                         && destination.has_stencil(),
+                    ..ImageAspects::none()
                 },
                 source_mip_level,
                 destination_mip_level,
@@ -943,11 +944,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let blit = UnsafeCommandBufferBuilderImageBlit {
                 // TODO:
-                aspect: if source.has_color() {
-                    UnsafeCommandBufferBuilderImageAspect {
+                aspects: if source.has_color() {
+                    ImageAspects {
                         color: true,
-                        depth: false,
-                        stencil: false,
+                        ..ImageAspects::none()
                     }
                 } else {
                     unimplemented!()
@@ -1121,7 +1121,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
 
@@ -1143,7 +1143,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
@@ -1165,11 +1165,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 buffer_row_length: 0,
                 buffer_image_height: 0,
                 image_aspect: if destination.has_color() {
-                    UnsafeCommandBufferBuilderImageAspect {
-                        color: true,
-                        depth: false,
-                        stencil: false,
-                    }
+                    ImageAspect::Color
                 } else {
                     unimplemented!()
                 },
@@ -1201,7 +1197,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         self.ensure_outside_render_pass()?;
 
@@ -1223,7 +1219,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: TypedBufferAccess<Content = [Px]> + Send + Sync + 'static,
-        Format: AcceptsPixels<Px>,
+        Px: Pixel,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
@@ -1244,10 +1240,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_aspect: UnsafeCommandBufferBuilderImageAspect {
-                    color: source.has_color(),
-                    depth: source.has_depth(),
-                    stencil: source.has_stencil(),
+                // TODO: Allow the user to choose aspect
+                image_aspect: if source.has_color() {
+                    ImageAspect::Color
+                } else if source.has_depth() {
+                    ImageAspect::Depth
+                } else if source.has_stencil() {
+                    ImageAspect::Stencil
+                } else {
+                    unimplemented!()
                 },
                 image_mip_level: mipmap,
                 image_base_array_layer: first_layer,

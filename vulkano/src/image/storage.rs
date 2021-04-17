@@ -7,17 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
 use crate::buffer::BufferAccess;
 use crate::device::Device;
 use crate::format::ClearValue;
-use crate::format::FormatDesc;
+use crate::format::Format;
 use crate::format::FormatTy;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
@@ -41,11 +34,17 @@ use crate::memory::pool::StdMemoryPool;
 use crate::memory::DedicatedAlloc;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use smallvec::SmallVec;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
 /// specialized image.
 #[derive(Debug)]
-pub struct StorageImage<F, A = Arc<StdMemoryPool>>
+pub struct StorageImage<A = Arc<StdMemoryPool>>
 where
     A: MemoryPool,
 {
@@ -59,7 +58,7 @@ where
     dimensions: ImageDimensions,
 
     // Format.
-    format: F,
+    format: Format,
 
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
@@ -68,20 +67,19 @@ where
     gpu_lock: AtomicUsize,
 }
 
-impl<F> StorageImage<F> {
+impl StorageImage {
     /// Creates a new image with the given dimensions and format.
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
-        format: F,
+        format: Format,
         queue_families: I,
-    ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
+    ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
-        F: FormatDesc,
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
-        let is_depth = match format.format().ty() {
+        let is_depth = match format.ty() {
             FormatTy::Depth => true,
             FormatTy::DepthStencil => true,
             FormatTy::Stencil => true,
@@ -108,13 +106,12 @@ impl<F> StorageImage<F> {
     pub fn with_usage<'a, I>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
-        format: F,
+        format: Format,
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_families: I,
-    ) -> Result<Arc<StorageImage<F>>, ImageCreationError>
+    ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
-        F: FormatDesc,
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
         let queue_families = queue_families
@@ -132,7 +129,7 @@ impl<F> StorageImage<F> {
             UnsafeImage::new(
                 device.clone(),
                 usage,
-                format.format(),
+                format,
                 flags,
                 dimensions,
                 1,
@@ -173,7 +170,7 @@ impl<F> StorageImage<F> {
     }
 }
 
-impl<F, A> StorageImage<F, A>
+impl<A> StorageImage<A>
 where
     A: MemoryPool,
 {
@@ -184,9 +181,8 @@ where
     }
 }
 
-unsafe impl<F, A> ImageAccess for StorageImage<F, A>
+unsafe impl<A> ImageAccess for StorageImage<A>
 where
-    F: 'static + Send + Sync,
     A: MemoryPool,
 {
     #[inline]
@@ -279,20 +275,18 @@ where
     }
 }
 
-unsafe impl<F, A> ImageClearValue<F::ClearValue> for StorageImage<F, A>
+unsafe impl<A> ImageClearValue<ClearValue> for StorageImage<A>
 where
-    F: FormatDesc + 'static + Send + Sync,
     A: MemoryPool,
 {
     #[inline]
-    fn decode(&self, value: F::ClearValue) -> Option<ClearValue> {
+    fn decode(&self, value: ClearValue) -> Option<ClearValue> {
         Some(self.format.decode_clear_value(value))
     }
 }
 
-unsafe impl<P, F, A> ImageContent<P> for StorageImage<F, A>
+unsafe impl<P, A> ImageContent<P> for StorageImage<A>
 where
-    F: 'static + Send + Sync,
     A: MemoryPool,
 {
     #[inline]
@@ -301,9 +295,8 @@ where
     }
 }
 
-impl<F, A> PartialEq for StorageImage<F, A>
+impl<A> PartialEq for StorageImage<A>
 where
-    F: 'static + Send + Sync,
     A: MemoryPool,
 {
     #[inline]
@@ -312,16 +305,10 @@ where
     }
 }
 
-impl<F, A> Eq for StorageImage<F, A>
-where
-    F: 'static + Send + Sync,
-    A: MemoryPool,
-{
-}
+impl<A> Eq for StorageImage<A> where A: MemoryPool {}
 
-impl<F, A> Hash for StorageImage<F, A>
+impl<A> Hash for StorageImage<A>
 where
-    F: 'static + Send + Sync,
     A: MemoryPool,
 {
     #[inline]

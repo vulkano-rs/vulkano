@@ -10,13 +10,34 @@
 use crate::vk;
 use std::ops::BitOr;
 
-/// Describes how an aspect of the image that be used to query Vulkan.  This is **not** just a suggestion.
-/// Check out VkImageAspectFlagBits in the Vulkan spec.
+/// An individual data type within an image.
 ///
-/// If you specify an aspect of the image that doesn't exist (for example, depth for a YUV image), a panic
-/// will happen.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ImageAspect {
+/// Most images have only the `Color` aspect, but some may have several.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[repr(u32)]
+pub enum ImageAspect {
+    Color = vk::IMAGE_ASPECT_COLOR_BIT,
+    Depth = vk::IMAGE_ASPECT_DEPTH_BIT,
+    Stencil = vk::IMAGE_ASPECT_STENCIL_BIT,
+    Metadata = vk::IMAGE_ASPECT_METADATA_BIT,
+    Plane0 = vk::IMAGE_ASPECT_PLANE_0_BIT,
+    Plane1 = vk::IMAGE_ASPECT_PLANE_1_BIT,
+    Plane2 = vk::IMAGE_ASPECT_PLANE_2_BIT,
+    MemoryPlane0 = vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT,
+    MemoryPlane1 = vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT,
+    MemoryPlane2 = vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT,
+}
+
+impl From<ImageAspect> for vk::ImageAspectFlags {
+    #[inline]
+    fn from(value: ImageAspect) -> vk::ImageAspectFlags {
+        value as u32
+    }
+}
+
+/// A mask specifying one or more `ImageAspect`s.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub struct ImageAspects {
     pub color: bool,
     pub depth: bool,
     pub stencil: bool,
@@ -29,23 +50,11 @@ pub struct ImageAspect {
     pub memory_plane2: bool,
 }
 
-impl ImageAspect {
-    /// Builds a `ImageAspect` with all values set to false. Useful as a default value.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use vulkano::image::ImageAspect as ImageAspect;
-    ///
-    /// let _aspect = ImageAspect {
-    ///     color: true,
-    ///     depth: true,
-    ///     .. ImageAspect::none()
-    /// };
-    /// ```
+impl ImageAspects {
+    /// Builds an `ImageAspect` with all values set to false. Useful as a default value.
     #[inline]
-    pub fn none() -> ImageAspect {
-        ImageAspect {
+    pub const fn none() -> ImageAspects {
+        ImageAspects {
             color: false,
             depth: false,
             stencil: false,
@@ -58,65 +67,14 @@ impl ImageAspect {
             memory_plane2: false,
         }
     }
-
-    #[inline]
-    pub(crate) fn to_aspect_bits(&self) -> vk::ImageAspectFlagBits {
-        let mut result = 0;
-        if self.color {
-            result |= vk::IMAGE_ASPECT_COLOR_BIT;
-        }
-        if self.depth {
-            result |= vk::IMAGE_ASPECT_DEPTH_BIT;
-        }
-        if self.stencil {
-            result |= vk::IMAGE_ASPECT_STENCIL_BIT;
-        }
-        if self.metadata {
-            result |= vk::IMAGE_ASPECT_METADATA_BIT;
-        }
-        if self.plane0 {
-            result |= vk::IMAGE_ASPECT_PLANE_0_BIT;
-        }
-        if self.plane1 {
-            result |= vk::IMAGE_ASPECT_PLANE_1_BIT;
-        }
-        if self.plane2 {
-            result |= vk::IMAGE_ASPECT_PLANE_2_BIT;
-        }
-        if self.memory_plane0 {
-            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
-        }
-        if self.memory_plane1 {
-            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT;
-        }
-        if self.memory_plane2 {
-            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT
-        }
-        result
-    }
-
-    pub(crate) fn from_bits(val: u32) -> ImageAspect {
-        ImageAspect {
-            color: (val & vk::IMAGE_ASPECT_COLOR_BIT) != 0,
-            depth: (val & vk::IMAGE_ASPECT_DEPTH_BIT) != 0,
-            stencil: (val & vk::IMAGE_ASPECT_STENCIL_BIT) != 0,
-            metadata: (val & vk::IMAGE_ASPECT_METADATA_BIT) != 0,
-            plane0: (val & vk::IMAGE_ASPECT_PLANE_0_BIT) != 0,
-            plane1: (val & vk::IMAGE_ASPECT_PLANE_1_BIT) != 0,
-            plane2: (val & vk::IMAGE_ASPECT_PLANE_2_BIT) != 0,
-            memory_plane0: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT) != 0,
-            memory_plane1: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT) != 0,
-            memory_plane2: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT) != 0,
-        }
-    }
 }
 
-impl BitOr for ImageAspect {
+impl BitOr for ImageAspects {
     type Output = Self;
 
     #[inline]
     fn bitor(self, rhs: Self) -> Self {
-        ImageAspect {
+        ImageAspects {
             color: self.color || rhs.color,
             depth: self.depth || rhs.depth,
             stencil: self.stencil || rhs.stencil,
@@ -127,6 +85,62 @@ impl BitOr for ImageAspect {
             memory_plane0: self.memory_plane0 || rhs.memory_plane0,
             memory_plane1: self.memory_plane1 || rhs.memory_plane1,
             memory_plane2: self.memory_plane2 || rhs.memory_plane2,
+        }
+    }
+}
+
+impl From<ImageAspects> for vk::ImageAspectFlags {
+    #[inline]
+    fn from(value: ImageAspects) -> vk::ImageAspectFlags {
+        let mut result = 0;
+        if value.color {
+            result |= vk::IMAGE_ASPECT_COLOR_BIT;
+        }
+        if value.depth {
+            result |= vk::IMAGE_ASPECT_DEPTH_BIT;
+        }
+        if value.stencil {
+            result |= vk::IMAGE_ASPECT_STENCIL_BIT;
+        }
+        if value.metadata {
+            result |= vk::IMAGE_ASPECT_METADATA_BIT;
+        }
+        if value.plane0 {
+            result |= vk::IMAGE_ASPECT_PLANE_0_BIT;
+        }
+        if value.plane1 {
+            result |= vk::IMAGE_ASPECT_PLANE_1_BIT;
+        }
+        if value.plane2 {
+            result |= vk::IMAGE_ASPECT_PLANE_2_BIT;
+        }
+        if value.memory_plane0 {
+            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
+        }
+        if value.memory_plane1 {
+            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT;
+        }
+        if value.memory_plane2 {
+            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT
+        }
+        result
+    }
+}
+
+impl From<vk::ImageAspectFlags> for ImageAspects {
+    #[inline]
+    fn from(val: vk::ImageAspectFlags) -> ImageAspects {
+        ImageAspects {
+            color: (val & vk::IMAGE_ASPECT_COLOR_BIT) != 0,
+            depth: (val & vk::IMAGE_ASPECT_DEPTH_BIT) != 0,
+            stencil: (val & vk::IMAGE_ASPECT_STENCIL_BIT) != 0,
+            metadata: (val & vk::IMAGE_ASPECT_METADATA_BIT) != 0,
+            plane0: (val & vk::IMAGE_ASPECT_PLANE_0_BIT) != 0,
+            plane1: (val & vk::IMAGE_ASPECT_PLANE_1_BIT) != 0,
+            plane2: (val & vk::IMAGE_ASPECT_PLANE_2_BIT) != 0,
+            memory_plane0: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT) != 0,
+            memory_plane1: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT) != 0,
+            memory_plane2: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT) != 0,
         }
     }
 }

@@ -899,10 +899,10 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn uniform_texel_buffer<'a, F, B>(
+    pub fn uniform_texel_buffer<'a, B>(
         binding: u32,
         array_element: u32,
-        view: &BufferView<F, B>,
+        view: &BufferView<B>,
     ) -> DescriptorWrite
     where
         B: BufferAccess,
@@ -919,10 +919,10 @@ impl DescriptorWrite {
     }
 
     #[inline]
-    pub fn storage_texel_buffer<'a, F, B>(
+    pub fn storage_texel_buffer<'a, B>(
         binding: u32,
         array_element: u32,
-        view: &BufferView<F, B>,
+        view: &BufferView<B>,
     ) -> DescriptorWrite
     where
         B: BufferAccess,
