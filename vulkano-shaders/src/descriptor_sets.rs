@@ -169,7 +169,7 @@ fn find_descriptors(
     for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
         let variable_id = set_decoration.target_id;
 
-        if exact && !variables.unwrap().contains(&variable_id) {
+        if exact && !variables.as_ref().unwrap().contains(&variable_id) {
             continue;
         }
 
