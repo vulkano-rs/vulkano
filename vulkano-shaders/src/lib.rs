@@ -201,7 +201,7 @@
 //! [PipelineLayoutDesc]: https://docs.rs/vulkano/*/vulkano/descriptor/pipeline_layout/trait.PipelineLayoutDesc.html
 //! [SpecializationConstants]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/trait.SpecializationConstants.html
 //! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
-//! [descriptor_sets]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/descriptor_sets.rs
+//! [descriptor_sets]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/descriptor_sets.rs#L142
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]

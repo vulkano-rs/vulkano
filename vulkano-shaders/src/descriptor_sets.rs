@@ -139,7 +139,12 @@ pub(super) fn write_descriptor_sets(
     }
 }
 
-fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32], exact: bool) -> Vec<Descriptor> {
+fn find_descriptors(
+    doc: &Spirv,
+    entrypoint_id: u32,
+    interface: &[u32],
+    exact: bool,
+) -> Vec<Descriptor> {
     let mut descriptors = Vec::new();
 
     // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
