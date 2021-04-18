@@ -134,6 +134,8 @@
 //! Provides the path to precompiled SPIR-V bytecode, relative to `Cargo.toml`.
 //! Cannot be used in conjunction with the `src` or `path` field.
 //! This allows using shaders compiled through a separate build system.
+//! **Note**: If your shader contains multiple entrypoints with different
+//! descriptor sets, you may also need to enable `exact_entrypoint_interface`.
 //!
 //! ## `include: ["...", "...", ..., "..."]`
 //!
@@ -172,6 +174,19 @@
 //! final output of generated code the user can also use `dump` macro
 //! option(see below).
 //!
+//! ## `exact_entrypoint_interface: true`
+//!
+//! By default, the macro assumes that all resources (Uniforms, Storage Buffers,
+//! Images, Samplers, etc) need to be bound into a descriptor set, even if they are
+//! not used in the shader code. However, shaders with multiple entrypoints may have
+//! conflicting descriptor sets for each entrypoint. Enabling this option will force
+//! the macro to only generate descriptor information for resources that are used
+//! in each entrypoint.
+//!
+//! The macro determines which resources are used by looking at each entrypoint's
+//! interface and bytecode. See [`src/descriptor_sets.rs`][descriptor_sets]
+//! for the exact logic.
+//!
 //! ## `dump: true`
 //!
 //! The crate fails to compile but prints the generated rust code to stdout.
@@ -186,6 +201,7 @@
 //! [PipelineLayoutDesc]: https://docs.rs/vulkano/*/vulkano/descriptor/pipeline_layout/trait.PipelineLayoutDesc.html
 //! [SpecializationConstants]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/trait.SpecializationConstants.html
 //! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
+//! [descriptor_sets]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/descriptor_sets.rs
 
 #![doc(html_logo_url = "https://raw.githubusercontent.com/vulkano-rs/vulkano/master/logo.png")]
 #![recursion_limit = "1024"]
@@ -276,6 +292,7 @@ struct MacroInput {
     include_directories: Vec<String>,
     macro_defines: Vec<(String, String)>,
     types_meta: TypesMeta,
+    exact_entrypoint_interface: bool,
     dump: bool,
 }
 
@@ -287,6 +304,7 @@ impl Parse for MacroInput {
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
         let mut types_meta = None;
+        let mut exact_entrypoint_interface = None;
 
         while !input.is_empty() {
             let name: Ident = input.parse()?;
@@ -504,6 +522,13 @@ impl Parse for MacroInput {
 
                     types_meta = Some(meta);
                 }
+                "exact_entrypoint_interface" => {
+                    if exact_entrypoint_interface.is_some() {
+                        panic!("Only one `dump` can be defined")
+                    }
+                    let lit: LitBool = input.parse()?;
+                    exact_entrypoint_interface = Some(lit.value);
+                }
                 "dump" => {
                     if dump.is_some() {
                         panic!("Only one `dump` can be defined")
@@ -538,6 +563,7 @@ impl Parse for MacroInput {
             dump,
             macro_defines,
             types_meta: types_meta.unwrap_or_else(|| TypesMeta::default()),
+            exact_entrypoint_interface: exact_entrypoint_interface.unwrap_or(false),
         })
     }
 }
@@ -575,6 +601,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             unsafe { from_raw_parts(bytes.as_slice().as_ptr() as *const u32, bytes.len() / 4) },
             input.types_meta,
             empty(),
+            input.exact_entrypoint_interface,
             input.dump,
         )
         .unwrap()
@@ -631,6 +658,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             content.as_binary(),
             input.types_meta,
             input_paths,
+            input.exact_entrypoint_interface,
             input.dump,
         )
         .unwrap()

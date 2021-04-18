@@ -19,6 +19,7 @@ pub(super) fn write_entry_point(
     doc: &Spirv,
     instruction: &Instruction,
     types_meta: &TypesMeta,
+    exact_entrypoint_interface: bool,
 ) -> (TokenStream, TokenStream, TokenStream) {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
@@ -67,6 +68,7 @@ pub(super) fn write_entry_point(
         id,
         interface,
         &types_meta,
+        exact_entrypoint_interface,
     );
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
