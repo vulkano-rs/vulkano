@@ -733,7 +733,9 @@ impl SyncCommandBufferBuilder {
                                 //
                                 unsafe {
                                     let from_layout = if is_layout_initialized {
-                                        actually_exclusive = true;
+                                        // TODO why was this introduced? Everything seems to work
+                                        // better without this
+                                        //actually_exclusive = true;
                                         initial_layout_requirement
                                     } else {
                                         if img.preinitialized_layout() {
