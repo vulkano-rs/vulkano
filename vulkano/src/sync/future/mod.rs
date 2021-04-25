@@ -27,7 +27,7 @@ use crate::swapchain;
 use crate::swapchain::PresentFuture;
 use crate::swapchain::PresentRegion;
 use crate::swapchain::Swapchain;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::FenceWaitError;
 use crate::sync::PipelineStages;
 use crate::OomError;
@@ -118,7 +118,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
     /// Checks whether submitting something after this future grants access (exclusive or shared,
     /// depending on the parameter) to the given image on the given queue.
@@ -140,7 +140,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
     /// Joins this future with another one, representing the moment when both events have happened.
     // TODO: handle errors
@@ -333,7 +333,7 @@ where
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
@@ -344,7 +344,7 @@ where
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
 }

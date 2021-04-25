@@ -141,16 +141,16 @@ pub struct Viewport {
     pub depth_range: Range<f32>,
 }
 
-impl Viewport {
+impl From<Viewport> for vk::Viewport {
     #[inline]
-    pub(crate) fn into_vulkan_viewport(self) -> vk::Viewport {
+    fn from(val: Viewport) -> Self {
         vk::Viewport {
-            x: self.origin[0],
-            y: self.origin[1],
-            width: self.dimensions[0],
-            height: self.dimensions[1],
-            minDepth: self.depth_range.start,
-            maxDepth: self.depth_range.end,
+            x: val.origin[0],
+            y: val.origin[1],
+            width: val.dimensions[0],
+            height: val.dimensions[1],
+            minDepth: val.depth_range.start,
+            maxDepth: val.depth_range.end,
         }
     }
 }
@@ -177,25 +177,27 @@ impl Scissor {
             dimensions: [0x7fffffff, 0x7fffffff],
         }
     }
-
-    #[inline]
-    pub(crate) fn into_vulkan_rect(self) -> vk::Rect2D {
-        vk::Rect2D {
-            offset: vk::Offset2D {
-                x: self.origin[0],
-                y: self.origin[1],
-            },
-            extent: vk::Extent2D {
-                width: self.dimensions[0],
-                height: self.dimensions[1],
-            },
-        }
-    }
 }
 
 impl Default for Scissor {
     #[inline]
     fn default() -> Scissor {
         Scissor::irrelevant()
+    }
+}
+
+impl From<Scissor> for vk::Rect2D {
+    #[inline]
+    fn from(val: Scissor) -> Self {
+        vk::Rect2D {
+            offset: vk::Offset2D {
+                x: val.origin[0],
+                y: val.origin[1],
+            },
+            extent: vk::Extent2D {
+                width: val.dimensions[0],
+                height: val.dimensions[1],
+            },
+        }
     }
 }

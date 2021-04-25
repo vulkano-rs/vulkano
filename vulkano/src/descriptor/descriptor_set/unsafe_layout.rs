@@ -75,7 +75,7 @@ impl UnsafeDescriptorSetLayout {
                     binding: binding as u32,
                     descriptorType: ty as u32,
                     descriptorCount: desc.array_count,
-                    stageFlags: desc.stages.into_vulkan_bits(),
+                    stageFlags: desc.stages.into(),
                     pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
                 })
             })

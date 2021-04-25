@@ -339,21 +339,29 @@ macro_rules! features {
                 $(features_difference!($kind $args, out, self, other);)+
                 out
             }
+        }
 
-            pub(crate) fn from_vulkan_features(features: vk::PhysicalDeviceFeatures) -> Features {
-                let mut out = Self::none();
-                $(from_feature_v1!($kind $args, out, features);)+
-                out
-            }
-
-            pub(crate) fn into_vulkan_features(self) -> vk::PhysicalDeviceFeatures {
+        impl From<Features> for vk::PhysicalDeviceFeatures {
+            #[inline]
+            fn from(val: Features) -> Self {
                 let mut out: vk::PhysicalDeviceFeatures = unsafe { mem::zeroed() };
-                $(into_feature_v1!($kind $args, out, self);)+
+                $(into_feature_v1!($kind $args, out, val);)+
                 out
             }
+        }
 
+        impl From<vk::PhysicalDeviceFeatures> for Features {
+            #[inline]
+            fn from(val: vk::PhysicalDeviceFeatures) -> Self {
+                let mut out = Self::none();
+                $(from_feature_v1!($kind $args, out, val);)+
+                out
+            }
+        }
+
+        impl From<&Features> for Pin<Box<FeaturesFfi>> {
             #[inline(always)]
-            pub(crate) fn into_vulkan_features_v2(&self) -> Pin<Box<FeaturesFfi>> {
+            fn from(val: &Features) -> Self {
                 let mut features = FeaturesFfi::new();
                 unsafe {
                     let mut next = FeaturesFfi::mut_base_ptr(&mut features);
@@ -361,10 +369,10 @@ macro_rules! features {
                         match next_mut.sType {
                             vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2_KHR => {
                                 let r = (next as *mut vk::PhysicalDeviceFeatures2KHR).as_mut().unwrap();
-                                $(into_feature_v1!($kind $args, r.features, self);)+
+                                $(into_feature_v1!($kind $args, r.features, val);)+
                             },
                             _ => {
-                                $(into_ext_features_match!($kind $args, self, next_mut, next);)+
+                                $(into_ext_features_match!($kind $args, val, next_mut, next);)+
                             },
                         }
 
@@ -373,9 +381,11 @@ macro_rules! features {
                 }
                 features
             }
+        }
 
+        impl From<&vk::PhysicalDeviceFeatures2KHR> for Features {
             #[inline(always)]
-            pub(crate) fn from_vulkan_features_v2(features: &vk::PhysicalDeviceFeatures2KHR) -> Self {
+            fn from(features: &vk::PhysicalDeviceFeatures2KHR) -> Self {
                 let mut output = Self::none();
 
                 unsafe {

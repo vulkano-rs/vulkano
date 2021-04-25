@@ -21,7 +21,7 @@ use crate::render_pass::FramebufferAbstract;
 use crate::sync::now;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::FlushError;
 use crate::sync::GpuFuture;
 use crate::sync::NowFuture;
@@ -145,7 +145,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 
     fn check_image_access(
         &self,
@@ -153,7 +153,7 @@ pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError>;
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError>;
 }
 
 unsafe impl<T> PrimaryCommandBuffer for T
@@ -186,7 +186,7 @@ where
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_buffer_access(buffer, exclusive, queue)
     }
 
@@ -197,7 +197,7 @@ where
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         (**self).check_image_access(image, layout, exclusive, queue)
     }
 }
@@ -406,7 +406,7 @@ where
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         match self
             .command_buffer
             .check_buffer_access(buffer, exclusive, queue)
@@ -426,7 +426,7 @@ where
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         match self
             .command_buffer
             .check_image_access(image, layout, exclusive, queue)

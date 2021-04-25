@@ -44,7 +44,7 @@ use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::render_pass::FramebufferAbstract;
 use crate::sampler::Filter;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::Event;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStage;
@@ -185,13 +185,13 @@ impl SyncCommandBufferBuilder {
                                 all_commands: true,
                                 ..PipelineStages::none()
                             }, // TODO: wrong!
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 input_attachment_read: true,
                                 color_attachment_read: true,
                                 color_attachment_write: true,
                                 depth_stencil_attachment_read: true,
                                 depth_stencil_attachment_write: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             }, // TODO: suboptimal
                             exclusive: true, // TODO: suboptimal ; note: remember to always pass true if desc.initial_layout != desc.final_layout
                         },
@@ -284,9 +284,9 @@ impl SyncCommandBufferBuilder {
                             vertex_input: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             index_read: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: false,
                     },
@@ -520,9 +520,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_read: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: false,
                         },
@@ -538,9 +538,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: true,
                         },
@@ -680,9 +680,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_read: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: false,
                         },
@@ -698,9 +698,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: true,
                         },
@@ -803,9 +803,9 @@ impl SyncCommandBufferBuilder {
                             transfer: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             transfer_write: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: true,
                     },
@@ -923,9 +923,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_read: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: false,
                         },
@@ -941,9 +941,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: true,
                         },
@@ -1073,9 +1073,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_read: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: false,
                         },
@@ -1091,9 +1091,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: true,
                         },
@@ -1223,9 +1223,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_read: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: false,
                         },
@@ -1241,9 +1241,9 @@ impl SyncCommandBufferBuilder {
                                 transfer: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 transfer_write: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: true,
                         },
@@ -1350,9 +1350,9 @@ impl SyncCommandBufferBuilder {
                             transfer: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             transfer_write: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: true,
                     },
@@ -1542,9 +1542,9 @@ impl SyncCommandBufferBuilder {
                             draw_indirect: true,
                             ..PipelineStages::none()
                         }, // TODO: is draw_indirect correct?
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             indirect_command_read: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: false,
                     },
@@ -1730,9 +1730,9 @@ impl SyncCommandBufferBuilder {
                             draw_indirect: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             indirect_command_read: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: false,
                     },
@@ -1820,9 +1820,9 @@ impl SyncCommandBufferBuilder {
                             draw_indirect: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             indirect_command_read: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: false,
                     },
@@ -1962,9 +1962,9 @@ impl SyncCommandBufferBuilder {
                             transfer: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             transfer_write: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: true,
                     },
@@ -2527,9 +2527,9 @@ impl SyncCommandBufferBuilder {
                             transfer: true,
                             ..PipelineStages::none()
                         },
-                        access: AccessFlagBits {
+                        access: AccessFlags {
                             transfer_write: true,
-                            ..AccessFlagBits::none()
+                            ..AccessFlags::none()
                         },
                         exclusive: true,
                     },
@@ -2902,9 +2902,9 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
                                 vertex_input: true,
                                 ..PipelineStages::none()
                             },
-                            access: AccessFlagBits {
+                            access: AccessFlags {
                                 vertex_attribute_read: true,
-                                ..AccessFlagBits::none()
+                                ..AccessFlags::none()
                             },
                             exclusive: false,
                         },

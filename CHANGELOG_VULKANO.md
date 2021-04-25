@@ -37,6 +37,7 @@
   - Traits that no longer make sense in this context have been removed: `FormatDesc`, the `Possible*FormatDesc` traits, `StrongStorage`.
   - In types that had a type parameter for the format type, it has been removed.
   - `AcceptsPixels` has been converted to `Pixel`, which is implemented on the pixel type rather than on the format type.
+- **Breaking** `AccessFlagBits` is renamed to `AccessFlags`.
 - Added two methods to `Format`: `planes` to query the number of planes in the format, and `aspects` to query what aspects an image of this type has.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Fixed bug in descriptor array layers check when the image is a cubemap.
@@ -44,6 +45,7 @@
 - Vulkano-shaders: Added support for StoragePushConstant8 SPIR-V capability.
 - Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
+- Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
 
 # Version 0.22.0 (2021-03-31)
 

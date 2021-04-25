@@ -28,12 +28,14 @@ macro_rules! pipeline_stages {
                     )+
                 }
             }
+        }
 
+        impl From<PipelineStages> for vk::PipelineStageFlags {
             #[inline]
-            pub(crate) fn into_vulkan_bits(self) -> vk::PipelineStageFlagBits {
+            fn from(val: PipelineStages) -> Self {
                 let mut result = 0;
                 $(
-                    if self.$elem { result |= $val }
+                    if val.$elem { result |= $val }
                 )+
                 result
             }
@@ -106,47 +108,49 @@ macro_rules! access_flags {
     ($($elem:ident => $val:expr,)+) => (
         #[derive(Debug, Copy, Clone)]
         #[allow(missing_docs)]
-        pub struct AccessFlagBits {
+        pub struct AccessFlags {
             $(
                 pub $elem: bool,
             )+
         }
 
-        impl AccessFlagBits {
-            /// Builds an `AccessFlagBits` struct with all bits set.
-            pub fn all() -> AccessFlagBits {
-                AccessFlagBits {
+        impl AccessFlags {
+            /// Builds an `AccessFlags` struct with all bits set.
+            pub fn all() -> AccessFlags {
+                AccessFlags {
                     $(
                         $elem: true,
                     )+
                 }
             }
 
-            /// Builds an `AccessFlagBits` struct with none of the bits set.
-            pub fn none() -> AccessFlagBits {
-                AccessFlagBits {
+            /// Builds an `AccessFlags` struct with none of the bits set.
+            pub fn none() -> AccessFlags {
+                AccessFlags {
                     $(
                         $elem: false,
                     )+
                 }
             }
+        }
 
+        impl From<AccessFlags> for vk::AccessFlags {
             #[inline]
-            pub(crate) fn into_vulkan_bits(self) -> vk::AccessFlagBits {
+            fn from(val: AccessFlags) -> Self {
                 let mut result = 0;
                 $(
-                    if self.$elem { result |= $val }
+                    if val.$elem { result |= $val }
                 )+
                 result
             }
         }
 
-        impl ops::BitOr for AccessFlagBits {
-            type Output = AccessFlagBits;
+        impl ops::BitOr for AccessFlags {
+            type Output = AccessFlags;
 
             #[inline]
-            fn bitor(self, rhs: AccessFlagBits) -> AccessFlagBits {
-                AccessFlagBits {
+            fn bitor(self, rhs: AccessFlags) -> AccessFlags {
+                AccessFlags {
                     $(
                         $elem: self.$elem || rhs.$elem,
                     )+
@@ -154,9 +158,9 @@ macro_rules! access_flags {
             }
         }
 
-        impl ops::BitOrAssign for AccessFlagBits {
+        impl ops::BitOrAssign for AccessFlags {
             #[inline]
-            fn bitor_assign(&mut self, rhs: AccessFlagBits) {
+            fn bitor_assign(&mut self, rhs: AccessFlags) {
                 $(
                     self.$elem = self.$elem || rhs.$elem;
                 )+
@@ -185,7 +189,7 @@ access_flags! {
     memory_write => vk::ACCESS_MEMORY_WRITE_BIT,
 }
 
-impl AccessFlagBits {
+impl AccessFlags {
     /// Returns true if the access flags can be used with the given pipeline stages.
     ///
     /// Corresponds to `Table 4. Supported access types` in section `6.1.3. Access Types` of the
@@ -255,7 +259,7 @@ pub struct PipelineMemoryAccess {
     /// The pipeline stages the resource will be accessed in.
     pub stages: PipelineStages,
     /// The type of memory access that will be performed.
-    pub access: AccessFlagBits,
+    pub access: AccessFlags,
     /// Whether the resource needs exclusive (mutable) access or can be shared.
     pub exclusive: bool,
 }

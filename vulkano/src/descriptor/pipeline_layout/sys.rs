@@ -104,7 +104,7 @@ where
                 }
 
                 out.push(vk::PushConstantRange {
-                    stageFlags: stages.into_vulkan_bits(),
+                    stageFlags: stages.into(),
                     offset: offset as u32,
                     size: size as u32,
                 });

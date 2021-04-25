@@ -76,47 +76,51 @@ impl ExternalMemoryHandleType {
             ..ExternalMemoryHandleType::none()
         }
     }
+}
 
+impl From<ExternalMemoryHandleType> for vk::ExternalMemoryHandleTypeFlags {
     #[inline]
-    pub(crate) fn to_bits(&self) -> vk::ExternalMemoryHandleTypeFlagBits {
+    fn from(val: ExternalMemoryHandleType) -> Self {
         let mut result = 0;
-        if self.opaque_fd {
+        if val.opaque_fd {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
         }
-        if self.opaque_win32 {
+        if val.opaque_win32 {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
         }
-        if self.opaque_win32_kmt {
+        if val.opaque_win32_kmt {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
         }
-        if self.d3d11_texture {
+        if val.d3d11_texture {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
         }
-        if self.d3d11_texture_kmt {
+        if val.d3d11_texture_kmt {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT;
         }
-        if self.d3d12_heap {
+        if val.d3d12_heap {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT;
         }
-        if self.d3d12_resource {
+        if val.d3d12_resource {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT;
         }
-        if self.dma_buf {
+        if val.dma_buf {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
         }
-        if self.android_hardware_buffer {
+        if val.android_hardware_buffer {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
         }
-        if self.host_allocation {
+        if val.host_allocation {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
         }
-        if self.host_mapped_foreign_memory {
+        if val.host_mapped_foreign_memory {
             result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT
         }
         result
     }
+}
 
-    pub(crate) fn from_bits(val: u32) -> ExternalMemoryHandleType {
+impl From<vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleType {
+    fn from(val: vk::ExternalMemoryHandleTypeFlags) -> Self {
         ExternalMemoryHandleType {
             opaque_fd: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT) != 0,
             opaque_win32: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT) != 0,

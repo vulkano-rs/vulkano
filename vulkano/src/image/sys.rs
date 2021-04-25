@@ -463,7 +463,7 @@ impl UnsafeImage {
             _ => unreachable!(),
         };
 
-        let usage_bits = usage.to_usage_bits();
+        let usage_bits = usage.into();
 
         // Now that all checks have been performed, if any of the check failed we query the Vulkan
         // implementation for additional image capabilities.
@@ -575,7 +575,7 @@ impl UnsafeImage {
             vk.GetImageMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
             debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
 
-            let mut out = MemoryRequirements::from_vulkan_reqs(output.memoryRequirements);
+            let mut out = MemoryRequirements::from(output.memoryRequirements);
             if let Some(output2) = output2 {
                 debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
                 out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
@@ -586,7 +586,7 @@ impl UnsafeImage {
             vk.GetImageMemoryRequirements(device.internal_object(), image, output.as_mut_ptr());
             let output = output.assume_init();
             debug_assert!(output.memoryTypeBits != 0);
-            MemoryRequirements::from_vulkan_reqs(output)
+            MemoryRequirements::from(output)
         };
 
         let image = UnsafeImage {

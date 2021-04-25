@@ -23,7 +23,7 @@ use crate::image::ImageLayout;
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
@@ -754,7 +754,7 @@ impl SyncCommandBufferBuilder {
                                             bottom_of_pipe: true,
                                             ..PipelineStages::none()
                                         },
-                                        AccessFlagBits::none(),
+                                        AccessFlags::none(),
                                         memory.stages,
                                         memory.access,
                                         true,
@@ -894,7 +894,7 @@ impl SyncCommandBufferBuilder {
                             top_of_pipe: true,
                             ..PipelineStages::none()
                         },
-                        AccessFlagBits::none(),
+                        AccessFlags::none(),
                         true,
                         None, // TODO: queue transfers?
                         state.current_layout,
@@ -1173,7 +1173,7 @@ impl SyncCommandBuffer {
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::BufferRef(buffer)) {
@@ -1197,7 +1197,7 @@ impl SyncCommandBuffer {
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::ImageRef(image)) {
@@ -1282,7 +1282,7 @@ struct ResourceFinalState {
     // Stages of the last command that uses the resource.
     final_stages: PipelineStages,
     // Access for the last command that uses the resource.
-    final_access: AccessFlagBits,
+    final_access: AccessFlags,
 
     // True if the resource is used in exclusive mode.
     exclusive: bool,

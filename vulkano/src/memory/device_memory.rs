@@ -172,7 +172,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         let mut export_info = vk::ExportMemoryAllocateInfo {
             sType: vk::STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO,
             pNext: ptr::null(),
-            handleTypes: handle_types.to_bits(),
+            handleTypes: handle_types.into(),
         };
 
         self = self.push_next(&mut export_info);
@@ -196,7 +196,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         let mut import_info = vk::ImportMemoryFdInfoKHR {
             sType: vk::STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
             pNext: ptr::null(),
-            handleType: handle_types.to_bits(),
+            handleType: handle_types.into(),
             fd: fd.into_raw_fd(),
         };
 
@@ -340,7 +340,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             device: self.device,
             size: self.allocate.allocationSize as usize,
             memory_type_index: self.allocate.memoryTypeIndex,
-            handle_types: ExternalMemoryHandleType::from_bits(export_handle_bits),
+            handle_types: ExternalMemoryHandleType::from(export_handle_bits),
             mapped: Mutex::new(false),
         }))
     }
@@ -560,7 +560,7 @@ impl DeviceMemory {
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-00672: "handleType must be defined as a POSIX file
         // descriptor handle".
-        let bits = handle_type.to_bits();
+        let bits = vk::ExternalMemoryHandleTypeFlags::from(handle_type);
         if bits != vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
             && bits != vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT
         {
@@ -569,7 +569,7 @@ impl DeviceMemory {
 
         // VUID-VkMemoryGetFdInfoKHR-handleType-00671: "handleType must have been included in
         // VkExportMemoryAllocateInfo::handleTypes when memory was created".
-        if handle_type.to_bits() & self.handle_types.to_bits() == 0 {
+        if bits & vk::ExternalMemoryHandleTypeFlags::from(self.handle_types) == 0 {
             return Err(DeviceMemoryAllocError::SpecViolation(671))?;
         }
 
@@ -578,7 +578,7 @@ impl DeviceMemory {
                 sType: vk::STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
                 pNext: ptr::null(),
                 memory: self.memory,
-                handleType: handle_type.to_bits(),
+                handleType: handle_type.into(),
             };
 
             let mut output = MaybeUninit::uninit();

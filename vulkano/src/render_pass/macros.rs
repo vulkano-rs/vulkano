@@ -70,7 +70,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::render_pass::SubpassDependencyDesc;
             use $crate::render_pass::SubpassDesc;
             use $crate::image::ImageLayout;
-            use $crate::sync::AccessFlagBits;
+            use $crate::sync::AccessFlags;
             use $crate::sync::PipelineStages;
 
             let mut attachment_num = 0;
@@ -150,8 +150,8 @@ macro_rules! ordered_passes_renderpass {
                             all_graphics: true,
                             ..PipelineStages::none()
                         }, // TODO: correct values
-                        source_access: AccessFlagBits::all(), // TODO: correct values
-                        destination_access: AccessFlagBits::all(), // TODO: correct values
+                        source_access: AccessFlags::all(), // TODO: correct values
+                        destination_access: AccessFlags::all(), // TODO: correct values
                         by_region: true,                      // TODO: correct values
                     }
                 })

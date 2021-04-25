@@ -36,7 +36,7 @@ use crate::swapchain::SurfaceSwapchainLock;
 use crate::swapchain::SurfaceTransform;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::Fence;
 use crate::sync::FlushError;
 use crate::sync::GpuFuture;
@@ -467,8 +467,9 @@ impl<W> Swapchain<W> {
         if layers < 1 || layers > capabilities.max_image_array_layers {
             return Err(SwapchainCreationError::UnsupportedArrayLayers);
         }
-        if (usage.to_usage_bits() & capabilities.supported_usage_flags.to_usage_bits())
-            != usage.to_usage_bits()
+        if (vk::ImageUsageFlags::from(usage)
+            & vk::ImageUsageFlags::from(capabilities.supported_usage_flags))
+            != vk::ImageUsageFlags::from(usage)
         {
             return Err(SwapchainCreationError::UnsupportedUsageFlags);
         }
@@ -586,7 +587,7 @@ impl<W> Swapchain<W> {
                     height: dimensions[1],
                 },
                 imageArrayLayers: layers,
-                imageUsage: usage.to_usage_bits(),
+                imageUsage: usage.into(),
                 imageSharingMode: sh_mode,
                 queueFamilyIndexCount: sh_count,
                 pQueueFamilyIndices: sh_indices,
@@ -1116,7 +1117,7 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
         _: &dyn BufferAccess,
         _: bool,
         _: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
@@ -1127,7 +1128,7 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
         layout: ImageLayout,
         _: bool,
         _: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() != image.inner().image.internal_object() {
             return Err(AccessCheckError::Unknown);
@@ -1505,7 +1506,7 @@ where
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         self.previous.check_buffer_access(buffer, exclusive, queue)
     }
 
@@ -1516,7 +1517,7 @@ where
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let swapchain_image = self.swapchain.raw_image(self.image_id).unwrap();
         if swapchain_image.image.internal_object() == image.inner().image.internal_object() {
             // This future presents the swapchain image, which "unlocks" it. Therefore any attempt

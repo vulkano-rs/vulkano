@@ -366,10 +366,10 @@ impl RenderPass {
                 vk::SubpassDependency {
                     srcSubpass: dependency.source_subpass as u32,
                     dstSubpass: dependency.destination_subpass as u32,
-                    srcStageMask: dependency.source_stages.into_vulkan_bits(),
-                    dstStageMask: dependency.destination_stages.into_vulkan_bits(),
-                    srcAccessMask: dependency.source_access.into_vulkan_bits(),
-                    dstAccessMask: dependency.destination_access.into_vulkan_bits(),
+                    srcStageMask: dependency.source_stages.into(),
+                    dstStageMask: dependency.destination_stages.into(),
+                    srcAccessMask: dependency.source_access.into(),
+                    dstAccessMask: dependency.destination_access.into(),
                     dependencyFlags: if dependency.by_region {
                         vk::DEPENDENCY_BY_REGION_BIT
                     } else {

@@ -141,10 +141,10 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///
     #[inline]
     pub unsafe fn add_wait_semaphore(&mut self, semaphore: &'a Semaphore, stages: PipelineStages) {
-        debug_assert!(stages.into_vulkan_bits() != 0);
+        debug_assert!(vk::PipelineStageFlags::from(stages) != 0);
         // TODO: debug assert that the device supports the stages
         self.wait_semaphores.push(semaphore.internal_object());
-        self.destination_stages.push(stages.into_vulkan_bits());
+        self.destination_stages.push(stages.into());
     }
 
     /// Adds a command buffer that is executed as part of this command.

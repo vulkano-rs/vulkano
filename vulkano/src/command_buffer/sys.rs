@@ -40,7 +40,7 @@ use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::render_pass::FramebufferAbstract;
 use crate::sampler::Filter;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::Event;
 use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
@@ -170,7 +170,7 @@ impl UnsafeCommandBufferBuilder {
                 query_statistics_flags,
                 ..
             }) => {
-                let ps: vk::QueryPipelineStatisticFlagBits = query_statistics_flags.into();
+                let ps: vk::QueryPipelineStatisticFlags = query_statistics_flags.into();
                 let (oqe, qf) = match occlusion_query {
                     Some(flags) => {
                         let qf = if flags.precise {
@@ -1281,7 +1281,7 @@ impl UnsafeCommandBufferBuilder {
         vk.CmdPushConstants(
             cmd,
             pipeline_layout.sys().internal_object(),
-            stages.into_vulkan_bits(),
+            stages.into(),
             offset as u32,
             size as u32,
             data as *const D as *const _,
@@ -1297,7 +1297,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        vk.CmdResetEvent(cmd, event.internal_object(), stages.into_vulkan_bits());
+        vk.CmdResetEvent(cmd, event.internal_object(), stages.into());
     }
 
     /// Calls `vkCmdResetQueryPool` on the builder.
@@ -1350,7 +1350,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        vk.CmdSetEvent(cmd, event.internal_object(), stages.into_vulkan_bits());
+        vk.CmdSetEvent(cmd, event.internal_object(), stages.into());
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
@@ -1399,7 +1399,7 @@ impl UnsafeCommandBufferBuilder {
         I: Iterator<Item = Scissor>,
     {
         let scissors = scissors
-            .map(|v| v.clone().into_vulkan_rect())
+            .map(|v| vk::Rect2D::from(v.clone()))
             .collect::<SmallVec<[_; 16]>>();
         if scissors.is_empty() {
             return;
@@ -1435,7 +1435,7 @@ impl UnsafeCommandBufferBuilder {
         I: Iterator<Item = Viewport>,
     {
         let viewports = viewports
-            .map(|v| v.clone().into_vulkan_viewport())
+            .map(|v| v.clone().into())
             .collect::<SmallVec<[_; 16]>>();
         if viewports.is_empty() {
             return;
@@ -1768,8 +1768,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         debug_assert_ne!(source, PipelineStages::none());
         debug_assert_ne!(destination, PipelineStages::none());
 
-        self.src_stage_mask |= source.into_vulkan_bits();
-        self.dst_stage_mask |= destination.into_vulkan_bits();
+        self.src_stage_mask |= vk::PipelineStageFlags::from(source);
+        self.dst_stage_mask |= vk::PipelineStageFlags::from(destination);
     }
 
     /// Adds a memory barrier. This means that all the memory writes by the given source stages
@@ -1785,9 +1785,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     pub unsafe fn add_memory_barrier(
         &mut self,
         source_stage: PipelineStages,
-        source_access: AccessFlagBits,
+        source_access: AccessFlags,
         destination_stage: PipelineStages,
-        destination_access: AccessFlagBits,
+        destination_access: AccessFlags,
         by_region: bool,
     ) {
         debug_assert!(source_access.is_compatible_with(&source_stage));
@@ -1798,8 +1798,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.memory_barriers.push(vk::MemoryBarrier {
             sType: vk::STRUCTURE_TYPE_MEMORY_BARRIER,
             pNext: ptr::null(),
-            srcAccessMask: source_access.into_vulkan_bits(),
-            dstAccessMask: destination_access.into_vulkan_bits(),
+            srcAccessMask: source_access.into(),
+            dstAccessMask: destination_access.into(),
         });
     }
 
@@ -1822,9 +1822,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         &mut self,
         buffer: &B,
         source_stage: PipelineStages,
-        source_access: AccessFlagBits,
+        source_access: AccessFlags,
         destination_stage: PipelineStages,
-        destination_access: AccessFlagBits,
+        destination_access: AccessFlags,
         by_region: bool,
         queue_transfer: Option<(u32, u32)>,
         offset: usize,
@@ -1853,8 +1853,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.buffer_barriers.push(vk::BufferMemoryBarrier {
             sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
             pNext: ptr::null(),
-            srcAccessMask: source_access.into_vulkan_bits(),
-            dstAccessMask: destination_access.into_vulkan_bits(),
+            srcAccessMask: source_access.into(),
+            dstAccessMask: destination_access.into(),
             srcQueueFamilyIndex: src_queue,
             dstQueueFamilyIndex: dest_queue,
             buffer: buffer.internal_object(),
@@ -1886,9 +1886,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         mipmaps: Range<u32>,
         layers: Range<u32>,
         source_stage: PipelineStages,
-        source_access: AccessFlagBits,
+        source_access: AccessFlags,
         destination_stage: PipelineStages,
-        destination_access: AccessFlagBits,
+        destination_access: AccessFlags,
         by_region: bool,
         queue_transfer: Option<(u32, u32)>,
         current_layout: ImageLayout,
@@ -1926,8 +1926,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         self.image_barriers.push(vk::ImageMemoryBarrier {
             sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
             pNext: ptr::null(),
-            srcAccessMask: source_access.into_vulkan_bits(),
-            dstAccessMask: destination_access.into_vulkan_bits(),
+            srcAccessMask: source_access.into(),
+            dstAccessMask: destination_access.into(),
             oldLayout: current_layout as u32,
             newLayout: new_layout as u32,
             srcQueueFamilyIndex: src_queue,

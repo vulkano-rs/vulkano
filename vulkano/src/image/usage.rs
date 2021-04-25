@@ -152,39 +152,43 @@ impl ImageUsage {
             input_attachment: false,
         }
     }
+}
 
+impl From<ImageUsage> for vk::ImageUsageFlags {
     #[inline]
-    pub(crate) fn to_usage_bits(&self) -> vk::ImageUsageFlagBits {
+    fn from(val: ImageUsage) -> Self {
         let mut result = 0;
-        if self.transfer_source {
+        if val.transfer_source {
             result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT;
         }
-        if self.transfer_destination {
+        if val.transfer_destination {
             result |= vk::IMAGE_USAGE_TRANSFER_DST_BIT;
         }
-        if self.sampled {
+        if val.sampled {
             result |= vk::IMAGE_USAGE_SAMPLED_BIT;
         }
-        if self.storage {
+        if val.storage {
             result |= vk::IMAGE_USAGE_STORAGE_BIT;
         }
-        if self.color_attachment {
+        if val.color_attachment {
             result |= vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
         }
-        if self.depth_stencil_attachment {
+        if val.depth_stencil_attachment {
             result |= vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
         }
-        if self.transient_attachment {
+        if val.transient_attachment {
             result |= vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
         }
-        if self.input_attachment {
+        if val.input_attachment {
             result |= vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
         }
         result
     }
+}
 
+impl From<vk::ImageUsageFlags> for ImageUsage {
     #[inline]
-    pub(crate) fn from_bits(val: u32) -> ImageUsage {
+    fn from(val: vk::ImageUsageFlags) -> ImageUsage {
         ImageUsage {
             transfer_source: (val & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0,
             transfer_destination: (val & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0,

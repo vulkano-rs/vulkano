@@ -89,6 +89,23 @@
 //!
 //! TODO: write
 
+pub use self::extensions::DeviceExtensions;
+pub use self::extensions::RawDeviceExtensions;
+use crate::check_errors;
+use crate::command_buffer::pool::StandardCommandPool;
+use crate::descriptor::descriptor_set::StdDescriptorPool;
+pub use crate::features::Features;
+use crate::features::FeaturesFfi;
+use crate::instance::Instance;
+use crate::instance::PhysicalDevice;
+use crate::instance::QueueFamily;
+use crate::memory::pool::StdMemoryPool;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::SynchronizedVulkanObject;
+use crate::VulkanHandle;
+use crate::VulkanObject;
 use fnv::FnvHasher;
 use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
@@ -106,33 +123,14 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
-
-use crate::command_buffer::pool::StandardCommandPool;
-use crate::descriptor::descriptor_set::StdDescriptorPool;
-use crate::instance::Instance;
-use crate::instance::PhysicalDevice;
-use crate::instance::QueueFamily;
-use crate::memory::pool::StdMemoryPool;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::SynchronizedVulkanObject;
-use crate::VulkanHandle;
-use crate::VulkanObject;
-
-pub use self::extensions::DeviceExtensions;
-pub use self::extensions::RawDeviceExtensions;
-pub use crate::features::Features;
 mod extensions;
-
 use crate::format::Format;
 use crate::image::ImageCreateFlags;
 use crate::image::ImageFormatProperties;
 use crate::image::ImageTiling;
 use crate::image::ImageType;
 use crate::image::ImageUsage;
+use std::pin::Pin;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -287,7 +285,7 @@ impl Device {
             //       Note that if we ever remove this, don't forget to adjust the change in
             //       `Device`'s construction below.
 
-            let features = requested_features.into_vulkan_features_v2();
+            let features = Pin::<Box<FeaturesFfi>>::from(&requested_features);
 
             let infos = vk::DeviceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
@@ -553,7 +551,7 @@ impl Device {
                 format as u32,
                 ty.into(),
                 tiling.into(),
-                usage.to_usage_bits(),
+                usage.into(),
                 create_flags.into(),
                 output.as_mut_ptr(),
             );

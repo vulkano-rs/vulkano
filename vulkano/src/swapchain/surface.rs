@@ -13,7 +13,7 @@ use crate::image::ImageUsage;
 use crate::instance::Instance;
 use crate::instance::PhysicalDevice;
 use crate::instance::QueueFamily;
-use crate::swapchain::capabilities;
+use crate::swapchain::capabilities::SupportedSurfaceTransforms;
 use crate::swapchain::display::DisplayMode;
 use crate::swapchain::display::DisplayPlane;
 use crate::swapchain::Capabilities;
@@ -598,7 +598,7 @@ impl<W> Surface<W> {
                     .find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR)
                     .is_some());
                 debug_assert!(modes.iter().count() > 0);
-                capabilities::supported_present_modes_from_list(modes.into_iter())
+                modes.into_iter().collect()
             };
 
             Ok(Capabilities {
@@ -618,20 +618,15 @@ impl<W> Surface<W> {
                 min_image_extent: [caps.minImageExtent.width, caps.minImageExtent.height],
                 max_image_extent: [caps.maxImageExtent.width, caps.maxImageExtent.height],
                 max_image_array_layers: caps.maxImageArrayLayers,
-                supported_transforms: capabilities::surface_transforms_from_bits(
-                    caps.supportedTransforms,
-                ),
-                current_transform: capabilities::surface_transforms_from_bits(
-                    caps.currentTransform,
-                )
-                .iter()
-                .next()
-                .unwrap(), // TODO:
-                supported_composite_alpha: capabilities::supported_composite_alpha_from_bits(
-                    caps.supportedCompositeAlpha,
-                ),
+                supported_transforms: caps.supportedTransforms.into(),
+
+                current_transform: SupportedSurfaceTransforms::from(caps.currentTransform)
+                    .iter()
+                    .next()
+                    .unwrap(), // TODO:
+                supported_composite_alpha: caps.supportedCompositeAlpha.into(),
                 supported_usage_flags: {
-                    let usage = ImageUsage::from_bits(caps.supportedUsageFlags);
+                    let usage = ImageUsage::from(caps.supportedUsageFlags);
                     debug_assert!(usage.color_attachment); // specs say that this must be true
                     usage
                 },
@@ -639,9 +634,9 @@ impl<W> Surface<W> {
                     .into_iter()
                     .filter_map(|f| {
                         // TODO: Change the way capabilities not supported in vk-sys are handled
-                        Format::try_from(f.format).ok().map(|format| {
-                            (format, capabilities::color_space_from_num(f.colorSpace))
-                        })
+                        Format::try_from(f.format)
+                            .ok()
+                            .map(|format| (format, f.colorSpace.into()))
                     })
                     .collect(),
                 present_modes: modes,

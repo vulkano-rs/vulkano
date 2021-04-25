@@ -10,7 +10,7 @@
 use crate::image::view::ImageViewAbstract;
 use crate::SafeDeref;
 use std::sync::Arc;
-//use sync::AccessFlagBits;
+//use sync::AccessFlags;
 //use sync::PipelineStages;
 
 /// A list of attachments.
