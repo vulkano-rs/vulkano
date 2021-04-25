@@ -8,7 +8,9 @@
 // according to those terms.
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
@@ -28,15 +30,13 @@ use vulkano::swapchain::{
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
 
+use png;
+use std::io::Cursor;
+use std::sync::Arc;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-use png;
-use std::io::Cursor;
-
-use std::sync::Arc;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -274,9 +274,12 @@ fn main() {
             }
 
             let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
-            let mut builder =
-                AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                    .unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(
+                device.clone(),
+                queue.family(),
+                CommandBufferUsage::OneTimeSubmit,
+            )
+            .unwrap();
             builder
                 .begin_render_pass(
                     framebuffers[image_num].clone(),

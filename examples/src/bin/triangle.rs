@@ -17,7 +17,9 @@
 // what a vertex or a shader is.
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -448,9 +450,10 @@ fn main() {
                 //
                 // Note that we have to pass a queue family when we create the command buffer. The command
                 // buffer will only be executable on that given queue family.
-                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
 

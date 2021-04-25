@@ -19,7 +19,9 @@ extern crate vulkano_win;
 extern crate winit;
 
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -35,7 +37,6 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -313,9 +314,10 @@ fn main() {
 
                 let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
-                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
                 builder

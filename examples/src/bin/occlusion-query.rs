@@ -13,7 +13,9 @@
 
 use std::sync::Arc;
 use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::device::{Device, DeviceExtensions, DeviceOwned};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
@@ -317,9 +319,12 @@ fn main() {
 
             let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into(), 1.0.into()];
 
-            let mut builder =
-                AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                    .unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(
+                device.clone(),
+                queue.family(),
+                CommandBufferUsage::OneTimeSubmit,
+            )
+            .unwrap();
 
             // Beginning or resetting a query is unsafe for now.
             unsafe {

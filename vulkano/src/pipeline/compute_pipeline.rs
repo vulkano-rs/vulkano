@@ -7,14 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::mem;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-
+use crate::check_errors;
 use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::descriptor::pipeline_layout::PipelineLayout;
@@ -25,18 +18,23 @@ use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::descriptor::pipeline_layout::PipelineLayoutSys;
+use crate::device::Device;
+use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
-
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
+use std::marker::PhantomData;
+use std::mem;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// A pipeline object that describes to the Vulkan implementation how it should perform compute
 /// operations.
@@ -409,6 +407,7 @@ mod tests {
     use crate::buffer::BufferUsage;
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
+    use crate::command_buffer::CommandBufferUsage;
     use crate::descriptor::descriptor::DescriptorBufferDesc;
     use crate::descriptor::descriptor::DescriptorDesc;
     use crate::descriptor::descriptor::DescriptorDescTy;
@@ -555,9 +554,12 @@ mod tests {
             .build()
             .unwrap();
 
-        let mut cbb =
-            AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                .unwrap();
+        let mut cbb = AutoCommandBufferBuilder::primary(
+            device.clone(),
+            queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
         cbb.dispatch([1, 1, 1], pipeline.clone(), set, (), vec![])
             .unwrap();
         let cb = cbb.build().unwrap();

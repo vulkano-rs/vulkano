@@ -9,12 +9,12 @@
 
 use crate::buffer::BufferAccess;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::command_buffer::sys::Flags;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
+use crate::command_buffer::CommandBufferUsage;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -426,7 +426,7 @@ impl SyncCommandBufferBuilder {
     pub unsafe fn new<F>(
         pool_alloc: &UnsafeCommandPoolAlloc,
         level: CommandBufferLevel<F>,
-        flags: Flags,
+        usage: CommandBufferUsage,
     ) -> Result<SyncCommandBufferBuilder, OomError>
     where
         F: FramebufferAbstract,
@@ -438,7 +438,7 @@ impl SyncCommandBufferBuilder {
             }
         };
 
-        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, level, flags)?;
+        let cmd = UnsafeCommandBufferBuilder::new(pool_alloc, level, usage)?;
         Ok(SyncCommandBufferBuilder::from_unsafe_cmd(
             cmd,
             is_secondary,
@@ -1502,9 +1502,9 @@ mod tests {
     use crate::buffer::ImmutableBuffer;
     use crate::command_buffer::pool::CommandPool;
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-    use crate::command_buffer::sys::Flags;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferLevel;
+    use crate::command_buffer::CommandBufferUsage;
     use crate::device::Device;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
@@ -1520,7 +1520,7 @@ mod tests {
                 SyncCommandBufferBuilder::new(
                     &pool_builder_alloc.inner(),
                     CommandBufferLevel::primary(),
-                    Flags::None,
+                    CommandBufferUsage::MultipleSubmit,
                 ),
                 Ok(_)
             ));
@@ -1537,7 +1537,7 @@ mod tests {
             let mut sync = SyncCommandBufferBuilder::new(
                 &pool_builder_alloc.inner(),
                 CommandBufferLevel::primary(),
-                Flags::None,
+                CommandBufferUsage::MultipleSubmit,
             )
             .unwrap();
             let buf =
@@ -1571,9 +1571,10 @@ mod tests {
             // Two secondary command buffers that both write to the buffer
             let secondary = (0..2)
                 .map(|_| {
-                    let mut builder = AutoCommandBufferBuilder::secondary_compute_simultaneous_use(
+                    let mut builder = AutoCommandBufferBuilder::secondary_compute(
                         device.clone(),
                         queue.family(),
+                        CommandBufferUsage::SimultaneousUse,
                     )
                     .unwrap();
                     builder.fill_buffer(buf.clone(), 42u32).unwrap();
@@ -1588,7 +1589,7 @@ mod tests {
                 let mut builder = SyncCommandBufferBuilder::new(
                     allocs[0].inner(),
                     CommandBufferLevel::primary(),
-                    Flags::SimultaneousUse,
+                    CommandBufferUsage::SimultaneousUse,
                 )
                 .unwrap();
 
@@ -1615,7 +1616,7 @@ mod tests {
                 let mut builder = SyncCommandBufferBuilder::new(
                     allocs[1].inner(),
                     CommandBufferLevel::primary(),
-                    Flags::SimultaneousUse,
+                    CommandBufferUsage::SimultaneousUse,
                 )
                 .unwrap();
 
