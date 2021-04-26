@@ -11,8 +11,9 @@
 // shader source code. The boilerplate is taken from the "basic-compute-shader.rs" example, where
 // most of the boilerplate is explained.
 
+use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
@@ -20,8 +21,6 @@ use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-
-use std::sync::Arc;
 
 fn main() {
     let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
@@ -91,8 +90,12 @@ fn main() {
             .build()
             .unwrap(),
     );
-    let mut builder =
-        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+    let mut builder = AutoCommandBufferBuilder::primary(
+        device.clone(),
+        queue.family(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
     builder
         .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), (), vec![])
         .unwrap();

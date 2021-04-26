@@ -30,9 +30,12 @@ extern crate vulkano_shaders;
 extern crate vulkano_win;
 extern crate winit;
 
+use std::iter;
+use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuBufferPool};
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, DrawIndirectCommand, DynamicState, SubpassContents,
+    AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, DynamicState,
+    SubpassContents,
 };
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
@@ -50,14 +53,10 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-use std::iter;
-use std::sync::Arc;
 
 // # Vertex Types
 // `Vertex` is the vertex type that will be output from the compute shader and be input to the vertex shader.
@@ -336,9 +335,10 @@ fn main() {
                         .unwrap(),
                 );
 
-                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
 

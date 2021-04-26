@@ -37,25 +37,28 @@
 //! # The `AutoCommandBufferBuilder`
 //!
 //! The most basic (and recommended) way to create a command buffer is to create a
-//! [`AutoCommandBufferBuilder`](struct.AutoCommandBufferBuilder.html). Then use the
-//! [`CommandBufferBuilder` trait](trait.CommandBufferBuilder.html) to add commands to it.
-//! When you are done adding commands, use
-//! [the `CommandBufferBuild` trait](trait.CommandBufferBuild.html) to obtain a
-//! `AutoCommandBuffer`.
+//! [`AutoCommandBufferBuilder`](struct.AutoCommandBufferBuilder.html), then record commands to it.
+//! When you are done adding commands, build it to obtain either a `PrimaryAutoCommandBuffer` or
+//! `SecondAutoCommandBuffer`.
 //!
-//! Once built, use [the `CommandBuffer` trait](trait.CommandBuffer.html) to submit the command
-//! buffer. Submitting a command buffer returns an object that implements the `GpuFuture` trait and
-//! that represents the moment when the execution will end on the GPU.
+//! Once built, use [the `PrimaryCommandBuffer` trait](trait.PrimaryCommandBuffer.html) to submit the
+//! command buffer. Submitting a command buffer returns an object that implements the `GpuFuture` trait
+//! and that represents the moment when the execution will end on the GPU.
 //!
 //! ```
 //! use vulkano::command_buffer::AutoCommandBufferBuilder;
+//! use vulkano::command_buffer::CommandBufferUsage;
 //! use vulkano::command_buffer::PrimaryCommandBuffer;
 //!
 //! # let device: std::sync::Arc<vulkano::device::Device> = return;
 //! # let queue: std::sync::Arc<vulkano::device::Queue> = return;
-//! let cb = AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap()
-//!     // TODO: add an actual command to this example
-//!     .build().unwrap();
+//! let cb = AutoCommandBufferBuilder::primary(
+//!     device.clone(),
+//!     queue.family(),
+//!     CommandBufferUsage::MultipleSubmit
+//! ).unwrap()
+//! // TODO: add an actual command to this example
+//! .build().unwrap();
 //!
 //! let _future = cb.execute(queue.clone());
 //! ```
@@ -268,5 +271,37 @@ impl CommandBufferLevel<Framebuffer<()>> {
             occlusion_query,
             query_statistics_flags,
         })
+    }
+}
+
+/// Usage flags to pass when creating a command buffer.
+///
+/// The safest option is `SimultaneousUse`, but it may be slower than the other two.
+// NOTE: The ordering is important: the variants are listed from least to most permissive!
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CommandBufferUsage {
+    /// The command buffer can only be submitted once before being destroyed. Any further submit is
+    /// forbidden. This makes it possible for the implementation to perform additional
+    /// optimizations.
+    OneTimeSubmit,
+
+    /// The command buffer can be used multiple times, but must not execute or record more than once
+    /// simultaneously. In other words, it is as if executing the command buffer borrows it mutably.
+    MultipleSubmit,
+
+    /// The command buffer can be executed multiple times in parallel on different queues.
+    /// If it's a secondary command buffer, it can be recorded to multiple primary command buffers
+    /// at once.
+    SimultaneousUse,
+}
+
+impl From<CommandBufferUsage> for vk::CommandBufferUsageFlags {
+    #[inline]
+    fn from(val: CommandBufferUsage) -> Self {
+        match val {
+            CommandBufferUsage::OneTimeSubmit => vk::COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+            CommandBufferUsage::MultipleSubmit => 0,
+            CommandBufferUsage::SimultaneousUse => vk::COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
+        }
     }
 }

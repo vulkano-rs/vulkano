@@ -7,9 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
+use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
+use std::iter;
+use std::sync::Arc;
+use std::time::Instant;
 use vulkano::buffer::cpu_pool::CpuBufferPool;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
@@ -29,19 +36,10 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
-
-use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
-
-use std::iter;
-use std::sync::Arc;
-use std::time::Instant;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -248,9 +246,10 @@ fn main() {
                     recreate_swapchain = true;
                 }
 
-                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
                 builder
