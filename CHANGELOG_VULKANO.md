@@ -37,6 +37,8 @@
   - Traits that no longer make sense in this context have been removed: `FormatDesc`, the `Possible*FormatDesc` traits, `StrongStorage`.
   - In types that had a type parameter for the format type, it has been removed.
   - `AcceptsPixels` has been converted to `Pixel`, which is implemented on the pixel type rather than on the format type.
+- **Breaking** `shader!` will generate descriptor information for all variables declared in the shader module, even if they are not used. *This reverts the default behavior from the last release.*
+  - **Breaking** Added the `exact_entrypoint_interface` option to `shader!` to force vulkano to only generate descriptor information for variables that are used. (the default behavior from the last release)
 - Added two methods to `Format`: `planes` to query the number of planes in the format, and `aspects` to query what aspects an image of this type has.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Fixed bug in descriptor array layers check when the image is a cubemap.
