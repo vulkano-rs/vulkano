@@ -365,7 +365,7 @@ impl Instance {
                 extended_properties: PhysicalDeviceExtendedProperties::empty(),
                 memory,
                 queue_families,
-                available_features: Features::from_vulkan_features(available_features),
+                available_features: Features::from(available_features),
             });
         }
         output
@@ -447,7 +447,7 @@ impl Instance {
                 let mut output = FeaturesFfi::new();
                 let ptr = FeaturesFfi::mut_base_ptr(&mut output) as *mut _;
                 vk.GetPhysicalDeviceFeatures2KHR(device, ptr);
-                Features::from_vulkan_features_v2(&output.main)
+                Features::from(&output.main)
             };
 
             output.push(PhysicalDeviceInfos {

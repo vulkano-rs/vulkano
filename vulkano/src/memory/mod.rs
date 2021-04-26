@@ -130,13 +130,13 @@ pub struct MemoryRequirements {
     pub prefer_dedicated: bool,
 }
 
-impl MemoryRequirements {
+impl From<vk::MemoryRequirements> for MemoryRequirements {
     #[inline]
-    pub(crate) fn from_vulkan_reqs(reqs: vk::MemoryRequirements) -> MemoryRequirements {
+    fn from(val: vk::MemoryRequirements) -> Self {
         MemoryRequirements {
-            size: reqs.size as usize,
-            alignment: reqs.alignment as usize,
-            memory_type_bits: reqs.memoryTypeBits,
+            size: val.size as usize,
+            alignment: val.alignment as usize,
+            memory_type_bits: val.memoryTypeBits,
             prefer_dedicated: false,
         }
     }

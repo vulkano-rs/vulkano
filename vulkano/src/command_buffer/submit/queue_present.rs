@@ -106,7 +106,7 @@ impl<'a> SubmitPresentBuilder<'a> {
                 Some(present_region) => {
                     assert!(present_region.is_compatible_with(swapchain));
                     for rectangle in &present_region.rectangles {
-                        self.rect_layers.push(rectangle.to_vk());
+                        self.rect_layers.push(rectangle.into());
                     }
                     vk::PresentRegionKHR {
                         rectangleCount: present_region.rectangles.len() as u32,

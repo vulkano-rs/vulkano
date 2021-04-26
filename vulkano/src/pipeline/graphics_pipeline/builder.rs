@@ -792,10 +792,10 @@ where
         let (vp_vp, vp_sc, vp_num) = match *self.viewport.as_ref().unwrap() {
             ViewportsState::Fixed { ref data } => (
                 data.iter()
-                    .map(|e| e.0.clone().into_vulkan_viewport())
+                    .map(|e| e.0.clone().into())
                     .collect::<SmallVec<[vk::Viewport; 4]>>(),
                 data.iter()
-                    .map(|e| e.1.clone().into_vulkan_rect())
+                    .map(|e| e.1.clone().into())
                     .collect::<SmallVec<[vk::Rect2D; 4]>>(),
                 data.len() as u32,
             ),
@@ -803,7 +803,7 @@ where
                 let num = scissors.len() as u32;
                 let scissors = scissors
                     .iter()
-                    .map(|e| e.clone().into_vulkan_rect())
+                    .map(|e| e.clone().into())
                     .collect::<SmallVec<[vk::Rect2D; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_VIEWPORT);
                 (SmallVec::new(), scissors, num)
@@ -812,7 +812,7 @@ where
                 let num = viewports.len() as u32;
                 let viewports = viewports
                     .iter()
-                    .map(|e| e.clone().into_vulkan_viewport())
+                    .map(|e| e.clone().into())
                     .collect::<SmallVec<[vk::Viewport; 4]>>();
                 dynamic_states.push(vk::DYNAMIC_STATE_SCISSOR);
                 (viewports, SmallVec::new(), num)
@@ -1091,9 +1091,9 @@ where
             let num_atch = self.subpass.as_ref().unwrap().num_color_attachments();
 
             match self.blend.attachments {
-                AttachmentsBlend::Collective(blend) => (0..num_atch)
-                    .map(|_| blend.clone().into_vulkan_state())
-                    .collect(),
+                AttachmentsBlend::Collective(blend) => {
+                    (0..num_atch).map(|_| blend.clone().into()).collect()
+                }
                 AttachmentsBlend::Individual(blend) => {
                     if blend.len() != num_atch as usize {
                         return Err(
@@ -1107,10 +1107,7 @@ where
                         );
                     }
 
-                    blend
-                        .iter()
-                        .map(|b| b.clone().into_vulkan_state())
-                        .collect()
+                    blend.iter().map(|b| b.clone().into()).collect()
                 }
             }
         };

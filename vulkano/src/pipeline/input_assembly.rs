@@ -59,10 +59,10 @@ pub enum PrimitiveTopology {
     PatchList { vertices_per_patch: u32 },
 }
 
-impl Into<vk::PrimitiveTopology> for PrimitiveTopology {
+impl From<PrimitiveTopology> for vk::PrimitiveTopology {
     #[inline]
-    fn into(self) -> vk::PrimitiveTopology {
-        match self {
+    fn from(val: PrimitiveTopology) -> vk::PrimitiveTopology {
+        match val {
             PrimitiveTopology::PointList => vk::PRIMITIVE_TOPOLOGY_POINT_LIST,
             PrimitiveTopology::LineList => vk::PRIMITIVE_TOPOLOGY_LINE_LIST,
             PrimitiveTopology::LineStrip => vk::PRIMITIVE_TOPOLOGY_LINE_STRIP,

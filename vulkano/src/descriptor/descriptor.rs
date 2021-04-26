@@ -43,7 +43,7 @@
 
 use crate::format::Format;
 use crate::image::view::ImageViewType;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
 use crate::vk;
 use std::cmp;
@@ -187,38 +187,36 @@ impl DescriptorDesc {
     ///
     /// Panics if the type is `Sampler`.
     ///
-    pub fn pipeline_stages_and_access(&self) -> (PipelineStages, AccessFlagBits) {
+    pub fn pipeline_stages_and_access(&self) -> (PipelineStages, AccessFlags) {
         let stages: PipelineStages = self.stages.into();
 
         let access = match self.ty {
             DescriptorDescTy::Sampler => panic!(),
-            DescriptorDescTy::CombinedImageSampler(_) | DescriptorDescTy::Image(_) => {
-                AccessFlagBits {
-                    shader_read: true,
-                    shader_write: !self.readonly,
-                    ..AccessFlagBits::none()
-                }
-            }
-            DescriptorDescTy::TexelBuffer { .. } => AccessFlagBits {
+            DescriptorDescTy::CombinedImageSampler(_) | DescriptorDescTy::Image(_) => AccessFlags {
                 shader_read: true,
                 shader_write: !self.readonly,
-                ..AccessFlagBits::none()
+                ..AccessFlags::none()
             },
-            DescriptorDescTy::InputAttachment { .. } => AccessFlagBits {
+            DescriptorDescTy::TexelBuffer { .. } => AccessFlags {
+                shader_read: true,
+                shader_write: !self.readonly,
+                ..AccessFlags::none()
+            },
+            DescriptorDescTy::InputAttachment { .. } => AccessFlags {
                 input_attachment_read: true,
-                ..AccessFlagBits::none()
+                ..AccessFlags::none()
             },
             DescriptorDescTy::Buffer(ref buf) => {
                 if buf.storage {
-                    AccessFlagBits {
+                    AccessFlags {
                         shader_read: true,
                         shader_write: !self.readonly,
-                        ..AccessFlagBits::none()
+                        ..AccessFlags::none()
                     }
                 } else {
-                    AccessFlagBits {
+                    AccessFlags {
                         uniform_read: true,
-                        ..AccessFlagBits::none()
+                        ..AccessFlags::none()
                     }
                 }
             }
@@ -743,26 +741,28 @@ impl ShaderStages {
             || (self.fragment && other.fragment)
             || (self.compute && other.compute)
     }
+}
 
+impl From<ShaderStages> for vk::ShaderStageFlags {
     #[inline]
-    pub(crate) fn into_vulkan_bits(self) -> vk::ShaderStageFlags {
+    fn from(val: ShaderStages) -> vk::ShaderStageFlags {
         let mut result = 0;
-        if self.vertex {
+        if val.vertex {
             result |= vk::SHADER_STAGE_VERTEX_BIT;
         }
-        if self.tessellation_control {
+        if val.tessellation_control {
             result |= vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT;
         }
-        if self.tessellation_evaluation {
+        if val.tessellation_evaluation {
             result |= vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
         }
-        if self.geometry {
+        if val.geometry {
             result |= vk::SHADER_STAGE_GEOMETRY_BIT;
         }
-        if self.fragment {
+        if val.fragment {
             result |= vk::SHADER_STAGE_FRAGMENT_BIT;
         }
-        if self.compute {
+        if val.compute {
             result |= vk::SHADER_STAGE_COMPUTE_BIT;
         }
         result

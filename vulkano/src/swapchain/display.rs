@@ -28,20 +28,17 @@
 #![allow(dead_code)] // TODO: this module isn't finished
 #![allow(unused_variables)] // TODO: this module isn't finished
 
+use crate::check_errors;
+use crate::instance::Instance;
+use crate::instance::PhysicalDevice;
+use crate::swapchain::SupportedSurfaceTransforms;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 use std::ffi::CStr;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter;
-
-use crate::instance::Instance;
-use crate::instance::PhysicalDevice;
-use crate::swapchain::capabilities;
-use crate::swapchain::SupportedSurfaceTransforms;
-
-use crate::check_errors;
-use crate::vk;
-use crate::OomError;
-use crate::VulkanObject;
 
 // TODO: extract this to a `display` module and solve the visibility problems
 
@@ -262,7 +259,7 @@ impl Display {
     /// Returns the transforms supported by this display.
     #[inline]
     pub fn supported_transforms(&self) -> SupportedSurfaceTransforms {
-        capabilities::surface_transforms_from_bits(self.properties.supportedTransforms)
+        self.properties.supportedTransforms.into()
     }
 
     /// Returns true if TODO.

@@ -11,7 +11,7 @@ use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::ImageLayout;
 use crate::pipeline::shader::ShaderInterfaceDef;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
 use crate::vk;
 
@@ -250,10 +250,10 @@ pub struct SubpassDependencyDesc {
     pub destination_stages: PipelineStages,
 
     /// The way the source subpass accesses the attachments on which we depend.
-    pub source_access: AccessFlagBits,
+    pub source_access: AccessFlags,
 
     /// The way the destination subpass accesses the attachments on which we depend.
-    pub destination_access: AccessFlagBits,
+    pub destination_access: AccessFlags,
 
     /// If false, then the whole subpass must be finished for the next one to start. If true, then
     /// the implementation can start the new subpass for some given pixels as long as the previous

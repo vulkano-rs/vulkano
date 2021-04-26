@@ -17,7 +17,7 @@ use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::sync::AccessCheckError;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::FlushError;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
@@ -207,7 +207,7 @@ where
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let first = self.first.check_buffer_access(buffer, exclusive, queue);
         let second = self.second.check_buffer_access(buffer, exclusive, queue);
         debug_assert!(
@@ -238,7 +238,7 @@ where
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         let first = self
             .first
             .check_image_access(image, layout, exclusive, queue);

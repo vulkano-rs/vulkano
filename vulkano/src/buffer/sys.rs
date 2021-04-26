@@ -104,15 +104,15 @@ impl UnsafeBuffer {
         if sparse.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
             return Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled);
         }
+        let usage_bits = usage.into();
         if usage.device_address && !device.enabled_features().buffer_device_address {
             usage.device_address = false;
-            if usage.to_vulkan_bits() == 0 {
+            if usage_bits == 0 {
                 // return an error iff device_address was the only requested usage and the
                 // feature isn't enabled. Otherwise we'll hit that assert below.
                 return Err(BufferCreationError::DeviceAddressFeatureNotEnabled);
             }
         }
-        let usage_bits = usage.to_vulkan_bits();
 
         // Checking for empty BufferUsage.
         assert!(
@@ -129,7 +129,7 @@ impl UnsafeBuffer {
             let infos = vk::BufferCreateInfo {
                 sType: vk::STRUCTURE_TYPE_BUFFER_CREATE_INFO,
                 pNext: ptr::null(),
-                flags: sparse.to_flags(),
+                flags: sparse.into(),
                 size: size as u64,
                 usage: usage_bits,
                 sharingMode: sh_mode,
@@ -184,7 +184,7 @@ impl UnsafeBuffer {
                 debug_assert!(output.memoryRequirements.size >= size as u64);
                 debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
 
-                let mut out = MemoryRequirements::from_vulkan_reqs(output.memoryRequirements);
+                let mut out = MemoryRequirements::from(output.memoryRequirements);
                 if let Some(output2) = output2 {
                     debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
                     out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
@@ -200,7 +200,7 @@ impl UnsafeBuffer {
                 let output = output.assume_init();
                 debug_assert!(output.size >= size as u64);
                 debug_assert!(output.memoryTypeBits != 0);
-                MemoryRequirements::from_vulkan_reqs(output)
+                MemoryRequirements::from(output)
             };
 
             // We have to manually enforce some additional requirements for some buffer types.
@@ -411,17 +411,19 @@ impl SparseLevel {
             sparse_aliased: false,
         }
     }
+}
 
+impl From<SparseLevel> for vk::BufferCreateFlags {
     #[inline]
-    fn to_flags(&self) -> vk::BufferCreateFlagBits {
+    fn from(val: SparseLevel) -> Self {
         let mut result = 0;
-        if self.sparse {
+        if val.sparse {
             result |= vk::BUFFER_CREATE_SPARSE_BINDING_BIT;
         }
-        if self.sparse_residency {
+        if val.sparse_residency {
             result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
         }
-        if self.sparse_aliased {
+        if val.sparse_aliased {
             result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT;
         }
         result

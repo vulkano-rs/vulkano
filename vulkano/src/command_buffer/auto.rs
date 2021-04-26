@@ -67,7 +67,7 @@ use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
 use crate::sampler::Filter;
 use crate::sync::AccessCheckError;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStage;
@@ -2306,7 +2306,7 @@ unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
         buffer: &dyn BufferAccess,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         self.inner.check_buffer_access(buffer, exclusive, queue)
     }
 
@@ -2317,7 +2317,7 @@ unsafe impl<P> PrimaryCommandBuffer for PrimaryAutoCommandBuffer<P> {
         layout: ImageLayout,
         exclusive: bool,
         queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         self.inner
             .check_image_access(image, layout, exclusive, queue)
     }

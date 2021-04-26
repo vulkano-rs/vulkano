@@ -10,6 +10,7 @@
 use crate::format::Format;
 use crate::image::ImageUsage;
 use crate::vk;
+use std::iter::FromIterator;
 
 /// The capabilities of a surface when used by a physical device.
 ///
@@ -99,23 +100,25 @@ pub struct SupportedPresentModes {
     pub shared_continuous: bool,
 }
 
-pub fn supported_present_modes_from_list<I>(elem: I) -> SupportedPresentModes
-where
-    I: Iterator<Item = vk::PresentModeKHR>,
-{
-    let mut result = SupportedPresentModes::none();
-    for e in elem {
-        match e {
-            vk::PRESENT_MODE_IMMEDIATE_KHR => result.immediate = true,
-            vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
-            vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
-            vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
-            vk::PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR => result.shared_demand = true,
-            vk::PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR => result.shared_continuous = true,
-            _ => {}
+impl FromIterator<vk::PresentModeKHR> for SupportedPresentModes {
+    fn from_iter<T>(iter: T) -> Self
+    where
+        T: IntoIterator<Item = vk::PresentModeKHR>,
+    {
+        let mut result = SupportedPresentModes::none();
+        for e in iter {
+            match e {
+                vk::PRESENT_MODE_IMMEDIATE_KHR => result.immediate = true,
+                vk::PRESENT_MODE_MAILBOX_KHR => result.mailbox = true,
+                vk::PRESENT_MODE_FIFO_KHR => result.fifo = true,
+                vk::PRESENT_MODE_FIFO_RELAXED_KHR => result.relaxed = true,
+                vk::PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR => result.shared_demand = true,
+                vk::PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR => result.shared_continuous = true,
+                _ => {}
+            }
         }
+        result
     }
-    result
 }
 
 impl SupportedPresentModes {
@@ -235,21 +238,24 @@ pub struct SupportedCompositeAlpha {
     pub inherit: bool,
 }
 
-pub fn supported_composite_alpha_from_bits(val: u32) -> SupportedCompositeAlpha {
-    let mut result = SupportedCompositeAlpha::none();
-    if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 {
-        result.opaque = true;
+impl From<vk::CompositeAlphaFlagsKHR> for SupportedCompositeAlpha {
+    #[inline]
+    fn from(val: vk::CompositeAlphaFlagsKHR) -> SupportedCompositeAlpha {
+        let mut result = SupportedCompositeAlpha::none();
+        if (val & vk::COMPOSITE_ALPHA_OPAQUE_BIT_KHR) != 0 {
+            result.opaque = true;
+        }
+        if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 {
+            result.pre_multiplied = true;
+        }
+        if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 {
+            result.post_multiplied = true;
+        }
+        if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 {
+            result.inherit = true;
+        }
+        result
     }
-    if (val & vk::COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR) != 0 {
-        result.pre_multiplied = true;
-    }
-    if (val & vk::COMPOSITE_ALPHA_POST_MULTIPLIED_BIT_KHR) != 0 {
-        result.post_multiplied = true;
-    }
-    if (val & vk::COMPOSITE_ALPHA_INHERIT_BIT_KHR) != 0 {
-        result.inherit = true;
-    }
-    result
 }
 
 impl SupportedCompositeAlpha {
@@ -325,68 +331,68 @@ pub struct SupportedSurfaceTransforms {
     pub inherit: bool,
 }
 
-pub fn surface_transforms_from_bits(
-    val: vk::SurfaceTransformFlagsKHR,
-) -> SupportedSurfaceTransforms {
-    macro_rules! v {
-        ($val:expr, $out:ident, $e:expr, $f:ident) => {
-            if ($val & $e) != 0 {
-                $out.$f = true;
-            }
-        };
-    }
+impl From<vk::SurfaceTransformFlagsKHR> for SupportedSurfaceTransforms {
+    fn from(val: vk::SurfaceTransformFlagsKHR) -> Self {
+        macro_rules! v {
+            ($val:expr, $out:ident, $e:expr, $f:ident) => {
+                if ($val & $e) != 0 {
+                    $out.$f = true;
+                }
+            };
+        }
 
-    let mut result = SupportedSurfaceTransforms::none();
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
-        identity
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
-        rotate90
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
-        rotate180
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
-        rotate270
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
-        horizontal_mirror
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
-        horizontal_mirror_rotate90
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
-        horizontal_mirror_rotate180
-    );
-    v!(
-        val,
-        result,
-        vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
-        horizontal_mirror_rotate270
-    );
-    v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
-    result
+        let mut result = SupportedSurfaceTransforms::none();
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR,
+            identity
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_ROTATE_90_BIT_KHR,
+            rotate90
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_ROTATE_180_BIT_KHR,
+            rotate180
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_ROTATE_270_BIT_KHR,
+            rotate270
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_BIT_KHR,
+            horizontal_mirror
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_90_BIT_KHR,
+            horizontal_mirror_rotate90
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_180_BIT_KHR,
+            horizontal_mirror_rotate180
+        );
+        v!(
+            val,
+            result,
+            vk::SURFACE_TRANSFORM_HORIZONTAL_MIRROR_ROTATE_270_BIT_KHR,
+            horizontal_mirror_rotate270
+        );
+        v!(val, result, vk::SURFACE_TRANSFORM_INHERIT_BIT_KHR, inherit);
+        result
+    }
 }
 
 impl SupportedSurfaceTransforms {
@@ -591,23 +597,25 @@ pub enum ColorSpace {
     PassThrough = vk::COLOR_SPACE_PASS_THROUGH_EXT,
 }
 
-#[inline]
-pub fn color_space_from_num(val: u32) -> ColorSpace {
-    match val {
-        vk::COLOR_SPACE_SRGB_NONLINEAR_KHR => ColorSpace::SrgbNonLinear,
-        vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
-        vk::COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT => ColorSpace::ExtendedSrgbLinear,
-        vk::COLOR_SPACE_DCI_P3_LINEAR_EXT => ColorSpace::DciP3Linear,
-        vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
-        vk::COLOR_SPACE_BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
-        vk::COLOR_SPACE_BT709_NONLINEAR_EXT => ColorSpace::Bt709NonLinear,
-        vk::COLOR_SPACE_BT2020_LINEAR_EXT => ColorSpace::Bt2020Linear,
-        vk::COLOR_SPACE_HDR10_ST2084_EXT => ColorSpace::Hdr10St2084,
-        vk::COLOR_SPACE_DOLBYVISION_EXT => ColorSpace::DolbyVision,
-        vk::COLOR_SPACE_HDR10_HLG_EXT => ColorSpace::Hdr10Hlg,
-        vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
-        vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
-        vk::COLOR_SPACE_PASS_THROUGH_EXT => ColorSpace::PassThrough,
-        _ => panic!("Wrong value for color space enum"),
+impl From<vk::ColorSpaceKHR> for ColorSpace {
+    #[inline]
+    fn from(val: vk::ColorSpaceKHR) -> Self {
+        match val {
+            vk::COLOR_SPACE_SRGB_NONLINEAR_KHR => ColorSpace::SrgbNonLinear,
+            vk::COLOR_SPACE_DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
+            vk::COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT => ColorSpace::ExtendedSrgbLinear,
+            vk::COLOR_SPACE_DCI_P3_LINEAR_EXT => ColorSpace::DciP3Linear,
+            vk::COLOR_SPACE_DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
+            vk::COLOR_SPACE_BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
+            vk::COLOR_SPACE_BT709_NONLINEAR_EXT => ColorSpace::Bt709NonLinear,
+            vk::COLOR_SPACE_BT2020_LINEAR_EXT => ColorSpace::Bt2020Linear,
+            vk::COLOR_SPACE_HDR10_ST2084_EXT => ColorSpace::Hdr10St2084,
+            vk::COLOR_SPACE_DOLBYVISION_EXT => ColorSpace::DolbyVision,
+            vk::COLOR_SPACE_HDR10_HLG_EXT => ColorSpace::Hdr10Hlg,
+            vk::COLOR_SPACE_ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
+            vk::COLOR_SPACE_ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
+            vk::COLOR_SPACE_PASS_THROUGH_EXT => ColorSpace::PassThrough,
+            _ => panic!("Wrong value for color space enum"),
+        }
     }
 }

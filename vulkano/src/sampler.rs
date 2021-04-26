@@ -327,9 +327,9 @@ impl Sampler {
                 magFilter: mag_filter as u32,
                 minFilter: min_filter as u32,
                 mipmapMode: mipmap_mode as u32,
-                addressModeU: address_u.to_vk(),
-                addressModeV: address_v.to_vk(),
-                addressModeW: address_w.to_vk(),
+                addressModeU: address_u.into(),
+                addressModeV: address_v.into(),
+                addressModeW: address_w.into(),
                 mipLodBias: mip_lod_bias,
                 anisotropyEnable: if max_anisotropy > 1.0 {
                     vk::TRUE
@@ -426,8 +426,8 @@ impl Sampler {
                 magFilter: filter as u32,
                 minFilter: filter as u32,
                 mipmapMode: vk::SAMPLER_MIPMAP_MODE_NEAREST,
-                addressModeU: address_u.to_vk(),
-                addressModeV: address_v.to_vk(),
+                addressModeU: address_u.into(),
+                addressModeV: address_v.into(),
                 addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, // unused by the impl
                 mipLodBias: 0.0,
                 anisotropyEnable: vk::FALSE,
@@ -601,21 +601,23 @@ pub enum SamplerAddressMode {
 
 impl SamplerAddressMode {
     #[inline]
-    fn to_vk(self) -> vk::SamplerAddressMode {
+    fn border_color(self) -> Option<BorderColor> {
         match self {
+            SamplerAddressMode::ClampToBorder(c) => Some(c),
+            _ => None,
+        }
+    }
+}
+
+impl From<SamplerAddressMode> for vk::SamplerAddressMode {
+    #[inline]
+    fn from(val: SamplerAddressMode) -> Self {
+        match val {
             SamplerAddressMode::Repeat => vk::SAMPLER_ADDRESS_MODE_REPEAT,
             SamplerAddressMode::MirroredRepeat => vk::SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
             SamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
             SamplerAddressMode::ClampToBorder(_) => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
             SamplerAddressMode::MirrorClampToEdge => vk::SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
-        }
-    }
-
-    #[inline]
-    fn border_color(self) -> Option<BorderColor> {
-        match self {
-            SamplerAddressMode::ClampToBorder(c) => Some(c),
-            _ => None,
         }
     }
 }
@@ -640,20 +642,22 @@ pub enum UnnormalizedSamplerAddressMode {
 
 impl UnnormalizedSamplerAddressMode {
     #[inline]
-    fn to_vk(self) -> vk::SamplerAddressMode {
-        match self {
-            UnnormalizedSamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            UnnormalizedSamplerAddressMode::ClampToBorder(_) => {
-                vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
-            }
-        }
-    }
-
-    #[inline]
     fn border_color(self) -> Option<BorderColor> {
         match self {
             UnnormalizedSamplerAddressMode::ClampToEdge => None,
             UnnormalizedSamplerAddressMode::ClampToBorder(c) => Some(c),
+        }
+    }
+}
+
+impl From<UnnormalizedSamplerAddressMode> for vk::SamplerAddressMode {
+    #[inline]
+    fn from(val: UnnormalizedSamplerAddressMode) -> Self {
+        match val {
+            UnnormalizedSamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            UnnormalizedSamplerAddressMode::ClampToBorder(_) => {
+                vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+            }
         }
     }
 }

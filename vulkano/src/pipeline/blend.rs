@@ -149,29 +149,31 @@ impl AttachmentBlend {
             mask_alpha: true,
         }
     }
+}
 
+impl From<AttachmentBlend> for vk::PipelineColorBlendAttachmentState {
     #[inline]
-    pub(crate) fn into_vulkan_state(self) -> vk::PipelineColorBlendAttachmentState {
+    fn from(val: AttachmentBlend) -> Self {
         vk::PipelineColorBlendAttachmentState {
-            blendEnable: if self.enabled { vk::TRUE } else { vk::FALSE },
-            srcColorBlendFactor: self.color_source as u32,
-            dstColorBlendFactor: self.color_destination as u32,
-            colorBlendOp: self.color_op as u32,
-            srcAlphaBlendFactor: self.alpha_source as u32,
-            dstAlphaBlendFactor: self.alpha_destination as u32,
-            alphaBlendOp: self.alpha_op as u32,
+            blendEnable: if val.enabled { vk::TRUE } else { vk::FALSE },
+            srcColorBlendFactor: val.color_source as u32,
+            dstColorBlendFactor: val.color_destination as u32,
+            colorBlendOp: val.color_op as u32,
+            srcAlphaBlendFactor: val.alpha_source as u32,
+            dstAlphaBlendFactor: val.alpha_destination as u32,
+            alphaBlendOp: val.alpha_op as u32,
             colorWriteMask: {
                 let mut mask = 0;
-                if self.mask_red {
+                if val.mask_red {
                     mask |= vk::COLOR_COMPONENT_R_BIT;
                 }
-                if self.mask_green {
+                if val.mask_green {
                     mask |= vk::COLOR_COMPONENT_G_BIT;
                 }
-                if self.mask_blue {
+                if val.mask_blue {
                     mask |= vk::COLOR_COMPONENT_B_BIT;
                 }
-                if self.mask_alpha {
+                if val.mask_alpha {
                     mask |= vk::COLOR_COMPONENT_A_BIT;
                 }
                 mask

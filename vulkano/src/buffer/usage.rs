@@ -33,42 +33,6 @@ pub struct BufferUsage {
 }
 
 impl BufferUsage {
-    /// Turns this `BufferUsage` into raw Vulkan bits.
-    pub(crate) fn to_vulkan_bits(&self) -> vk::BufferUsageFlagBits {
-        let mut result = 0;
-        if self.transfer_source {
-            result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
-        }
-        if self.transfer_destination {
-            result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
-        }
-        if self.uniform_texel_buffer {
-            result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
-        }
-        if self.storage_texel_buffer {
-            result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
-        }
-        if self.uniform_buffer {
-            result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-        }
-        if self.storage_buffer {
-            result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
-        }
-        if self.index_buffer {
-            result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
-        }
-        if self.vertex_buffer {
-            result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
-        }
-        if self.indirect_buffer {
-            result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
-        }
-        if self.device_address {
-            result |= vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
-        }
-        result
-    }
-
     /// Builds a `BufferUsage` with all values set to false.
     #[inline]
     pub const fn none() -> BufferUsage {
@@ -207,6 +171,43 @@ impl BufferUsage {
             device_address: true,
             ..BufferUsage::none()
         }
+    }
+}
+
+impl From<BufferUsage> for vk::BufferUsageFlags {
+    fn from(val: BufferUsage) -> Self {
+        let mut result = 0;
+        if val.transfer_source {
+            result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
+        }
+        if val.transfer_destination {
+            result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
+        }
+        if val.uniform_texel_buffer {
+            result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+        }
+        if val.storage_texel_buffer {
+            result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+        }
+        if val.uniform_buffer {
+            result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+        }
+        if val.storage_buffer {
+            result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
+        }
+        if val.index_buffer {
+            result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
+        }
+        if val.vertex_buffer {
+            result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        }
+        if val.indirect_buffer {
+            result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+        }
+        if val.device_address {
+            result |= vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        }
+        result
     }
 }
 

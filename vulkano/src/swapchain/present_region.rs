@@ -50,18 +50,21 @@ impl RectangleLayer {
             && self.offset[1] as u32 + self.extent[1] <= swapchain.dimensions()[1]
             && self.layer < swapchain.layers()
     }
+}
 
-    pub(crate) fn to_vk(&self) -> vk::RectLayerKHR {
+impl From<&RectangleLayer> for vk::RectLayerKHR {
+    #[inline]
+    fn from(val: &RectangleLayer) -> Self {
         vk::RectLayerKHR {
             offset: vk::Offset2D {
-                x: self.offset[0],
-                y: self.offset[1],
+                x: val.offset[0],
+                y: val.offset[1],
             },
             extent: vk::Extent2D {
-                width: self.extent[0],
-                height: self.extent[1],
+                width: val.extent[0],
+                height: val.extent[1],
             },
-            layer: self.layer,
+            layer: val.layer,
         }
     }
 }

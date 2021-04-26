@@ -17,7 +17,7 @@ use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::sync::AccessCheckError;
-use crate::sync::AccessFlagBits;
+use crate::sync::AccessFlags;
 use crate::sync::FlushError;
 use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
@@ -66,7 +66,7 @@ unsafe impl GpuFuture for NowFuture {
         buffer: &dyn BufferAccess,
         _: bool,
         _: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 
@@ -77,7 +77,7 @@ unsafe impl GpuFuture for NowFuture {
         _: ImageLayout,
         _: bool,
         _: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlagBits)>, AccessCheckError> {
+    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         Err(AccessCheckError::Unknown)
     }
 }
