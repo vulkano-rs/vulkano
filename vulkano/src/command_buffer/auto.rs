@@ -16,7 +16,6 @@ use crate::command_buffer::pool::CommandPoolBuilderAlloc;
 use crate::command_buffer::synced::SyncCommandBuffer;
 use crate::command_buffer::synced::SyncCommandBufferBuilder;
 use crate::command_buffer::synced::SyncCommandBufferBuilderError;
-use crate::command_buffer::sys::Flags;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
@@ -27,6 +26,7 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferInheritance;
 use crate::command_buffer::CommandBufferInheritanceRenderPass;
 use crate::command_buffer::CommandBufferLevel;
+use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::DispatchIndirectCommand;
 use crate::command_buffer::DrawIndexedIndirectCommand;
 use crate::command_buffer::DrawIndirectCommand;
@@ -103,8 +103,8 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     // The inheritance for secondary command buffers.
     inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>>,
 
-    // Flags passed when creating the command buffer.
-    flags: Flags,
+    // Usage flags passed when creating the command buffer.
+    usage: CommandBufferUsage,
 
     // If we're inside a render pass, contains the render pass state.
     render_pass_state: Option<RenderPassState>,
@@ -132,132 +132,38 @@ struct QueryState {
 }
 
 impl AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder> {
-    #[inline]
-    pub fn new(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-    ) -> Result<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            CommandBufferLevel::primary(),
-            Flags::None,
-        )
-    }
-
     /// Starts building a primary command buffer.
-    ///
-    /// The final command buffer can only be executed once at a time. In other words, it is as if
-    /// executing the command buffer modifies it.
     #[inline]
     pub fn primary(
         device: Arc<Device>,
         queue_family: QueueFamily,
+        usage: CommandBufferUsage,
     ) -> Result<
         AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
-        AutoCommandBufferBuilder::with_flags(
+        AutoCommandBufferBuilder::with_level(
             device,
             queue_family,
+            usage,
             CommandBufferLevel::primary(),
-            Flags::None,
-        )
-    }
-
-    /// Starts building a primary command buffer.
-    ///
-    /// Contrary to `primary`, the final command buffer can only be submitted once before being
-    /// destroyed. This makes it possible for the implementation to perform additional
-    /// optimizations.
-    #[inline]
-    pub fn primary_one_time_submit(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-    ) -> Result<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            CommandBufferLevel::primary(),
-            Flags::OneTimeSubmit,
-        )
-    }
-
-    /// Starts building a primary command buffer.
-    ///
-    /// Contrary to `primary`, the final command buffer can be executed multiple times in parallel
-    /// in multiple different queues.
-    #[inline]
-    pub fn primary_simultaneous_use(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-    ) -> Result<
-        AutoCommandBufferBuilder<PrimaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            CommandBufferLevel::primary(),
-            Flags::SimultaneousUse,
         )
     }
 }
 
 impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder> {
     /// Starts building a secondary compute command buffer.
-    ///
-    /// The final command buffer can only be executed once at a time. In other words, it is as if
-    /// executing the command buffer modifies it.
     #[inline]
     pub fn secondary_compute(
         device: Arc<Device>,
         queue_family: QueueFamily,
+        usage: CommandBufferUsage,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
         OomError,
     > {
         let level = CommandBufferLevel::secondary(None, QueryPipelineStatisticFlags::none());
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::None)
-    }
-
-    /// Starts building a secondary compute command buffer.
-    ///
-    /// Contrary to `secondary_compute`, the final command buffer can only be submitted once before
-    /// being destroyed. This makes it possible for the implementation to perform additional
-    /// optimizations.
-    #[inline]
-    pub fn secondary_compute_one_time_submit(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        let level = CommandBufferLevel::secondary(None, QueryPipelineStatisticFlags::none());
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::OneTimeSubmit)
-    }
-
-    /// Starts building a secondary compute command buffer.
-    ///
-    /// Contrary to `secondary_compute`, the final command buffer can be executed multiple times in
-    /// parallel in multiple different queues.
-    #[inline]
-    pub fn secondary_compute_simultaneous_use(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        let level = CommandBufferLevel::secondary(None, QueryPipelineStatisticFlags::none());
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::SimultaneousUse)
+        AutoCommandBufferBuilder::with_level(device, queue_family, usage, level)
     }
 
     /// Same as `secondary_compute`, but allows specifying how queries are being inherited.
@@ -265,6 +171,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     pub fn secondary_compute_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
+        usage: CommandBufferUsage,
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
     ) -> Result<
@@ -282,82 +189,20 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
         }
 
         let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        Ok(AutoCommandBufferBuilder::with_flags(
+        Ok(AutoCommandBufferBuilder::with_level(
             device,
             queue_family,
+            usage,
             level,
-            Flags::None,
-        )?)
-    }
-
-    /// Same as `secondary_compute_one_time_submit`, but allows specifying how queries are being inherited.
-    #[inline]
-    pub fn secondary_compute_one_time_submit_inherit_queries(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        BeginError,
-    > {
-        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
-            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
-        }
-
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
-            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
-        }
-
-        let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        Ok(AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            level,
-            Flags::OneTimeSubmit,
-        )?)
-    }
-
-    /// Same as `secondary_compute_simultaneous_use`, but allows specifying how queries are being inherited.
-    #[inline]
-    pub fn secondary_compute_simultaneous_use_inherit_queries(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        BeginError,
-    > {
-        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
-            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
-        }
-
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
-            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
-        }
-
-        let level = CommandBufferLevel::secondary(occlusion_query, query_statistics_flags);
-        Ok(AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            level,
-            Flags::SimultaneousUse,
         )?)
     }
 
     /// Starts building a secondary graphics command buffer.
-    ///
-    /// The final command buffer can only be executed once at a time. In other words, it is as if
-    /// executing the command buffer modifies it.
     #[inline]
     pub fn secondary_graphics(
         device: Arc<Device>,
         queue_family: QueueFamily,
+        usage: CommandBufferUsage,
         subpass: Subpass,
     ) -> Result<
         AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
@@ -372,58 +217,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags: QueryPipelineStatisticFlags::none(),
         });
 
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::None)
-    }
-
-    /// Starts building a secondary graphics command buffer.
-    ///
-    /// Contrary to `secondary_graphics`, the final command buffer can only be submitted once
-    /// before being destroyed. This makes it possible for the implementation to perform additional
-    /// optimizations.
-    #[inline]
-    pub fn secondary_graphics_one_time_submit<R>(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        subpass: Subpass,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None::<Arc<Framebuffer<()>>>,
-            }),
-            occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::none(),
-        });
-
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::OneTimeSubmit)
-    }
-
-    /// Starts building a secondary graphics command buffer.
-    ///
-    /// Contrary to `secondary_graphics`, the final command buffer can be executed multiple times
-    /// in parallel in multiple different queues.
-    #[inline]
-    pub fn secondary_graphics_simultaneous_use<R>(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        subpass: Subpass,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        OomError,
-    > {
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None::<Arc<Framebuffer<()>>>,
-            }),
-            occlusion_query: None,
-            query_statistics_flags: QueryPipelineStatisticFlags::none(),
-        });
-
-        AutoCommandBufferBuilder::with_flags(device, queue_family, level, Flags::SimultaneousUse)
+        AutoCommandBufferBuilder::with_level(device, queue_family, usage, level)
     }
 
     /// Same as `secondary_graphics`, but allows specifying how queries are being inherited.
@@ -431,6 +225,7 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
     pub fn secondary_graphics_inherit_queries(
         device: Arc<Device>,
         queue_family: QueueFamily,
+        usage: CommandBufferUsage,
         subpass: Subpass,
         occlusion_query: Option<QueryControlFlags>,
         query_statistics_flags: QueryPipelineStatisticFlags,
@@ -457,100 +252,22 @@ impl AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBui
             query_statistics_flags,
         });
 
-        Ok(AutoCommandBufferBuilder::with_flags(
+        Ok(AutoCommandBufferBuilder::with_level(
             device,
             queue_family,
+            usage,
             level,
-            Flags::None,
-        )?)
-    }
-
-    /// Same as `secondary_graphics_one_time_submit`, but allows specifying how queries are being inherited.
-    #[inline]
-    pub fn secondary_graphics_one_time_submit_inherit_queries(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        subpass: Subpass,
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        BeginError,
-    > {
-        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
-            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
-        }
-
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
-            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
-        }
-
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None::<Arc<Framebuffer<()>>>,
-            }),
-            occlusion_query,
-            query_statistics_flags,
-        });
-
-        Ok(AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            level,
-            Flags::OneTimeSubmit,
-        )?)
-    }
-
-    /// Same as `secondary_graphics_simultaneous_use`, but allows specifying how queries are being inherited.
-    #[inline]
-    pub fn secondary_graphics_simultaneous_use_inherit_queries(
-        device: Arc<Device>,
-        queue_family: QueueFamily,
-        subpass: Subpass,
-        occlusion_query: Option<QueryControlFlags>,
-        query_statistics_flags: QueryPipelineStatisticFlags,
-    ) -> Result<
-        AutoCommandBufferBuilder<SecondaryAutoCommandBuffer, StandardCommandPoolBuilder>,
-        BeginError,
-    > {
-        if occlusion_query.is_some() && !device.enabled_features().inherited_queries {
-            return Err(BeginError::InheritedQueriesFeatureNotEnabled);
-        }
-
-        if query_statistics_flags.count() > 0
-            && !device.enabled_features().pipeline_statistics_query
-        {
-            return Err(BeginError::PipelineStatisticsQueryFeatureNotEnabled);
-        }
-
-        let level = CommandBufferLevel::Secondary(CommandBufferInheritance {
-            render_pass: Some(CommandBufferInheritanceRenderPass {
-                subpass,
-                framebuffer: None::<Arc<Framebuffer<()>>>,
-            }),
-            occlusion_query,
-            query_statistics_flags,
-        });
-
-        Ok(AutoCommandBufferBuilder::with_flags(
-            device,
-            queue_family,
-            level,
-            Flags::SimultaneousUse,
         )?)
     }
 }
 
 impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
     // Actual constructor. Private.
-    fn with_flags<F>(
+    fn with_level<F>(
         device: Arc<Device>,
         queue_family: QueueFamily,
+        usage: CommandBufferUsage,
         level: CommandBufferLevel<F>,
-        flags: Flags,
     ) -> Result<AutoCommandBufferBuilder<L, StandardCommandPoolBuilder>, OomError>
     where
         F: FramebufferAbstract + Clone + Send + Sync + 'static,
@@ -597,7 +314,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 .alloc(!matches!(level, CommandBufferLevel::Primary), 1)?
                 .next()
                 .expect("Requested one command buffer from the command pool, but got zero.");
-            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), level, flags)?;
+            let inner = SyncCommandBufferBuilder::new(pool_builder_alloc.inner(), level, usage)?;
 
             Ok(AutoCommandBufferBuilder {
                 inner,
@@ -607,7 +324,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                 render_pass_state,
                 query_state: FnvHashMap::default(),
                 inheritance,
-                flags,
+                usage,
                 _data: PhantomData,
             })
         }
@@ -677,12 +394,12 @@ where
             return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
         }
 
-        let submit_state = match self.flags {
-            Flags::None => SubmitState::ExclusiveUse {
+        let submit_state = match self.usage {
+            CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
                 in_use: AtomicBool::new(false),
             },
-            Flags::SimultaneousUse => SubmitState::Concurrent,
-            Flags::OneTimeSubmit => SubmitState::OneTime {
+            CommandBufferUsage::SimultaneousUse => SubmitState::Concurrent,
+            CommandBufferUsage::OneTimeSubmit => SubmitState::OneTime {
                 already_submitted: AtomicBool::new(false),
             },
         };
@@ -706,12 +423,12 @@ where
             return Err(AutoCommandBufferBuilderContextError::QueryIsActive.into());
         }
 
-        let submit_state = match self.flags {
-            Flags::None => SubmitState::ExclusiveUse {
+        let submit_state = match self.usage {
+            CommandBufferUsage::MultipleSubmit => SubmitState::ExclusiveUse {
                 in_use: AtomicBool::new(false),
             },
-            Flags::SimultaneousUse => SubmitState::Concurrent,
-            Flags::OneTimeSubmit => SubmitState::OneTime {
+            CommandBufferUsage::SimultaneousUse => SubmitState::Concurrent,
+            CommandBufferUsage::OneTimeSubmit => SubmitState::OneTime {
                 already_submitted: AtomicBool::new(false),
             },
         };
@@ -2127,7 +1844,7 @@ where
         C: SecondaryCommandBuffer + Send + Sync + 'static,
     {
         self.check_command_buffer(&command_buffer)?;
-        let secondary_flags = command_buffer.inner().flags();
+        let secondary_usage = command_buffer.inner().usage();
 
         unsafe {
             let mut builder = self.inner.execute_commands();
@@ -2139,7 +1856,7 @@ where
         self.state_cacher.invalidate();
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
-        self.flags = std::cmp::min(self.flags, secondary_flags);
+        self.usage = std::cmp::min(self.usage, secondary_usage);
 
         Ok(self)
     }
@@ -2161,11 +1878,11 @@ where
             self.check_command_buffer(command_buffer)?;
         }
 
-        let mut secondary_flags = Flags::SimultaneousUse; // Most permissive flags
+        let mut secondary_usage = CommandBufferUsage::SimultaneousUse; // Most permissive usage
         unsafe {
             let mut builder = self.inner.execute_commands();
             for command_buffer in command_buffers {
-                secondary_flags = std::cmp::min(secondary_flags, command_buffer.inner().flags());
+                secondary_usage = std::cmp::min(secondary_usage, command_buffer.inner().usage());
                 builder.add(command_buffer);
             }
             builder.submit()?;
@@ -2175,7 +1892,7 @@ where
         self.state_cacher.invalidate();
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
-        self.flags = std::cmp::min(self.flags, secondary_flags);
+        self.usage = std::cmp::min(self.usage, secondary_usage);
 
         Ok(self)
     }
@@ -3017,6 +2734,7 @@ mod tests {
     use crate::command_buffer::synced::SyncCommandBufferBuilderError;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferExecError;
+    use crate::command_buffer::CommandBufferUsage;
     use crate::command_buffer::ExecuteCommandsError;
     use crate::command_buffer::PrimaryCommandBuffer;
     use crate::device::Device;
@@ -3066,9 +2784,12 @@ mod tests {
         )
         .unwrap();
 
-        let mut cbb =
-            AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                .unwrap();
+        let mut cbb = AutoCommandBufferBuilder::primary(
+            device.clone(),
+            queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
         cbb.copy_buffer_dimensions(source.clone(), 0, destination.clone(), 1, 2)
             .unwrap();
@@ -3092,14 +2813,21 @@ mod tests {
         let (device, queue) = gfx_dev_and_queue!();
 
         // Make a secondary CB that doesn't support simultaneous use.
-        let builder =
-            AutoCommandBufferBuilder::secondary_compute(device.clone(), queue.family()).unwrap();
+        let builder = AutoCommandBufferBuilder::secondary_compute(
+            device.clone(),
+            queue.family(),
+            CommandBufferUsage::MultipleSubmit,
+        )
+        .unwrap();
         let secondary = Arc::new(builder.build().unwrap());
 
         {
-            let mut builder =
-                AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue.family())
-                    .unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(
+                device.clone(),
+                queue.family(),
+                CommandBufferUsage::SimultaneousUse,
+            )
+            .unwrap();
 
             // Add the secondary a first time
             builder.execute_commands(secondary.clone()).unwrap();
@@ -3117,15 +2845,21 @@ mod tests {
         }
 
         {
-            let mut builder =
-                AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue.family())
-                    .unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(
+                device.clone(),
+                queue.family(),
+                CommandBufferUsage::SimultaneousUse,
+            )
+            .unwrap();
             builder.execute_commands(secondary.clone()).unwrap();
             let cb1 = builder.build().unwrap();
 
-            let mut builder =
-                AutoCommandBufferBuilder::primary_simultaneous_use(device.clone(), queue.family())
-                    .unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(
+                device.clone(),
+                queue.family(),
+                CommandBufferUsage::SimultaneousUse,
+            )
+            .unwrap();
 
             // Recording the same non-concurrent secondary command buffer into multiple
             // primaries is an error.

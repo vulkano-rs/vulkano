@@ -7,19 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
-use std::ptr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
-
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
@@ -42,6 +29,18 @@ use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use std::cmp;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::iter;
+use std::marker::PhantomData;
+use std::mem;
+use std::ptr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::MutexGuard;
 
 use crate::OomError;
 
@@ -73,6 +72,7 @@ use crate::OomError;
 /// ```
 /// use vulkano::buffer::CpuBufferPool;
 /// use vulkano::command_buffer::AutoCommandBufferBuilder;
+/// use vulkano::command_buffer::CommandBufferUsage;
 /// use vulkano::command_buffer::PrimaryCommandBuffer;
 /// use vulkano::sync::GpuFuture;
 /// # let device: std::sync::Arc<vulkano::device::Device> = return;
@@ -87,7 +87,7 @@ use crate::OomError;
 ///     let sub_buffer = buffer.next(data).unwrap();
 ///
 ///     // You can then use `sub_buffer` as if it was an entirely separate buffer.
-///     AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
+///     AutoCommandBufferBuilder::primary(device.clone(), queue.family(), CommandBufferUsage::OneTimeSubmit)
 ///         .unwrap()
 ///         // For the sake of the example we just call `update_buffer` on the buffer, even though
 ///         // it is pointless to do that.

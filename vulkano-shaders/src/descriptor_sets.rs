@@ -31,11 +31,12 @@ pub(super) fn write_descriptor_sets(
     entrypoint_id: u32,
     interface: &[u32],
     types_meta: &TypesMeta,
+    exact_entrypoint_interface: bool,
 ) -> TokenStream {
     // TODO: somewhat implemented correctly
 
     // Finding all the descriptors.
-    let descriptors = find_descriptors(doc, entrypoint_id, interface);
+    let descriptors = find_descriptors(doc, entrypoint_id, interface, exact_entrypoint_interface);
 
     // Looping to find all the push constant structs.
     let mut push_constants_size = 0;
@@ -138,14 +139,19 @@ pub(super) fn write_descriptor_sets(
     }
 }
 
-fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<Descriptor> {
+fn find_descriptors(
+    doc: &Spirv,
+    entrypoint_id: u32,
+    interface: &[u32],
+    exact: bool,
+) -> Vec<Descriptor> {
     let mut descriptors = Vec::new();
 
     // For SPIR-V 1.4+, the entrypoint interface can specify variables of all storage classes,
     // and most tools will put all used variables in the entrypoint interface. However,
     // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
     // and instead the function itself must be inspected.
-    let variables = {
+    let variables = if exact {
         let mut found_variables: HashSet<u32> = interface.iter().cloned().collect();
         let mut inspected_functions: HashSet<u32> = HashSet::new();
         find_variables_in_function(
@@ -154,14 +160,16 @@ fn find_descriptors(doc: &Spirv, entrypoint_id: u32, interface: &[u32]) -> Vec<D
             &mut inspected_functions,
             &mut found_variables,
         );
-        found_variables
+        Some(found_variables)
+    } else {
+        None
     };
 
     // Looping to find all the interface elements that have the `DescriptorSet` decoration.
     for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
         let variable_id = set_decoration.target_id;
 
-        if !variables.contains(&variable_id) {
+        if exact && !variables.as_ref().unwrap().contains(&variable_id) {
             continue;
         }
 
@@ -650,7 +658,7 @@ mod tests {
                 id, ref interface, ..
             } = instruction
             {
-                descriptors.push(find_descriptors(&doc, id, interface));
+                descriptors.push(find_descriptors(&doc, id, interface, true));
             }
         }
 
@@ -724,7 +732,7 @@ mod tests {
                 id, ref interface, ..
             } = instruction
             {
-                let descriptors = find_descriptors(&doc, id, interface);
+                let descriptors = find_descriptors(&doc, id, interface, true);
                 let mut bindings = Vec::new();
                 for d in descriptors {
                     bindings.push((d.set, d.binding));

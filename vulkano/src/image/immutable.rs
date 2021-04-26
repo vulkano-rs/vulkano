@@ -13,6 +13,7 @@ use crate::buffer::CpuAccessibleBuffer;
 use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::AutoCommandBufferBuilder;
 use crate::command_buffer::CommandBufferExecFuture;
+use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::PrimaryAutoCommandBuffer;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::device::Device;
@@ -388,7 +389,11 @@ impl ImmutableImage {
             ImageLayout::ShaderReadOnlyOptimal,
         );
 
-        let mut cbb = AutoCommandBufferBuilder::new(source.device().clone(), queue.family())?;
+        let mut cbb = AutoCommandBufferBuilder::primary(
+            source.device().clone(),
+            queue.family(),
+            CommandBufferUsage::MultipleSubmit,
+        )?;
         cbb.copy_buffer_to_image_dimensions(
             source,
             init,

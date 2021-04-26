@@ -206,7 +206,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
     }
 
     // Private function -- no doc comment needed!  Copied shamelessly and poorly from Ash.
-    fn push_next<T: ExtendsMemoryAllocateInfo>(mut self, next: &mut T) -> DeviceMemoryBuilder<'a> {
+    fn push_next<T: ExtendsMemoryAllocateInfo>(self, next: &mut T) -> DeviceMemoryBuilder<'a> {
         unsafe {
             let next_ptr = next as *mut T as *mut BaseOutStructure;
             let mut prev = self.allocate.pNext as *mut BaseOutStructure;

@@ -19,8 +19,12 @@
 //      See: https://github.com/vulkano-rs/vulkano/issues/1221
 //      Finally, I have not profiled CpuBufferPool against CpuAccessibleBuffer
 
+use std::sync::Arc;
+use std::time::{SystemTime, UNIX_EPOCH};
 use vulkano::buffer::CpuBufferPool;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -35,14 +39,10 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Default, Debug, Clone)]
 struct Vertex {
@@ -274,9 +274,10 @@ fn main() {
 
                 // Allocate a new chunk from buffer_pool
                 let buffer = buffer_pool.chunk(data.to_vec()).unwrap();
-                let mut builder = AutoCommandBufferBuilder::primary_one_time_submit(
+                let mut builder = AutoCommandBufferBuilder::primary(
                     device.clone(),
                     queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
                 builder

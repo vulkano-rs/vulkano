@@ -204,6 +204,7 @@ pub(super) fn reflect<'a, I>(
     spirv: &[u32],
     types_meta: TypesMeta,
     input_paths: I,
+    exact_entrypoint_interface: bool,
     dump: bool,
 ) -> Result<TokenStream, Error>
 where
@@ -263,8 +264,12 @@ where
     let mut entry_points_outside_impl: Vec<TokenStream> = vec![];
     for instruction in doc.instructions.iter() {
         if let &Instruction::EntryPoint { .. } = instruction {
-            let (outside, entry_point, descriptor_sets) =
-                entry_point::write_entry_point(&doc, instruction, &types_meta);
+            let (outside, entry_point, descriptor_sets) = entry_point::write_entry_point(
+                &doc,
+                instruction,
+                &types_meta,
+                exact_entrypoint_interface,
+            );
             entry_points_inside_impl.push(entry_point);
             entry_points_outside_impl.push(outside);
             entry_points_outside_impl.push(descriptor_sets);

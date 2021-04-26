@@ -17,7 +17,7 @@
 use std::mem;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::pipeline_layout::{PipelineLayoutDesc, PipelineLayoutDescTweaks};
 use vulkano::descriptor::PipelineLayoutAbstract;
@@ -165,8 +165,12 @@ fn main() {
     );
 
     // Build the command buffer, using different offsets for each call.
-    let mut builder =
-        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+    let mut builder = AutoCommandBufferBuilder::primary(
+        device.clone(),
+        queue.family(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
     builder
         .dispatch(
             [12, 1, 1],

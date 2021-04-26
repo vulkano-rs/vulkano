@@ -19,10 +19,17 @@
 // $ glslangValidator frag.glsl -V -S frag -o frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
 
+use std::borrow::Cow;
+use std::ffi::CStr;
+use std::fs::File;
+use std::io::Read;
+use std::sync::Arc;
 use vulkano as vk;
 use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
 use vulkano::buffer::BufferUsage;
-use vulkano::command_buffer::{AutoCommandBufferBuilder, DynamicState, SubpassContents};
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
+};
 use vulkano::descriptor::descriptor::DescriptorDesc;
 use vulkano::descriptor::descriptor::ShaderStages;
 use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
@@ -47,17 +54,10 @@ use vulkano::swapchain::{
 };
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-use std::borrow::Cow;
-use std::ffi::CStr;
-use std::fs::File;
-use std::io::Read;
-use std::sync::Arc;
 
 #[derive(Default, Copy, Clone)]
 pub struct Vertex {
@@ -517,8 +517,12 @@ fn main() {
             }
 
             let clear_values = vec![[0.0, 0.0, 0.0, 1.0].into()];
-            let mut builder =
-                AutoCommandBufferBuilder::new(device.clone(), queue.family()).unwrap();
+            let mut builder = AutoCommandBufferBuilder::primary(
+                device.clone(),
+                queue.family(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .unwrap();
             builder
                 .begin_render_pass(
                     framebuffers[image_num].clone(),

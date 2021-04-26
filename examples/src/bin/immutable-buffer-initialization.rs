@@ -9,8 +9,9 @@
 
 // This example demonstrates how to initialize immutable buffers.
 
+use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
-use vulkano::command_buffer::AutoCommandBufferBuilder;
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
@@ -18,8 +19,6 @@ use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-
-use std::sync::Arc;
 
 fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
@@ -91,9 +90,12 @@ void main() {
         };
 
         // Build command buffer which initialize our buffer.
-        let mut builder =
-            AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family())
-                .unwrap();
+        let mut builder = AutoCommandBufferBuilder::primary(
+            device.clone(),
+            queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
 
         // Initializing a immutable buffer is done by coping data to
         // ImmutableBufferInitialization which is returned by a function we use to create buffer.
@@ -130,8 +132,12 @@ void main() {
             .unwrap(),
     );
 
-    let mut builder =
-        AutoCommandBufferBuilder::primary_one_time_submit(device.clone(), queue.family()).unwrap();
+    let mut builder = AutoCommandBufferBuilder::primary(
+        device.clone(),
+        queue.family(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
 
     builder
         .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), (), vec![])

@@ -14,10 +14,10 @@ use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
 use std::sync::Arc;
-use vulkano::command_buffer::AutoCommandBufferBuilder;
-use vulkano::command_buffer::PrimaryAutoCommandBuffer;
-use vulkano::command_buffer::SecondaryCommandBuffer;
-use vulkano::command_buffer::SubpassContents;
+use vulkano::command_buffer::{
+    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryAutoCommandBuffer, SecondaryCommandBuffer,
+    SubpassContents,
+};
 use vulkano::device::Queue;
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
@@ -299,9 +299,10 @@ impl FrameSystem {
         );
 
         // Start the command buffer builder that will be filled throughout the frame handling.
-        let mut command_buffer_builder = AutoCommandBufferBuilder::primary_one_time_submit(
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.gfx_queue.device().clone(),
             self.gfx_queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
         command_buffer_builder
