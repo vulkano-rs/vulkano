@@ -16,21 +16,6 @@
 //! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
 //! or write and write simultaneously will block.
 
-use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::ptr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
 use crate::buffer::sys::BufferCreationError;
 use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
@@ -59,6 +44,20 @@ use crate::sync::Sharing;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 use parking_lot::RwLockWriteGuard;
+use smallvec::SmallVec;
+use std::error;
+use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::iter;
+use std::marker::PhantomData;
+use std::mem;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::ptr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 /// Buffer whose content is accessible by the CPU.
 ///

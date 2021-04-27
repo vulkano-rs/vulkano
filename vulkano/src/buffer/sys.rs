@@ -24,6 +24,18 @@
 //!   sparse binding.
 //! - Type safety.
 
+use crate::buffer::BufferUsage;
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
+use crate::memory::MemoryRequirements;
+use crate::sync::Sharing;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -34,26 +46,12 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::buffer::BufferUsage;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
-use crate::memory::MemoryRequirements;
-use crate::sync::Sharing;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-
 /// Data storage in a GPU-accessible location.
 pub struct UnsafeBuffer {
     buffer: vk::Buffer,
     device: Arc<Device>,
     size: usize,
-    usage: vk::BufferUsageFlags,
+    usage: BufferUsage,
 }
 
 impl UnsafeBuffer {
@@ -104,16 +102,18 @@ impl UnsafeBuffer {
         if sparse.sparse_aliased && !device.enabled_features().sparse_residency_aliased {
             return Err(BufferCreationError::SparseResidencyAliasedFeatureNotEnabled);
         }
-        let usage_bits = usage.into();
         if usage.device_address && !device.enabled_features().buffer_device_address {
             usage.device_address = false;
-            if usage_bits == 0 {
+            if vk::BufferUsageFlags::from(usage) == 0 {
                 // return an error iff device_address was the only requested usage and the
                 // feature isn't enabled. Otherwise we'll hit that assert below.
+                // TODO: This is weird, why not just return an error always if the feature is not enabled?
+                // You can't use BufferUsage::all() anymore, but is that a good idea anyway?
                 return Err(BufferCreationError::DeviceAddressFeatureNotEnabled);
             }
         }
 
+        let usage_bits = usage.into();
         // Checking for empty BufferUsage.
         assert!(
             usage_bits != 0,
@@ -233,12 +233,13 @@ impl UnsafeBuffer {
             buffer: buffer,
             device: device.clone(),
             size: size as usize,
-            usage: usage_bits,
+            usage,
         };
 
         Ok((obj, mem_reqs))
     }
 
+    /// Binds device memory to this buffer.
     pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize) -> Result<(), OomError> {
         let vk = self.device.pointers();
 
@@ -260,13 +261,13 @@ impl UnsafeBuffer {
         // Check for alignment correctness.
         {
             let limits = self.device().physical_device().limits();
-            if self.usage_uniform_texel_buffer() || self.usage_storage_texel_buffer() {
+            if self.usage().uniform_texel_buffer || self.usage().storage_texel_buffer {
                 debug_assert!(offset % limits.min_texel_buffer_offset_alignment() as usize == 0);
             }
-            if self.usage_storage_buffer() {
+            if self.usage().storage_buffer {
                 debug_assert!(offset % limits.min_storage_buffer_offset_alignment() as usize == 0);
             }
-            if self.usage_uniform_buffer() {
+            if self.usage().uniform_buffer {
                 debug_assert!(offset % limits.min_uniform_buffer_offset_alignment() as usize == 0);
             }
         }
@@ -286,54 +287,10 @@ impl UnsafeBuffer {
         self.size
     }
 
+    /// Returns the buffer the image was created with.
     #[inline]
-    pub fn usage_transfer_source(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_TRANSFER_SRC_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_transfer_destination(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_TRANSFER_DST_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_uniform_texel_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_storage_texel_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_uniform_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_storage_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_STORAGE_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_index_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_INDEX_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_vertex_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_VERTEX_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_indirect_buffer(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT) != 0
-    }
-
-    #[inline]
-    pub fn usage_device_address(&self) -> bool {
-        (self.usage & vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT) != 0
+    pub fn usage(&self) -> BufferUsage {
+        self.usage
     }
 
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
@@ -395,6 +352,7 @@ impl Hash for UnsafeBuffer {
     }
 }
 
+/// The level of sparse binding that a buffer should be created with.
 #[derive(Debug, Copy, Clone)]
 pub struct SparseLevel {
     pub sparse: bool,

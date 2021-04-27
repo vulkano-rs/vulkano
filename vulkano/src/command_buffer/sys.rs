@@ -358,7 +358,7 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage_index_buffer());
+        debug_assert!(inner.buffer.usage().index_buffer);
 
         vk.CmdBindIndexBuffer(
             cmd,
@@ -794,11 +794,11 @@ impl UnsafeCommandBufferBuilder {
 
         let source = source.inner();
         debug_assert!(source.offset < source.buffer.size());
-        debug_assert!(source.buffer.usage_transfer_source());
+        debug_assert!(source.buffer.usage().transfer_source);
 
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage_transfer_destination());
+        debug_assert!(destination.buffer.usage().transfer_destination);
 
         let regions: SmallVec<[_; 8]> = regions
             .map(|(sr, de, sz)| vk::BufferCopy {
@@ -841,7 +841,7 @@ impl UnsafeCommandBufferBuilder {
     {
         let source = source.inner();
         debug_assert!(source.offset < source.buffer.size());
-        debug_assert!(source.buffer.usage_transfer_source());
+        debug_assert!(source.buffer.usage().transfer_source);
 
         debug_assert_eq!(destination.samples(), 1);
         let destination = destination.inner();
@@ -923,7 +923,7 @@ impl UnsafeCommandBufferBuilder {
 
         let destination = destination.inner();
         debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage_transfer_destination());
+        debug_assert!(destination.buffer.usage().transfer_destination);
 
         let regions: SmallVec<[_; 8]> = regions
             .map(|copy| {
@@ -985,7 +985,7 @@ impl UnsafeCommandBufferBuilder {
         let destination = destination.inner();
         let range = queries.range();
         debug_assert!(destination.offset < destination.buffer.size());
-        debug_assert!(destination.buffer.usage_transfer_destination());
+        debug_assert!(destination.buffer.usage().transfer_destination);
         debug_assert!(destination.offset % std::mem::size_of::<T>() == 0);
         debug_assert!(stride % std::mem::size_of::<T>() == 0);
 
@@ -1033,7 +1033,7 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage_indirect_buffer());
+        debug_assert!(inner.buffer.usage().indirect_buffer);
         debug_assert_eq!(inner.offset % 4, 0);
 
         vk.CmdDispatchIndirect(
@@ -1102,7 +1102,7 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage_indirect_buffer());
+        debug_assert!(inner.buffer.usage().indirect_buffer);
 
         vk.CmdDrawIndirect(
             cmd,
@@ -1124,7 +1124,7 @@ impl UnsafeCommandBufferBuilder {
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
-        debug_assert!(inner.buffer.usage_indirect_buffer());
+        debug_assert!(inner.buffer.usage().indirect_buffer);
 
         vk.CmdDrawIndexedIndirect(
             cmd,
@@ -1182,7 +1182,7 @@ impl UnsafeCommandBufferBuilder {
                 buffer: buffer_inner,
                 offset,
             } = buffer.inner();
-            debug_assert!(buffer_inner.usage_transfer_destination());
+            debug_assert!(buffer_inner.usage().transfer_destination);
             debug_assert_eq!(offset % 4, 0);
             (buffer_inner.internal_object(), offset)
         };
@@ -1459,7 +1459,7 @@ impl UnsafeCommandBufferBuilder {
                 buffer: buffer_inner,
                 offset,
             } = buffer.inner();
-            debug_assert!(buffer_inner.usage_transfer_destination());
+            debug_assert!(buffer_inner.usage().transfer_destination);
             debug_assert_eq!(offset % 4, 0);
             (buffer_inner.internal_object(), offset)
         };
@@ -1578,7 +1578,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
         B: ?Sized + BufferAccess,
     {
         let inner = buffer.inner();
-        debug_assert!(inner.buffer.usage_vertex_buffer());
+        debug_assert!(inner.buffer.usage().vertex_buffer);
         self.raw_buffers.push(inner.buffer.internal_object());
         self.offsets.push(inner.offset as vk::DeviceSize);
     }

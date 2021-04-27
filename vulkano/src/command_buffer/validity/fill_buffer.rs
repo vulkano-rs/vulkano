@@ -30,7 +30,7 @@ where
         device.internal_object()
     );
 
-    if !buffer.inner().buffer.usage_transfer_destination() {
+    if !buffer.inner().buffer.usage().transfer_destination {
         return Err(CheckFillBufferError::BufferMissingUsage);
     }
 

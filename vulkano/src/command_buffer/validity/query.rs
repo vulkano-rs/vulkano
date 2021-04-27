@@ -269,7 +269,7 @@ where
         query_pool.device().internal_object(),
     );
 
-    if !buffer_inner.buffer.usage_transfer_destination() {
+    if !buffer_inner.buffer.usage().transfer_destination {
         return Err(CheckCopyQueryPoolResultsError::DestinationMissingTransferUsage);
     }
 

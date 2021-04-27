@@ -464,7 +464,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 );
 
                 if buffer_desc.storage {
-                    if !buffer.inner().buffer.usage_storage_buffer() {
+                    if !buffer.inner().buffer.usage().storage_buffer {
                         return Err(PersistentDescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::StorageBuffer,
                         ));
@@ -478,7 +478,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                         )
                     }
                 } else {
-                    if !buffer.inner().buffer.usage_uniform_buffer() {
+                    if !buffer.inner().buffer.usage().uniform_buffer {
                         return Err(PersistentDescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::UniformBuffer,
                         ));

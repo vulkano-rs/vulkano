@@ -63,7 +63,7 @@ where
 
     match ty {
         CheckCopyBufferImageTy::BufferToImage => {
-            if !buffer_inner.buffer.usage_transfer_source() {
+            if !buffer_inner.buffer.usage().transfer_source {
                 return Err(CheckCopyBufferImageError::SourceMissingTransferUsage);
             }
             if !image_inner.image.usage().transfer_destination {
@@ -74,7 +74,7 @@ where
             if !image_inner.image.usage().transfer_source {
                 return Err(CheckCopyBufferImageError::SourceMissingTransferUsage);
             }
-            if !buffer_inner.buffer.usage_transfer_destination() {
+            if !buffer_inner.buffer.usage().transfer_destination {
                 return Err(CheckCopyBufferImageError::DestinationMissingTransferUsage);
             }
         }

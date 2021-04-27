@@ -27,7 +27,7 @@ where
         device.internal_object()
     );
 
-    if !buffer.inner().buffer.usage_indirect_buffer() {
+    if !buffer.inner().buffer.usage().indirect_buffer {
         return Err(CheckIndirectBufferError::BufferMissingUsage);
     }
 
