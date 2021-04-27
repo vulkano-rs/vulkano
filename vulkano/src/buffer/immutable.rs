@@ -19,7 +19,6 @@
 //!
 
 use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
@@ -289,7 +288,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, None) {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(), // We don't use sparse binding, therefore the other

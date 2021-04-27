@@ -13,16 +13,7 @@
 //! You can read the buffer multiple times simultaneously from multiple queues. Trying to read and
 //! write simultaneously, or write and write simultaneously will block with a semaphore.
 
-use smallvec::SmallVec;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::marker::PhantomData;
-use std::mem;
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
@@ -44,7 +35,14 @@ use crate::memory::{DedicatedAlloc, MemoryRequirements};
 use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use smallvec::SmallVec;
 use std::fs::File;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::marker::PhantomData;
+use std::mem;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -221,7 +219,7 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, None) {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
