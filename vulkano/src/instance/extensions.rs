@@ -160,6 +160,15 @@ instance_extensions! {
     ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
     khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
     khr_get_surface_capabilities2 => b"VK_KHR_get_surface_capabilities2",
+    khr_device_group_creation => b"VK_KHR_device_group_creation",
+    khr_external_fence_capabilities => b"VK_KHR_external_fence_capabilities",
+    khr_external_memory_capabilities => b"VK_KHR_external_memory_capabilities",
+    khr_external_semaphore_capabilities => b"VK_KHR_external_semaphore_capabilities",
+    khr_get_display_properties2 => b"VK_KHR_get_display_properties2",
+    ext_acquire_xlib_display => b"VK_EXT_acquire_xlib_display",
+    ext_debug_report => b"VK_EXT_debug_report",
+    ext_direct_mode_display => b"VK_EXT_direct_mode_display",
+    ext_display_surface_counter => b"VK_EXT_display_surface_counter",
 }
 
 /// This helper type can only be instantiated inside this module.
