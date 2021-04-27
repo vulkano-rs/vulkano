@@ -178,39 +178,30 @@
 //!     .. ImageUsage::none()
 //! };
 //!
-//! let sharing_mode = SharingMode::Exclusive;
-//!
 //! // Create the swapchain and its buffers.
-//! let (swapchain, buffers) = Swapchain::new(
-//!     // Create the swapchain in this `device`'s memory.
-//!     device,
-//!     // The surface where the images will be presented.
-//!     surface,
+//! let (swapchain, buffers) = Swapchain::start(
+//!         // Create the swapchain in this `device`'s memory.
+//!         device,
+//!         // The surface where the images will be presented.
+//!         surface,
+//!     )
 //!     // How many buffers to use in the swapchain.
-//!     buffers_count,
+//!     .num_images(buffers_count)
 //!     // The format of the images.
-//!     format,
+//!     .format(format)
 //!     // The size of each image.
-//!     dimensions,
-//!     // How many layers each image has.
-//!     1,
+//!     .dimensions(Some(dimensions))
 //!     // What the images are going to be used for.
-//!     usage,
-//!     // Describes which queues will interact with the swapchain.
-//!     sharing_mode,
+//!     .usage(usage)
 //!     // What transformation to use with the surface.
-//!     surface_transform,
+//!     .transform(surface_transform)
 //!     // How to handle the alpha channel.
-//!     composite_alpha,
+//!     .composite_alpha(composite_alpha)
 //!     // How to present images.
-//!     present_mode,
+//!     .present_mode(present_mode)
 //!     // How to handle fullscreen exclusivity
-//!     fullscreen_exclusive,
-//!     // Clip the parts of the buffer which aren't visible.
-//!     true,
-//!     // No previous swapchain.
-//!     ColorSpace::SrgbNonLinear
-//! )?;
+//!     .fullscreen_exclusive(fullscreen_exclusive)
+//!     .build()?;
 //!
 //! # Ok(())
 //! # }
@@ -278,7 +269,7 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate_with_dimensions([1024, 768]).unwrap();
+//!         swapchain = swapchain.0.recreate().dimensions(Some([1024, 768])).build().unwrap();
 //!         recreate_swapchain = false;
 //!     }
 //!
