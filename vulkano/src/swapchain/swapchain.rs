@@ -284,9 +284,11 @@ impl<W> Swapchain<W> {
         }
     }
 
-    /// Starts building a new swapchain from an existing swapchain. The builder is pre-filled with
-    /// the parameters of the old one. Use this when a swapchain has become invalidated, such as
-    /// due to window resizes.
+    /// Starts building a new swapchain from an existing swapchain.
+    ///
+    /// Use this when a swapchain has become invalidated, such as due to window resizes.
+    /// The builder is pre-filled with the parameters of the old one, except for `dimensions`,
+    /// which is set to `None`.
     #[inline]
     pub fn recreate(self: &Arc<Self>) -> SwapchainBuilder<W> {
         SwapchainBuilder {
@@ -296,7 +298,7 @@ impl<W> Swapchain<W> {
             num_images: self.images.len() as u32,
             format: Some(self.format),
             color_space: self.color_space,
-            dimensions: Some(self.dimensions),
+            dimensions: None,
             layers: self.layers,
             usage: self.usage,
             sharing_mode: self.sharing_mode.clone(),
