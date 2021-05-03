@@ -155,7 +155,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     fn raw_device_address(&self) -> Result<NonZeroU64, DeviceAddressUsageNotEnabledError> {
         let inner = self.inner();
 
-        if !inner.buffer.usage_device_address() {
+        if !inner.buffer.usage().device_address {
             return Err(DeviceAddressUsageNotEnabledError);
         }
 

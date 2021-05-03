@@ -36,7 +36,7 @@ where
         device.internal_object()
     );
 
-    if !buffer.inner().buffer.usage_index_buffer() {
+    if !buffer.inner().buffer.usage().index_buffer {
         return Err(CheckIndexBufferError::BufferMissingUsage);
     }
 
