@@ -1434,6 +1434,7 @@ pub type MemoryPropertyFlags = Flags;
 
 pub type MemoryHeapFlagBits = u32;
 pub const MEMORY_HEAP_DEVICE_LOCAL_BIT: u32 = 0x00000001;
+pub const MEMORY_HEAP_MULTI_INSTANCE_BIT: u32 = 0x00000002;
 pub type MemoryHeapFlags = Flags;
 pub type DeviceCreateFlags = Flags;
 pub type DeviceQueueCreateFlags = Flags;
