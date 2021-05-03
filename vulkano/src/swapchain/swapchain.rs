@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+use crate::check_errors;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitPresentBuilder;
 use crate::command_buffer::submit::SubmitPresentError;
@@ -43,6 +44,11 @@ use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;
 use crate::sync::SharingMode;
+use crate::vk;
+use crate::Error;
+use crate::OomError;
+use crate::Success;
+use crate::VulkanObject;
 use std::error;
 use std::fmt;
 use std::mem;
@@ -53,13 +59,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Duration;
-
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::Success;
-use crate::VulkanObject;
 
 /// The way fullscreen exclusivity is handled.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -312,7 +311,8 @@ impl<W> Swapchain<W> {
         }
     }
 
-    /// Returns the saved Surface, from the Swapchain creation
+    /// Returns the saved Surface, from the Swapchain creation.
+    #[inline]
     pub fn surface(&self) -> &Arc<Surface<W>> {
         &self.surface
     }
@@ -330,72 +330,54 @@ impl<W> Swapchain<W> {
     }
 
     /// Returns the number of images of the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn num_images(&self) -> u32 {
         self.images.len() as u32
     }
 
     /// Returns the format of the images of the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn format(&self) -> Format {
         self.format
     }
 
     /// Returns the dimensions of the images of the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn dimensions(&self) -> [u32; 2] {
         self.dimensions
     }
 
     /// Returns the number of layers of the images of the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn layers(&self) -> u32 {
         self.layers
     }
 
     /// Returns the transform that was passed when creating the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn transform(&self) -> SurfaceTransform {
         self.transform
     }
 
     /// Returns the alpha mode that was passed when creating the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn composite_alpha(&self) -> CompositeAlpha {
         self.composite_alpha
     }
 
     /// Returns the present mode that was passed when creating the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn present_mode(&self) -> PresentMode {
         self.present_mode
     }
 
     /// Returns the value of `clipped` that was passed when creating the swapchain.
-    ///
-    /// See the documentation of `Swapchain::new`.
     #[inline]
     pub fn clipped(&self) -> bool {
         self.clipped
     }
 
     /// Returns the value of 'fullscreen_exclusive` that was passed when creating the swapchain.
-    ///
-    /// See the documentation of `FullscreenExclusive`
     #[inline]
     pub fn fullscreen_exclusive(&self) -> FullscreenExclusive {
         self.fullscreen_exclusive
@@ -542,13 +524,8 @@ impl<W> SwapchainBuilder<W> {
     /// Builds a new swapchain. Allocates images who content can be made visible on a surface.
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
-    /// supported by the implementation. All the parameters that you pass to `Swapchain::new`
+    /// supported by the implementation. All the parameters that you pass to the builder
     /// must be supported.
-    ///
-    /// The `clipped` parameter indicates whether the implementation is allowed to discard
-    /// rendering operations that affect regions of the surface which aren't visible. This is
-    /// important to take into account if your fragment shader has side-effects or if you want to
-    /// read back the content of the image afterwards.
     ///
     /// This function returns the swapchain plus a list of the images that belong to the
     /// swapchain. The order in which the images are returned is important for the
@@ -879,6 +856,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets the number of images that will be created.
     ///
     /// The default is 2.
+    #[inline]
     pub fn num_images(mut self, num_images: u32) -> Self {
         self.num_images = num_images;
         self
@@ -887,6 +865,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets the pixel format that will be used for the images.
     ///
     /// The default is either `R8G8B8A8Unorm` or `B8G8R8A8Unorm`, whichever is supported.
+    #[inline]
     pub fn format(mut self, format: Format) -> Self {
         self.format = Some(format);
         self
@@ -895,23 +874,26 @@ impl<W> SwapchainBuilder<W> {
     /// Sets the color space that will be used for the images.
     ///
     /// The default is `SrgbNonLinear`.
+    #[inline]
     pub fn color_space(mut self, color_space: ColorSpace) -> Self {
         self.color_space = color_space;
         self
     }
 
     /// Sets the dimensions of the images.
-    /// If set to `None`, the value of [`Capabilities::current_extent`] will be used.
     ///
-    /// The default is `None`.
-    pub fn dimensions(mut self, dimensions: Option<[u32; 2]>) -> Self {
-        self.dimensions = dimensions;
+    /// The default is `None`, which means the value of [`Capabilities::current_extent`] will be
+    /// used. Setting this will override it with a custom `Some` value.
+    #[inline]
+    pub fn dimensions(mut self, dimensions: [u32; 2]) -> Self {
+        self.dimensions = Some(dimensions);
         self
     }
 
     /// Sets the number of layers for each image.
     ///
     /// The default is 1.
+    #[inline]
     pub fn layers(mut self, layers: u32) -> Self {
         self.layers = layers;
         self
@@ -920,6 +902,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets how the images will be used.
     ///
     /// The default is `ImageUsage::none()`.
+    #[inline]
     pub fn usage(mut self, usage: ImageUsage) -> Self {
         self.usage = usage;
         self
@@ -928,6 +911,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets the sharing mode of the images.
     ///
     /// The default is `Exclusive`.
+    #[inline]
     pub fn sharing_mode<S>(mut self, sharing_mode: S) -> Self
     where
         S: Into<SharingMode>,
@@ -939,6 +923,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets the transform that is to be applied to the surface.
     ///
     /// The default is `Identity`.
+    #[inline]
     pub fn transform(mut self, transform: SurfaceTransform) -> Self {
         self.transform = transform;
         self
@@ -947,6 +932,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets how alpha values of the pixels in the image are to be treated.
     ///
     /// The default is `Opaque`.
+    #[inline]
     pub fn composite_alpha(mut self, composite_alpha: CompositeAlpha) -> Self {
         self.composite_alpha = composite_alpha;
         self
@@ -955,6 +941,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets the present mode for the swapchain.
     ///
     /// The default is `Fifo`.
+    #[inline]
     pub fn present_mode(mut self, present_mode: PresentMode) -> Self {
         self.present_mode = present_mode;
         self
@@ -963,6 +950,7 @@ impl<W> SwapchainBuilder<W> {
     /// Sets how fullscreen exclusivity is to be handled.
     ///
     /// The default is `Default`.
+    #[inline]
     pub fn fullscreen_exclusive(mut self, fullscreen_exclusive: FullscreenExclusive) -> Self {
         self.fullscreen_exclusive = fullscreen_exclusive;
         self
@@ -974,6 +962,7 @@ impl<W> SwapchainBuilder<W> {
     /// afterwards.
     ///
     /// The default is `true`.
+    #[inline]
     pub fn clipped(mut self, clipped: bool) -> Self {
         self.clipped = clipped;
         self

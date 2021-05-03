@@ -190,7 +190,7 @@
 //!     // The format of the images.
 //!     .format(format)
 //!     // The size of each image.
-//!     .dimensions(Some(dimensions))
+//!     .dimensions(dimensions)
 //!     // What the images are going to be used for.
 //!     .usage(usage)
 //!     // What transformation to use with the surface.
@@ -269,7 +269,7 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate().dimensions(Some([1024, 768])).build().unwrap();
+//!         swapchain = swapchain.0.recreate().dimensions([1024, 768]).build().unwrap();
 //!         recreate_swapchain = false;
 //!     }
 //!

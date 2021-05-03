@@ -106,7 +106,7 @@ fn main() {
         Swapchain::start(device.clone(), surface.clone())
             .num_images(surface_caps.min_image_count)
             .format(format)
-            .dimensions(Some(dimensions))
+            .dimensions(dimensions)
             .usage(ImageUsage::color_attachment())
             .sharing_mode(&queue)
             .composite_alpha(composite_alpha)
@@ -275,7 +275,7 @@ fn main() {
                 Swapchain::start(device.clone(), surface.clone())
                     .num_images(surface_caps.min_image_count)
                     .format(format)
-                    .dimensions(Some(dimensions))
+                    .dimensions(dimensions)
                     .usage(ImageUsage::color_attachment())
                     .sharing_mode(&queue)
                     .composite_alpha(composite_alpha)
@@ -317,7 +317,7 @@ fn main() {
             if *recreate_swapchain {
                 let dimensions: [u32; 2] = surface.window().inner_size().into();
                 let (new_swapchain, new_images) =
-                    match swapchain.recreate().dimensions(Some(dimensions)).build() {
+                    match swapchain.recreate().dimensions(dimensions).build() {
                         Ok(r) => r,
                         Err(SwapchainCreationError::UnsupportedDimensions) => return,
                         Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
