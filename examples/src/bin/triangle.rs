@@ -28,10 +28,7 @@ use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
-use vulkano::swapchain::{
-    AcquireError, ColorSpace, FullscreenExclusive, PresentMode, SurfaceTransform, Swapchain,
-    SwapchainCreationError,
-};
+use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
 
@@ -157,7 +154,7 @@ fn main() {
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example
         // you can choose whether the window will be opaque or transparent.
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
         // Choosing the internal format that the images will have.
         let format = caps.supported_formats[0].0;
@@ -175,23 +172,15 @@ fn main() {
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
-        Swapchain::new(
-            device.clone(),
-            surface.clone(),
-            caps.min_image_count,
-            format,
-            dimensions,
-            1,
-            ImageUsage::color_attachment(),
-            &queue,
-            SurfaceTransform::Identity,
-            alpha,
-            PresentMode::Fifo,
-            FullscreenExclusive::Default,
-            true,
-            ColorSpace::SrgbNonLinear,
-        )
-        .unwrap()
+        Swapchain::start(device.clone(), surface.clone())
+            .num_images(caps.min_image_count)
+            .format(format)
+            .dimensions(dimensions)
+            .usage(ImageUsage::color_attachment())
+            .sharing_mode(&queue)
+            .composite_alpha(composite_alpha)
+            .build()
+            .unwrap()
     };
 
     // We now create a buffer that will store the shape of our triangle.
@@ -395,7 +384,7 @@ fn main() {
                     // Get the new dimensions of the window.
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
                     let (new_swapchain, new_images) =
-                        match swapchain.recreate_with_dimensions(dimensions) {
+                        match swapchain.recreate().dimensions(dimensions).build() {
                             Ok(r) => r,
                             // This error tends to happen when the user is manually resizing the window.
                             // Simply restarting the loop is the easiest way to fix this issue.
