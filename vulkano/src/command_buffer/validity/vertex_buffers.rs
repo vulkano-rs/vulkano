@@ -36,7 +36,7 @@ where
             pipeline.device().internal_object()
         );
 
-        if !buf.inner().buffer.usage_vertex_buffer() {
+        if !buf.inner().buffer.usage().vertex_buffer {
             return Err(CheckVertexBufferError::BufferMissingUsage { num_buffer: num });
         }
     }

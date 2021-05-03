@@ -41,11 +41,11 @@ where
         device.internal_object()
     );
 
-    if !source.inner().buffer.usage_transfer_source() {
+    if !source.inner().buffer.usage().transfer_source {
         return Err(CheckCopyBufferError::SourceMissingTransferUsage);
     }
 
-    if !destination.inner().buffer.usage_transfer_destination() {
+    if !destination.inner().buffer.usage().transfer_destination {
         return Err(CheckCopyBufferError::DestinationMissingTransferUsage);
     }
 

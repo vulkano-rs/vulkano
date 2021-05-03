@@ -8,7 +8,6 @@
 // according to those terms.
 
 use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
@@ -29,6 +28,7 @@ use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::OomError;
 use std::cmp;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -41,8 +41,6 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
-
-use crate::OomError;
 
 // TODO: Add `CpuBufferPoolSubbuffer::read` to read the content of a subbuffer.
 //       But that's hard to do because we must prevent `increase_gpu_lock` from working while a
@@ -376,7 +374,7 @@ where
                     size_bytes,
                     self.usage,
                     Sharing::Exclusive::<iter::Empty<_>>,
-                    SparseLevel::none(),
+                    None,
                 ) {
                     Ok(b) => b,
                     Err(BufferCreationError::AllocError(err)) => return Err(err),

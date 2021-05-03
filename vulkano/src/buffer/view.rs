@@ -104,7 +104,7 @@ where
                 return Err(BufferViewCreationError::WrongBufferAlignment);
             }
 
-            if !buffer.usage_uniform_texel_buffer() && !buffer.usage_storage_texel_buffer() {
+            if !buffer.usage().uniform_texel_buffer && !buffer.usage().storage_texel_buffer {
                 return Err(BufferViewCreationError::WrongBufferUsage);
             }
 
@@ -133,13 +133,13 @@ where
                 output.assume_init().bufferFeatures
             };
 
-            if buffer.usage_uniform_texel_buffer() {
+            if buffer.usage().uniform_texel_buffer {
                 if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
                     return Err(BufferViewCreationError::UnsupportedFormat);
                 }
             }
 
-            if buffer.usage_storage_texel_buffer() {
+            if buffer.usage().storage_texel_buffer {
                 if (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) == 0 {
                     return Err(BufferViewCreationError::UnsupportedFormat);
                 }
@@ -183,13 +183,13 @@ where
     /// Returns true if the buffer view can be used as a uniform texel buffer.
     #[inline]
     pub fn uniform_texel_buffer(&self) -> bool {
-        self.buffer.inner().buffer.usage_uniform_texel_buffer()
+        self.buffer.inner().buffer.usage().uniform_texel_buffer
     }
 
     /// Returns true if the buffer view can be used as a storage texel buffer.
     #[inline]
     pub fn storage_texel_buffer(&self) -> bool {
-        self.buffer.inner().buffer.usage_storage_texel_buffer()
+        self.buffer.inner().buffer.usage().storage_texel_buffer
     }
 
     /// Returns true if the buffer view can be used as a storage texel buffer with atomic accesses.

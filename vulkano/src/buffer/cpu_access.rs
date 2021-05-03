@@ -16,23 +16,7 @@
 //! You can read the buffer multiple times simultaneously. Trying to read and write simultaneously,
 //! or write and write simultaneously will block.
 
-use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::iter;
-use std::marker::PhantomData;
-use std::mem;
-use std::ops::Deref;
-use std::ops::DerefMut;
-use std::ptr;
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
-
 use crate::buffer::sys::BufferCreationError;
-use crate::buffer::sys::SparseLevel;
 use crate::buffer::sys::UnsafeBuffer;
 use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
@@ -59,6 +43,20 @@ use crate::sync::Sharing;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 use parking_lot::RwLockWriteGuard;
+use smallvec::SmallVec;
+use std::error;
+use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::iter;
+use std::marker::PhantomData;
+use std::mem;
+use std::ops::Deref;
+use std::ops::DerefMut;
+use std::ptr;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 /// Buffer whose content is accessible by the CPU.
 ///
@@ -229,7 +227,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
                 Sharing::Exclusive
             };
 
-            match UnsafeBuffer::new(device.clone(), size, usage, sharing, SparseLevel::none()) {
+            match UnsafeBuffer::new(device.clone(), size, usage, sharing, None) {
                 Ok(b) => b,
                 Err(BufferCreationError::AllocError(err)) => return Err(err),
                 Err(_) => unreachable!(), // We don't use sparse binding, therefore the other
