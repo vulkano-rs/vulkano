@@ -70,6 +70,7 @@ use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::MutexGuard;
+pub use version::Version;
 
 #[macro_use]
 mod tests;

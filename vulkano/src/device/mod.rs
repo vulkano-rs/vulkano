@@ -130,7 +130,7 @@ use crate::image::ImageFormatProperties;
 use crate::image::ImageTiling;
 use crate::image::ImageType;
 use crate::image::ImageUsage;
-use crate::version::Version;
+use crate::Version;
 use std::pin::Pin;
 
 /// Represents a Vulkan context.

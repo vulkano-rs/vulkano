@@ -215,6 +215,33 @@ where
 
     // checking whether each required capability is enabled in the Vulkan device
     let mut cap_checks: Vec<TokenStream> = vec![];
+    match doc.version {
+        (1, 0) => {}
+        (1, 1) | (1, 2) | (1, 3) => {
+            cap_checks.push(quote! {
+                if device.api_version() < (Version { major: 1, minor: 1, patch: 0 }) {
+                    panic!("Device API version 1.1 required");
+                }
+            });
+        }
+        (1, 4) => {
+            cap_checks.push(quote! {
+                if device.api_version() < (Version { major: 1, minor: 2, patch: 0 })
+                    && !device.loaded_extensions().khr_spirv_1_4 {
+                    panic!("Device API version 1.2 or extension VK_KHR_spirv_1_4 required");
+                }
+            });
+        }
+        (1, 5) => {
+            cap_checks.push(quote! {
+                if device.api_version() < (Version { major: 1, minor: 2, patch: 0 }) {
+                    panic!("Device API version 1.2 required");
+                }
+            });
+        }
+        _ => return Err(Error::UnsupportedSpirvVersion),
+    }
+
     for i in doc.instructions.iter() {
         let dev_req = {
             match i {
@@ -325,6 +352,8 @@ where
         use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationMapEntry;
+        #[allow(unused_imports)]
+        use vulkano::Version;
 
         pub struct #struct_name {
             shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
@@ -379,6 +408,7 @@ where
 
 #[derive(Debug)]
 pub enum Error {
+    UnsupportedSpirvVersion,
     IoError(IoError),
     ParseError(ParseError),
 }

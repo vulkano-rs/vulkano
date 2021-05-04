@@ -22,10 +22,10 @@
 //! a Vulkan implementation from the system.
 
 use crate::check_errors;
-use crate::version::Version;
 use crate::vk;
 use crate::OomError;
 use crate::SafeDeref;
+use crate::Version;
 use lazy_static::lazy_static;
 use shared_library;
 use std::error;
