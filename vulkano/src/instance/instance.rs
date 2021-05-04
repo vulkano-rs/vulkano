@@ -90,6 +90,15 @@ use std::sync::Arc;
 pub struct Instance {
     instance: vk::Instance,
     //alloc: Option<Box<Alloc + Send + Sync>>,
+
+    // The desired API version for instances and devices created from it.
+    // TODO: allow the user to specify this on construction.
+    pub(crate) desired_version: Version,
+
+    // The highest version that is supported for this instance.
+    // This is the minimum of Instance::desired_version and FunctionPointers::api_version.
+    api_version: Version,
+
     pub(super) physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
     extensions: RawInstanceExtensions,
@@ -204,6 +213,21 @@ impl Instance {
             None
         };
 
+        // TODO: allow the user to specify this.
+        // Vulkan 1.0 will return VK_ERROR_INCOMPATIBLE_DRIVER on instance creation if this isn't
+        // 1.0, but higher versions never return this error, and thus will allow a desired version
+        // beyond what they support. The actual support on that particular instance/device is the
+        // minimum of desired and supported.
+        // In other words, it's impossible to use a Vulkan 1.1 or 1.2 device with a 1.0 instance,
+        // because instance creation with a higher desired_version will fail. But it is possible to
+        // use a 1.0 or 1.2 device with a 1.1 instance.
+        let desired_version = Version {
+            major: 1,
+            minor: 1,
+            patch: 0,
+        };
+        let api_version = std::cmp::min(desired_version, function_pointers.api_version()?);
+
         // Building the `vk::ApplicationInfo` if required.
         let app_infos = if let Some(app_infos) = app_infos {
             Some(vk::ApplicationInfo {
@@ -231,12 +255,7 @@ impl Instance {
                     .engine_version
                     .map(|v| v.into_vulkan_version())
                     .unwrap_or(0),
-                apiVersion: Version {
-                    major: 1,
-                    minor: 1,
-                    patch: 0,
-                }
-                .into_vulkan_version(), // TODO:
+                apiVersion: desired_version.into_vulkan_version(), // TODO:
             })
         } else {
             None
@@ -288,6 +307,8 @@ impl Instance {
 
         Ok(Arc::new(Instance {
             instance,
+            api_version,
+            desired_version,
             //alloc: None,
             physical_devices,
             vk,
@@ -304,6 +325,12 @@ impl Instance {
     pub fn with_alloc(app_infos: Option<&ApplicationInfo>, alloc: Box<Alloc + Send + Sync>) -> Arc<Instance> {
         unimplemented!()
     }*/
+
+    /// Returns the Vulkan version supported by this `Instance`.
+    #[inline]
+    pub fn api_version(&self) -> Version {
+        self.api_version
+    }
 
     /// Grants access to the Vulkan functions of the instance.
     #[inline]

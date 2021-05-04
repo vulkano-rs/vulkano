@@ -130,6 +130,7 @@ use crate::image::ImageFormatProperties;
 use crate::image::ImageTiling;
 use crate::image::ImageType;
 use crate::image::ImageUsage;
+use crate::version::Version;
 use std::pin::Pin;
 
 /// Represents a Vulkan context.
@@ -137,6 +138,11 @@ pub struct Device {
     instance: Arc<Instance>,
     physical_device: usize,
     device: vk::Device,
+
+    // The highest version that is supported for this device.
+    // This is the minimum of Instance::desired_version and PhysicalDevice::api_version.
+    api_version: Version,
+
     vk: vk::DevicePointers,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
     standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
@@ -187,6 +193,9 @@ impl Device {
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
         Ext: Into<RawDeviceExtensions>,
     {
+        let desired_version = phys.instance().desired_version;
+        let api_version = std::cmp::min(desired_version, phys.api_version());
+
         let queue_families = queue_families.into_iter();
 
         if !phys.supported_features().superset_of(&requested_features) {
@@ -329,6 +338,7 @@ impl Device {
             instance: phys.instance().clone(),
             physical_device: phys.index(),
             device: device,
+            api_version,
             vk: vk,
             standard_pool: Mutex::new(Weak::new()),
             standard_descriptor_pool: Mutex::new(Weak::new()),
@@ -354,6 +364,12 @@ impl Device {
         };
 
         Ok((device, output_queues))
+    }
+
+    /// Returns the Vulkan version supported by this `Device`.
+    #[inline]
+    pub fn api_version(&self) -> Version {
+        self.api_version
     }
 
     /// Grants access to the pointers to the Vulkan functions of the device.
