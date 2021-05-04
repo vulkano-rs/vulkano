@@ -26,7 +26,6 @@ use std::ffi::CString;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
@@ -279,8 +278,8 @@ impl Instance {
 
         // Loading the function pointers of the newly-created instance.
         let vk = {
-            vk::InstancePointers::load(|name| unsafe {
-                mem::transmute(function_pointers.get_instance_proc_addr(instance, name.as_ptr()))
+            vk::InstancePointers::load(|name| {
+                function_pointers.get_instance_proc_addr(instance, name.as_ptr())
             })
         };
 
