@@ -9,11 +9,10 @@
 
 // The `Version` object is reexported from the `instance` module.
 
-use std::cmp::Ordering;
 use std::fmt;
 
 /// Represents an API version of Vulkan.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
     /// Major version number.
     pub major: u16,
@@ -32,29 +31,6 @@ impl fmt::Debug for Version {
 impl fmt::Display for Version {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(self, formatter)
-    }
-}
-
-impl PartialOrd for Version {
-    #[inline]
-    fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Version {
-    fn cmp(&self, other: &Version) -> Ordering {
-        match self.major.cmp(&other.major) {
-            Ordering::Equal => (),
-            o => return o,
-        };
-
-        match self.minor.cmp(&other.minor) {
-            Ordering::Equal => (),
-            o => return o,
-        };
-
-        self.patch.cmp(&other.patch)
     }
 }
 
