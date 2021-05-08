@@ -31,7 +31,7 @@
 //! # High-level wrappers
 //!
 //! In the vulkano library, an image is any object that implements the [`ImageAccess`] trait. You
-//! can create a view by wrapping them in an [`ImageView`].
+//! can create a view by wrapping them in an [`ImageView`](crate::image::view::ImageView).
 //!
 //! Since the `ImageAccess` trait is low-level, you are encouraged to not implement it yourself but
 //! instead use one of the provided implementations that are specialized depending on the way you

@@ -55,6 +55,8 @@
 - Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
 - Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
+- The `draw_indirect` and `draw_indexed_indirect` commands on `AutoCommandBufferBuilder` now check the draw count against the `max_draw_indirect_count` limit.
+- Fixed a few documentation errors.
 
 # Version 0.22.0 (2021-03-31)
 
