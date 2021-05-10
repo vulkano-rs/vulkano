@@ -7,21 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::marker::PhantomData;
-use std::mem;
-use std::option::IntoIter as OptionIntoIter;
-use std::sync::Arc;
-use std::vec::IntoIter as VecIntoIter;
-
 use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
-use crate::pipeline::shader::ShaderInterfaceDef;
+use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::AttributeInfo;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::InputRate;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexSource;
+use std::marker::PhantomData;
+use std::mem;
+use std::option::IntoIter as OptionIntoIter;
+use std::sync::Arc;
+use std::vec::IntoIter as VecIntoIter;
 
 /// Implementation of `VertexDefinition` for a single vertex buffer.
 pub struct SingleBufferDefinition<T>(pub PhantomData<T>);
@@ -33,17 +32,16 @@ impl<T> SingleBufferDefinition<T> {
     }
 }
 
-unsafe impl<T, I> VertexDefinition<I> for SingleBufferDefinition<T>
+unsafe impl<T> VertexDefinition for SingleBufferDefinition<T>
 where
     T: Vertex,
-    I: ShaderInterfaceDef,
 {
     type BuffersIter = OptionIntoIter<(u32, usize, InputRate)>;
     type AttribsIter = VecIntoIter<(u32, u32, AttributeInfo)>;
 
     fn definition(
         &self,
-        interface: &I,
+        interface: &ShaderInterface,
     ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         let attrib = {
             let mut attribs = Vec::with_capacity(interface.elements().len());

@@ -7,20 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use proc_macro2::{Span, TokenStream};
-use syn::Ident;
-
 use crate::descriptor_sets::write_descriptor_sets;
 use crate::enums::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
+use proc_macro2::{Span, TokenStream};
+use syn::Ident;
 
 pub(super) fn write_entry_point(
     doc: &Spirv,
     instruction: &Instruction,
     types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
-) -> (TokenStream, TokenStream, TokenStream) {
+) -> (TokenStream, TokenStream) {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
             ref execution,
@@ -50,9 +49,8 @@ pub(super) fn write_entry_point(
         _ => false,
     };
 
-    let interface_structs = write_interface_structs(
+    let (input_interface, output_interface) = write_interfaces(
         doc,
-        &capitalized_ep_name,
         interface,
         ignore_first_array_in,
         ignore_first_array_out,
@@ -175,28 +173,16 @@ pub(super) fn write_entry_point(
                 ExecutionModel::ExecutionModelKernel => unreachable!(),
             };
 
-            let mut capitalized_ep_name_input = capitalized_ep_name.clone();
-            capitalized_ep_name_input.push_str("Input");
-            let capitalized_ep_name_input =
-                Ident::new(&capitalized_ep_name_input, Span::call_site());
-
-            let mut capitalized_ep_name_output = capitalized_ep_name.clone();
-            capitalized_ep_name_output.push_str("Output");
-            let capitalized_ep_name_output =
-                Ident::new(&capitalized_ep_name_output, Span::call_site());
-
             let ty = quote! {
                 ::vulkano::pipeline::shader::GraphicsEntryPoint<
                     #spec_consts_struct,
-                    #capitalized_ep_name_input,
-                    #capitalized_ep_name_output,
                     #descriptor_sets_layout_name>
             };
             let f_call = quote! {
                 graphics_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    #capitalized_ep_name_input,
-                    #capitalized_ep_name_output,
+                    #input_interface,
+                    #output_interface,
                     #descriptor_sets_layout_name(#stage),
                     #entry_ty
                 )
@@ -226,11 +212,7 @@ pub(super) fn write_entry_point(
         }
     };
 
-    (
-        interface_structs,
-        entry_point,
-        descriptor_sets_layout_struct,
-    )
+    (entry_point, descriptor_sets_layout_struct)
 }
 
 struct Element {
@@ -240,13 +222,12 @@ struct Element {
     location_len: usize,
 }
 
-fn write_interface_structs(
+fn write_interfaces(
     doc: &Spirv,
-    capitalized_ep_name: &str,
     interface: &[u32],
     ignore_first_array_in: bool,
     ignore_first_array_out: bool,
-) -> TokenStream {
+) -> (TokenStream, TokenStream) {
     let mut input_elements = vec![];
     let mut output_elements = vec![];
 
@@ -303,14 +284,13 @@ fn write_interface_structs(
         }
     }
 
-    let input: TokenStream =
-        write_interface_struct(&format!("{}Input", capitalized_ep_name), &input_elements);
-    let output: TokenStream =
-        write_interface_struct(&format!("{}Output", capitalized_ep_name), &output_elements);
-    quote! { #input #output }
+    (
+        write_interface(&input_elements),
+        write_interface(&output_elements),
+    )
 }
 
-fn write_interface_struct(struct_name_str: &str, attributes: &[Element]) -> TokenStream {
+fn write_interface(attributes: &[Element]) -> TokenStream {
     // Checking for overlapping elements.
     for (offset, element1) in attributes.iter().enumerate() {
         for element2 in attributes.iter().skip(offset + 1) {
@@ -336,68 +316,29 @@ fn write_interface_struct(struct_name_str: &str, attributes: &[Element]) -> Toke
 
     let body = attributes
         .iter()
-        .enumerate()
-        .map(|(num, element)| {
+        .map(|element| {
             assert!(element.location_len >= 1);
             let loc = element.location;
             let loc_end = element.location + element.location_len as u32;
             let format = Ident::new(&element.format, Span::call_site());
             let name = &element.name;
-            let num = num as u16;
 
             quote! {
-                if self.num == #num {
-                    self.num += 1;
-
-                    return Some(::vulkano::pipeline::shader::ShaderInterfaceDefEntry {
-                        location: #loc .. #loc_end,
-                        format: ::vulkano::format::Format::#format,
-                        name: Some(::std::borrow::Cow::Borrowed(#name))
-                    });
-                }
+                ::vulkano::pipeline::shader::ShaderInterfaceEntry {
+                    location: #loc .. #loc_end,
+                    format: ::vulkano::format::Format::#format,
+                    name: Some(::std::borrow::Cow::Borrowed(#name))
+                },
             }
         })
         .collect::<Vec<_>>();
 
-    let struct_name = Ident::new(struct_name_str, Span::call_site());
-
-    let mut iter_name = struct_name.to_string();
-    iter_name.push_str("Iter");
-    let iter_name = Ident::new(&iter_name, Span::call_site());
-
-    let len = attributes.len();
-
     quote! {
-        #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-        pub struct #struct_name;
-
         #[allow(unsafe_code)]
-        unsafe impl ::vulkano::pipeline::shader::ShaderInterfaceDef for #struct_name {
-            type Iter = #iter_name;
-            fn elements(&self) -> #iter_name {
-                 #iter_name { num: 0 }
-            }
-        }
-
-        #[derive(Debug, Copy, Clone)]
-        pub struct #iter_name { num: u16 }
-
-        impl Iterator for #iter_name {
-            type Item = ::vulkano::pipeline::shader::ShaderInterfaceDefEntry;
-
-            #[inline]
-            fn next(&mut self) -> Option<Self::Item> {
+        unsafe {
+            ::vulkano::pipeline::shader::ShaderInterface::new(::std::borrow::Cow::Borrowed(&[
                 #( #body )*
-                None
-            }
-
-            #[inline]
-            fn size_hint(&self) -> (usize, Option<usize>) {
-                let len = #len - self.num as usize;
-                (len, Some(len))
-            }
-         }
-
-        impl ExactSizeIterator for #iter_name {}
+            ]))
+        }
     }
 }

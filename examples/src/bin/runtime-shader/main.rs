@@ -41,7 +41,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::shader::{
-    GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule,
+    GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
 };
 use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::Viewport;
@@ -149,100 +149,36 @@ fn main() {
         unsafe { ShaderModule::new(device.clone(), &v) }.unwrap()
     };
 
-    // This structure will tell Vulkan how input entries of our vertex shader look like
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-    struct VertInput;
+    // This definition will tell Vulkan how input entries of our vertex shader look like
+    // There are things to consider when giving out entries:
+    // * There must be only one entry per one location, you can't have
+    //   `color' and `position' entries both at 0..1 locations.  They also
+    //   should not overlap.
+    // * Format of each element must be no larger than 128 bits.
+    let vertex_input = unsafe {
+        ShaderInterface::new(Cow::Borrowed(&[
+            ShaderInterfaceEntry {
+                location: 1..2,
+                format: Format::R32G32B32Sfloat,
+                name: Some(Cow::Borrowed("color")),
+            },
+            ShaderInterfaceEntry {
+                location: 0..1,
+                format: Format::R32G32Sfloat,
+                name: Some(Cow::Borrowed("position")),
+            },
+        ]))
+    };
 
-    unsafe impl ShaderInterfaceDef for VertInput {
-        type Iter = VertInputIter;
-
-        fn elements(&self) -> VertInputIter {
-            VertInputIter(0)
-        }
-    }
-
-    #[derive(Debug, Copy, Clone)]
-    struct VertInputIter(u16);
-
-    impl Iterator for VertInputIter {
-        type Item = ShaderInterfaceDefEntry;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            // There are things to consider when giving out entries:
-            // * There must be only one entry per one location, you can't have
-            //   `color' and `position' entries both at 0..1 locations.  They also
-            //   should not overlap.
-            // * Format of each element must be no larger than 128 bits.
-            if self.0 == 0 {
-                self.0 += 1;
-                return Some(ShaderInterfaceDefEntry {
-                    location: 1..2,
-                    format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("color")),
-                });
-            }
-            if self.0 == 1 {
-                self.0 += 1;
-                return Some(ShaderInterfaceDefEntry {
-                    location: 0..1,
-                    format: Format::R32G32Sfloat,
-                    name: Some(Cow::Borrowed("position")),
-                });
-            }
-            None
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            // We must return exact number of entries left in iterator.
-            let len = (2 - self.0) as usize;
-            (len, Some(len))
-        }
-    }
-
-    impl ExactSizeIterator for VertInputIter {}
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-    struct VertOutput;
-
-    unsafe impl ShaderInterfaceDef for VertOutput {
-        type Iter = VertOutputIter;
-
-        fn elements(&self) -> VertOutputIter {
-            VertOutputIter(0)
-        }
-    }
-
-    // This structure will tell Vulkan how output entries (those passed to next
+    // This definition will tell Vulkan how output entries (those passed to next
     // stage) of our vertex shader look like.
-    #[derive(Debug, Copy, Clone)]
-    struct VertOutputIter(u16);
-
-    impl Iterator for VertOutputIter {
-        type Item = ShaderInterfaceDefEntry;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.0 == 0 {
-                self.0 += 1;
-                return Some(ShaderInterfaceDefEntry {
-                    location: 0..1,
-                    format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("v_color")),
-                });
-            }
-            None
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = (1 - self.0) as usize;
-            (len, Some(len))
-        }
-    }
-
-    impl ExactSizeIterator for VertOutputIter {}
+    let vertex_output = unsafe {
+        ShaderInterface::new(Cow::Borrowed(&[ShaderInterfaceEntry {
+            location: 0..1,
+            format: Format::R32G32B32Sfloat,
+            name: Some(Cow::Borrowed("v_color")),
+        }]))
+    };
 
     // This structure describes layout of this stage.
     #[derive(Debug, Copy, Clone)]
@@ -271,81 +207,23 @@ fn main() {
     }
 
     // Same as with our vertex shader, but for fragment one instead.
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-    struct FragInput;
-    unsafe impl ShaderInterfaceDef for FragInput {
-        type Iter = FragInputIter;
+    let fragment_input = unsafe {
+        ShaderInterface::new(Cow::Borrowed(&[ShaderInterfaceEntry {
+            location: 0..1,
+            format: Format::R32G32B32Sfloat,
+            name: Some(Cow::Borrowed("v_color")),
+        }]))
+    };
 
-        fn elements(&self) -> FragInputIter {
-            FragInputIter(0)
-        }
-    }
-    #[derive(Debug, Copy, Clone)]
-    struct FragInputIter(u16);
-
-    impl Iterator for FragInputIter {
-        type Item = ShaderInterfaceDefEntry;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            if self.0 == 0 {
-                self.0 += 1;
-                return Some(ShaderInterfaceDefEntry {
-                    location: 0..1,
-                    format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("v_color")),
-                });
-            }
-            None
-        }
-
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = (1 - self.0) as usize;
-            (len, Some(len))
-        }
-    }
-
-    impl ExactSizeIterator for FragInputIter {}
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-    struct FragOutput;
-    unsafe impl ShaderInterfaceDef for FragOutput {
-        type Iter = FragOutputIter;
-
-        fn elements(&self) -> FragOutputIter {
-            FragOutputIter(0)
-        }
-    }
-
-    #[derive(Debug, Copy, Clone)]
-    struct FragOutputIter(u16);
-
-    impl Iterator for FragOutputIter {
-        type Item = ShaderInterfaceDefEntry;
-
-        #[inline]
-        fn next(&mut self) -> Option<Self::Item> {
-            // Note that color fragment color entry will be determined
-            // automatically by Vulkano.
-            if self.0 == 0 {
-                self.0 += 1;
-                return Some(ShaderInterfaceDefEntry {
-                    location: 0..1,
-                    format: Format::R32G32B32A32Sfloat,
-                    name: Some(Cow::Borrowed("f_color")),
-                });
-            }
-            None
-        }
-        #[inline]
-        fn size_hint(&self) -> (usize, Option<usize>) {
-            let len = (1 - self.0) as usize;
-            (len, Some(len))
-        }
-    }
-
-    impl ExactSizeIterator for FragOutputIter {}
+    // Note that color fragment color entry will be determined
+    // automatically by Vulkano.
+    let fragment_output = unsafe {
+        ShaderInterface::new(Cow::Borrowed(&[ShaderInterfaceEntry {
+            location: 0..1,
+            format: Format::R32G32B32A32Sfloat,
+            name: Some(Cow::Borrowed("f_color")),
+        }]))
+    };
 
     // Layout same as with vertex shader.
     #[derive(Debug, Copy, Clone)]
@@ -378,8 +256,8 @@ fn main() {
     let vert_main = unsafe {
         vs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            VertInput,
-            VertOutput,
+            vertex_input,
+            vertex_output,
             VertLayout(ShaderStages {
                 vertex: true,
                 ..ShaderStages::none()
@@ -391,8 +269,8 @@ fn main() {
     let frag_main = unsafe {
         fs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            FragInput,
-            FragOutput,
+            fragment_input,
+            fragment_output,
             FragLayout(ShaderStages {
                 fragment: true,
                 ..ShaderStages::none()

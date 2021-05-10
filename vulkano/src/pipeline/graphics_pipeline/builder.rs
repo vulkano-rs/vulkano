@@ -37,7 +37,6 @@ use crate::pipeline::raster::Rasterization;
 use crate::pipeline::shader::EmptyEntryPointDummy;
 use crate::pipeline::shader::GraphicsEntryPointAbstract;
 use crate::pipeline::shader::GraphicsShaderType;
-use crate::pipeline::shader::ShaderInterfaceDefMatch;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::SingleBufferDefinition;
@@ -131,7 +130,7 @@ impl
 impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
     GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
 where
-    Vdef: VertexDefinition<Vs::InputDefinition>,
+    Vdef: VertexDefinition,
     Vs: GraphicsEntryPointAbstract,
     Fs: GraphicsEntryPointAbstract,
     Gs: GraphicsEntryPointAbstract,
@@ -147,13 +146,6 @@ where
     Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
     Tes::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
     Gs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-    Tcs::InputDefinition: ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-    Tes::InputDefinition: ShaderInterfaceDefMatch<Tcs::OutputDefinition>,
-    Gs::InputDefinition: ShaderInterfaceDefMatch<Tes::OutputDefinition>
-        + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
-    Fs::InputDefinition: ShaderInterfaceDefMatch<Gs::OutputDefinition>
-        + ShaderInterfaceDefMatch<Tes::OutputDefinition>
-        + ShaderInterfaceDefMatch<Vs::OutputDefinition>,
 {
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params

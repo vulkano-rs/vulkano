@@ -3,7 +3,9 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
-
+- The trait `ShaderInterfaceDef` has been replaced by a simple struct `ShaderInterface`, and its `elements` method returns a slice instead of an iterator. This means you no longer need to define a new type for a shader interface. Code demonstrating the new method can be found in the `runtime-shader` example.
+- Consequently, functions that took a value of this trait now take a plain `ShaderInterface`. Types that had a type parameter for it no longer have it, e.g. `VertexDefinition`, `GraphicsEntryPoint`, `GraphicsEntryPointAbstract`.
+- The accompanying type `ShaderInterfaceDefEntry` has been renamed to `ShaderInterfaceEntry` to match. The `ShaderInterfaceDefMatch` trait and `EmptyShaderInterfaceDef` struct have been removed.
 
 # Version 0.23.0 (2021-04-10)
 

@@ -19,6 +19,7 @@ use crate::descriptor::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::shader::EmptyEntryPointDummy;
+use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
@@ -473,17 +474,17 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     }
 }
 
-unsafe impl<Mv, L, I> VertexDefinition<I> for GraphicsPipeline<Mv, L>
+unsafe impl<Mv, L> VertexDefinition for GraphicsPipeline<Mv, L>
 where
-    Mv: VertexDefinition<I>,
+    Mv: VertexDefinition,
 {
-    type BuffersIter = <Mv as VertexDefinition<I>>::BuffersIter;
-    type AttribsIter = <Mv as VertexDefinition<I>>::AttribsIter;
+    type BuffersIter = <Mv as VertexDefinition>::BuffersIter;
+    type AttribsIter = <Mv as VertexDefinition>::AttribsIter;
 
     #[inline]
     fn definition(
         &self,
-        interface: &I,
+        interface: &ShaderInterface,
     ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         self.vertex_definition.definition(interface)
     }

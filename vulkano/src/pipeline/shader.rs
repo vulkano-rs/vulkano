@@ -17,29 +17,25 @@
 //! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
+use crate::check_errors;
+use crate::descriptor::pipeline_layout::EmptyPipelineDesc;
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::device::Device;
+use crate::format::Format;
+use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::vk;
+use crate::OomError;
+use crate::VulkanObject;
 use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
-use std::iter;
-use std::iter::Empty as EmptyIter;
 use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-
-use crate::descriptor::pipeline_layout::EmptyPipelineDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::format::Format;
-use crate::pipeline::input_assembly::PrimitiveTopology;
-
-use crate::check_errors;
-use crate::device::Device;
-use crate::vk;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// Contains SPIR-V code with one or more entry points.
 ///
@@ -133,21 +129,21 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, S, I, O, L>(
+    pub unsafe fn graphics_entry_point<'a, S, L>(
         &'a self,
         name: &'a CStr,
-        input: I,
-        output: O,
+        input: ShaderInterface,
+        output: ShaderInterface,
         layout: L,
         ty: GraphicsShaderType,
-    ) -> GraphicsEntryPoint<'a, S, I, O, L> {
+    ) -> GraphicsEntryPoint<'a, S, L> {
         GraphicsEntryPoint {
             module: self,
-            name: name,
-            input: input,
-            output: output,
-            layout: layout,
-            ty: ty,
+            name,
+            input,
+            output,
+            layout,
+            ty,
             marker: PhantomData,
         }
     }
@@ -200,14 +196,11 @@ impl Drop for ShaderModule {
 }
 
 pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
-    type InputDefinition: ShaderInterfaceDef;
-    type OutputDefinition: ShaderInterfaceDef;
-
     /// Returns the input attributes used by the shader stage.
-    fn input(&self) -> &Self::InputDefinition;
+    fn input(&self) -> &ShaderInterface;
 
     /// Returns the output attributes used by the shader stage.
-    fn output(&self) -> &Self::OutputDefinition;
+    fn output(&self) -> &ShaderInterface;
 
     /// Returns the type of shader.
     fn ty(&self) -> GraphicsShaderType;
@@ -216,22 +209,20 @@ pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
 /// Represents a shader entry point in a shader module.
 ///
 /// Can be obtained by calling `entry_point()` on the shader module.
-#[derive(Debug, Copy, Clone)]
-pub struct GraphicsEntryPoint<'a, S, I, O, L> {
+#[derive(Debug)]
+pub struct GraphicsEntryPoint<'a, S, L> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    input: I,
+    input: ShaderInterface,
     layout: L,
-    output: O,
+    output: ShaderInterface,
     ty: GraphicsShaderType,
     marker: PhantomData<S>,
 }
 
-unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
+unsafe impl<'a, S, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, L>
 where
     L: PipelineLayoutDesc,
-    I: ShaderInterfaceDef,
-    O: ShaderInterfaceDef,
     S: SpecializationConstants,
 {
     type PipelineLayout = L;
@@ -253,23 +244,18 @@ where
     }
 }
 
-unsafe impl<'a, S, I, O, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
+unsafe impl<'a, S, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S, L>
 where
     L: PipelineLayoutDesc,
-    I: ShaderInterfaceDef,
-    O: ShaderInterfaceDef,
     S: SpecializationConstants,
 {
-    type InputDefinition = I;
-    type OutputDefinition = O;
-
     #[inline]
-    fn input(&self) -> &I {
+    fn input(&self) -> &ShaderInterface {
         &self.input
     }
 
     #[inline]
-    fn output(&self) -> &O {
+    fn output(&self) -> &ShaderInterface {
         &self.output
     }
 
@@ -410,16 +396,13 @@ unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
 }
 
 unsafe impl GraphicsEntryPointAbstract for EmptyEntryPointDummy {
-    type InputDefinition = EmptyShaderInterfaceDef;
-    type OutputDefinition = EmptyShaderInterfaceDef;
-
     #[inline]
-    fn input(&self) -> &EmptyShaderInterfaceDef {
+    fn input(&self) -> &ShaderInterface {
         unreachable!()
     }
 
     #[inline]
-    fn output(&self) -> &EmptyShaderInterfaceDef {
+    fn output(&self) -> &ShaderInterface {
         unreachable!()
     }
 
@@ -429,63 +412,36 @@ unsafe impl GraphicsEntryPointAbstract for EmptyEntryPointDummy {
     }
 }
 
-/// Types that contain the definition of an interface between two shader stages, or between
+/// Type that contains the definition of an interface between two shader stages, or between
 /// the outside and a shader stage.
-///
-/// # Safety
-///
-/// - Must only provide one entry per location.
-/// - The format of each element must not be larger than 128 bits.
-///
-pub unsafe trait ShaderInterfaceDef {
-    /// Iterator returned by `elements`.
-    type Iter: ExactSizeIterator<Item = ShaderInterfaceDefEntry>;
-
-    /// Iterates over the elements of the interface.
-    fn elements(&self) -> Self::Iter;
+#[derive(Debug)]
+pub struct ShaderInterface {
+    elements: Cow<'static, [ShaderInterfaceEntry]>,
 }
 
-/// Entry of a shader interface definition.
-#[derive(Debug, Clone)]
-pub struct ShaderInterfaceDefEntry {
-    /// Range of locations covered by the element.
-    pub location: Range<u32>,
-    /// Format of a each location of the element.
-    pub format: Format,
-    /// Name of the element, or `None` if the name is unknown.
-    pub name: Option<Cow<'static, str>>,
-}
-
-/// Description of an empty shader interface.
-#[derive(Debug, Copy, Clone)]
-pub struct EmptyShaderInterfaceDef;
-
-unsafe impl ShaderInterfaceDef for EmptyShaderInterfaceDef {
-    type Iter = EmptyIter<ShaderInterfaceDefEntry>;
-
+impl ShaderInterface {
+    /// Constructs a new `ShaderInterface`.
+    ///
+    /// # Safety
+    ///
+    /// - Must only provide one entry per location.
+    /// - The format of each element must not be larger than 128 bits.
+    // TODO: could this be made safe?
     #[inline]
-    fn elements(&self) -> Self::Iter {
-        iter::empty()
+    pub unsafe fn new(elements: Cow<'static, [ShaderInterfaceEntry]>) -> ShaderInterface {
+        ShaderInterface { elements }
     }
-}
 
-/// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially
-/// compatible with another one.
-pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef
-where
-    I: ShaderInterfaceDef,
-{
-    /// Returns `Ok` if the two definitions match.
-    fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError>;
-}
+    /// Returns a slice containing the elements of the interface.
+    #[inline]
+    pub fn elements(&self) -> &[ShaderInterfaceEntry] {
+        self.elements.as_ref()
+    }
 
-// TODO: turn this into a default impl that can be specialized
-unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
-where
-    T: ShaderInterfaceDef,
-    I: ShaderInterfaceDef,
-{
-    fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError> {
+    /// Checks whether the interface is potentially compatible with another one.
+    ///
+    /// Returns `Ok` if the two interfaces are compatible.
+    pub fn matches(&self, other: &ShaderInterface) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
             return Err(ShaderInterfaceMismatchError::ElementsCountMismatch {
                 self_elements: self.elements().len() as u32,
@@ -497,6 +453,7 @@ where
             for loc in a.location.clone() {
                 let b = match other
                     .elements()
+                    .iter()
                     .find(|e| loc >= e.location.start && loc < e.location.end)
                 {
                     None => {
@@ -526,6 +483,17 @@ where
 
         Ok(())
     }
+}
+
+/// Entry of a shader interface definition.
+#[derive(Debug, Clone)]
+pub struct ShaderInterfaceEntry {
+    /// Range of locations covered by the element.
+    pub location: Range<u32>,
+    /// Format of a each location of the element.
+    pub format: Format,
+    /// Name of the element, or `None` if the name is unknown.
+    pub name: Option<Cow<'static, str>>,
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.

@@ -10,7 +10,7 @@
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::ImageLayout;
-use crate::pipeline::shader::ShaderInterfaceDef;
+use crate::pipeline::shader::ShaderInterface;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
 use crate::vk;
@@ -90,10 +90,11 @@ impl RenderPassDesc {
 
     /// Returns `true` if the subpass of this description is compatible with the shader's fragment
     /// output definition.
-    pub fn is_compatible_with_shader<S>(&self, subpass: u32, shader_interface: &S) -> bool
-    where
-        S: ShaderInterfaceDef,
-    {
+    pub fn is_compatible_with_shader(
+        &self,
+        subpass: u32,
+        shader_interface: &ShaderInterface,
+    ) -> bool {
         let pass_descr = match self.subpasses.get(subpass as usize) {
             Some(s) => s,
             None => return false,
