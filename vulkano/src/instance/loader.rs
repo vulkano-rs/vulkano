@@ -133,7 +133,7 @@ impl<L> FunctionPointers<L> {
 
     /// Returns the collection of Vulkan entry points from the Vulkan loader.
     #[inline]
-    pub(crate) fn entry_points(&self) -> &vk::EntryPoints {
+    pub fn entry_points(&self) -> &vk::EntryPoints {
         &self.entry_points
     }
 

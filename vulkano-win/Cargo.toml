@@ -18,7 +18,7 @@ raw-window-handle_ = ["raw-window-handle"]
 
 [dependencies]
 winit = { version = "0.24", optional = true }
-vulkano = { version = "0.22.0", path = "../vulkano" }
+vulkano = { version = "0.23.0", path = "../vulkano" }
 raw-window-handle = { version = "0.3.3", optional = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
