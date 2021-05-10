@@ -3,6 +3,12 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+- Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan versions below 1.2.
+- Added `FunctionPointers::api_version` to query the highest supported instance version.
+- Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return (currently never higher than 1.1, but this may change in the future).
+
+# Version 0.23.0 (2021-04-10)
+
 - **Breaking** Changes to command buffers:
   - `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be creating, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
   - The `Flags` enum is renamed to `CommandBufferUsage`, and is exported from the main `command_buffer` module. The `None` variant is renamed to `MultipleSubmit`.
@@ -56,9 +62,8 @@
 - Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
 - Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
-- Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan versions below 1.2.
-- Added `FunctionPointers::api_version` to query the highest supported instance version.
-- Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return (currently never higher than 1.1, but this may change in the future).
+- Export root-level `entry_point` method on `loader::FunctionPointers` type.
+- Add few more `InstanceExtensions` from KHR and EXT.
 
 # Version 0.22.0 (2021-03-31)
 
