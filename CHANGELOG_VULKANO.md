@@ -3,6 +3,10 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+
+
+# Version 0.23.0 (2021-04-10)
+
 - **Breaking** Changes to command buffers:
   - `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be creating, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
   - The `Flags` enum is renamed to `CommandBufferUsage`, and is exported from the main `command_buffer` module. The `None` variant is renamed to `MultipleSubmit`.
@@ -57,7 +61,6 @@
 - Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
 - Export root-level `entry_point` method on `loader::FunctionPointers` type.
 - Add few more `InstanceExtensions` from KHR and EXT.
-- Add `MEMORY_HEAP_MULTI_INSTANCE_BIT` for `MemoryHeap`.
 
 # Version 0.22.0 (2021-03-31)
 
