@@ -3,6 +3,7 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+- **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
 - Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan versions below 1.2.
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
 - Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return (currently never higher than 1.1, but this may change in the future).
@@ -53,7 +54,6 @@
   - Replaced the various usage functions with a single `usage` function, mirroring the change made earlier to `UnsafeImage`.
   - The `SparseLevel::sparse` member is removed, and `UnsafeBuffer::new` takes `Option<SparseLevel>` instead.
 - **Breaking** `Swapchain` is now constructed using a builder. `Swapchain::start` will start building a new blank swapchain. Calling `recreate` on an existing swapchain will create a builder filled with all the properties of the old swapchain.
-- **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
 - Added two methods to `Format`: `planes` to query the number of planes in the format, and `aspects` to query what aspects an image of this type has.
 - The deprecated `cause` trait function on Vulkano error types is replaced with `source`.
 - Fixed bug in descriptor array layers check when the image is a cubemap.
