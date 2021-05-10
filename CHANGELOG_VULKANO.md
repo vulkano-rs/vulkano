@@ -55,6 +55,9 @@
 - Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
 - Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
+- Export root-level `entry_point` method on `loader::FunctionPointers` type.
+- Add few more `InstanceExtensions` from KHR and EXT.
+- Add `MEMORY_HEAP_MULTI_INSTANCE_BIT` for `MemoryHeap`.
 
 # Version 0.22.0 (2021-03-31)
 

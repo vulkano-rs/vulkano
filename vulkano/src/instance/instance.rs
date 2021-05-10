@@ -1379,6 +1379,14 @@ impl<'a> MemoryHeap<'a> {
         let flags = self.physical_device.infos().memory.memoryHeaps[self.id as usize].flags;
         (flags & vk::MEMORY_HEAP_DEVICE_LOCAL_BIT) != 0
     }
+
+    /// Returns true if the heap is multi-instance enabled, that is allocation from such
+    /// heap will replicate to each physical-device's instance of heap.
+    #[inline]
+    pub fn is_multi_instance(&self) -> bool {
+        let flags = self.physical_device.infos().memory.memoryHeaps[self.id as usize].flags;
+        (flags & vk::MEMORY_HEAP_MULTI_INSTANCE_BIT) != 0
+    }
 }
 
 /// Iterator for all the memory heaps available on a physical device.
