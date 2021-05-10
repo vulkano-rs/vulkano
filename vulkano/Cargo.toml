@@ -1,6 +1,6 @@
 [package]
 name = "vulkano"
-version = "0.22.0"
+version = "0.23.0"
 edition = "2018"
 authors = ["Pierre Krieger <pierre.krieger1708@gmail.com>", "The vulkano contributors"]
 repository = "https://github.com/vulkano-rs/vulkano"
@@ -21,4 +21,4 @@ lazy_static = "1.4"
 parking_lot = { version = "0.11.1", features = ["send_guard"] }
 shared_library = "0.1"
 smallvec = "1.6"
-vk-sys = { version = "0.6.0", path = "../vk-sys" }
+vk-sys = { version = "0.6.1", path = "../vk-sys" }
