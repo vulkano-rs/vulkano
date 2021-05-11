@@ -1787,6 +1787,19 @@ where
                 panic!("Too many clear values")
             }
 
+            if let Some(multiview_desc) = framebuffer.render_pass().desc().multiview() {
+                if multiview_desc
+                    .view_masks
+                    .iter()
+                    .chain(multiview_desc.correlation_masks.iter())
+                    .map(|&mask| 32 - mask.leading_zeros()) // calculates the highest used layer index of the mask
+                    .any(|highest_used_layer| highest_used_layer > framebuffer.layers())
+                {
+                    // TODO don't panic
+                    panic!("A multiview mask references more layers than exist in the framebuffer");
+                }
+            }
+
             let framebuffer_object = FramebufferAbstract::inner(&framebuffer).internal_object();
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;

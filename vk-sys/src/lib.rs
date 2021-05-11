@@ -2848,6 +2848,18 @@ pub struct RenderPassCreateInfo {
 }
 
 #[repr(C)]
+pub struct RenderPassMultiviewCreateInfo {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub subpassCount: u32,
+    pub pViewMasks: *const u32,
+    pub dependencyCount: u32,
+    pub pViewOffsets: *const i32,
+    pub correlationMaskCount: u32,
+    pub pCorrelationMasks: *const u32,
+}
+
+#[repr(C)]
 pub struct CommandPoolCreateInfo {
     pub sType: StructureType,
     pub pNext: *const c_void,
@@ -3285,11 +3297,19 @@ pub struct PhysicalDeviceProperties2KHR {
 #[repr(C)]
 pub struct PhysicalDeviceSubgroupProperties {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut PhysicalDeviceMultiviewProperties,
     pub subgroupSize: u32,
     pub supportedStages: ShaderStageFlags,
     pub supportedOperations: SubgroupFeatureFlags,
     pub quadOperationsInAllStages: Bool32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceMultiviewProperties {
+    pub sType: StructureType,
+    pub pNext: *const c_void,
+    pub maxMultiviewViewCount: u32,
+    pub maxMultiviewInstanceIndex: u32,
 }
 
 #[repr(C)]

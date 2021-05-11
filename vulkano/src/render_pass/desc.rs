@@ -21,6 +21,7 @@ pub struct RenderPassDesc {
     attachments: Vec<AttachmentDesc>,
     subpasses: Vec<SubpassDesc>,
     dependencies: Vec<SubpassDependencyDesc>,
+    multiview: Option<MultiviewDesc>,
 }
 
 impl RenderPassDesc {
@@ -34,6 +35,23 @@ impl RenderPassDesc {
             attachments,
             subpasses,
             dependencies,
+            multiview: None,
+        }
+    }
+
+    /// Creates a description of a render pass that uses the multiview feature.
+    /// TODO multiview explanation
+    pub fn with_multiview(
+        attachments: Vec<AttachmentDesc>,
+        subpasses: Vec<SubpassDesc>,
+        dependencies: Vec<SubpassDependencyDesc>,
+        multiview: MultiviewDesc,
+    ) -> RenderPassDesc {
+        RenderPassDesc {
+            attachments,
+            subpasses,
+            dependencies,
+            multiview: Some(multiview),
         }
     }
 
@@ -49,6 +67,7 @@ impl RenderPassDesc {
                 preserve_attachments: vec![],
             }],
             dependencies: vec![],
+            multiview: None,
         }
     }
 
@@ -68,6 +87,12 @@ impl RenderPassDesc {
     #[inline]
     pub fn dependencies(&self) -> &[SubpassDependencyDesc] {
         &self.dependencies
+    }
+
+    // Returns the multiview configuration of the description.
+    #[inline]
+    pub fn multiview(&self) -> &Option<MultiviewDesc> {
+        &self.multiview
     }
 
     /// Decodes `I` into a list of clear values where each element corresponds
@@ -316,4 +341,34 @@ pub enum LoadOp {
     /// If you are going to fill the attachment with a uniform value, it is better to use `Clear`
     /// instead.
     DontCare = vk::ATTACHMENT_LOAD_OP_DONT_CARE,
+}
+
+/// TODO comments
+#[derive(Debug, Clone)]
+pub struct MultiviewDesc {
+    pub view_masks: Vec<u32>,
+    pub correlation_masks: Vec<u32>,
+    pub view_offsets: Vec<i32>,
+}
+
+impl MultiviewDesc {
+    /// Returns the index of the layer with the biggest index that is
+    /// referred to by a mask in the multiview description.
+    pub fn highest_used_layer(&self) -> u32 {
+        self.view_masks
+            .iter()
+            .chain(self.correlation_masks.iter())
+            .map(|&mask| 32 - mask.leading_zeros()) // the highest set bit corresponds to the highest used layer
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns the amount of layers that are used in the multiview description.
+    pub fn used_layer_count(&self) -> u32 {
+        self.view_masks
+            .iter()
+            .chain(self.correlation_masks.iter())
+            .fold(0, |acc, &mask| acc | mask)
+            .count_ones()
+    }
 }

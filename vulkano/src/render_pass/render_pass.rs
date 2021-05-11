@@ -379,10 +379,85 @@ impl RenderPass {
             })
             .collect::<SmallVec<[_; 16]>>();
 
+        let multiview_create_info = match description.multiview() {
+            Some(multiview) => {
+                // TODO don't panic
+
+                assert!(device.loaded_extensions().khr_multiview);
+                assert!(
+                    device
+                        .instance()
+                        .loaded_extensions()
+                        .khr_get_physical_device_properties2
+                );
+                assert!(
+                    device
+                        .physical_device()
+                        .extended_properties()
+                        .max_multiview_view_count()
+                        .unwrap_or(0)
+                        >= multiview.used_layer_count()
+                );
+                // TODO check geometry and tesselation shader compatibility
+
+                // each subpass must have a corresponding view mask
+                assert_eq!(multiview.view_masks.len(), passes.len());
+
+                // either all subpasses must have a non-zero view mask or all must be zero
+                // (multiview is considered to be disabled when all view masks are zero)
+                assert!(
+                    multiview.view_masks.iter().all(|&mask| mask != 0)
+                        || multiview.view_masks.iter().all(|&mask| mask == 0)
+                );
+
+                // one view offset for each dependency
+                assert_eq!(dependencies.len(), multiview.view_offsets.len());
+                // TODO should be checked: each view offset controls which views in the source subpass the views in the destination subpass depend on
+
+                // TODO VK_DEPENDENCY_VIEW_LOCAL_BIT stuff
+                // TODO deal with "When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined"
+
+                // ensure that each view index is contained in at most one correlation mask
+                // by checking for any overlap in all pairs of correlation masks
+                assert!(multiview
+                    .correlation_masks
+                    .iter()
+                    .enumerate()
+                    .all(|(i, &mask)| multiview.correlation_masks[i + 1..]
+                        .iter()
+                        .all(|&other_mask| other_mask & mask == 0)));
+
+                vk::RenderPassMultiviewCreateInfo {
+                    sType: vk::STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR,
+                    pNext: ptr::null(),
+                    subpassCount: passes.len() as u32,
+                    pViewMasks: multiview.view_masks.as_ptr(),
+                    dependencyCount: dependencies.len() as u32,
+                    pViewOffsets: multiview.view_offsets.as_ptr(),
+                    correlationMaskCount: multiview.correlation_masks.len() as u32,
+                    pCorrelationMasks: multiview.correlation_masks.as_ptr(),
+                }
+            }
+            None => vk::RenderPassMultiviewCreateInfo {
+                sType: vk::STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR,
+                pNext: ptr::null(),
+                subpassCount: 0u32,
+                pViewMasks: ptr::null(),
+                dependencyCount: 0u32,
+                pViewOffsets: ptr::null(),
+                correlationMaskCount: 0u32,
+                pCorrelationMasks: ptr::null(),
+            },
+        };
+
         let render_pass = unsafe {
             let infos = vk::RenderPassCreateInfo {
                 sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-                pNext: ptr::null(),
+                pNext: if description.multiview().is_none() {
+                    ptr::null()
+                } else {
+                    &multiview_create_info as *const vk::RenderPassMultiviewCreateInfo as _
+                },
                 flags: 0, // reserved
                 attachmentCount: attachments.len() as u32,
                 pAttachments: if attachments.is_empty() {

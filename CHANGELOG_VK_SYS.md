@@ -1,5 +1,9 @@
 # Unreleased
 
+- Added additional support for `VK_KHR_multiview`
+    + struct `RenderPassMultiviewCreateInfo`
+    + struct `PhysicalDeviceMultiviewProperties`
+
 # Version 0.6.0 (2020-03-05)
 
 - Added support for VK1.2 formats.
