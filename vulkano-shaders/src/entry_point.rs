@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_sets::write_descriptor_sets;
+use crate::descriptor_sets::write_pipeline_layout_desc;
 use crate::enums::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
@@ -19,7 +19,7 @@ pub(super) fn write_entry_point(
     instruction: &Instruction,
     types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
-) -> (TokenStream, TokenStream) {
+) -> TokenStream {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
             ref execution,
@@ -30,13 +30,6 @@ pub(super) fn write_entry_point(
         } => (execution, id, name, interface),
         _ => unreachable!(),
     };
-
-    let capitalized_ep_name: String = ep_name
-        .chars()
-        .take(1)
-        .flat_map(|c| c.to_uppercase())
-        .chain(ep_name.chars().skip(1))
-        .collect();
 
     let ignore_first_array_in = match *execution {
         ExecutionModel::ExecutionModelTessellationControl => true,
@@ -56,17 +49,84 @@ pub(super) fn write_entry_point(
         ignore_first_array_out,
     );
 
-    let descriptor_sets_layout_name = Ident::new(
-        format!("{}Layout", capitalized_ep_name).as_str(),
-        Span::call_site(),
-    );
-    let descriptor_sets_layout_struct = write_descriptor_sets(
+    let stage = if let ExecutionModel::ExecutionModelGLCompute = *execution {
+        quote! { ShaderStages {
+            vertex: false,
+            tessellation_control: false,
+            tessellation_evaluation: false,
+            geometry: false,
+            fragment: false,
+            compute: true,
+        } }
+    } else {
+        match *execution {
+            ExecutionModel::ExecutionModelVertex => {
+                quote! { ShaderStages {
+                    vertex: true,
+                    tessellation_control: false,
+                    tessellation_evaluation: false,
+                    geometry: false,
+                    fragment: false,
+                    compute: false,
+                } }
+            }
+
+            ExecutionModel::ExecutionModelTessellationControl => {
+                quote! { ShaderStages {
+                    vertex: false,
+                    tessellation_control: true,
+                    tessellation_evaluation: false,
+                    geometry: false,
+                    fragment: false,
+                    compute: false,
+                } }
+            }
+
+            ExecutionModel::ExecutionModelTessellationEvaluation => {
+                quote! { ShaderStages {
+                    vertex: false,
+                    tessellation_control: false,
+                    tessellation_evaluation: true,
+                    geometry: false,
+                    fragment: false,
+                    compute: false,
+                } }
+            }
+
+            ExecutionModel::ExecutionModelGeometry => {
+                quote! { ShaderStages {
+                    vertex: false,
+                    tessellation_control: false,
+                    tessellation_evaluation: false,
+                    geometry: true,
+                    fragment: false,
+                    compute: false,
+                } }
+            }
+
+            ExecutionModel::ExecutionModelFragment => {
+                quote! { ShaderStages {
+                    vertex: false,
+                    tessellation_control: false,
+                    tessellation_evaluation: false,
+                    geometry: false,
+                    fragment: true,
+                    compute: false,
+                } }
+            }
+
+            ExecutionModel::ExecutionModelGLCompute => unreachable!(),
+            ExecutionModel::ExecutionModelKernel => unreachable!(),
+        }
+    };
+
+    let pipeline_layout_desc = write_pipeline_layout_desc(
         &doc,
-        &descriptor_sets_layout_name,
         id,
         interface,
         &types_meta,
         exact_entrypoint_interface,
+        stage,
     );
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
@@ -78,10 +138,10 @@ pub(super) fn write_entry_point(
     let (ty, f_call) = {
         if let ExecutionModel::ExecutionModelGLCompute = *execution {
             (
-                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, #descriptor_sets_layout_name> },
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, ::vulkano::descriptor::pipeline_layout::RuntimePipelineDesc> },
                 quote! { compute_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    #descriptor_sets_layout_name(ShaderStages { compute: true, .. ShaderStages::none() })
+                    #pipeline_layout_desc
                 )},
             )
         } else {
@@ -148,42 +208,17 @@ pub(super) fn write_entry_point(
                 ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
             };
 
-            let stage = match *execution {
-                ExecutionModel::ExecutionModelVertex => {
-                    quote! { ShaderStages { vertex: true, .. ShaderStages::none() } }
-                }
-
-                ExecutionModel::ExecutionModelTessellationControl => {
-                    quote! { ShaderStages { tessellation_control: true, .. ShaderStages::none() } }
-                }
-
-                ExecutionModel::ExecutionModelTessellationEvaluation => {
-                    quote! { ShaderStages { tessellation_evaluation: true, .. ShaderStages::none() } }
-                }
-
-                ExecutionModel::ExecutionModelGeometry => {
-                    quote! { ShaderStages { geometry: true, .. ShaderStages::none() } }
-                }
-
-                ExecutionModel::ExecutionModelFragment => {
-                    quote! { ShaderStages { fragment: true, .. ShaderStages::none() } }
-                }
-
-                ExecutionModel::ExecutionModelGLCompute => unreachable!(),
-                ExecutionModel::ExecutionModelKernel => unreachable!(),
-            };
-
             let ty = quote! {
                 ::vulkano::pipeline::shader::GraphicsEntryPoint<
                     #spec_consts_struct,
-                    #descriptor_sets_layout_name>
+                    ::vulkano::descriptor::pipeline_layout::RuntimePipelineDesc>
             };
             let f_call = quote! {
                 graphics_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
                     #input_interface,
                     #output_interface,
-                    #descriptor_sets_layout_name(#stage),
+                    #pipeline_layout_desc,
                     #entry_ty
                 )
             };
@@ -212,7 +247,7 @@ pub(super) fn write_entry_point(
         }
     };
 
-    (entry_point, descriptor_sets_layout_struct)
+    entry_point
 }
 
 struct Element {
@@ -336,7 +371,7 @@ fn write_interface(attributes: &[Element]) -> TokenStream {
     quote! {
         #[allow(unsafe_code)]
         unsafe {
-            ::vulkano::pipeline::shader::ShaderInterface::new(::std::borrow::Cow::Borrowed(&[
+            ::vulkano::pipeline::shader::ShaderInterface::new_unchecked(::std::borrow::Cow::Borrowed(&[
                 #( #body )*
             ]))
         }

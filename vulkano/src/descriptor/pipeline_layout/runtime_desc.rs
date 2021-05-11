@@ -7,78 +7,90 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
-use smallvec::SmallVec;
-
 use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use std::borrow::Cow;
+use std::error;
+use std::fmt;
 
 /// Runtime description of a pipeline layout.
 #[derive(Debug, Clone)]
 pub struct RuntimePipelineDesc {
-    descriptors: SmallVec<[SmallVec<[Option<DescriptorDesc>; 5]>; 3]>,
-    push_constants: SmallVec<[PipelineLayoutDescPcRange; 6]>,
+    descriptor_sets: Cow<'static, [Cow<'static, [Option<DescriptorDesc>]>]>,
+    push_constants: Cow<'static, [PipelineLayoutDescPcRange]>,
 }
 
 impl RuntimePipelineDesc {
     /// Builds a new `RuntimePipelineDesc` from the descriptors and push constants descriptions.
-    pub fn new<TSetsIter, TPushConstsIter, TDescriptorsIter>(
-        desc: TSetsIter,
-        push_constants: TPushConstsIter,
-    ) -> Result<RuntimePipelineDesc, RuntimePipelineDescError>
-    where
-        TSetsIter: IntoIterator<Item = TDescriptorsIter>,
-        TDescriptorsIter: IntoIterator<Item = Option<DescriptorDesc>>,
-        TPushConstsIter: IntoIterator<Item = PipelineLayoutDescPcRange>,
-    {
-        let descriptors = desc.into_iter().map(|s| s.into_iter().collect()).collect();
-        let push_constants: SmallVec<[PipelineLayoutDescPcRange; 6]> =
-            push_constants.into_iter().collect();
+    pub fn new(
+        descriptor_sets: Cow<'static, [Cow<'static, [Option<DescriptorDesc>]>]>,
+        push_constants: Cow<'static, [PipelineLayoutDescPcRange]>,
+    ) -> Result<RuntimePipelineDesc, RuntimePipelineDescError> {
+        unsafe {
+            for (a_id, a) in push_constants.iter().enumerate() {
+                for b in push_constants.iter().skip(a_id + 1) {
+                    if a.offset <= b.offset && a.offset + a.size > b.offset {
+                        return Err(RuntimePipelineDescError::PushConstantsConflict {
+                            first_offset: a.offset,
+                            first_size: a.size,
+                            second_offset: b.offset,
+                        });
+                    }
 
-        for (a_id, a) in push_constants.iter().enumerate() {
-            for b in push_constants.iter().skip(a_id + 1) {
-                if a.offset <= b.offset && a.offset + a.size > b.offset {
-                    return Err(RuntimePipelineDescError::PushConstantsConflict {
-                        first_offset: a.offset,
-                        first_size: a.size,
-                        second_offset: b.offset,
-                    });
-                }
-
-                if b.offset <= a.offset && b.offset + b.size > a.offset {
-                    return Err(RuntimePipelineDescError::PushConstantsConflict {
-                        first_offset: b.offset,
-                        first_size: b.size,
-                        second_offset: a.offset,
-                    });
+                    if b.offset <= a.offset && b.offset + b.size > a.offset {
+                        return Err(RuntimePipelineDescError::PushConstantsConflict {
+                            first_offset: b.offset,
+                            first_size: b.size,
+                            second_offset: a.offset,
+                        });
+                    }
                 }
             }
-        }
 
-        Ok(RuntimePipelineDesc {
-            descriptors,
+            Ok(Self::new_unchecked(descriptor_sets, push_constants))
+        }
+    }
+
+    /// Builds a new `RuntimePipelineDesc` from the descriptors and push constants descriptions.
+    ///
+    /// # Safety
+    ///
+    /// The provided push constants must not conflict with each other.
+    pub unsafe fn new_unchecked(
+        descriptor_sets: Cow<'static, [Cow<'static, [Option<DescriptorDesc>]>]>,
+        push_constants: Cow<'static, [PipelineLayoutDescPcRange]>,
+    ) -> RuntimePipelineDesc {
+        RuntimePipelineDesc {
+            descriptor_sets,
             push_constants,
-        })
+        }
+    }
+
+    /// Creates a description of an empty pipeline layout description, with no descriptor sets or
+    /// push constants.
+    pub const fn empty() -> RuntimePipelineDesc {
+        RuntimePipelineDesc {
+            descriptor_sets: Cow::Borrowed(&[]),
+            push_constants: Cow::Borrowed(&[]),
+        }
     }
 }
 
 unsafe impl PipelineLayoutDesc for RuntimePipelineDesc {
     #[inline]
     fn num_sets(&self) -> usize {
-        self.descriptors.len()
+        self.descriptor_sets.len()
     }
 
     #[inline]
     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        self.descriptors.get(set).map(|s| s.len())
+        self.descriptor_sets.get(set).map(|s| s.len())
     }
 
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        self.descriptors
+        self.descriptor_sets
             .get(set)
             .and_then(|s| s.get(binding).cloned().unwrap_or(None))
     }
@@ -124,39 +136,37 @@ impl fmt::Display for RuntimePipelineDescError {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor::descriptor::DescriptorDesc;
     use crate::descriptor::descriptor::ShaderStages;
     use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     use crate::descriptor::pipeline_layout::RuntimePipelineDesc;
     use crate::descriptor::pipeline_layout::RuntimePipelineDescError;
-    use std::iter;
 
     #[test]
     fn pc_conflict() {
-        let range1 = PipelineLayoutDescPcRange {
-            offset: 0,
-            size: 8,
-            stages: ShaderStages::all(),
-        };
-
-        let range2 = PipelineLayoutDescPcRange {
-            offset: 4,
-            size: 8,
-            stages: ShaderStages::all(),
-        };
-
-        let r = RuntimePipelineDesc::new::<_, _, iter::Empty<Option<DescriptorDesc>>>(
-            iter::empty(),
-            iter::once(range1).chain(iter::once(range2)),
+        let r = RuntimePipelineDesc::new(
+            vec![].into(),
+            vec![
+                PipelineLayoutDescPcRange {
+                    offset: 0,
+                    size: 8,
+                    stages: ShaderStages::all(),
+                },
+                PipelineLayoutDescPcRange {
+                    offset: 4,
+                    size: 8,
+                    stages: ShaderStages::all(),
+                },
+            ]
+            .into(),
         );
 
-        match r {
+        assert!(matches!(
+            r,
             Err(RuntimePipelineDescError::PushConstantsConflict {
                 first_offset: 0,
                 first_size: 8,
                 second_offset: 4,
-            }) => (),
-            _ => panic!(), // test failed
-        }
+            })
+        ));
     }
 }

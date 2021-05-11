@@ -660,7 +660,7 @@ impl ShaderStages {
     /// Creates a `ShaderStages` struct will all stages set to `true`.
     // TODO: add example
     #[inline]
-    pub fn all() -> ShaderStages {
+    pub const fn all() -> ShaderStages {
         ShaderStages {
             vertex: true,
             tessellation_control: true,
@@ -674,7 +674,7 @@ impl ShaderStages {
     /// Creates a `ShaderStages` struct will all stages set to `false`.
     // TODO: add example
     #[inline]
-    pub fn none() -> ShaderStages {
+    pub const fn none() -> ShaderStages {
         ShaderStages {
             vertex: false,
             tessellation_control: false,
@@ -688,7 +688,7 @@ impl ShaderStages {
     /// Creates a `ShaderStages` struct with all graphics stages set to `true`.
     // TODO: add example
     #[inline]
-    pub fn all_graphics() -> ShaderStages {
+    pub const fn all_graphics() -> ShaderStages {
         ShaderStages {
             vertex: true,
             tessellation_control: true,
@@ -702,7 +702,7 @@ impl ShaderStages {
     /// Creates a `ShaderStages` struct with the compute stage set to `true`.
     // TODO: add example
     #[inline]
-    pub fn compute() -> ShaderStages {
+    pub const fn compute() -> ShaderStages {
         ShaderStages {
             vertex: false,
             tessellation_control: false,
@@ -716,7 +716,10 @@ impl ShaderStages {
     /// Checks whether we have more stages enabled than `other`.
     // TODO: add example
     #[inline]
-    pub fn is_superset_of(&self, other: &ShaderStages) -> Result<(), ShaderStagesSupersetError> {
+    pub const fn is_superset_of(
+        &self,
+        other: &ShaderStages,
+    ) -> Result<(), ShaderStagesSupersetError> {
         if (self.vertex || !other.vertex)
             && (self.tessellation_control || !other.tessellation_control)
             && (self.tessellation_evaluation || !other.tessellation_evaluation)
@@ -733,7 +736,7 @@ impl ShaderStages {
     /// Checks whether any of the stages in `self` are also present in `other`.
     // TODO: add example
     #[inline]
-    pub fn intersects(&self, other: &ShaderStages) -> bool {
+    pub const fn intersects(&self, other: &ShaderStages) -> bool {
         (self.vertex && other.vertex)
             || (self.tessellation_control && other.tessellation_control)
             || (self.tessellation_evaluation && other.tessellation_evaluation)

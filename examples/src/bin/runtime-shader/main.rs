@@ -30,10 +30,7 @@ use vulkano::buffer::BufferUsage;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::descriptor::descriptor::DescriptorDesc;
-use vulkano::descriptor::descriptor::ShaderStages;
-use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+use vulkano::descriptor::pipeline_layout::RuntimePipelineDesc;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
@@ -156,95 +153,78 @@ fn main() {
     //   should not overlap.
     // * Format of each element must be no larger than 128 bits.
     let vertex_input = unsafe {
-        ShaderInterface::new(Cow::Borrowed(&[
-            ShaderInterfaceEntry {
-                location: 1..2,
-                format: Format::R32G32B32Sfloat,
-                name: Some(Cow::Borrowed("color")),
-            },
-            ShaderInterfaceEntry {
-                location: 0..1,
-                format: Format::R32G32Sfloat,
-                name: Some(Cow::Borrowed("position")),
-            },
-        ]))
+        ShaderInterface::new_unchecked(
+            vec![
+                ShaderInterfaceEntry {
+                    location: 1..2,
+                    format: Format::R32G32B32Sfloat,
+                    name: Some(Cow::Borrowed("color")),
+                },
+                ShaderInterfaceEntry {
+                    location: 0..1,
+                    format: Format::R32G32Sfloat,
+                    name: Some(Cow::Borrowed("position")),
+                },
+            ]
+            .into(),
+        )
     };
 
     // This definition will tell Vulkan how output entries (those passed to next
     // stage) of our vertex shader look like.
     let vertex_output = unsafe {
-        ShaderInterface::new(Cow::Borrowed(&[ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32Sfloat,
-            name: Some(Cow::Borrowed("v_color")),
-        }]))
+        ShaderInterface::new_unchecked(
+            vec![ShaderInterfaceEntry {
+                location: 0..1,
+                format: Format::R32G32B32Sfloat,
+                name: Some(Cow::Borrowed("v_color")),
+            }]
+            .into(),
+        )
     };
 
-    // This structure describes layout of this stage.
-    #[derive(Debug, Copy, Clone)]
-    struct VertLayout(ShaderStages);
-    unsafe impl PipelineLayoutDesc for VertLayout {
-        // Number of descriptor sets it takes.
-        fn num_sets(&self) -> usize {
-            0
-        }
-        // Number of entries (bindings) in each set.
-        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> {
-            None
-        }
-        // Descriptor descriptions.
-        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> {
-            None
-        }
-        // Number of push constants ranges (think: number of push constants).
-        fn num_push_constants_ranges(&self) -> usize {
-            0
-        }
-        // Each push constant range in memory.
-        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> {
-            None
-        }
-    }
+    // This definition describes the layout of this stage.
+    let vertex_layout = RuntimePipelineDesc::new(
+        // No descriptor sets.
+        vec![].into(),
+        // No push constants.
+        vec![].into(),
+    )
+    .unwrap();
 
     // Same as with our vertex shader, but for fragment one instead.
     let fragment_input = unsafe {
-        ShaderInterface::new(Cow::Borrowed(&[ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32Sfloat,
-            name: Some(Cow::Borrowed("v_color")),
-        }]))
+        ShaderInterface::new_unchecked(
+            vec![ShaderInterfaceEntry {
+                location: 0..1,
+                format: Format::R32G32B32Sfloat,
+                name: Some(Cow::Borrowed("v_color")),
+            }]
+            .into(),
+        )
     };
 
     // Note that color fragment color entry will be determined
     // automatically by Vulkano.
     let fragment_output = unsafe {
-        ShaderInterface::new(Cow::Borrowed(&[ShaderInterfaceEntry {
-            location: 0..1,
-            format: Format::R32G32B32A32Sfloat,
-            name: Some(Cow::Borrowed("f_color")),
-        }]))
+        ShaderInterface::new_unchecked(
+            vec![ShaderInterfaceEntry {
+                location: 0..1,
+                format: Format::R32G32B32A32Sfloat,
+                name: Some(Cow::Borrowed("f_color")),
+            }]
+            .into(),
+        )
     };
 
     // Layout same as with vertex shader.
-    #[derive(Debug, Copy, Clone)]
-    struct FragLayout(ShaderStages);
-    unsafe impl PipelineLayoutDesc for FragLayout {
-        fn num_sets(&self) -> usize {
-            0
-        }
-        fn num_bindings_in_set(&self, _set: usize) -> Option<usize> {
-            None
-        }
-        fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> {
-            None
-        }
-        fn num_push_constants_ranges(&self) -> usize {
-            0
-        }
-        fn push_constants_range(&self, _num: usize) -> Option<PipelineLayoutDescPcRange> {
-            None
-        }
-    }
+    let fragment_layout = RuntimePipelineDesc::new(
+        // No descriptor sets.
+        vec![].into(),
+        // No push constants.
+        vec![].into(),
+    )
+    .unwrap();
 
     // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
     // checking and you have to verify correctness of what you are doing by
@@ -258,10 +238,7 @@ fn main() {
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
             vertex_input,
             vertex_output,
-            VertLayout(ShaderStages {
-                vertex: true,
-                ..ShaderStages::none()
-            }),
+            vertex_layout,
             GraphicsShaderType::Vertex,
         )
     };
@@ -271,10 +248,7 @@ fn main() {
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
             fragment_input,
             fragment_output,
-            FragLayout(ShaderStages {
-                fragment: true,
-                ..ShaderStages::none()
-            }),
+            fragment_layout,
             GraphicsShaderType::Fragment,
         )
     };

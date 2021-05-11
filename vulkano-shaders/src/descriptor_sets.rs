@@ -7,13 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
-
-use proc_macro2::{Ident, TokenStream};
-
 use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
+use proc_macro2::TokenStream;
+use std::cmp;
 use std::collections::HashSet;
 
 #[derive(Debug)]
@@ -25,13 +23,13 @@ struct Descriptor {
     readonly: bool,
 }
 
-pub(super) fn write_descriptor_sets(
+pub(super) fn write_pipeline_layout_desc(
     doc: &Spirv,
-    entry_point_layout_name: &Ident,
     entrypoint_id: u32,
     interface: &[u32],
     types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
+    stages: TokenStream,
 ) -> TokenStream {
     // TODO: somewhat implemented correctly
 
@@ -55,86 +53,87 @@ pub(super) fn write_descriptor_sets(
         push_constants_size = cmp::max(push_constants_size, size);
     }
 
-    // Writing the body of the `descriptor` method.
-    let descriptor_body = descriptors
-        .iter()
-        .map(|d| {
-            let set = d.set as usize;
-            let binding = d.binding as usize;
-            let desc_ty = &d.desc_ty;
-            let array_count = d.array_count as u32;
-            let readonly = d.readonly;
-            quote! {
-                (#set, #binding) => Some(DescriptorDesc {
-                    ty: #desc_ty,
-                    array_count: #array_count,
-                    stages: self.0.clone(),
-                    readonly: #readonly,
-                }),
-            }
-        })
-        .collect::<Vec<_>>();
+    let descriptor_sets = {
+        let num_sets = descriptors.iter().map(|d| d.set + 1).max().unwrap_or(0);
+        let sets: Vec<_> = (0..num_sets)
+            .map(|set_num| {
+                let num_bindings = descriptors
+                    .iter()
+                    .filter(|d| d.set == set_num)
+                    .map(|d| d.binding + 1)
+                    .max()
+                    .unwrap_or(0);
+                let bindings: Vec<_> = (0..num_bindings)
+                    .map(|binding_num| {
+                        match descriptors
+                            .iter()
+                            .find(|d| d.set == set_num && d.binding == binding_num)
+                        {
+                            Some(d) => {
+                                let desc_ty = &d.desc_ty;
+                                let array_count = d.array_count as u32;
+                                let readonly = d.readonly;
+                                quote! {
+                                    Some(DescriptorDesc {
+                                        ty: #desc_ty,
+                                        array_count: #array_count,
+                                        stages: #stages,
+                                        readonly: #readonly,
+                                    }),
+                                }
+                            }
+                            None => quote! {
+                                None,
+                            },
+                        }
+                    })
+                    .collect();
 
-    let num_sets = descriptors.iter().fold(0, |s, d| cmp::max(s, d.set + 1)) as usize;
-
-    // Writing the body of the `num_bindings_in_set` method.
-    let num_bindings_in_set_body = (0..num_sets)
-        .map(|set| {
-            let num = descriptors
-                .iter()
-                .filter(|d| d.set == set as u32)
-                .fold(0, |s, d| cmp::max(s, 1 + d.binding)) as usize;
-            quote! { #set => Some(#num), }
-        })
-        .collect::<Vec<_>>();
-
-    // Writing the body of the `num_push_constants_ranges` method.
-    let num_push_constants_ranges_body = if push_constants_size == 0 { 0 } else { 1 } as usize;
-
-    // Writing the body of the `push_constants_range` method.
-    let push_constants_range_body = quote!(
-        if num != 0 || #push_constants_size == 0 {
-            None
-        } else {
-            Some(PipelineLayoutDescPcRange {
-                offset: 0,                   // FIXME: not necessarily true
-                size: #push_constants_size,
-                stages: ShaderStages::all(), // FIXME: wrong
+                quote! {
+                    std::borrow::Cow::Borrowed(&[
+                        #( #bindings )*
+                    ]),
+                }
             })
+            .collect();
+
+        quote! {
+            std::borrow::Cow::Borrowed(&[
+                #( #sets )*
+            ])
         }
-    );
+    };
+
+    let push_constants = if push_constants_size == 0 {
+        quote! {
+            std::borrow::Cow::Borrowed(&[])
+        }
+    } else {
+        quote! {
+            std::borrow::Cow::Borrowed(&[
+                PipelineLayoutDescPcRange {
+                    offset: 0,                   // FIXME: not necessarily true
+                    size: #push_constants_size,
+                    stages: ShaderStages { // FIXME: wrong
+                        vertex: true,
+                        tessellation_control: true,
+                        tessellation_evaluation: true,
+                        geometry: true,
+                        fragment: true,
+                        compute: true,
+                    },
+                }
+            ])
+        }
+    };
 
     quote! {
-        #[derive(Debug, Clone)]
-        pub struct #entry_point_layout_name(pub ShaderStages);
-
         #[allow(unsafe_code)]
-        unsafe impl PipelineLayoutDesc for #entry_point_layout_name {
-            fn num_sets(&self) -> usize {
-                #num_sets
-            }
-
-            fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                match set {
-                    #( #num_bindings_in_set_body )*
-                    _ => None
-                }
-            }
-
-            fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                match (set, binding) {
-                    #( #descriptor_body )*
-                    _ => None
-                }
-            }
-
-            fn num_push_constants_ranges(&self) -> usize {
-                #num_push_constants_ranges_body
-            }
-
-            fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                #push_constants_range_body
-            }
+        unsafe {
+            ::vulkano::descriptor::pipeline_layout::RuntimePipelineDesc::new_unchecked(
+                #descriptor_sets,
+                #push_constants,
+            )
         }
     }
 }

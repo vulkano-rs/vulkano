@@ -18,8 +18,8 @@
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
 use crate::check_errors;
-use crate::descriptor::pipeline_layout::EmptyPipelineDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::descriptor::pipeline_layout::RuntimePipelineDesc;
 use crate::device::Device;
 use crate::format::Format;
 use crate::pipeline::input_assembly::PrimitiveTopology;
@@ -376,7 +376,7 @@ where
 pub enum EmptyEntryPointDummy {}
 
 unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
-    type PipelineLayout = EmptyPipelineDesc;
+    type PipelineLayout = RuntimePipelineDesc;
     type SpecializationConstants = ();
 
     #[inline]
@@ -390,7 +390,7 @@ unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
     }
 
     #[inline]
-    fn layout(&self) -> &EmptyPipelineDesc {
+    fn layout(&self) -> &Self::PipelineLayout {
         unreachable!()
     }
 }
@@ -428,8 +428,15 @@ impl ShaderInterface {
     /// - The format of each element must not be larger than 128 bits.
     // TODO: could this be made safe?
     #[inline]
-    pub unsafe fn new(elements: Cow<'static, [ShaderInterfaceEntry]>) -> ShaderInterface {
+    pub unsafe fn new_unchecked(elements: Cow<'static, [ShaderInterfaceEntry]>) -> ShaderInterface {
         ShaderInterface { elements }
+    }
+
+    /// Creates a description of an empty shader interface.
+    pub const fn empty() -> ShaderInterface {
+        ShaderInterface {
+            elements: Cow::Borrowed(&[]),
+        }
     }
 
     /// Returns a slice containing the elements of the interface.

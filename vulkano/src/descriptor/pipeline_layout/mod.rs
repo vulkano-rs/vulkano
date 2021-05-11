@@ -49,7 +49,6 @@
 //!
 //! TODO: write this section
 
-pub use self::empty::EmptyPipelineDesc;
 pub use self::limits_check::PipelineLayoutLimitsError;
 pub use self::runtime_desc::RuntimePipelineDesc;
 pub use self::runtime_desc::RuntimePipelineDescError;
@@ -66,7 +65,6 @@ pub use self::traits::PipelineLayoutSuperset;
 pub use self::tweaks::PipelineLayoutDescTweaks;
 pub use self::union::PipelineLayoutDescUnion;
 
-mod empty;
 mod limits_check;
 mod runtime_desc;
 mod sys;
