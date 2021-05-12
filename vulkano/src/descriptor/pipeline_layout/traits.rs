@@ -12,6 +12,7 @@ use std::error;
 use std::fmt;
 use std::sync::Arc;
 
+use super::RuntimePipelineDesc;
 use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::descriptor::DescriptorDescSupersetError;
 use crate::descriptor::descriptor::ShaderStages;
@@ -20,7 +21,6 @@ use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::descriptor::pipeline_layout::limits_check;
 use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::descriptor::pipeline_layout::PipelineLayoutCreationError;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescUnion;
 use crate::descriptor::pipeline_layout::PipelineLayoutSys;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -96,11 +96,103 @@ pub unsafe trait PipelineLayoutDesc {
 
     /// Builds the union of this layout and another.
     #[inline]
-    fn union<T>(self, other: T) -> PipelineLayoutDescUnion<Self, T>
+    fn union<T>(self, other: T) -> RuntimePipelineDesc
     where
         Self: Sized,
+        T: PipelineLayoutDesc,
     {
-        PipelineLayoutDescUnion::new(self, other)
+        unsafe {
+            let descriptor_sets = {
+                let num_sets = cmp::max(self.num_sets(), other.num_sets());
+
+                (0..num_sets)
+                    .map(|set| {
+                        let num_bindings = cmp::max(
+                            self.num_bindings_in_set(set).unwrap_or(0),
+                            other.num_bindings_in_set(set).unwrap_or(0),
+                        );
+
+                        (0..num_bindings)
+                            .map(|binding| {
+                                let a = self.descriptor(set, binding);
+                                let b = other.descriptor(set, binding);
+
+                                match (a, b) {
+                                    (Some(a), Some(b)) => {
+                                        Some(a.union(&b).expect("Can't be union-ed"))
+                                    }
+                                    (Some(a), None) => Some(a),
+                                    (None, Some(b)) => Some(b),
+                                    (None, None) => None,
+                                }
+                            })
+                            .collect()
+                    })
+                    .collect()
+            };
+
+            let push_constants = {
+                let num_ranges = (self.num_push_constants_ranges()..)
+                    .filter(|&n| self.push_constants_range(n).is_none())
+                    .next()
+                    .unwrap();
+
+                (0..num_ranges)
+                    .map(|num| {
+                        // The strategy here is that we return the same ranges as `self.a`, except that if there
+                        // happens to be a range with a similar stage in `self.b` then we adjust the offset and
+                        // size of the range coming from `self.a` to include the range of `self.b`.
+                        //
+                        // After all the ranges of `self.a` have been returned, we return the ones from `self.b`
+                        // that don't intersect with any range of `self.a`.
+
+                        if let Some(mut pc) = self.push_constants_range(num) {
+                            // We try to find the ranges in `self.b` that share the same stages as us.
+                            for n in 0..other.num_push_constants_ranges() {
+                                let other_pc = other.push_constants_range(n).unwrap();
+
+                                if other_pc.stages.intersects(&pc.stages) {
+                                    if other_pc.offset < pc.offset {
+                                        pc.size += pc.offset - other_pc.offset;
+                                        pc.size = cmp::max(pc.size, other_pc.size);
+                                        pc.offset = other_pc.offset;
+                                    } else if other_pc.offset > pc.offset {
+                                        pc.size = cmp::max(
+                                            pc.size,
+                                            other_pc.size + (other_pc.offset - pc.offset),
+                                        );
+                                    }
+                                }
+                            }
+
+                            return pc;
+                        }
+
+                        let mut num = num - self.num_push_constants_ranges();
+                        'outer_loop: for b_r in 0..other.num_push_constants_ranges() {
+                            let pc = other.push_constants_range(b_r).unwrap();
+
+                            for n in 0..self.num_push_constants_ranges() {
+                                let other_pc = self.push_constants_range(n).unwrap();
+                                if other_pc.stages.intersects(&pc.stages) {
+                                    continue 'outer_loop;
+                                }
+                            }
+
+                            if num == 0 {
+                                return pc;
+                            } else {
+                                num -= 1;
+                            }
+                        }
+
+                        unreachable!()
+                    })
+                    .collect()
+            };
+
+            RuntimePipelineDesc::new_unchecked(descriptor_sets, push_constants)
+        }
     }
 
     /// Checks whether this description fulfills the device limits requirements.

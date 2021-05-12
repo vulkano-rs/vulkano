@@ -63,11 +63,9 @@ pub use self::traits::PipelineLayoutPushConstantsCompatible;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutSuperset;
 pub use self::tweaks::PipelineLayoutDescTweaks;
-pub use self::union::PipelineLayoutDescUnion;
 
 mod limits_check;
 mod runtime_desc;
 mod sys;
 mod traits;
 mod tweaks;
-mod union;
