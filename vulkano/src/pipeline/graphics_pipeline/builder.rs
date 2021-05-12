@@ -12,9 +12,9 @@
 #![allow(deprecated)]
 
 use crate::check_errors;
+use crate::descriptor::pipeline_layout::tweak;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescTweaks;
 use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::device::Device;
 use crate::pipeline::blend::AttachmentBlend;
@@ -213,22 +213,21 @@ where
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(
+                    tweak(
                         self.vertex_shader
                             .as_ref()
                             .unwrap()
                             .0
                             .layout()
                             .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout())
                             .union(
                                 self.tessellation
                                     .as_ref()
                                     .unwrap()
                                     .tessellation_control_shader
                                     .0
-                                    .layout()
-                                    .clone(),
+                                    .layout(),
                             ) // FIXME: unwrap()
                             .union(
                                 self.tessellation
@@ -236,10 +235,9 @@ where
                                     .unwrap()
                                     .tessellation_evaluation_shader
                                     .0
-                                    .layout()
-                                    .clone(),
+                                    .layout(),
                             ) // FIXME: unwrap()
-                            .union(self.geometry_shader.as_ref().unwrap().0.layout().clone()), // FIXME: unwrap()
+                            .union(self.geometry_shader.as_ref().unwrap().0.layout()), // FIXME: unwrap()
                         dynamic_buffers.into_iter().cloned(),
                     )
                     .build(device.clone())
@@ -278,22 +276,21 @@ where
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(
+                    tweak(
                         self.vertex_shader
                             .as_ref()
                             .unwrap()
                             .0
                             .layout()
                             .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout())
                             .union(
                                 self.tessellation
                                     .as_ref()
                                     .unwrap()
                                     .tessellation_control_shader
                                     .0
-                                    .layout()
-                                    .clone(),
+                                    .layout(),
                             ) // FIXME: unwrap()
                             .union(
                                 self.tessellation
@@ -301,8 +298,7 @@ where
                                     .unwrap()
                                     .tessellation_evaluation_shader
                                     .0
-                                    .layout()
-                                    .clone(),
+                                    .layout(),
                             ), // FIXME: unwrap()
                         dynamic_buffers.into_iter().cloned(),
                     )
@@ -333,15 +329,15 @@ where
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(
+                    tweak(
                         self.vertex_shader
                             .as_ref()
                             .unwrap()
                             .0
                             .layout()
                             .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone())
-                            .union(self.geometry_shader.as_ref().unwrap().0.layout().clone()), // FIXME: unwrap()
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout())
+                            .union(self.geometry_shader.as_ref().unwrap().0.layout()), // FIXME: unwrap()
                         dynamic_buffers.into_iter().cloned(),
                     )
                     .build(device.clone())
@@ -362,14 +358,14 @@ where
                 }
 
                 pipeline_layout = Box::new(
-                    PipelineLayoutDescTweaks::new(
+                    tweak(
                         self.vertex_shader
                             .as_ref()
                             .unwrap()
                             .0
                             .layout()
                             .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout().clone()),
+                            .union(self.fragment_shader.as_ref().unwrap().0.layout()),
                         dynamic_buffers.into_iter().cloned(),
                     )
                     .build(device.clone())

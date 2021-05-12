@@ -62,7 +62,7 @@ pub use self::traits::PipelineLayoutNotSupersetError;
 pub use self::traits::PipelineLayoutPushConstantsCompatible;
 pub use self::traits::PipelineLayoutSetsCompatible;
 pub use self::traits::PipelineLayoutSuperset;
-pub use self::tweaks::PipelineLayoutDescTweaks;
+pub use self::tweaks::tweak;
 
 mod limits_check;
 mod runtime_desc;

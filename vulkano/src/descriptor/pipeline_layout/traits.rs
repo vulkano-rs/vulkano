@@ -96,7 +96,7 @@ pub unsafe trait PipelineLayoutDesc {
 
     /// Builds the union of this layout and another.
     #[inline]
-    fn union<T>(self, other: T) -> RuntimePipelineDesc
+    fn union<T>(&self, other: &T) -> RuntimePipelineDesc
     where
         Self: Sized,
         T: PipelineLayoutDesc,

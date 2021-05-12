@@ -19,7 +19,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::descriptor::pipeline_layout::{PipelineLayoutDesc, PipelineLayoutDescTweaks};
+use vulkano::descriptor::pipeline_layout::{tweak, PipelineLayoutDesc};
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
@@ -89,7 +89,7 @@ fn main() {
             &shader.main_entry_point(),
             &(),
             Box::new(
-                PipelineLayoutDescTweaks::new(
+                tweak(
                     shader
                         .main_entry_point()
                         .layout()

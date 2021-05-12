@@ -7,93 +7,65 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::RuntimePipelineDesc;
 use crate::descriptor::descriptor::DescriptorBufferDesc;
 use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::descriptor::DescriptorDescTy;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use fnv::FnvHashSet;
 
 /// Transforms a `PipelineLayoutDesc`.
 ///
 /// Used to adjust automatically inferred `PipelineLayoutDesc`s with information that cannot be inferred.
-pub struct PipelineLayoutDescTweaks<T> {
-    inner: T,
-    dynamic_buffers: FnvHashSet<(usize, usize)>,
-}
-
-impl<T> PipelineLayoutDescTweaks<T>
+pub fn tweak<T, I>(inner: T, dynamic_buffers: I) -> RuntimePipelineDesc
 where
     T: PipelineLayoutDesc,
+    I: IntoIterator<Item = (usize, usize)>,
 {
-    /// Describe a layout, ensuring that each `(set, binding)` in `dynamic_buffers` is a dynamic buffers.
-    pub fn new<I>(inner: T, dynamic_buffers: I) -> Self
-    where
-        I: IntoIterator<Item = (usize, usize)>,
-    {
-        let dynamic_buffers = dynamic_buffers.into_iter().collect();
-        for &(set, binding) in &dynamic_buffers {
-            debug_assert!(
-                inner
-                    .descriptor(set, binding)
-                    .map_or(false, |desc| match desc.ty {
-                        DescriptorDescTy::Buffer(_) => true,
-                        _ => false,
-                    }),
-                "tried to make the non-buffer descriptor at set {} binding {} a dynamic buffer",
-                set,
-                binding
-            );
-        }
-        Self {
-            inner,
-            dynamic_buffers,
-        }
-    }
-}
-
-unsafe impl<T> PipelineLayoutDesc for PipelineLayoutDescTweaks<T>
-where
-    T: PipelineLayoutDesc,
-{
-    #[inline]
-    fn num_sets(&self) -> usize {
-        self.inner.num_sets()
+    let dynamic_buffers: FnvHashSet<(usize, usize)> = dynamic_buffers.into_iter().collect();
+    for &(set, binding) in &dynamic_buffers {
+        debug_assert!(
+            inner
+                .descriptor(set, binding)
+                .map_or(false, |desc| match desc.ty {
+                    DescriptorDescTy::Buffer(_) => true,
+                    _ => false,
+                }),
+            "tried to make the non-buffer descriptor at set {} binding {} a dynamic buffer",
+            set,
+            binding
+        );
     }
 
-    #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        self.inner.num_bindings_in_set(set)
-    }
-
-    #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        self.inner
-            .descriptor(set, binding)
-            .map(|desc| match desc.ty {
-                DescriptorDescTy::Buffer(ref buffer_desc)
-                    if self.dynamic_buffers.contains(&(set, binding)) =>
-                {
-                    DescriptorDesc {
-                        ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: Some(true),
-                            ..*buffer_desc
-                        }),
-                        ..desc
-                    }
-                }
-                _ => desc,
+    unsafe {
+        let descriptor_sets = (0..inner.num_sets())
+            .map(|set| {
+                (0..inner.num_bindings_in_set(set).unwrap_or(0))
+                    .map(|binding| {
+                        inner.descriptor(set, binding).map(|desc| match desc.ty {
+                            DescriptorDescTy::Buffer(ref buffer_desc)
+                                if dynamic_buffers.contains(&(set, binding)) =>
+                            {
+                                DescriptorDesc {
+                                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                                        dynamic: Some(true),
+                                        ..*buffer_desc
+                                    }),
+                                    ..desc
+                                }
+                            }
+                            _ => desc,
+                        })
+                    })
+                    .collect()
             })
-    }
+            .collect();
 
-    #[inline]
-    fn num_push_constants_ranges(&self) -> usize {
-        self.inner.num_push_constants_ranges()
-    }
+        // TODO: needs tests
+        let push_constants = (0..inner.num_push_constants_ranges())
+            .map(|num| inner.push_constants_range(num).unwrap())
+            .collect();
 
-    // TODO: needs tests
-    #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        self.inner.push_constants_range(num)
+        RuntimePipelineDesc::new_unchecked(descriptor_sets, push_constants)
     }
 }
