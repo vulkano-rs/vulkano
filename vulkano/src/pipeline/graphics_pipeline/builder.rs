@@ -13,7 +13,6 @@
 
 use crate::check_errors;
 use crate::descriptor::pipeline_layout::PipelineLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::pipeline::blend::AttachmentBlend;
 use crate::pipeline::blend::AttachmentsBlend;
@@ -141,14 +140,10 @@ where
     Fss: SpecializationConstants,
 {
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
-    // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
     pub fn build(
         self,
         device: Arc<Device>,
-    ) -> Result<
-        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>>,
-        GraphicsPipelineCreationError,
-    > {
+    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
         self.with_auto_layout(device, &[])
     }
 
@@ -160,10 +155,7 @@ where
         self,
         device: Arc<Device>,
         dynamic_buffers: &[(usize, usize)],
-    ) -> Result<
-        GraphicsPipeline<Vdef, Box<dyn PipelineLayoutAbstract + Send + Sync>>,
-        GraphicsPipelineCreationError,
-    > {
+    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
         let pipeline_layout;
 
         if let Some(ref tess) = self.tessellation {
@@ -205,7 +197,7 @@ where
                     return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
                 }
 
-                pipeline_layout = Box::new({
+                pipeline_layout = {
                     let mut layout_desc = self
                         .vertex_shader
                         .as_ref()
@@ -233,7 +225,7 @@ where
                         .union(self.geometry_shader.as_ref().unwrap().0.layout_desc()); // FIXME: unwrap()
                     layout_desc.tweak(dynamic_buffers.into_iter().cloned());
                     PipelineLayout::new(device.clone(), layout_desc).unwrap()
-                }) as Box<_>; // TODO: error
+                }; // TODO: error
             } else {
                 if let Err(err) = tess
                     .tessellation_control_shader
@@ -266,7 +258,7 @@ where
                     return Err(GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(err));
                 }
 
-                pipeline_layout = Box::new({
+                pipeline_layout = {
                     let mut layout_desc = self
                         .vertex_shader
                         .as_ref()
@@ -293,7 +285,7 @@ where
                         ); // FIXME: unwrap()
                     layout_desc.tweak(dynamic_buffers.into_iter().cloned());
                     PipelineLayout::new(device.clone(), layout_desc).unwrap()
-                }) as Box<_>; // TODO: error
+                }; // TODO: error
             }
         } else {
             if let Some(ref geometry_shader) = self.geometry_shader {
@@ -317,7 +309,7 @@ where
                     return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
                 }
 
-                pipeline_layout = Box::new({
+                pipeline_layout = {
                     let mut layout_desc = self
                         .vertex_shader
                         .as_ref()
@@ -329,7 +321,7 @@ where
                         .union(self.geometry_shader.as_ref().unwrap().0.layout_desc()); // FIXME: unwrap()
                     layout_desc.tweak(dynamic_buffers.into_iter().cloned());
                     PipelineLayout::new(device.clone(), layout_desc).unwrap()
-                }) as Box<_>; // TODO: error
+                }; // TODO: error
             } else {
                 if let Err(err) = self
                     .fragment_shader
@@ -344,7 +336,7 @@ where
                     ));
                 }
 
-                pipeline_layout = Box::new({
+                pipeline_layout = {
                     let mut layout_desc = self
                         .vertex_shader
                         .as_ref()
@@ -355,11 +347,11 @@ where
                         .union(self.fragment_shader.as_ref().unwrap().0.layout_desc());
                     layout_desc.tweak(dynamic_buffers.into_iter().cloned());
                     PipelineLayout::new(device.clone(), layout_desc).unwrap()
-                }) as Box<_>; // TODO: error
+                }; // TODO: error
             }
         }
 
-        self.with_pipeline_layout(device, pipeline_layout)
+        self.with_pipeline_layout(device, Arc::new(pipeline_layout))
     }
 
     /// Builds the graphics pipeline.
@@ -367,14 +359,11 @@ where
     /// Does the same as `build`, except that `build` automatically builds the pipeline layout
     /// object corresponding to the union of your shaders while this function allows you to specify
     /// the pipeline layout.
-    pub fn with_pipeline_layout<Pl>(
+    pub fn with_pipeline_layout(
         mut self,
         device: Arc<Device>,
-        pipeline_layout: Pl,
-    ) -> Result<GraphicsPipeline<Vdef, Pl>, GraphicsPipelineCreationError>
-    where
-        Pl: PipelineLayoutAbstract,
-    {
+        pipeline_layout: Arc<PipelineLayout>,
+    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
 
         let vk = device.pointers();
@@ -1137,7 +1126,7 @@ where
                     .as_ref()
                     .map(|s| s as *const _)
                     .unwrap_or(ptr::null()),
-                layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
+                layout: pipeline_layout.internal_object(),
                 renderPass: self
                     .subpass
                     .as_ref()

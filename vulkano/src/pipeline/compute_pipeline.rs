@@ -8,13 +8,9 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::descriptor::pipeline_layout::PipelineLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::descriptor::pipeline_layout::PipelineLayoutCreationError;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
-use crate::descriptor::pipeline_layout::PipelineLayoutSys;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
@@ -39,14 +35,14 @@ use std::sync::Arc;
 /// The template parameter contains the descriptor set to use with this pipeline.
 ///
 /// All compute pipeline objects implement the `ComputePipelineAbstract` trait. You can turn any
-/// `Arc<ComputePipeline<Pl>>` into an `Arc<ComputePipelineAbstract>` if necessary.
+/// `Arc<ComputePipeline>` into an `Arc<ComputePipelineAbstract>` if necessary.
 ///
 /// Pass an optional `Arc` to a `PipelineCache` to enable pipeline caching. The vulkan
 /// implementation will handle the `PipelineCache` and check if it is available.
 /// Check the documentation of the `PipelineCache` for more information.
-pub struct ComputePipeline<Pl> {
+pub struct ComputePipeline {
     inner: Inner,
-    pipeline_layout: Pl,
+    pipeline_layout: Arc<PipelineLayout>,
 }
 
 struct Inner {
@@ -54,20 +50,22 @@ struct Inner {
     device: Arc<Device>,
 }
 
-impl ComputePipeline<()> {
+impl ComputePipeline {
     /// Builds a new `ComputePipeline`.
     pub fn new<Cs>(
         device: Arc<Device>,
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<ComputePipeline<PipelineLayout>, ComputePipelineCreationError>
+    ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
     {
         unsafe {
-            let pipeline_layout =
-                PipelineLayout::new(device.clone(), shader.layout_desc().clone())?;
+            let pipeline_layout = Arc::new(PipelineLayout::new(
+                device.clone(),
+                shader.layout_desc().clone(),
+            )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -77,9 +75,7 @@ impl ComputePipeline<()> {
             )
         }
     }
-}
 
-impl<Pl> ComputePipeline<Pl> {
     /// Builds a new `ComputePipeline` with a specific pipeline layout.
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
@@ -88,12 +84,11 @@ impl<Pl> ComputePipeline<Pl> {
         device: Arc<Device>,
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
-        pipeline_layout: Pl,
+        pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+    ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
-        Pl: PipelineLayoutAbstract,
     {
         unsafe {
             pipeline_layout
@@ -115,12 +110,11 @@ impl<Pl> ComputePipeline<Pl> {
         device: Arc<Device>,
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
-        pipeline_layout: Pl,
+        pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
+    ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
-        Pl: PipelineLayoutAbstract,
     {
         let vk = device.pointers();
 
@@ -151,8 +145,8 @@ impl<Pl> ComputePipeline<Pl> {
                 sType: vk::STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
                 pNext: ptr::null(),
                 flags: 0,
-                stage: stage,
-                layout: PipelineLayoutAbstract::sys(&pipeline_layout).internal_object(),
+                stage,
+                layout: pipeline_layout.internal_object(),
                 basePipelineHandle: 0,
                 basePipelineIndex: 0,
             };
@@ -184,40 +178,39 @@ impl<Pl> ComputePipeline<Pl> {
     }
 }
 
-impl<Pl> fmt::Debug for ComputePipeline<Pl> {
+impl fmt::Debug for ComputePipeline {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan compute pipeline {:?}>", self.inner.pipeline)
     }
 }
 
-impl<Pl> ComputePipeline<Pl> {
+impl ComputePipeline {
     /// Returns the `Device` this compute pipeline was created with.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
         &self.inner.device
     }
-
-    /// Returns the pipeline layout used in this compute pipeline.
-    #[inline]
-    pub fn layout(&self) -> &Pl {
-        &self.pipeline_layout
-    }
 }
 
 /// Trait implemented on all compute pipelines.
-pub unsafe trait ComputePipelineAbstract: PipelineLayoutAbstract {
+pub unsafe trait ComputePipelineAbstract: DeviceOwned {
     /// Returns an opaque object that represents the inside of the compute pipeline.
     fn inner(&self) -> ComputePipelineSys;
+
+    /// Returns the pipeline layout used in this compute pipeline.
+    fn layout(&self) -> &Arc<PipelineLayout>;
 }
 
-unsafe impl<Pl> ComputePipelineAbstract for ComputePipeline<Pl>
-where
-    Pl: PipelineLayoutAbstract,
-{
+unsafe impl ComputePipelineAbstract for ComputePipeline {
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
         ComputePipelineSys(self.inner.pipeline, PhantomData)
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.pipeline_layout
     }
 }
 
@@ -229,6 +222,11 @@ where
     #[inline]
     fn inner(&self) -> ComputePipelineSys {
         (**self).inner()
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        (**self).layout()
     }
 }
 
@@ -248,35 +246,14 @@ unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
     }
 }
 
-unsafe impl<Pl> PipelineLayoutAbstract for ComputePipeline<Pl>
-where
-    Pl: PipelineLayoutAbstract,
-{
-    #[inline]
-    fn sys(&self) -> PipelineLayoutSys {
-        self.layout().sys()
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
-        self.layout().desc()
-    }
-
-    #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layout().descriptor_set_layout(index)
-    }
-}
-
-unsafe impl<Pl> DeviceOwned for ComputePipeline<Pl> {
+unsafe impl DeviceOwned for ComputePipeline {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.device()
     }
 }
 
-// TODO: remove in favor of ComputePipelineAbstract?
-unsafe impl<Pl> VulkanObject for ComputePipeline<Pl> {
+unsafe impl VulkanObject for ComputePipeline {
     type Object = vk::Pipeline;
 
     const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
@@ -385,12 +362,12 @@ mod tests {
     use crate::descriptor::descriptor::DescriptorDescTy;
     use crate::descriptor::descriptor::ShaderStages;
     use crate::descriptor::descriptor_set::PersistentDescriptorSet;
-    use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
     use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
+    use crate::pipeline::ComputePipelineAbstract;
     use crate::sync::now;
     use crate::sync::GpuFuture;
     use std::ffi::CStr;

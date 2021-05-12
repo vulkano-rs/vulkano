@@ -10,7 +10,6 @@
 use crate::check_errors;
 use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use crate::descriptor::pipeline_layout::PipelineLayoutLimitsError;
@@ -28,11 +27,11 @@ use std::ptr;
 use std::sync::Arc;
 
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
-/// descriptor sets and push constants available to your shaders
+/// descriptor sets and push constants available to your shaders.
 pub struct PipelineLayout {
     device: Arc<Device>,
     layout: vk::PipelineLayout,
-    layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
+    descriptor_set_layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
     desc: PipelineLayoutDesc,
 }
 
@@ -48,7 +47,7 @@ impl PipelineLayout {
         desc.check_against_limits(&device)?;
 
         // Building the list of `UnsafeDescriptorSetLayout` objects.
-        let layouts = {
+        let descriptor_set_layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
             for set in desc.descriptor_sets() {
                 layouts.push({
@@ -62,7 +61,7 @@ impl PipelineLayout {
         };
 
         // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
-        let layouts_ids = layouts
+        let layouts_ids = descriptor_set_layouts
             .iter()
             .map(|l| l.internal_object())
             .collect::<SmallVec<[_; 16]>>();
@@ -134,27 +133,26 @@ impl PipelineLayout {
 
         Ok(PipelineLayout {
             device: device.clone(),
-            layout: layout,
-            layouts: layouts,
-            desc: desc,
+            layout,
+            descriptor_set_layouts,
+            desc,
         })
     }
 }
 
-unsafe impl PipelineLayoutAbstract for PipelineLayout {
+impl PipelineLayout {
+    /// Returns the description of the pipeline layout.
     #[inline]
-    fn sys(&self) -> PipelineLayoutSys {
-        PipelineLayoutSys(&self.layout)
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
+    pub fn desc(&self) -> &PipelineLayoutDesc {
         &self.desc
     }
 
+    /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
+    ///
+    /// Returns `None` if out of range or if the set is empty for this index.
     #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layouts.get(index)
+    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.descriptor_set_layouts.get(index)
     }
 }
 
@@ -162,6 +160,15 @@ unsafe impl DeviceOwned for PipelineLayout {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
+    }
+}
+
+unsafe impl VulkanObject for PipelineLayout {
+    type Object = vk::PipelineLayout;
+    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_LAYOUT;
+
+    fn internal_object(&self) -> Self::Object {
+        self.layout
     }
 }
 
@@ -182,24 +189,6 @@ impl Drop for PipelineLayout {
             let vk = self.device.pointers();
             vk.DestroyPipelineLayout(self.device.internal_object(), self.layout, ptr::null());
         }
-    }
-}
-
-/// Opaque object that is borrowed from a `PipelineLayout`.
-///
-/// This object exists so that we can pass it around without having to be generic over the template
-/// parameter of the `PipelineLayout`.
-#[derive(Copy, Clone)]
-pub struct PipelineLayoutSys<'a>(&'a vk::PipelineLayout);
-
-unsafe impl<'a> VulkanObject for PipelineLayoutSys<'a> {
-    type Object = vk::PipelineLayout;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_LAYOUT;
-
-    #[inline]
-    fn internal_object(&self) -> vk::PipelineLayout {
-        *self.0
     }
 }
 

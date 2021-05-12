@@ -38,7 +38,7 @@ use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::{DescriptorBufferDesc, DescriptorDescTy};
 use crate::descriptor::descriptor_set::{DescriptorSetDesc, DescriptorSetsCollection};
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
+use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -1069,8 +1069,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
 
             self.ensure_outside_render_pass()?;
-            check_push_constants_validity(pipeline.desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             check_dispatch(pipeline.device(), group_counts)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1079,12 +1079,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.inner.bind_pipeline_compute(pipeline.clone());
             }
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 false,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1123,8 +1123,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_outside_render_pass()?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_push_constants_validity(pipeline.desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -1132,12 +1132,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.inner.bind_pipeline_compute(pipeline.clone());
             }
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 false,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1174,8 +1174,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1186,13 +1186,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1250,8 +1250,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
@@ -1264,13 +1264,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1324,8 +1324,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1342,13 +1342,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1414,8 +1414,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
@@ -1434,13 +1434,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -2030,13 +2030,11 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
 }
 
 // Shortcut function to set the push constants.
-unsafe fn push_constants<Pl, Pc>(
+unsafe fn push_constants<Pc>(
     destination: &mut SyncCommandBufferBuilder,
-    pipeline_layout: Pl,
+    pipeline_layout: &Arc<PipelineLayout>,
     push_constants: Pc,
-) where
-    Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
-{
+) {
     for range in pipeline_layout.desc().push_constants() {
         debug_assert_eq!(range.offset % 4, 0);
         debug_assert_eq!(range.size % 4, 0);
@@ -2046,7 +2044,7 @@ unsafe fn push_constants<Pl, Pc>(
             range.size as usize,
         );
 
-        destination.push_constants::<_, [u8]>(
+        destination.push_constants::<[u8]>(
             pipeline_layout.clone(),
             range.stages,
             range.offset as u32,
@@ -2117,16 +2115,15 @@ unsafe fn vertex_buffers(
     Ok(())
 }
 
-unsafe fn descriptor_sets<Pl, S, Do, Doi>(
+unsafe fn descriptor_sets<S, Do, Doi>(
     destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
     gfx: bool,
-    pipeline: Pl,
+    pipeline_layout: &Arc<PipelineLayout>,
     sets: S,
     dynamic_offsets: Do,
 ) -> Result<(), SyncCommandBufferBuilderError>
 where
-    Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
     S: DescriptorSetsCollection,
     Do: IntoIterator<Item = u32, IntoIter = Doi>,
     Doi: Iterator<Item = u32> + Send + Sync + 'static,
@@ -2137,7 +2134,7 @@ where
     // Ensure that the number of dynamic_offsets is correct and that each
     // dynamic offset is a multiple of the minimum offset alignment specified
     // by the physical device.
-    let limits = pipeline.device().physical_device().limits();
+    let limits = pipeline_layout.device().physical_device().limits();
     let min_uniform_off_align = limits.min_uniform_buffer_offset_alignment() as u32;
     let min_storage_off_align = limits.min_storage_buffer_offset_alignment() as u32;
     let mut dynamic_offset_index = 0;
@@ -2203,7 +2200,7 @@ where
     }
     sets_binder.submit(
         gfx,
-        pipeline.clone(),
+        pipeline_layout.clone(),
         first_binding,
         dynamic_offsets.into_iter(),
     )?;

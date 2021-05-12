@@ -10,10 +10,7 @@
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
 use crate::buffer::BufferAccess;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutSys;
-use crate::descriptor::PipelineLayoutAbstract;
+use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::shader::EmptyEntryPointDummy;
@@ -44,9 +41,9 @@ mod creation_error;
 ///
 /// This object contains the shaders and the various fixed states that describe how the
 /// implementation should perform the various operations needed by a draw command.
-pub struct GraphicsPipeline<VertexDefinition, Layout> {
+pub struct GraphicsPipeline<VertexDefinition> {
     inner: Inner,
-    layout: Layout,
+    layout: Arc<PipelineLayout>,
 
     subpass: Subpass,
 
@@ -71,7 +68,7 @@ struct Inner {
     device: Arc<Device>,
 }
 
-impl GraphicsPipeline<(), ()> {
+impl GraphicsPipeline<()> {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
     pub fn start<'a>() -> GraphicsPipelineBuilder<
@@ -91,7 +88,7 @@ impl GraphicsPipeline<(), ()> {
     }
 }
 
-impl<Mv, L> GraphicsPipeline<Mv, L> {
+impl<Mv> GraphicsPipeline<Mv> {
     /// Returns the vertex definition used in the constructor.
     #[inline]
     pub fn vertex_definition(&self) -> &Mv {
@@ -103,28 +100,13 @@ impl<Mv, L> GraphicsPipeline<Mv, L> {
     pub fn device(&self) -> &Arc<Device> {
         &self.inner.device
     }
-}
 
-impl<Mv, L> GraphicsPipeline<Mv, L>
-where
-    L: PipelineLayoutAbstract,
-{
-    /// Returns the pipeline layout used in the constructor.
-    #[inline]
-    pub fn layout(&self) -> &L {
-        &self.layout
-    }
-}
-
-impl<Mv, L> GraphicsPipeline<Mv, L> {
     /// Returns the pass used in the constructor.
     #[inline]
     pub fn subpass(&self) -> Subpass {
         self.subpass.clone()
     }
-}
 
-impl<Mv, L> GraphicsPipeline<Mv, L> {
     /// Returns the render pass used in the constructor.
     #[inline]
     pub fn render_pass(&self) -> &Arc<RenderPass> {
@@ -180,41 +162,21 @@ impl<Mv, L> GraphicsPipeline<Mv, L> {
     }
 }
 
-unsafe impl<Mv, L> PipelineLayoutAbstract for GraphicsPipeline<Mv, L>
-where
-    L: PipelineLayoutAbstract,
-{
-    #[inline]
-    fn sys(&self) -> PipelineLayoutSys {
-        self.layout.sys()
-    }
-
-    #[inline]
-    fn desc(&self) -> &PipelineLayoutDesc {
-        self.layout.desc()
-    }
-
-    #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layout.descriptor_set_layout(index)
-    }
-}
-
-unsafe impl<Mv, L> DeviceOwned for GraphicsPipeline<Mv, L> {
+unsafe impl<Mv> DeviceOwned for GraphicsPipeline<Mv> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.inner.device
     }
 }
 
-impl<Mv, L> fmt::Debug for GraphicsPipeline<Mv, L> {
+impl<Mv> fmt::Debug for GraphicsPipeline<Mv> {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan graphics pipeline {:?}>", self.inner.pipeline)
     }
 }
 
-unsafe impl<Mv, L> VulkanObject for GraphicsPipeline<Mv, L> {
+unsafe impl<Mv> VulkanObject for GraphicsPipeline<Mv> {
     type Object = vk::Pipeline;
 
     const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
@@ -240,10 +202,13 @@ impl Drop for Inner {
 /// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
 /// wrapped in a `vec!()`.
 pub unsafe trait GraphicsPipelineAbstract:
-    PipelineLayoutAbstract + VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> + DeviceOwned
+    VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> + DeviceOwned
 {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
+
+    /// Returns the pipeline layout used in the constructor.
+    fn layout(&self) -> &Arc<PipelineLayout>;
 
     /// Returns the subpass this graphics pipeline is rendering to.
     fn subpass(&self) -> &Subpass;
@@ -273,14 +238,19 @@ pub unsafe trait GraphicsPipelineAbstract:
     fn has_dynamic_stencil_reference(&self) -> bool;
 }
 
-unsafe impl<Mv, L> GraphicsPipelineAbstract for GraphicsPipeline<Mv, L>
+unsafe impl<Mv> GraphicsPipelineAbstract for GraphicsPipeline<Mv>
 where
-    L: PipelineLayoutAbstract,
     Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
 {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
+    }
+
+    /// Returns the pipeline layout used in the constructor.
+    #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.layout
     }
 
     #[inline]
@@ -340,6 +310,11 @@ where
     }
 
     #[inline]
+    fn layout(&self) -> &Arc<PipelineLayout> {
+        (**self).layout()
+    }
+
+    #[inline]
     fn subpass(&self) -> &Subpass {
         (**self).subpass()
     }
@@ -385,9 +360,8 @@ where
     }
 }
 
-impl<Mv, L> PartialEq for GraphicsPipeline<Mv, L>
+impl<Mv> PartialEq for GraphicsPipeline<Mv>
 where
-    L: PipelineLayoutAbstract,
     Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
 {
     #[inline]
@@ -396,16 +370,11 @@ where
     }
 }
 
-impl<Mv, L> Eq for GraphicsPipeline<Mv, L>
-where
-    L: PipelineLayoutAbstract,
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
-}
+impl<Mv> Eq for GraphicsPipeline<Mv> where Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
+{}
 
-impl<Mv, L> Hash for GraphicsPipeline<Mv, L>
+impl<Mv> Hash for GraphicsPipeline<Mv>
 where
-    L: PipelineLayoutAbstract,
     Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
 {
     #[inline]
@@ -447,7 +416,7 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     }
 }
 
-unsafe impl<Mv, L> VertexDefinition for GraphicsPipeline<Mv, L>
+unsafe impl<Mv> VertexDefinition for GraphicsPipeline<Mv>
 where
     Mv: VertexDefinition,
 {
@@ -463,7 +432,7 @@ where
     }
 }
 
-unsafe impl<Mv, L, S> VertexSource<S> for GraphicsPipeline<Mv, L>
+unsafe impl<Mv, S> VertexSource<S> for GraphicsPipeline<Mv>
 where
     Mv: VertexSource<S>,
 {

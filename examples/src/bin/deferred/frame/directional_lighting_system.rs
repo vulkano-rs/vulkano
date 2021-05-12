@@ -135,7 +135,7 @@ impl DirectionalLightingSystem {
             direction: direction.extend(0.0).into(),
         };
 
-        let layout = self.pipeline.descriptor_set_layout(0).unwrap();
+        let layout = self.pipeline.layout().descriptor_set_layout(0).unwrap();
         let descriptor_set = PersistentDescriptorSet::start(layout.clone())
             .add_image(color_input)
             .unwrap()
