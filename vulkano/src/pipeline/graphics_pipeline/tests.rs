@@ -12,7 +12,6 @@
 #![cfg(test)]
 
 use descriptor::pipeline_layout::PipelineLayoutDesc;
-use descriptor::pipeline_layout::RuntimePipelineDesc;
 use format::Format;
 use framebuffer::Subpass;
 use pipeline::blend::Blend;
@@ -45,7 +44,7 @@ fn create() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             input_assembly: InputAssembly::triangle_list(),
@@ -59,7 +58,7 @@ fn create() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             depth_stencil: DepthStencil::disabled(),
@@ -95,7 +94,7 @@ fn bad_primitive_restart() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             input_assembly: InputAssembly {
@@ -112,7 +111,7 @@ fn bad_primitive_restart() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             depth_stencil: DepthStencil::disabled(),
@@ -152,7 +151,7 @@ fn multi_viewport_feature() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             input_assembly: InputAssembly::triangle_list(),
@@ -166,7 +165,7 @@ fn multi_viewport_feature() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             depth_stencil: DepthStencil::disabled(),
@@ -206,7 +205,7 @@ fn max_viewports() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             input_assembly: InputAssembly::triangle_list(),
@@ -220,7 +219,7 @@ fn max_viewports() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             depth_stencil: DepthStencil::disabled(),
@@ -260,7 +259,7 @@ fn no_depth_attachment() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             input_assembly: InputAssembly::triangle_list(),
@@ -274,7 +273,7 @@ fn no_depth_attachment() {
                     &CString::new("main").unwrap(),
                     ShaderInterface::empty(),
                     ShaderInterface::empty(),
-                    RuntimePipelineDesc::empty(),
+                    PipelineLayoutDesc::empty(),
                 )
             },
             depth_stencil: DepthStencil::simple_depth_test(),

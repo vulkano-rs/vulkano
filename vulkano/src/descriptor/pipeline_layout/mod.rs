@@ -27,8 +27,7 @@
 //! used by the pipeline.
 //!
 //! The `PipelineLayout` struct describes the pipeline layout to both the Vulkan implementation and
-//! to vulkano. It holds a template parameter whose type must implement the `PipelineLayoutDesc`
-//! trait.
+//! to vulkano. It holds a `PipelineLayoutDesc` value.
 //!
 //! # The PipelineLayoutAbstract trait
 //!
@@ -49,23 +48,17 @@
 //!
 //! TODO: write this section
 
+pub use self::desc::PipelineLayoutDesc;
+pub use self::desc::PipelineLayoutDescPcRange;
+pub use self::desc::PipelineLayoutNotSupersetError;
+pub use self::desc::RuntimePipelineDescError;
 pub use self::limits_check::PipelineLayoutLimitsError;
-pub use self::runtime_desc::RuntimePipelineDesc;
-pub use self::runtime_desc::RuntimePipelineDescError;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;
 pub use self::sys::PipelineLayoutSys;
 pub use self::traits::PipelineLayoutAbstract;
-pub use self::traits::PipelineLayoutDesc;
-pub use self::traits::PipelineLayoutDescPcRange;
-pub use self::traits::PipelineLayoutNotSupersetError;
-pub use self::traits::PipelineLayoutPushConstantsCompatible;
-pub use self::traits::PipelineLayoutSetsCompatible;
-pub use self::traits::PipelineLayoutSuperset;
-pub use self::tweaks::tweak;
 
+mod desc;
 mod limits_check;
-mod runtime_desc;
 mod sys;
 mod traits;
-mod tweaks;

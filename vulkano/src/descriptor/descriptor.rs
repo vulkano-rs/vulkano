@@ -57,7 +57,7 @@ use std::ops::BitOr;
 /// > will be checked when you create a pipeline layout, a descriptor set, or when you try to bind
 /// > a descriptor set.
 // TODO: add example
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct DescriptorDesc {
     /// Describes the content and layout of each array element of a descriptor.
     pub ty: DescriptorDescTy,

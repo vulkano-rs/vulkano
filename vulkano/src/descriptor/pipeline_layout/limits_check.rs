@@ -9,23 +9,19 @@
 
 //! Contains the `check_desc_against_limits` function and the `PipelineLayoutLimitsError` error.
 
-use std::error;
-use std::fmt;
-
 use crate::descriptor::descriptor::DescriptorType;
 use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use crate::instance::Limits;
+use std::error;
+use std::fmt;
 
 /// Checks whether the pipeline layout description fulfills the device limits requirements.
-pub fn check_desc_against_limits<D>(
-    desc: &D,
+pub fn check_desc_against_limits(
+    desc: &PipelineLayoutDesc,
     limits: Limits,
-) -> Result<(), PipelineLayoutLimitsError>
-where
-    D: ?Sized + PipelineLayoutDesc,
-{
+) -> Result<(), PipelineLayoutLimitsError> {
     let mut num_resources = Counter::default();
     let mut num_samplers = Counter::default();
     let mut num_uniform_buffers = Counter::default();
@@ -36,18 +32,8 @@ where
     let mut num_storage_images = Counter::default();
     let mut num_input_attachments = Counter::default();
 
-    for set in 0..desc.num_sets() {
-        let num_bindings_in_set = match desc.num_bindings_in_set(set) {
-            None => continue,
-            Some(n) => n,
-        };
-
-        for binding in 0..num_bindings_in_set {
-            let descriptor = match desc.descriptor(set, binding) {
-                None => continue,
-                Some(n) => n,
-            };
-
+    for set in desc.descriptor_sets() {
+        for descriptor in set.iter().filter_map(|b| b.as_ref()) {
             num_resources.increment(descriptor.array_count, &descriptor.stages);
 
             match descriptor.ty.ty() {
@@ -86,10 +72,10 @@ where
         }
     }
 
-    if desc.num_sets() > limits.max_bound_descriptor_sets() as usize {
+    if desc.descriptor_sets().len() > limits.max_bound_descriptor_sets() as usize {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
             limit: limits.max_bound_descriptor_sets() as usize,
-            requested: desc.num_sets(),
+            requested: desc.descriptor_sets().len(),
         });
     }
 
@@ -216,14 +202,7 @@ where
         );
     }
 
-    for pc_id in 0..desc.num_push_constants_ranges() {
-        let PipelineLayoutDescPcRange { offset, size, .. } = {
-            match desc.push_constants_range(pc_id) {
-                Some(o) => o,
-                None => continue,
-            }
-        };
-
+    for &PipelineLayoutDescPcRange { offset, size, .. } in desc.push_constants() {
         if offset + size > limits.max_push_constants_size() as usize {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
                 limit: limits.max_push_constants_size() as usize,

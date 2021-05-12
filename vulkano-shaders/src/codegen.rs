@@ -315,8 +315,6 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-        #[allow(unused_imports)]
         use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;

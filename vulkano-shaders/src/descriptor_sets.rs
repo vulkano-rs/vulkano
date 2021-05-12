@@ -114,14 +114,7 @@ pub(super) fn write_pipeline_layout_desc(
                 PipelineLayoutDescPcRange {
                     offset: 0,                   // FIXME: not necessarily true
                     size: #push_constants_size,
-                    stages: ShaderStages { // FIXME: wrong
-                        vertex: true,
-                        tessellation_control: true,
-                        tessellation_evaluation: true,
-                        geometry: true,
-                        fragment: true,
-                        compute: true,
-                    },
+                    stages: ShaderStages::all(), // FIXME: wrong
                 }
             ]
         }
@@ -130,7 +123,7 @@ pub(super) fn write_pipeline_layout_desc(
     quote! {
         #[allow(unsafe_code)]
         unsafe {
-            ::vulkano::descriptor::pipeline_layout::RuntimePipelineDesc::new_unchecked(
+            ::vulkano::descriptor::pipeline_layout::PipelineLayoutDesc::new_unchecked(
                 #descriptor_sets,
                 #push_constants,
             )

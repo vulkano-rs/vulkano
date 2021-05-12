@@ -10,10 +10,8 @@
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
 use crate::buffer::BufferAccess;
-use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use crate::descriptor::pipeline_layout::PipelineLayoutSys;
 use crate::descriptor::PipelineLayoutAbstract;
 use crate::device::Device;
@@ -192,38 +190,13 @@ where
     }
 
     #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        self.layout.desc()
+    }
+
+    #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layout.descriptor_set_layout(index)
-    }
-}
-
-unsafe impl<Mv, L> PipelineLayoutDesc for GraphicsPipeline<Mv, L>
-where
-    L: PipelineLayoutDesc,
-{
-    #[inline]
-    fn num_sets(&self) -> usize {
-        self.layout.num_sets()
-    }
-
-    #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        self.layout.num_bindings_in_set(set)
-    }
-
-    #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        self.layout.descriptor(set, binding)
-    }
-
-    #[inline]
-    fn num_push_constants_ranges(&self) -> usize {
-        self.layout.num_push_constants_ranges()
-    }
-
-    #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        self.layout.push_constants_range(num)
     }
 }
 

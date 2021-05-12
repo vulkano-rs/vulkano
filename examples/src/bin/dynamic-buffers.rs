@@ -19,7 +19,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::descriptor::pipeline_layout::{tweak, PipelineLayoutDesc};
+use vulkano::descriptor::pipeline_layout::PipelineLayout;
 use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
@@ -88,19 +88,11 @@ fn main() {
             device.clone(),
             &shader.main_entry_point(),
             &(),
-            Box::new(
-                tweak(
-                    shader
-                        .main_entry_point()
-                        .layout()
-                        .clone()
-                        .build(device.clone())
-                        .unwrap(),
-                    vec![(0, 0)], // The dynamic uniform buffer is at set 0, descriptor 0
-                )
-                .build(device.clone())
-                .unwrap(),
-            ),
+            Box::new({
+                let mut layout_desc = shader.main_entry_point().layout_desc().clone();
+                layout_desc.tweak(vec![(0, 0)]); // The dynamic uniform buffer is at set 0, descriptor 0
+                PipelineLayout::new(device.clone(), layout_desc).unwrap()
+            }),
             None,
         )
         .unwrap(),

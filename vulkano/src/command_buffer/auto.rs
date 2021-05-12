@@ -1069,8 +1069,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
 
             self.ensure_outside_render_pass()?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
             check_dispatch(pipeline.device(), group_counts)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1123,8 +1123,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_outside_render_pass()?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -1174,8 +1174,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1250,8 +1250,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
@@ -1324,8 +1324,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1414,8 +1414,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let draw_count = indirect_buffer.len() as u32;
@@ -2032,17 +2032,12 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
 // Shortcut function to set the push constants.
 unsafe fn push_constants<Pl, Pc>(
     destination: &mut SyncCommandBufferBuilder,
-    pipeline: Pl,
+    pipeline_layout: Pl,
     push_constants: Pc,
 ) where
     Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
 {
-    for num_range in 0..pipeline.num_push_constants_ranges() {
-        let range = match pipeline.push_constants_range(num_range) {
-            Some(r) => r,
-            None => continue,
-        };
-
+    for range in pipeline_layout.desc().push_constants() {
         debug_assert_eq!(range.offset % 4, 0);
         debug_assert_eq!(range.size % 4, 0);
 
@@ -2052,7 +2047,7 @@ unsafe fn push_constants<Pl, Pc>(
         );
 
         destination.push_constants::<_, [u8]>(
-            pipeline.clone(),
+            pipeline_layout.clone(),
             range.stages,
             range.offset as u32,
             range.size as u32,

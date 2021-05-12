@@ -7,22 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use std::error;
 use std::fmt;
 
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
-use crate::descriptor::pipeline_layout::PipelineLayoutPushConstantsCompatible;
-
 /// Checks whether push constants are compatible with the pipeline.
-pub fn check_push_constants_validity<Pl, Pc>(
-    pipeline: &Pl,
+pub fn check_push_constants_validity<Pc>(
+    pipeline_layout_desc: &PipelineLayoutDesc,
     push_constants: &Pc,
 ) -> Result<(), CheckPushConstantsValidityError>
 where
-    Pl: ?Sized + PipelineLayoutAbstract + PipelineLayoutPushConstantsCompatible<Pc>,
     Pc: ?Sized,
 {
-    if !pipeline.is_compatible(push_constants) {
+    if !pipeline_layout_desc.is_push_constants_compatible(push_constants) {
         return Err(CheckPushConstantsValidityError::IncompatiblePushConstants);
     }
 

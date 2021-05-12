@@ -8,15 +8,12 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::descriptor::pipeline_layout::PipelineLayoutCreationError;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
-use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::descriptor::pipeline_layout::PipelineLayoutSys;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -64,13 +61,13 @@ impl ComputePipeline<()> {
         shader: &Cs,
         specialization: &Cs::SpecializationConstants,
         cache: Option<Arc<PipelineCache>>,
-    ) -> Result<ComputePipeline<PipelineLayout<Cs::PipelineLayout>>, ComputePipelineCreationError>
+    ) -> Result<ComputePipeline<PipelineLayout>, ComputePipelineCreationError>
     where
-        Cs::PipelineLayout: Clone,
         Cs: EntryPointAbstract,
     {
         unsafe {
-            let pipeline_layout = shader.layout().clone().build(device.clone())?;
+            let pipeline_layout =
+                PipelineLayout::new(device.clone(), shader.layout_desc().clone())?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -95,12 +92,13 @@ impl<Pl> ComputePipeline<Pl> {
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
     where
-        Cs::PipelineLayout: Clone,
         Cs: EntryPointAbstract,
         Pl: PipelineLayoutAbstract,
     {
         unsafe {
-            PipelineLayoutSuperset::ensure_superset_of(&pipeline_layout, shader.layout())?;
+            pipeline_layout
+                .desc()
+                .ensure_superset_of(shader.layout_desc())?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -121,7 +119,6 @@ impl<Pl> ComputePipeline<Pl> {
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline<Pl>, ComputePipelineCreationError>
     where
-        Cs::PipelineLayout: Clone,
         Cs: EntryPointAbstract,
         Pl: PipelineLayoutAbstract,
     {
@@ -261,38 +258,13 @@ where
     }
 
     #[inline]
+    fn desc(&self) -> &PipelineLayoutDesc {
+        self.layout().desc()
+    }
+
+    #[inline]
     fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
         self.layout().descriptor_set_layout(index)
-    }
-}
-
-unsafe impl<Pl> PipelineLayoutDesc for ComputePipeline<Pl>
-where
-    Pl: PipelineLayoutDesc,
-{
-    #[inline]
-    fn num_sets(&self) -> usize {
-        self.pipeline_layout.num_sets()
-    }
-
-    #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        self.pipeline_layout.num_bindings_in_set(set)
-    }
-
-    #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        self.pipeline_layout.descriptor(set, binding)
-    }
-
-    #[inline]
-    fn num_push_constants_ranges(&self) -> usize {
-        self.pipeline_layout.num_push_constants_ranges()
-    }
-
-    #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        self.pipeline_layout.push_constants_range(num)
     }
 }
 
@@ -415,7 +387,6 @@ mod tests {
     use crate::descriptor::descriptor_set::PersistentDescriptorSet;
     use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
     use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
@@ -477,45 +448,25 @@ mod tests {
         };
 
         let shader = unsafe {
-            #[derive(Debug, Copy, Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    1
-                }
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    match set {
-                        0 => Some(1),
-                        _ => None,
-                    }
-                }
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    match (set, binding) {
-                        (0, 0) => Some(DescriptorDesc {
-                            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                                dynamic: Some(false),
-                                storage: true,
-                            }),
-                            array_count: 1,
-                            stages: ShaderStages {
-                                compute: true,
-                                ..ShaderStages::none()
-                            },
-                            readonly: true,
-                        }),
-                        _ => None,
-                    }
-                }
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
-
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(
+                    vec![vec![Some(DescriptorDesc {
+                        ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                            dynamic: Some(false),
+                            storage: true,
+                        }),
+                        array_count: 1,
+                        stages: ShaderStages {
+                            compute: true,
+                            ..ShaderStages::none()
+                        },
+                        readonly: true,
+                    })]],
+                    vec![],
+                ),
+            )
         };
 
         #[derive(Debug, Copy, Clone)]

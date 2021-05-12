@@ -30,7 +30,7 @@ use vulkano::buffer::BufferUsage;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::descriptor::pipeline_layout::RuntimePipelineDesc;
+use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
@@ -178,7 +178,7 @@ fn main() {
     };
 
     // This definition describes the layout of this stage.
-    let vertex_layout = RuntimePipelineDesc::new(
+    let vertex_layout = PipelineLayoutDesc::new(
         // No descriptor sets.
         vec![],
         // No push constants.
@@ -206,7 +206,7 @@ fn main() {
     };
 
     // Layout same as with vertex shader.
-    let fragment_layout = RuntimePipelineDesc::new(
+    let fragment_layout = PipelineLayoutDesc::new(
         // No descriptor sets.
         vec![],
         // No push constants.

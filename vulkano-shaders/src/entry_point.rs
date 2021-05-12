@@ -50,71 +50,24 @@ pub(super) fn write_entry_point(
     );
 
     let stage = if let ExecutionModel::ExecutionModelGLCompute = *execution {
-        quote! { ShaderStages {
-            vertex: false,
-            tessellation_control: false,
-            tessellation_evaluation: false,
-            geometry: false,
-            fragment: false,
-            compute: true,
-        } }
+        quote! { ShaderStages { compute: true, ..ShaderStages::none() } }
     } else {
         match *execution {
             ExecutionModel::ExecutionModelVertex => {
-                quote! { ShaderStages {
-                    vertex: true,
-                    tessellation_control: false,
-                    tessellation_evaluation: false,
-                    geometry: false,
-                    fragment: false,
-                    compute: false,
-                } }
+                quote! { ShaderStages { vertex: true, ..ShaderStages::none() } }
             }
-
             ExecutionModel::ExecutionModelTessellationControl => {
-                quote! { ShaderStages {
-                    vertex: false,
-                    tessellation_control: true,
-                    tessellation_evaluation: false,
-                    geometry: false,
-                    fragment: false,
-                    compute: false,
-                } }
+                quote! { ShaderStages { tessellation_control: true, ..ShaderStages::none() } }
             }
-
             ExecutionModel::ExecutionModelTessellationEvaluation => {
-                quote! { ShaderStages {
-                    vertex: false,
-                    tessellation_control: false,
-                    tessellation_evaluation: true,
-                    geometry: false,
-                    fragment: false,
-                    compute: false,
-                } }
+                quote! { ShaderStages { tessellation_evaluation: true, ..ShaderStages::none() } }
             }
-
             ExecutionModel::ExecutionModelGeometry => {
-                quote! { ShaderStages {
-                    vertex: false,
-                    tessellation_control: false,
-                    tessellation_evaluation: false,
-                    geometry: true,
-                    fragment: false,
-                    compute: false,
-                } }
+                quote! { ShaderStages { geometry: true, ..ShaderStages::none() } }
             }
-
             ExecutionModel::ExecutionModelFragment => {
-                quote! { ShaderStages {
-                    vertex: false,
-                    tessellation_control: false,
-                    tessellation_evaluation: false,
-                    geometry: false,
-                    fragment: true,
-                    compute: false,
-                } }
+                quote! { ShaderStages { fragment: true, ..ShaderStages::none() } }
             }
-
             ExecutionModel::ExecutionModelGLCompute => unreachable!(),
             ExecutionModel::ExecutionModelKernel => unreachable!(),
         }
@@ -138,7 +91,7 @@ pub(super) fn write_entry_point(
     let (ty, f_call) = {
         if let ExecutionModel::ExecutionModelGLCompute = *execution {
             (
-                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct, ::vulkano::descriptor::pipeline_layout::RuntimePipelineDesc> },
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct> },
                 quote! { compute_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
                     #pipeline_layout_desc
@@ -209,9 +162,7 @@ pub(super) fn write_entry_point(
             };
 
             let ty = quote! {
-                ::vulkano::pipeline::shader::GraphicsEntryPoint<
-                    #spec_consts_struct,
-                    ::vulkano::descriptor::pipeline_layout::RuntimePipelineDesc>
+                ::vulkano::pipeline::shader::GraphicsEntryPoint<#spec_consts_struct>
             };
             let f_call = quote! {
                 graphics_entry_point(

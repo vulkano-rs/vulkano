@@ -12,10 +12,8 @@
 #![allow(deprecated)]
 
 use crate::check_errors;
-use crate::descriptor::pipeline_layout::tweak;
+use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutSuperset;
 use crate::device::Device;
 use crate::pipeline::blend::AttachmentBlend;
 use crate::pipeline::blend::AttachmentsBlend;
@@ -141,11 +139,6 @@ where
     Tess: SpecializationConstants,
     Gss: SpecializationConstants,
     Fss: SpecializationConstants,
-    Vs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-    Fs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-    Tcs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-    Tes::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
-    Gs::PipelineLayout: Clone + 'static + Send + Sync, // TODO: shouldn't be required
 {
     /// Builds the graphics pipeline, using an inferred a pipeline layout.
     // TODO: replace Box<PipelineLayoutAbstract> with a PipelineUnion struct without template params
@@ -212,37 +205,35 @@ where
                     return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
                 }
 
-                pipeline_layout = Box::new(
-                    tweak(
-                        self.vertex_shader
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .layout()
-                            .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout())
-                            .union(
-                                self.tessellation
-                                    .as_ref()
-                                    .unwrap()
-                                    .tessellation_control_shader
-                                    .0
-                                    .layout(),
-                            ) // FIXME: unwrap()
-                            .union(
-                                self.tessellation
-                                    .as_ref()
-                                    .unwrap()
-                                    .tessellation_evaluation_shader
-                                    .0
-                                    .layout(),
-                            ) // FIXME: unwrap()
-                            .union(self.geometry_shader.as_ref().unwrap().0.layout()), // FIXME: unwrap()
-                        dynamic_buffers.into_iter().cloned(),
-                    )
-                    .build(device.clone())
-                    .unwrap(),
-                ) as Box<_>; // TODO: error
+                pipeline_layout = Box::new({
+                    let mut layout_desc = self
+                        .vertex_shader
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .layout_desc()
+                        .clone()
+                        .union(self.fragment_shader.as_ref().unwrap().0.layout_desc())
+                        .union(
+                            self.tessellation
+                                .as_ref()
+                                .unwrap()
+                                .tessellation_control_shader
+                                .0
+                                .layout_desc(),
+                        ) // FIXME: unwrap()
+                        .union(
+                            self.tessellation
+                                .as_ref()
+                                .unwrap()
+                                .tessellation_evaluation_shader
+                                .0
+                                .layout_desc(),
+                        ) // FIXME: unwrap()
+                        .union(self.geometry_shader.as_ref().unwrap().0.layout_desc()); // FIXME: unwrap()
+                    layout_desc.tweak(dynamic_buffers.into_iter().cloned());
+                    PipelineLayout::new(device.clone(), layout_desc).unwrap()
+                }) as Box<_>; // TODO: error
             } else {
                 if let Err(err) = tess
                     .tessellation_control_shader
@@ -275,36 +266,34 @@ where
                     return Err(GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(err));
                 }
 
-                pipeline_layout = Box::new(
-                    tweak(
-                        self.vertex_shader
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .layout()
-                            .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout())
-                            .union(
-                                self.tessellation
-                                    .as_ref()
-                                    .unwrap()
-                                    .tessellation_control_shader
-                                    .0
-                                    .layout(),
-                            ) // FIXME: unwrap()
-                            .union(
-                                self.tessellation
-                                    .as_ref()
-                                    .unwrap()
-                                    .tessellation_evaluation_shader
-                                    .0
-                                    .layout(),
-                            ), // FIXME: unwrap()
-                        dynamic_buffers.into_iter().cloned(),
-                    )
-                    .build(device.clone())
-                    .unwrap(),
-                ) as Box<_>; // TODO: error
+                pipeline_layout = Box::new({
+                    let mut layout_desc = self
+                        .vertex_shader
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .layout_desc()
+                        .clone()
+                        .union(self.fragment_shader.as_ref().unwrap().0.layout_desc())
+                        .union(
+                            self.tessellation
+                                .as_ref()
+                                .unwrap()
+                                .tessellation_control_shader
+                                .0
+                                .layout_desc(),
+                        ) // FIXME: unwrap()
+                        .union(
+                            self.tessellation
+                                .as_ref()
+                                .unwrap()
+                                .tessellation_evaluation_shader
+                                .0
+                                .layout_desc(),
+                        ); // FIXME: unwrap()
+                    layout_desc.tweak(dynamic_buffers.into_iter().cloned());
+                    PipelineLayout::new(device.clone(), layout_desc).unwrap()
+                }) as Box<_>; // TODO: error
             }
         } else {
             if let Some(ref geometry_shader) = self.geometry_shader {
@@ -328,21 +317,19 @@ where
                     return Err(GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(err));
                 }
 
-                pipeline_layout = Box::new(
-                    tweak(
-                        self.vertex_shader
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .layout()
-                            .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout())
-                            .union(self.geometry_shader.as_ref().unwrap().0.layout()), // FIXME: unwrap()
-                        dynamic_buffers.into_iter().cloned(),
-                    )
-                    .build(device.clone())
-                    .unwrap(),
-                ) as Box<_>; // TODO: error
+                pipeline_layout = Box::new({
+                    let mut layout_desc = self
+                        .vertex_shader
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .layout_desc()
+                        .clone()
+                        .union(self.fragment_shader.as_ref().unwrap().0.layout_desc())
+                        .union(self.geometry_shader.as_ref().unwrap().0.layout_desc()); // FIXME: unwrap()
+                    layout_desc.tweak(dynamic_buffers.into_iter().cloned());
+                    PipelineLayout::new(device.clone(), layout_desc).unwrap()
+                }) as Box<_>; // TODO: error
             } else {
                 if let Err(err) = self
                     .fragment_shader
@@ -357,20 +344,18 @@ where
                     ));
                 }
 
-                pipeline_layout = Box::new(
-                    tweak(
-                        self.vertex_shader
-                            .as_ref()
-                            .unwrap()
-                            .0
-                            .layout()
-                            .clone()
-                            .union(self.fragment_shader.as_ref().unwrap().0.layout()),
-                        dynamic_buffers.into_iter().cloned(),
-                    )
-                    .build(device.clone())
-                    .unwrap(),
-                ) as Box<_>; // TODO: error
+                pipeline_layout = Box::new({
+                    let mut layout_desc = self
+                        .vertex_shader
+                        .as_ref()
+                        .unwrap()
+                        .0
+                        .layout_desc()
+                        .clone()
+                        .union(self.fragment_shader.as_ref().unwrap().0.layout_desc());
+                    layout_desc.tweak(dynamic_buffers.into_iter().cloned());
+                    PipelineLayout::new(device.clone(), layout_desc).unwrap()
+                }) as Box<_>; // TODO: error
             }
         }
 
@@ -396,29 +381,24 @@ where
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        PipelineLayoutSuperset::ensure_superset_of(
-            &pipeline_layout,
-            self.vertex_shader.as_ref().unwrap().0.layout(),
-        )?;
-        PipelineLayoutSuperset::ensure_superset_of(
-            &pipeline_layout,
-            self.fragment_shader.as_ref().unwrap().0.layout(),
-        )?;
+        pipeline_layout
+            .desc()
+            .ensure_superset_of(self.vertex_shader.as_ref().unwrap().0.layout_desc())?;
+        pipeline_layout
+            .desc()
+            .ensure_superset_of(self.fragment_shader.as_ref().unwrap().0.layout_desc())?;
         if let Some(ref geometry_shader) = self.geometry_shader {
-            PipelineLayoutSuperset::ensure_superset_of(
-                &pipeline_layout,
-                geometry_shader.0.layout(),
-            )?;
+            pipeline_layout
+                .desc()
+                .ensure_superset_of(geometry_shader.0.layout_desc())?;
         }
         if let Some(ref tess) = self.tessellation {
-            PipelineLayoutSuperset::ensure_superset_of(
-                &pipeline_layout,
-                tess.tessellation_control_shader.0.layout(),
-            )?;
-            PipelineLayoutSuperset::ensure_superset_of(
-                &pipeline_layout,
-                tess.tessellation_evaluation_shader.0.layout(),
-            )?;
+            pipeline_layout
+                .desc()
+                .ensure_superset_of(tess.tessellation_control_shader.0.layout_desc())?;
+            pipeline_layout
+                .desc()
+                .ensure_superset_of(tess.tessellation_evaluation_shader.0.layout_desc())?;
         }
 
         // Check that the subpass can accept the output of the fragment shader.

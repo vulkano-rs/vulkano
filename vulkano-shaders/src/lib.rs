@@ -54,9 +54,6 @@
 //! By default each structure has a `Clone` and a `Copy` implemenetations. This
 //! behavior could be customized through the `types_meta` macro option(see below
 //! for details).
-//! * The `Layout` newtype. This contains a [`ShaderStages`][ShaderStages] struct.
-//! An implementation of [`PipelineLayoutDesc`][PipelineLayoutDesc] is also
-//! generated for the newtype.
 //! * The `SpecializationConstants` struct. This contains a field for every
 //! specialization constant found in the shader data. Implementations of
 //! `Default` and [`SpecializationConstants`][SpecializationConstants] are also
@@ -198,7 +195,6 @@
 //! [pipeline::shader]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/index.html
 //! [descriptor]: https://docs.rs/vulkano/*/vulkano/descriptor/index.html
 //! [ShaderStages]: https://docs.rs/vulkano/*/vulkano/descriptor/descriptor/struct.ShaderStages.html
-//! [PipelineLayoutDesc]: https://docs.rs/vulkano/*/vulkano/descriptor/pipeline_layout/trait.PipelineLayoutDesc.html
 //! [SpecializationConstants]: https://docs.rs/vulkano/*/vulkano/pipeline/shader/trait.SpecializationConstants.html
 //! [pipeline]: https://docs.rs/vulkano/*/vulkano/pipeline/index.html
 //! [descriptor_sets]: https://github.com/vulkano-rs/vulkano/blob/master/vulkano-shaders/src/descriptor_sets.rs#L142

@@ -19,7 +19,6 @@
 
 use crate::check_errors;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::RuntimePipelineDesc;
 use crate::device::Device;
 use crate::format::Format;
 use crate::pipeline::input_assembly::PrimitiveTopology;
@@ -129,20 +128,20 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, S, L>(
+    pub unsafe fn graphics_entry_point<'a, S>(
         &'a self,
         name: &'a CStr,
         input: ShaderInterface,
         output: ShaderInterface,
-        layout: L,
+        layout_desc: PipelineLayoutDesc,
         ty: GraphicsShaderType,
-    ) -> GraphicsEntryPoint<'a, S, L> {
+    ) -> GraphicsEntryPoint<'a, S> {
         GraphicsEntryPoint {
             module: self,
             name,
             input,
             output,
-            layout,
+            layout_desc,
             ty,
             marker: PhantomData,
         }
@@ -160,15 +159,15 @@ impl ShaderModule {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_entry_point<'a, S, L>(
+    pub unsafe fn compute_entry_point<'a, S>(
         &'a self,
         name: &'a CStr,
-        layout: L,
-    ) -> ComputeEntryPoint<'a, S, L> {
+        layout_desc: PipelineLayoutDesc,
+    ) -> ComputeEntryPoint<'a, S> {
         ComputeEntryPoint {
             module: self,
-            name: name,
-            layout: layout,
+            name,
+            layout_desc,
             marker: PhantomData,
         }
     }
@@ -210,22 +209,20 @@ pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
 ///
 /// Can be obtained by calling `entry_point()` on the shader module.
 #[derive(Debug)]
-pub struct GraphicsEntryPoint<'a, S, L> {
+pub struct GraphicsEntryPoint<'a, S> {
     module: &'a ShaderModule,
     name: &'a CStr,
     input: ShaderInterface,
-    layout: L,
+    layout_desc: PipelineLayoutDesc,
     output: ShaderInterface,
     ty: GraphicsShaderType,
     marker: PhantomData<S>,
 }
 
-unsafe impl<'a, S, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, L>
+unsafe impl<'a, S> EntryPointAbstract for GraphicsEntryPoint<'a, S>
 where
-    L: PipelineLayoutDesc,
     S: SpecializationConstants,
 {
-    type PipelineLayout = L;
     type SpecializationConstants = S;
 
     #[inline]
@@ -239,14 +236,13 @@ where
     }
 
     #[inline]
-    fn layout(&self) -> &L {
-        &self.layout
+    fn layout_desc(&self) -> &PipelineLayoutDesc {
+        &self.layout_desc
     }
 }
 
-unsafe impl<'a, S, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S, L>
+unsafe impl<'a, S> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S>
 where
-    L: PipelineLayoutDesc,
     S: SpecializationConstants,
 {
     #[inline]
@@ -317,7 +313,6 @@ impl GeometryShaderExecutionMode {
 }
 
 pub unsafe trait EntryPointAbstract {
-    type PipelineLayout: PipelineLayoutDesc;
     type SpecializationConstants: SpecializationConstants;
 
     /// Returns the module this entry point comes from.
@@ -327,26 +322,24 @@ pub unsafe trait EntryPointAbstract {
     fn name(&self) -> &CStr;
 
     /// Returns the pipeline layout used by the shader stage.
-    fn layout(&self) -> &Self::PipelineLayout;
+    fn layout_desc(&self) -> &PipelineLayoutDesc;
 }
 
 /// Represents the entry point of a compute shader in a shader module.
 ///
 /// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
-#[derive(Debug, Copy, Clone)]
-pub struct ComputeEntryPoint<'a, S, L> {
+#[derive(Debug, Clone)]
+pub struct ComputeEntryPoint<'a, S> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    layout: L,
+    layout_desc: PipelineLayoutDesc,
     marker: PhantomData<S>,
 }
 
-unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
+unsafe impl<'a, S> EntryPointAbstract for ComputeEntryPoint<'a, S>
 where
-    L: PipelineLayoutDesc,
     S: SpecializationConstants,
 {
-    type PipelineLayout = L;
     type SpecializationConstants = S;
 
     #[inline]
@@ -360,8 +353,8 @@ where
     }
 
     #[inline]
-    fn layout(&self) -> &L {
-        &self.layout
+    fn layout_desc(&self) -> &PipelineLayoutDesc {
+        &self.layout_desc
     }
 }
 
@@ -376,7 +369,6 @@ where
 pub enum EmptyEntryPointDummy {}
 
 unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
-    type PipelineLayout = RuntimePipelineDesc;
     type SpecializationConstants = ();
 
     #[inline]
@@ -390,7 +382,7 @@ unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
     }
 
     #[inline]
-    fn layout(&self) -> &Self::PipelineLayout {
+    fn layout_desc(&self) -> &PipelineLayoutDesc {
         unreachable!()
     }
 }

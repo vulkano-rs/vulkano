@@ -327,7 +327,9 @@ impl UnsafeCommandBufferBuilder {
         let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.collect();
 
         let num_bindings = sets.len() as u32;
-        debug_assert!(first_binding + num_bindings <= pipeline_layout.num_sets() as u32);
+        debug_assert!(
+            first_binding + num_bindings <= pipeline_layout.desc().descriptor_sets().len() as u32
+        );
 
         let bind_point = if graphics {
             vk::PIPELINE_BIND_POINT_GRAPHICS
