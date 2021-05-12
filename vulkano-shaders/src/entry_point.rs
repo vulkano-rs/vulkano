@@ -371,9 +371,9 @@ fn write_interface(attributes: &[Element]) -> TokenStream {
     quote! {
         #[allow(unsafe_code)]
         unsafe {
-            ::vulkano::pipeline::shader::ShaderInterface::new_unchecked(::std::borrow::Cow::Borrowed(&[
+            ::vulkano::pipeline::shader::ShaderInterface::new_unchecked(vec![
                 #( #body )*
-            ]))
+            ])
         }
     }
 }

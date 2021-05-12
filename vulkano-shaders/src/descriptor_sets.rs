@@ -90,27 +90,27 @@ pub(super) fn write_pipeline_layout_desc(
                     .collect();
 
                 quote! {
-                    std::borrow::Cow::Borrowed(&[
+                    vec![
                         #( #bindings )*
-                    ]),
+                    ],
                 }
             })
             .collect();
 
         quote! {
-            std::borrow::Cow::Borrowed(&[
+            vec![
                 #( #sets )*
-            ])
+            ]
         }
     };
 
     let push_constants = if push_constants_size == 0 {
         quote! {
-            std::borrow::Cow::Borrowed(&[])
+            vec![]
         }
     } else {
         quote! {
-            std::borrow::Cow::Borrowed(&[
+            vec![
                 PipelineLayoutDescPcRange {
                     offset: 0,                   // FIXME: not necessarily true
                     size: #push_constants_size,
@@ -123,7 +123,7 @@ pub(super) fn write_pipeline_layout_desc(
                         compute: true,
                     },
                 }
-            ])
+            ]
         }
     };
 

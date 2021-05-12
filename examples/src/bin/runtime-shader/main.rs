@@ -153,76 +153,64 @@ fn main() {
     //   should not overlap.
     // * Format of each element must be no larger than 128 bits.
     let vertex_input = unsafe {
-        ShaderInterface::new_unchecked(
-            vec![
-                ShaderInterfaceEntry {
-                    location: 1..2,
-                    format: Format::R32G32B32Sfloat,
-                    name: Some(Cow::Borrowed("color")),
-                },
-                ShaderInterfaceEntry {
-                    location: 0..1,
-                    format: Format::R32G32Sfloat,
-                    name: Some(Cow::Borrowed("position")),
-                },
-            ]
-            .into(),
-        )
+        ShaderInterface::new_unchecked(vec![
+            ShaderInterfaceEntry {
+                location: 1..2,
+                format: Format::R32G32B32Sfloat,
+                name: Some(Cow::Borrowed("color")),
+            },
+            ShaderInterfaceEntry {
+                location: 0..1,
+                format: Format::R32G32Sfloat,
+                name: Some(Cow::Borrowed("position")),
+            },
+        ])
     };
 
     // This definition will tell Vulkan how output entries (those passed to next
     // stage) of our vertex shader look like.
     let vertex_output = unsafe {
-        ShaderInterface::new_unchecked(
-            vec![ShaderInterfaceEntry {
-                location: 0..1,
-                format: Format::R32G32B32Sfloat,
-                name: Some(Cow::Borrowed("v_color")),
-            }]
-            .into(),
-        )
+        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
+            location: 0..1,
+            format: Format::R32G32B32Sfloat,
+            name: Some(Cow::Borrowed("v_color")),
+        }])
     };
 
     // This definition describes the layout of this stage.
     let vertex_layout = RuntimePipelineDesc::new(
         // No descriptor sets.
-        vec![].into(),
+        vec![],
         // No push constants.
-        vec![].into(),
+        vec![],
     )
     .unwrap();
 
     // Same as with our vertex shader, but for fragment one instead.
     let fragment_input = unsafe {
-        ShaderInterface::new_unchecked(
-            vec![ShaderInterfaceEntry {
-                location: 0..1,
-                format: Format::R32G32B32Sfloat,
-                name: Some(Cow::Borrowed("v_color")),
-            }]
-            .into(),
-        )
+        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
+            location: 0..1,
+            format: Format::R32G32B32Sfloat,
+            name: Some(Cow::Borrowed("v_color")),
+        }])
     };
 
     // Note that color fragment color entry will be determined
     // automatically by Vulkano.
     let fragment_output = unsafe {
-        ShaderInterface::new_unchecked(
-            vec![ShaderInterfaceEntry {
-                location: 0..1,
-                format: Format::R32G32B32A32Sfloat,
-                name: Some(Cow::Borrowed("f_color")),
-            }]
-            .into(),
-        )
+        ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
+            location: 0..1,
+            format: Format::R32G32B32A32Sfloat,
+            name: Some(Cow::Borrowed("f_color")),
+        }])
     };
 
     // Layout same as with vertex shader.
     let fragment_layout = RuntimePipelineDesc::new(
         // No descriptor sets.
-        vec![].into(),
+        vec![],
         // No push constants.
-        vec![].into(),
+        vec![],
     )
     .unwrap();
 

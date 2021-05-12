@@ -416,7 +416,7 @@ unsafe impl GraphicsEntryPointAbstract for EmptyEntryPointDummy {
 /// the outside and a shader stage.
 #[derive(Debug)]
 pub struct ShaderInterface {
-    elements: Cow<'static, [ShaderInterfaceEntry]>,
+    elements: Vec<ShaderInterfaceEntry>,
 }
 
 impl ShaderInterface {
@@ -428,14 +428,14 @@ impl ShaderInterface {
     /// - The format of each element must not be larger than 128 bits.
     // TODO: could this be made safe?
     #[inline]
-    pub unsafe fn new_unchecked(elements: Cow<'static, [ShaderInterfaceEntry]>) -> ShaderInterface {
+    pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry>) -> ShaderInterface {
         ShaderInterface { elements }
     }
 
     /// Creates a description of an empty shader interface.
     pub const fn empty() -> ShaderInterface {
         ShaderInterface {
-            elements: Cow::Borrowed(&[]),
+            elements: Vec::new(),
         }
     }
 

@@ -10,22 +10,21 @@
 use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use std::borrow::Cow;
 use std::error;
 use std::fmt;
 
 /// Runtime description of a pipeline layout.
 #[derive(Debug, Clone)]
 pub struct RuntimePipelineDesc {
-    descriptor_sets: Cow<'static, [Cow<'static, [Option<DescriptorDesc>]>]>,
-    push_constants: Cow<'static, [PipelineLayoutDescPcRange]>,
+    descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
+    push_constants: Vec<PipelineLayoutDescPcRange>,
 }
 
 impl RuntimePipelineDesc {
     /// Builds a new `RuntimePipelineDesc` from the descriptors and push constants descriptions.
     pub fn new(
-        descriptor_sets: Cow<'static, [Cow<'static, [Option<DescriptorDesc>]>]>,
-        push_constants: Cow<'static, [PipelineLayoutDescPcRange]>,
+        descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
+        push_constants: Vec<PipelineLayoutDescPcRange>,
     ) -> Result<RuntimePipelineDesc, RuntimePipelineDescError> {
         unsafe {
             for (a_id, a) in push_constants.iter().enumerate() {
@@ -58,8 +57,8 @@ impl RuntimePipelineDesc {
     ///
     /// The provided push constants must not conflict with each other.
     pub unsafe fn new_unchecked(
-        descriptor_sets: Cow<'static, [Cow<'static, [Option<DescriptorDesc>]>]>,
-        push_constants: Cow<'static, [PipelineLayoutDescPcRange]>,
+        descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
+        push_constants: Vec<PipelineLayoutDescPcRange>,
     ) -> RuntimePipelineDesc {
         RuntimePipelineDesc {
             descriptor_sets,
@@ -71,8 +70,8 @@ impl RuntimePipelineDesc {
     /// push constants.
     pub const fn empty() -> RuntimePipelineDesc {
         RuntimePipelineDesc {
-            descriptor_sets: Cow::Borrowed(&[]),
-            push_constants: Cow::Borrowed(&[]),
+            descriptor_sets: Vec::new(),
+            push_constants: Vec::new(),
         }
     }
 }
@@ -144,7 +143,7 @@ mod tests {
     #[test]
     fn pc_conflict() {
         let r = RuntimePipelineDesc::new(
-            vec![].into(),
+            vec![],
             vec![
                 PipelineLayoutDescPcRange {
                     offset: 0,
@@ -156,8 +155,7 @@ mod tests {
                     size: 8,
                     stages: ShaderStages::all(),
                 },
-            ]
-            .into(),
+            ],
         );
 
         assert!(matches!(
