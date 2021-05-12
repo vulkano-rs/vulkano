@@ -177,67 +177,45 @@ impl PipelineLayoutDesc {
                     .collect()
             };
 
-            let push_constants = {
-                let self_constants = self.push_constants();
-                let other_constants = other.push_constants();
-                let num_ranges = (self_constants.len()..)
-                    .filter(|&n| self_constants.get(n).is_none())
-                    .next()
-                    .unwrap();
-
-                (0..num_ranges)
-                    .map(|num| {
-                        // The strategy here is that we return the same ranges as `self.a`, except that if there
-                        // happens to be a range with a similar stage in `self.b` then we adjust the offset and
-                        // size of the range coming from `self.a` to include the range of `self.b`.
-                        //
-                        // After all the ranges of `self.a` have been returned, we return the ones from `self.b`
-                        // that don't intersect with any range of `self.a`.
-
-                        if let Some(&(mut pc)) = self_constants.get(num) {
-                            // We try to find the ranges in `self.b` that share the same stages as us.
-                            for n in 0..other_constants.len() {
-                                let other_pc = other_constants.get(n).unwrap();
-
-                                if other_pc.stages.intersects(&pc.stages) {
-                                    if other_pc.offset < pc.offset {
-                                        pc.size += pc.offset - other_pc.offset;
-                                        pc.size = cmp::max(pc.size, other_pc.size);
-                                        pc.offset = other_pc.offset;
-                                    } else if other_pc.offset > pc.offset {
-                                        pc.size = cmp::max(
-                                            pc.size,
-                                            other_pc.size + (other_pc.offset - pc.offset),
-                                        );
-                                    }
-                                }
-                            }
-
-                            return pc;
+            let push_constants = self
+                .push_constants
+                .iter()
+                .map(|&(mut new_range)| {
+                    // Find the ranges in `other` that share the same stages as `self_range`.
+                    // If there is a range with a similar stage in `other`, then adjust the offset
+                    // and size to include it.
+                    for other_range in &other.push_constants {
+                        if !other_range.stages.intersects(&new_range.stages) {
+                            continue;
                         }
 
-                        let mut num = num - self_constants.len();
-                        'outer_loop: for b_r in 0..other_constants.len() {
-                            let pc = other_constants.get(b_r).unwrap();
-
-                            for n in 0..self_constants.len() {
-                                let other_pc = self_constants.get(n).unwrap();
-                                if other_pc.stages.intersects(&pc.stages) {
-                                    continue 'outer_loop;
-                                }
-                            }
-
-                            if num == 0 {
-                                return *pc;
-                            } else {
-                                num -= 1;
-                            }
+                        if other_range.offset < new_range.offset {
+                            new_range.size += new_range.offset - other_range.offset;
+                            new_range.size = cmp::max(new_range.size, other_range.size);
+                            new_range.offset = other_range.offset;
+                        } else if other_range.offset > new_range.offset {
+                            new_range.size = cmp::max(
+                                new_range.size,
+                                other_range.size + (other_range.offset - new_range.offset),
+                            );
                         }
+                    }
 
-                        unreachable!()
-                    })
-                    .collect()
-            };
+                    new_range
+                })
+                .chain(
+                    // Add the ones from `other` that were filtered out previously.
+                    other
+                        .push_constants
+                        .iter()
+                        .filter(|other_range| {
+                            self.push_constants.iter().all(|self_range| {
+                                !other_range.stages.intersects(&self_range.stages)
+                            })
+                        })
+                        .map(|range| *range),
+                )
+                .collect();
 
             PipelineLayoutDesc::new_unchecked(descriptor_sets, push_constants)
         }
