@@ -29,7 +29,6 @@ use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
-use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Range;
@@ -128,22 +127,23 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, S>(
+    pub unsafe fn graphics_entry_point<'a>(
         &'a self,
         name: &'a CStr,
+        layout_desc: PipelineLayoutDesc,
+        spec_constants: &'static [SpecializationMapEntry],
         input: ShaderInterface,
         output: ShaderInterface,
-        layout_desc: PipelineLayoutDesc,
         ty: GraphicsShaderType,
-    ) -> GraphicsEntryPoint<'a, S> {
+    ) -> GraphicsEntryPoint<'a> {
         GraphicsEntryPoint {
             module: self,
             name,
+            layout_desc,
+            spec_constants,
             input,
             output,
-            layout_desc,
             ty,
-            marker: PhantomData,
         }
     }
 
@@ -159,16 +159,17 @@ impl ShaderModule {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_entry_point<'a, S>(
+    pub unsafe fn compute_entry_point<'a>(
         &'a self,
         name: &'a CStr,
         layout_desc: PipelineLayoutDesc,
-    ) -> ComputeEntryPoint<'a, S> {
+        spec_constants: &'static [SpecializationMapEntry],
+    ) -> ComputeEntryPoint<'a> {
         ComputeEntryPoint {
             module: self,
             name,
             layout_desc,
-            marker: PhantomData,
+            spec_constants,
         }
     }
 }
@@ -194,6 +195,20 @@ impl Drop for ShaderModule {
     }
 }
 
+pub unsafe trait EntryPointAbstract {
+    /// Returns the module this entry point comes from.
+    fn module(&self) -> &ShaderModule;
+
+    /// Returns the name of the entry point.
+    fn name(&self) -> &CStr;
+
+    /// Returns the pipeline layout used by the shader stage.
+    fn layout_desc(&self) -> &PipelineLayoutDesc;
+
+    /// Returns the layout of the specialization constants.
+    fn spec_constants(&self) -> &[SpecializationMapEntry];
+}
+
 pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
     /// Returns the input attributes used by the shader stage.
     fn input(&self) -> &ShaderInterface;
@@ -209,22 +224,17 @@ pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
 ///
 /// Can be obtained by calling `entry_point()` on the shader module.
 #[derive(Debug)]
-pub struct GraphicsEntryPoint<'a, S> {
+pub struct GraphicsEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    input: ShaderInterface,
     layout_desc: PipelineLayoutDesc,
+    spec_constants: &'static [SpecializationMapEntry],
+    input: ShaderInterface,
     output: ShaderInterface,
     ty: GraphicsShaderType,
-    marker: PhantomData<S>,
 }
 
-unsafe impl<'a, S> EntryPointAbstract for GraphicsEntryPoint<'a, S>
-where
-    S: SpecializationConstants,
-{
-    type SpecializationConstants = S;
-
+unsafe impl<'a> EntryPointAbstract for GraphicsEntryPoint<'a> {
     #[inline]
     fn module(&self) -> &ShaderModule {
         self.module
@@ -239,12 +249,13 @@ where
     fn layout_desc(&self) -> &PipelineLayoutDesc {
         &self.layout_desc
     }
+
+    fn spec_constants(&self) -> &[SpecializationMapEntry] {
+        self.spec_constants
+    }
 }
 
-unsafe impl<'a, S> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S>
-where
-    S: SpecializationConstants,
-{
+unsafe impl<'a> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a> {
     #[inline]
     fn input(&self) -> &ShaderInterface {
         &self.input
@@ -312,36 +323,18 @@ impl GeometryShaderExecutionMode {
     }
 }
 
-pub unsafe trait EntryPointAbstract {
-    type SpecializationConstants: SpecializationConstants;
-
-    /// Returns the module this entry point comes from.
-    fn module(&self) -> &ShaderModule;
-
-    /// Returns the name of the entry point.
-    fn name(&self) -> &CStr;
-
-    /// Returns the pipeline layout used by the shader stage.
-    fn layout_desc(&self) -> &PipelineLayoutDesc;
-}
-
 /// Represents the entry point of a compute shader in a shader module.
 ///
 /// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
 #[derive(Debug, Clone)]
-pub struct ComputeEntryPoint<'a, S> {
+pub struct ComputeEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
     layout_desc: PipelineLayoutDesc,
-    marker: PhantomData<S>,
+    spec_constants: &'static [SpecializationMapEntry],
 }
 
-unsafe impl<'a, S> EntryPointAbstract for ComputeEntryPoint<'a, S>
-where
-    S: SpecializationConstants,
-{
-    type SpecializationConstants = S;
-
+unsafe impl<'a> EntryPointAbstract for ComputeEntryPoint<'a> {
     #[inline]
     fn module(&self) -> &ShaderModule {
         self.module
@@ -356,6 +349,11 @@ where
     fn layout_desc(&self) -> &PipelineLayoutDesc {
         &self.layout_desc
     }
+
+    #[inline]
+    fn spec_constants(&self) -> &[SpecializationMapEntry] {
+        self.spec_constants
+    }
 }
 
 /// A dummy that implements `GraphicsEntryPointAbstract` and `EntryPointAbstract`.
@@ -369,8 +367,6 @@ where
 pub enum EmptyEntryPointDummy {}
 
 unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
-    type SpecializationConstants = ();
-
     #[inline]
     fn module(&self) -> &ShaderModule {
         unreachable!()
@@ -383,6 +379,11 @@ unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
 
     #[inline]
     fn layout_desc(&self) -> &PipelineLayoutDesc {
+        unreachable!()
+    }
+
+    #[inline]
+    fn spec_constants(&self) -> &[SpecializationMapEntry] {
         unreachable!()
     }
 }
@@ -622,6 +623,7 @@ unsafe impl SpecializationConstants for () {
 
 /// Describes an individual constant to set in the shader. Also a field in the struct.
 // Implementation note: has the same memory representation as a `VkSpecializationMapEntry`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct SpecializationMapEntry {
     /// Identifier of the constant in the shader that corresponds to this field.

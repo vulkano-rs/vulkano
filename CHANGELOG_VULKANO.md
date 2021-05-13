@@ -8,6 +8,7 @@
   - The trait `PipelineLayoutDesc` has also been converted into a struct, with methods `descriptor_sets` and `push_constants` which return slices. The traits `PipelineLayoutSuperset`, `PipelineLayoutSetsCompatible` and `PipelineLayoutPushConstantsCompatible` have been integrated into this trait. The `EmptyPipelineDesc` trait has been removed.
   - Consequently, functions that took a value of these traits now take a plain `ShaderInterface` or `PipelineLayoutDesc`. Types that had a type parameter for it no longer have it, e.g. `VertexDefinition`, `GraphicsEntryPoint`, `GraphicsEntryPointAbstract`, `PipelineLayout`.
   - Now that `PipelineLayout` has no more type parameter, the trait `PipelineLayoutAbstract` is removed. The layout type parameter is also removed from `ComputePipeline` and `GraphicsPipeline`.
+  - `ComputeEntryPoint` and `GraphicsEntryPoint` now take a value specifying the push constants descriptor, instead of having a type parameter. The corresponding associated type on `ComputeEntryPointAbstract` and `GraphicsEntryPointAbstract` has been removed.
 
 # Version 0.23.0 (2021-04-10)
 

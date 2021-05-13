@@ -91,10 +91,11 @@ pub(super) fn write_entry_point(
     let (ty, f_call) = {
         if let ExecutionModel::ExecutionModelGLCompute = *execution {
             (
-                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint<#spec_consts_struct> },
+                quote! { ::vulkano::pipeline::shader::ComputeEntryPoint },
                 quote! { compute_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    #pipeline_layout_desc
+                    #pipeline_layout_desc,
+                    <#spec_consts_struct>::descriptors(),
                 )},
             )
         } else {
@@ -161,15 +162,14 @@ pub(super) fn write_entry_point(
                 ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
             };
 
-            let ty = quote! {
-                ::vulkano::pipeline::shader::GraphicsEntryPoint<#spec_consts_struct>
-            };
+            let ty = quote! { ::vulkano::pipeline::shader::GraphicsEntryPoint };
             let f_call = quote! {
                 graphics_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
+                    #pipeline_layout_desc,
+                    <#spec_consts_struct>::descriptors(),
                     #input_interface,
                     #output_interface,
-                    #pipeline_layout_desc,
                     #entry_ty
                 )
             };

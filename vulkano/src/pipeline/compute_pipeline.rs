@@ -52,14 +52,15 @@ struct Inner {
 
 impl ComputePipeline {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Cs>(
+    pub fn new<Cs, Css>(
         device: Arc<Device>,
         shader: &Cs,
-        specialization: &Cs::SpecializationConstants,
+        spec_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
+        Css: SpecializationConstants,
     {
         unsafe {
             let pipeline_layout = Arc::new(PipelineLayout::new(
@@ -69,7 +70,7 @@ impl ComputePipeline {
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
-                specialization,
+                spec_constants,
                 pipeline_layout,
                 cache,
             )
@@ -80,16 +81,21 @@ impl ComputePipeline {
     ///
     /// An error will be returned if the pipeline layout isn't a superset of what the shader
     /// uses.
-    pub fn with_pipeline_layout<Cs>(
+    pub fn with_pipeline_layout<Cs, Css>(
         device: Arc<Device>,
         shader: &Cs,
-        specialization: &Cs::SpecializationConstants,
+        spec_constants: &Css,
         pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
+        Css: SpecializationConstants,
     {
+        if Css::descriptors() != shader.spec_constants() {
+            return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants);
+        }
+
         unsafe {
             pipeline_layout
                 .desc()
@@ -97,7 +103,7 @@ impl ComputePipeline {
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
-                specialization,
+                spec_constants,
                 pipeline_layout,
                 cache,
             )
@@ -106,25 +112,26 @@ impl ComputePipeline {
 
     /// Same as `with_pipeline_layout`, but doesn't check whether the pipeline layout is a
     /// superset of what the shader expects.
-    pub unsafe fn with_unchecked_pipeline_layout<Cs>(
+    pub unsafe fn with_unchecked_pipeline_layout<Cs, Css>(
         device: Arc<Device>,
         shader: &Cs,
-        specialization: &Cs::SpecializationConstants,
+        spec_constants: &Css,
         pipeline_layout: Arc<PipelineLayout>,
         cache: Option<Arc<PipelineCache>>,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
+        Css: SpecializationConstants,
     {
         let vk = device.pointers();
 
         let pipeline = {
-            let spec_descriptors = Cs::SpecializationConstants::descriptors();
+            let spec_descriptors = Css::descriptors();
             let specialization = vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
-                dataSize: mem::size_of_val(specialization),
-                pData: specialization as *const Cs::SpecializationConstants as *const _,
+                dataSize: mem::size_of_val(spec_constants),
+                pData: spec_constants as *const Css as *const _,
             };
 
             let stage = vk::PipelineShaderStageCreateInfo {
@@ -283,6 +290,8 @@ pub enum ComputePipelineCreationError {
     PipelineLayoutCreationError(PipelineLayoutCreationError),
     /// The pipeline layout is not compatible with what the shader expects.
     IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
+    /// The provided specialization constants are not compatible with what the shader expects.
+    IncompatibleSpecializationConstants,
 }
 
 impl error::Error for ComputePipelineCreationError {
@@ -292,6 +301,7 @@ impl error::Error for ComputePipelineCreationError {
             ComputePipelineCreationError::OomError(ref err) => Some(err),
             ComputePipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),
             ComputePipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
+            ComputePipelineCreationError::IncompatibleSpecializationConstants => None,
         }
     }
 }
@@ -309,6 +319,9 @@ impl fmt::Display for ComputePipelineCreationError {
                 }
                 ComputePipelineCreationError::IncompatiblePipelineLayout(_) => {
                     "the pipeline layout is not compatible with what the shader expects"
+                }
+                ComputePipelineCreationError::IncompatibleSpecializationConstants => {
+                    "the provided specialization constants are not compatible with what the shader expects"
                 }
             }
         )
@@ -443,6 +456,7 @@ mod tests {
                     })]],
                     vec![],
                 ),
+                SpecConsts::descriptors(),
             )
         };
 

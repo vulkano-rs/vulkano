@@ -21,16 +21,14 @@
 //! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
 //! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
 
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-
-use crate::device::Device;
-
 use crate::check_errors;
+use crate::device::Device;
 use crate::vk;
 use crate::OomError;
 use crate::VulkanObject;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -253,6 +251,7 @@ mod tests {
     use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
     use crate::pipeline::cache::PipelineCache;
     use crate::pipeline::shader::ShaderModule;
+    use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::ComputePipeline;
     use std::{ffi::CStr, sync::Arc};
 
@@ -295,6 +294,7 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
             )
         };
 
@@ -338,6 +338,7 @@ mod tests {
             first_module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
             )
         };
 
@@ -377,6 +378,7 @@ mod tests {
             second_module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
             )
         };
 
@@ -429,6 +431,7 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
             )
         };
 

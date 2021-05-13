@@ -32,12 +32,12 @@ impl PipelineLayoutDesc {
     pub fn new(
         descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
         push_constants: Vec<PipelineLayoutDescPcRange>,
-    ) -> Result<PipelineLayoutDesc, RuntimePipelineDescError> {
+    ) -> Result<PipelineLayoutDesc, PipelineLayoutDescError> {
         unsafe {
             for (a_id, a) in push_constants.iter().enumerate() {
                 for b in push_constants.iter().skip(a_id + 1) {
                     if a.offset <= b.offset && a.offset + a.size > b.offset {
-                        return Err(RuntimePipelineDescError::PushConstantsConflict {
+                        return Err(PipelineLayoutDescError::PushConstantsConflict {
                             first_offset: a.offset,
                             first_size: a.size,
                             second_offset: b.offset,
@@ -45,7 +45,7 @@ impl PipelineLayoutDesc {
                     }
 
                     if b.offset <= a.offset && b.offset + b.size > a.offset {
-                        return Err(RuntimePipelineDescError::PushConstantsConflict {
+                        return Err(PipelineLayoutDescError::PushConstantsConflict {
                             first_offset: b.offset,
                             first_size: b.size,
                             second_offset: a.offset,
@@ -336,7 +336,7 @@ pub struct PipelineLayoutDescPcRange {
 
 /// Error when building a persistent descriptor set.
 #[derive(Debug, Clone)]
-pub enum RuntimePipelineDescError {
+pub enum PipelineLayoutDescError {
     /// Conflict between different push constants ranges.
     PushConstantsConflict {
         first_offset: usize,
@@ -345,16 +345,16 @@ pub enum RuntimePipelineDescError {
     },
 }
 
-impl error::Error for RuntimePipelineDescError {}
+impl error::Error for PipelineLayoutDescError {}
 
-impl fmt::Display for RuntimePipelineDescError {
+impl fmt::Display for PipelineLayoutDescError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
             fmt,
             "{}",
             match *self {
-                RuntimePipelineDescError::PushConstantsConflict { .. } => {
+                PipelineLayoutDescError::PushConstantsConflict { .. } => {
                     "conflict between different push constants ranges"
                 }
             }
@@ -420,8 +420,8 @@ impl fmt::Display for PipelineLayoutNotSupersetError {
 mod tests {
     use crate::descriptor::descriptor::ShaderStages;
     use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+    use crate::descriptor::pipeline_layout::PipelineLayoutDescError;
     use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-    use crate::descriptor::pipeline_layout::RuntimePipelineDescError;
 
     #[test]
     fn pc_conflict() {
@@ -443,7 +443,7 @@ mod tests {
 
         assert!(matches!(
             r,
-            Err(RuntimePipelineDescError::PushConstantsConflict {
+            Err(PipelineLayoutDescError::PushConstantsConflict {
                 first_offset: 0,
                 first_size: 8,
                 second_offset: 4,

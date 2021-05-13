@@ -27,6 +27,9 @@ pub enum GraphicsPipelineCreationError {
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
 
+    /// The provided specialization constants are not compatible with what the shader expects.
+    IncompatibleSpecializationConstants,
+
     /// The interface between the vertex shader and the geometry shader mismatches.
     VertexGeometryStagesMismatch(ShaderInterfaceMismatchError),
 
@@ -239,6 +242,9 @@ impl fmt::Display for GraphicsPipelineCreationError {
                 }
                 GraphicsPipelineCreationError::IncompatiblePipelineLayout(_) => {
                     "the pipeline layout is not compatible with what the shaders expect"
+                }
+                GraphicsPipelineCreationError::IncompatibleSpecializationConstants => {
+                    "the provided specialization constants are not compatible with what the shader expects"
                 }
                 GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
                     "the output of the fragment shader is not compatible with what the render pass \

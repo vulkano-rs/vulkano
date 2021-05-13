@@ -405,8 +405,13 @@ where
 
         // Creating the specialization constants of the various stages.
         let vertex_shader_specialization = {
+            let shader = self.vertex_shader.as_ref().unwrap();
             let spec_descriptors = Vss::descriptors();
-            let constants = &self.vertex_shader.as_ref().unwrap().1;
+            if spec_descriptors != shader.0.spec_constants() {
+                return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+            }
+
+            let constants = &shader.1;
             vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
@@ -416,8 +421,13 @@ where
         };
         let tess_shader_specialization = if let Some(ref tess) = self.tessellation {
             let tcs_spec = {
+                let shader = &tess.tessellation_control_shader;
                 let spec_descriptors = Tcss::descriptors();
-                let constants = &tess.tessellation_control_shader.1;
+                if spec_descriptors != shader.0.spec_constants() {
+                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+                }
+
+                let constants = &shader.1;
                 vk::SpecializationInfo {
                     mapEntryCount: spec_descriptors.len() as u32,
                     pMapEntries: spec_descriptors.as_ptr() as *const _,
@@ -426,8 +436,13 @@ where
                 }
             };
             let tes_spec = {
+                let shader = &tess.tessellation_evaluation_shader;
                 let spec_descriptors = Tess::descriptors();
-                let constants = &tess.tessellation_evaluation_shader.1;
+                if spec_descriptors != shader.0.spec_constants() {
+                    return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+                }
+
+                let constants = &shader.1;
                 vk::SpecializationInfo {
                     mapEntryCount: spec_descriptors.len() as u32,
                     pMapEntries: spec_descriptors.as_ptr() as *const _,
@@ -439,9 +454,13 @@ where
         } else {
             None
         };
-        let geometry_shader_specialization = if let Some(ref gs) = self.geometry_shader {
+        let geometry_shader_specialization = if let Some(ref shader) = self.geometry_shader {
             let spec_descriptors = Gss::descriptors();
-            let constants = &gs.1;
+            if spec_descriptors != shader.0.spec_constants() {
+                return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+            }
+
+            let constants = &shader.1;
             Some(vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
@@ -452,8 +471,13 @@ where
             None
         };
         let fragment_shader_specialization = {
+            let shader = self.fragment_shader.as_ref().unwrap();
             let spec_descriptors = Fss::descriptors();
-            let constants = &self.fragment_shader.as_ref().unwrap().1;
+            if spec_descriptors != shader.0.spec_constants() {
+                return Err(GraphicsPipelineCreationError::IncompatibleSpecializationConstants);
+            }
+
+            let constants = &shader.1;
             vk::SpecializationInfo {
                 mapEntryCount: spec_descriptors.len() as u32,
                 pMapEntries: spec_descriptors.as_ptr() as *const _,
@@ -1252,7 +1276,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
         specialization_constants: Vss2,
     ) -> GraphicsPipelineBuilder<Vdef, Vs2, Vss2, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
     where
-        Vs2: GraphicsEntryPointAbstract<SpecializationConstants = Vss2>,
+        Vs2: GraphicsEntryPointAbstract,
         Vss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
@@ -1400,8 +1424,8 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
         tessellation_evaluation_shader_spec_constants: Tess2,
     ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs2, Tcss2, Tes2, Tess2, Gs, Gss, Fs, Fss>
     where
-        Tcs2: GraphicsEntryPointAbstract<SpecializationConstants = Tcss2>,
-        Tes2: GraphicsEntryPointAbstract<SpecializationConstants = Tess2>,
+        Tcs2: GraphicsEntryPointAbstract,
+        Tes2: GraphicsEntryPointAbstract,
         Tcss2: SpecializationConstants,
         Tess2: SpecializationConstants,
     {
@@ -1448,7 +1472,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
         specialization_constants: Gss2,
     ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs2, Gss2, Fs, Fss>
     where
-        Gs2: GraphicsEntryPointAbstract<SpecializationConstants = Gss2>,
+        Gs2: GraphicsEntryPointAbstract,
         Gss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
@@ -1731,7 +1755,7 @@ impl<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs, Fss>
         specialization_constants: Fss2,
     ) -> GraphicsPipelineBuilder<Vdef, Vs, Vss, Tcs, Tcss, Tes, Tess, Gs, Gss, Fs2, Fss2>
     where
-        Fs2: GraphicsEntryPointAbstract<SpecializationConstants = Fss2>,
+        Fs2: GraphicsEntryPointAbstract,
         Fss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {

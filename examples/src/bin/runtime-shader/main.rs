@@ -39,6 +39,7 @@ use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
+    SpecializationConstants,
 };
 use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::Viewport;
@@ -224,9 +225,10 @@ fn main() {
     let vert_main = unsafe {
         vs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
+            vertex_layout,
+            <()>::descriptors(),
             vertex_input,
             vertex_output,
-            vertex_layout,
             GraphicsShaderType::Vertex,
         )
     };
@@ -234,9 +236,10 @@ fn main() {
     let frag_main = unsafe {
         fs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
+            fragment_layout,
+            <()>::descriptors(),
             fragment_input,
             fragment_output,
-            fragment_layout,
             GraphicsShaderType::Fragment,
         )
     };
