@@ -224,8 +224,10 @@ impl<'a> DeviceMemoryBuilder<'a> {
             let mut prev_head = self.allocate.pNext as *mut BaseOutStructure;
             // Retrieve end of next chain
             let last_next = ptr_chain_iter(next).last().unwrap();
-            // Set end of next chain's next to be previous head
-            (*last_next).p_next = prev_head;
+            // Set end of next chain's next to be previous head only if previous head's next'
+            if !prev_head.is_null() {
+                (*last_next).p_next = (*prev_head).p_next;
+            }
             // Set next ptr to be first one
             prev_head = next_ptr;
         }
