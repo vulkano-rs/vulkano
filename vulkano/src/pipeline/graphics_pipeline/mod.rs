@@ -13,7 +13,6 @@ use crate::buffer::BufferAccess;
 use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::pipeline::shader::EmptyEntryPointDummy;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
@@ -72,16 +71,16 @@ impl GraphicsPipeline<()> {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
     pub fn start<'a>() -> GraphicsPipelineBuilder<
+        'static,
+        'static,
+        'static,
+        'static,
+        'static,
         BufferlessDefinition,
-        EmptyEntryPointDummy,
         (),
-        EmptyEntryPointDummy,
         (),
-        EmptyEntryPointDummy,
         (),
-        EmptyEntryPointDummy,
         (),
-        EmptyEntryPointDummy,
         (),
     > {
         GraphicsPipelineBuilder::new()

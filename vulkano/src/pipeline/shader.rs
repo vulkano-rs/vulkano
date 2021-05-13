@@ -209,21 +209,10 @@ pub unsafe trait EntryPointAbstract {
     fn spec_constants(&self) -> &[SpecializationMapEntry];
 }
 
-pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
-    /// Returns the input attributes used by the shader stage.
-    fn input(&self) -> &ShaderInterface;
-
-    /// Returns the output attributes used by the shader stage.
-    fn output(&self) -> &ShaderInterface;
-
-    /// Returns the type of shader.
-    fn ty(&self) -> GraphicsShaderType;
-}
-
 /// Represents a shader entry point in a shader module.
 ///
 /// Can be obtained by calling `entry_point()` on the shader module.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GraphicsEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
@@ -232,6 +221,26 @@ pub struct GraphicsEntryPoint<'a> {
     input: ShaderInterface,
     output: ShaderInterface,
     ty: GraphicsShaderType,
+}
+
+impl<'a> GraphicsEntryPoint<'a> {
+    /// Returns the input attributes used by the shader stage.
+    #[inline]
+    pub fn input(&self) -> &ShaderInterface {
+        &self.input
+    }
+
+    /// Returns the output attributes used by the shader stage.
+    #[inline]
+    pub fn output(&self) -> &ShaderInterface {
+        &self.output
+    }
+
+    /// Returns the type of shader.
+    #[inline]
+    pub fn ty(&self) -> GraphicsShaderType {
+        self.ty
+    }
 }
 
 unsafe impl<'a> EntryPointAbstract for GraphicsEntryPoint<'a> {
@@ -252,23 +261,6 @@ unsafe impl<'a> EntryPointAbstract for GraphicsEntryPoint<'a> {
 
     fn spec_constants(&self) -> &[SpecializationMapEntry] {
         self.spec_constants
-    }
-}
-
-unsafe impl<'a> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a> {
-    #[inline]
-    fn input(&self) -> &ShaderInterface {
-        &self.input
-    }
-
-    #[inline]
-    fn output(&self) -> &ShaderInterface {
-        &self.output
-    }
-
-    #[inline]
-    fn ty(&self) -> GraphicsShaderType {
-        self.ty
     }
 }
 
@@ -356,58 +348,9 @@ unsafe impl<'a> EntryPointAbstract for ComputeEntryPoint<'a> {
     }
 }
 
-/// A dummy that implements `GraphicsEntryPointAbstract` and `EntryPointAbstract`.
-///
-/// When a function has a signature like: `fn foo<S: EntryPointAbstract>(shader: Option<S>)`, you
-/// can pass `None::<EmptyEntryPointDummy>`.
-///
-/// This object is meant to be a replacement to `!` before it is stabilized.
-// TODO: ^
-#[derive(Debug, Copy, Clone)]
-pub enum EmptyEntryPointDummy {}
-
-unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
-    #[inline]
-    fn module(&self) -> &ShaderModule {
-        unreachable!()
-    }
-
-    #[inline]
-    fn name(&self) -> &CStr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn layout_desc(&self) -> &PipelineLayoutDesc {
-        unreachable!()
-    }
-
-    #[inline]
-    fn spec_constants(&self) -> &[SpecializationMapEntry] {
-        unreachable!()
-    }
-}
-
-unsafe impl GraphicsEntryPointAbstract for EmptyEntryPointDummy {
-    #[inline]
-    fn input(&self) -> &ShaderInterface {
-        unreachable!()
-    }
-
-    #[inline]
-    fn output(&self) -> &ShaderInterface {
-        unreachable!()
-    }
-
-    #[inline]
-    fn ty(&self) -> GraphicsShaderType {
-        unreachable!()
-    }
-}
-
 /// Type that contains the definition of an interface between two shader stages, or between
 /// the outside and a shader stage.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ShaderInterface {
     elements: Vec<ShaderInterfaceEntry>,
 }
