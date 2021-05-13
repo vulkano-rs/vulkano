@@ -152,7 +152,7 @@ where
         device: Arc<Device>,
         dynamic_buffers: &[(usize, usize)],
     ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
-        let pipeline_layout_desc = {
+        let mut pipeline_layout_desc = {
             let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
                 self.tessellation
@@ -180,6 +180,7 @@ where
                 })
         };
 
+        pipeline_layout_desc.tweak(dynamic_buffers.into_iter().cloned());
         let pipeline_layout = PipelineLayout::new(device.clone(), pipeline_layout_desc).unwrap();
         self.with_pipeline_layout(device, Arc::new(pipeline_layout))
     }
