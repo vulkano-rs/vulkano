@@ -10,9 +10,9 @@
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
 use crate::buffer::BufferAccess;
-use crate::descriptor::pipeline_layout::PipelineLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;

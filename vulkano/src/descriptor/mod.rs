@@ -87,4 +87,3 @@ pub use self::descriptor_set::DescriptorSet;
 
 pub mod descriptor;
 pub mod descriptor_set;
-pub mod pipeline_layout;

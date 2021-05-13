@@ -11,13 +11,13 @@
 
 #![cfg(test)]
 
-use descriptor::pipeline_layout::PipelineLayoutDesc;
 use format::Format;
 use framebuffer::Subpass;
 use pipeline::blend::Blend;
 use pipeline::depth_stencil::DepthStencil;
 use pipeline::input_assembly::InputAssembly;
 use pipeline::input_assembly::PrimitiveTopology;
+use pipeline::layout::PipelineLayoutDesc;
 use pipeline::multisample::Multisample;
 use pipeline::shader::ShaderInterface;
 use pipeline::shader::ShaderModule;

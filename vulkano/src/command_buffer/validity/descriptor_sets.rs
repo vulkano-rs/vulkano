@@ -12,7 +12,7 @@ use std::fmt;
 
 use crate::descriptor::descriptor::DescriptorDescSupersetError;
 use crate::descriptor::descriptor_set::DescriptorSetsCollection;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDesc;
 
 /// Checks whether descriptor sets are compatible with the pipeline.
 pub fn check_descriptor_sets_validity<D>(

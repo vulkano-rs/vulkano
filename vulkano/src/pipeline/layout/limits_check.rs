@@ -11,9 +11,9 @@
 
 use crate::descriptor::descriptor::DescriptorType;
 use crate::descriptor::descriptor::ShaderStages;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
 use crate::instance::Limits;
+use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDescPcRange;
 use std::error;
 use std::fmt;
 

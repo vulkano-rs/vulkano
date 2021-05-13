@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDesc;
 use std::error;
 use std::fmt;
 

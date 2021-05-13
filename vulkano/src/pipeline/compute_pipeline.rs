@@ -8,12 +8,12 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor::pipeline_layout::PipelineLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutCreationError;
-use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
+use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::layout::PipelineLayoutCreationError;
+use crate::pipeline::layout::PipelineLayoutNotSupersetError;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::vk;
@@ -375,7 +375,7 @@ mod tests {
     use crate::descriptor::descriptor::DescriptorDescTy;
     use crate::descriptor::descriptor::ShaderStages;
     use crate::descriptor::descriptor_set::PersistentDescriptorSet;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
+    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;

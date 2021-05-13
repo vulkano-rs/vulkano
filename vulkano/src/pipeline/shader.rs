@@ -18,10 +18,10 @@
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
 use crate::check_errors;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::device::Device;
 use crate::format::Format;
 use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::vk;
 use crate::OomError;
 use crate::VulkanObject;

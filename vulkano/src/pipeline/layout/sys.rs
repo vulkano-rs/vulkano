@@ -10,11 +10,11 @@
 use crate::check_errors;
 use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use crate::descriptor::pipeline_layout::PipelineLayoutLimitsError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDescPcRange;
+use crate::pipeline::layout::PipelineLayoutLimitsError;
 use crate::vk;
 use crate::Error;
 use crate::OomError;

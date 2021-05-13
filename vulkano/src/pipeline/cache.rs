@@ -248,8 +248,8 @@ impl Drop for PipelineCache {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
     use crate::pipeline::cache::PipelineCache;
+    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::ComputePipeline;

@@ -85,13 +85,13 @@ pub use self::graphics_pipeline::GraphicsPipelineBuilder;
 pub use self::graphics_pipeline::GraphicsPipelineCreationError;
 pub use self::graphics_pipeline::GraphicsPipelineSys;
 
-mod compute_pipeline;
-mod graphics_pipeline;
-
 pub mod blend;
 pub mod cache;
+mod compute_pipeline;
 pub mod depth_stencil;
+mod graphics_pipeline;
 pub mod input_assembly;
+pub mod layout;
 pub mod multisample;
 pub mod raster;
 pub mod shader;

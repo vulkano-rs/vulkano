@@ -12,8 +12,6 @@
 #![allow(deprecated)]
 
 use crate::check_errors;
-use crate::descriptor::pipeline_layout::PipelineLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
 use crate::device::Device;
 use crate::pipeline::blend::AttachmentBlend;
 use crate::pipeline::blend::AttachmentsBlend;
@@ -27,6 +25,8 @@ use crate::pipeline::graphics_pipeline::GraphicsPipeline;
 use crate::pipeline::graphics_pipeline::GraphicsPipelineCreationError;
 use crate::pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::raster::CullMode;
 use crate::pipeline::raster::DepthBiasControl;
 use crate::pipeline::raster::FrontFace;

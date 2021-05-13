@@ -123,7 +123,7 @@ pub(super) fn write_pipeline_layout_desc(
     quote! {
         #[allow(unsafe_code)]
         unsafe {
-            ::vulkano::descriptor::pipeline_layout::PipelineLayoutDesc::new_unchecked(
+            ::vulkano::pipeline::layout::PipelineLayoutDesc::new_unchecked(
                 #descriptor_sets,
                 #push_constants,
             )

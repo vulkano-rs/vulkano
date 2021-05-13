@@ -11,8 +11,8 @@ use std::error;
 use std::fmt;
 use std::u32;
 
-use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::layout::PipelineLayoutNotSupersetError;
 use crate::pipeline::shader::ShaderInterfaceMismatchError;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::Error;
