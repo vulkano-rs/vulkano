@@ -292,6 +292,8 @@ where
             }
         }
 
+        let mut layers = dimensions[2];
+
         if let Some(multiview) = self.render_pass.desc().multiview() {
             // There needs to be at least as many layers in the framebuffer
             // as the highest layer that gets referenced by the multiview masking.
@@ -300,6 +302,14 @@ where
                     minimum: multiview.highest_used_layer(),
                     current: dimensions[2],
                 });
+            }
+
+            // VUID-VkFramebufferCreateInfo-renderPass-02531
+            // The framebuffer has to be created with one layer if multiview is enabled even though
+            // the underlying images generally have more layers
+            // but these layers get used by the multiview functionality.
+            if multiview.view_masks.iter().any(|&mask| mask != 0) {
+                layers = 1;
             }
         }
 
@@ -315,7 +325,7 @@ where
                 pAttachments: self.raw_ids.as_ptr(),
                 width: dimensions[0],
                 height: dimensions[1],
-                layers: dimensions[2],
+                layers,
             };
 
             let mut output = MaybeUninit::uninit();
