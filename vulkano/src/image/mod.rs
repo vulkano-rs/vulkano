@@ -92,8 +92,8 @@ pub struct SampleCounts {
     pub sample64: bool,
 }
 
-impl From<u32> for SampleCounts {
-    fn from(sample_counts: u32) -> SampleCounts {
+impl From<vk::SampleCountFlags> for SampleCounts {
+    fn from(sample_counts: vk::SampleCountFlags) -> SampleCounts {
         SampleCounts {
             sample1: (sample_counts & vk::SAMPLE_COUNT_1_BIT) != 0,
             sample2: (sample_counts & vk::SAMPLE_COUNT_2_BIT) != 0,
@@ -106,8 +106,8 @@ impl From<u32> for SampleCounts {
     }
 }
 
-impl From<SampleCounts> for u32 {
-    fn from(val: SampleCounts) -> u32 {
+impl From<SampleCounts> for vk::SampleCountFlags {
+    fn from(val: SampleCounts) -> vk::SampleCountFlags {
         let mut sample_counts = vk::SampleCountFlags::default();
 
         if val.sample1 {
