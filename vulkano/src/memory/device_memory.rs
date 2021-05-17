@@ -205,13 +205,31 @@ impl<'a> DeviceMemoryBuilder<'a> {
         self
     }
 
-    // Private function -- no doc comment needed!  Copied shamelessly and poorly from Ash.
+    // Private function copied shamelessly from Ash.
+    // https://github.com/MaikKlein/ash/blob/4ba8637d018fec6d6e3a90d7fa47d11c085f6b4a/generator/src/lib.rs
+    #[allow(unused_assignments)]
     fn push_next<T: ExtendsMemoryAllocateInfo>(self, next: &mut T) -> DeviceMemoryBuilder<'a> {
         unsafe {
+            // `next` here can contain a pointer chain. This means that we must correctly
+            // attach he head to the root and the tail to the rest of the chain
+            // For example:
+            //
+            // next = A -> B
+            // Before: `Root -> C -> D -> E`
+            // After: `Root -> A -> B -> C -> D -> E`
+
+            // Convert next to our ptr structure
             let next_ptr = next as *mut T as *mut BaseOutStructure;
-            let mut prev = self.allocate.pNext as *mut BaseOutStructure;
-            let last_next = ptr_chain_iter(&mut prev).last().unwrap();
-            (*last_next).p_next = next_ptr as _;
+            // Previous head (can be null)
+            let mut prev_head = self.allocate.pNext as *mut BaseOutStructure;
+            // Retrieve end of next chain
+            let last_next = ptr_chain_iter(next).last().unwrap();
+            // Set end of next chain's next to be previous head only if previous head's next'
+            if !prev_head.is_null() {
+                (*last_next).p_next = (*prev_head).p_next;
+            }
+            // Set next ptr to be first one
+            prev_head = next_ptr;
         }
 
         self

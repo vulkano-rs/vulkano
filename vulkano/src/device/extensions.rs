@@ -128,23 +128,26 @@ device_extensions! {
         // https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451
         khr_portability_subset,
     ],
-    khr_swapchain => b"VK_KHR_swapchain",
-    khr_display_swapchain => b"VK_KHR_display_swapchain",
-    khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
-    khr_maintenance1 => b"VK_KHR_maintenance1",
-    khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
-    khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
-    khr_incremental_present => b"VK_KHR_incremental_present",
+
+    // List in order: khr, ext, then alphabetical
     khr_16bit_storage => b"VK_KHR_16bit_storage",
     khr_8bit_storage => b"VK_KHR_8bit_storage",
-    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
-    ext_debug_utils => b"VK_EXT_debug_utils",
-    khr_multiview => b"VK_KHR_multiview",
-    ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
+    khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
+    khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_external_memory => b"VK_KHR_external_memory",
     khr_external_memory_fd => b"VK_KHR_external_memory_fd",
-    ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
+    khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
+    khr_incremental_present => b"VK_KHR_incremental_present",
+    khr_maintenance1 => b"VK_KHR_maintenance1",
+    khr_multiview => b"VK_KHR_multiview",
     khr_portability_subset => b"VK_KHR_portability_subset",
+    khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
+    khr_spirv_1_4 => b"VK_KHR_spirv_1_4",
+    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
+    khr_swapchain => b"VK_KHR_swapchain",
+    ext_debug_utils => b"VK_EXT_debug_utils",
+    ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
+    ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
 }
 
 /// This helper type can only be instantiated inside this module.
