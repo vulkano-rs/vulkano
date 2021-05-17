@@ -10,6 +10,9 @@
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
 - Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return (currently never higher than 1.1, but this may change in the future).
 - Fixed the issue when creating a buffer with exportable fd on Linux(see to #1545).
+- **Breaking**, change to `ImageFormatProperties::sample_counts` field.
+  - `sample_counts` field is originaly represented as u32 type, which is now represented by `SampleCounts` struct-type which is a boolean collection of supported `sample_counts`.
+  - Added conversion function between SampleCountFlagBits (u32-type) and `SampleCounts` type.
 
 # Version 0.23.0 (2021-04-10)
 
