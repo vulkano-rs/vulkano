@@ -16,6 +16,7 @@
 // and that you want to learn Vulkan. This means that for example it won't go into details about
 // what a vertex or a shader is.
 
+use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
@@ -31,13 +32,11 @@ use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-
-use std::sync::Arc;
 
 fn main() {
     // The first step of any Vulkan program is to create an instance.
@@ -50,7 +49,8 @@ fn main() {
     let required_extensions = vulkano_win::required_extensions();
 
     // Now creating the instance.
-    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let instance =
+        Instance::new(None, Version::major_minor(1, 1), &required_extensions, None).unwrap();
 
     // We then choose which physical device to use.
     //

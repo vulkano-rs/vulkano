@@ -21,9 +21,10 @@
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
+//! use vulkano::Version;
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
-//! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+//! let instance = match Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -140,7 +141,7 @@ pub struct Device {
     device: vk::Device,
 
     // The highest version that is supported for this device.
-    // This is the minimum of Instance::desired_version and PhysicalDevice::api_version.
+    // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
     api_version: Version,
 
     vk: vk::DevicePointers,
@@ -193,8 +194,8 @@ impl Device {
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
         Ext: Into<RawDeviceExtensions>,
     {
-        let desired_version = phys.instance().desired_version;
-        let api_version = std::cmp::min(desired_version, phys.api_version());
+        let max_api_version = phys.instance().max_api_version();
+        let api_version = std::cmp::min(max_api_version, phys.api_version());
 
         let queue_families = queue_families.into_iter();
 
@@ -367,6 +368,10 @@ impl Device {
     }
 
     /// Returns the Vulkan version supported by this `Device`.
+    ///
+    /// This is the lower of the
+    /// [physical device's supported version](crate::instance::PhysicalDevice::api_version) and
+    /// the instance's [`max_api_version`](crate::instance::Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
         self.api_version

@@ -29,10 +29,12 @@ use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::Version;
 
 fn main() {
     let instance = Instance::new(
         None,
+        Version::major_minor(1, 1),
         &InstanceExtensions {
             // This extension is required to obtain physical device metadata
             // about the device workgroup size limits

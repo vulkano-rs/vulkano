@@ -25,6 +25,11 @@
 // expensive otherwise. It has some drawbacks, which are the fact that transparent objects must be
 // drawn after the lighting, and that the whole process consumes more memory.
 
+use crate::frame::*;
+use crate::triangle_draw_system::*;
+use cgmath::Matrix4;
+use cgmath::SquareMatrix;
+use cgmath::Vector3;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::ImageUsage;
@@ -33,27 +38,21 @@ use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
-
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
-use cgmath::Matrix4;
-use cgmath::SquareMatrix;
-use cgmath::Vector3;
-
 mod frame;
 mod triangle_draw_system;
-
-use crate::frame::*;
-use crate::triangle_draw_system::*;
 
 fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
 
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let instance =
+        Instance::new(None, Version::major_minor(1, 1), &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     let event_loop = EventLoop::new();

@@ -58,6 +58,7 @@
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::swapchain::Surface;
+//! use vulkano::Version;
 //!
 //! let instance = {
 //!     let extensions = InstanceExtensions {
@@ -66,7 +67,7 @@
 //!         .. InstanceExtensions::none()
 //!     };
 //!
-//!      match Instance::new(None, &extensions, None) {
+//!      match Instance::new(None, Version::major_minor(1, 1), &extensions, None) {
 //!         Ok(i) => i,
 //!         Err(err) => panic!("Couldn't build instance: {:?}", err)
 //!     }

@@ -235,9 +235,10 @@ impl PhysicalDeviceExtendedProperties {
 /// ```no_run
 /// # use vulkano::instance::Instance;
 /// # use vulkano::instance::InstanceExtensions;
+/// # use vulkano::Version;
 /// use vulkano::instance::PhysicalDevice;
 ///
-/// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+/// # let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
 /// for physical_device in PhysicalDevice::enumerate(&instance) {
 ///     print_infos(physical_device);
 /// }
@@ -260,9 +261,10 @@ impl<'a> PhysicalDevice<'a> {
     /// ```no_run
     /// # use vulkano::instance::Instance;
     /// # use vulkano::instance::InstanceExtensions;
+    /// # use vulkano::Version;
     /// use vulkano::instance::PhysicalDevice;
     ///
-    /// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// # let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
     ///     println!("Available device: {}", physical_device.name());
     /// }
@@ -285,8 +287,9 @@ impl<'a> PhysicalDevice<'a> {
     /// use vulkano::instance::Instance;
     /// use vulkano::instance::InstanceExtensions;
     /// use vulkano::instance::PhysicalDevice;
+    /// use vulkano::Version;
     ///
-    /// let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
     /// let first_physical_device = PhysicalDevice::from_index(&instance, 0).unwrap();
     /// ```
     #[inline]
@@ -345,9 +348,10 @@ impl<'a> PhysicalDevice<'a> {
     /// ```no_run
     /// # use vulkano::instance::Instance;
     /// # use vulkano::instance::InstanceExtensions;
+    /// # use vulkano::Version;
     /// use vulkano::instance::PhysicalDevice;
     ///
-    /// # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    /// # let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
     ///     println!("Available device: {} (type: {:?})",
     ///               physical_device.name(), physical_device.ty());

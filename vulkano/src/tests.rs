@@ -13,8 +13,14 @@
 macro_rules! instance {
     () => {{
         use crate::instance;
+        use crate::Version;
 
-        match instance::Instance::new(None, &instance::InstanceExtensions::none(), None) {
+        match instance::Instance::new(
+            None,
+            Version::major_minor(1, 1),
+            &instance::InstanceExtensions::none(),
+            None,
+        ) {
             Ok(i) => i,
             Err(_) => return,
         }

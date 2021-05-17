@@ -23,6 +23,7 @@ use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::Version;
 
 const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
     khr_storage_buffer_storage_class: true,
@@ -36,7 +37,13 @@ const BUFFER_USAGE: BufferUsage = BufferUsage {
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let instance = Instance::new(
+        None,
+        Version::major_minor(1, 1),
+        &InstanceExtensions::none(),
+        None,
+    )
+    .unwrap();
 
     // Choose which physical device to use.
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
