@@ -80,7 +80,6 @@ pub mod buffer;
 pub mod command_buffer;
 pub mod descriptor;
 pub mod device;
-mod features;
 pub mod format;
 mod version;
 #[macro_use]

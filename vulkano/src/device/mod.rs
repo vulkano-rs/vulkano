@@ -92,11 +92,17 @@
 
 pub use self::extensions::DeviceExtensions;
 pub use self::extensions::RawDeviceExtensions;
+pub use self::features::Features;
+pub(crate) use self::features::FeaturesFfi;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
-pub use crate::features::Features;
-use crate::features::FeaturesFfi;
+use crate::format::Format;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageFormatProperties;
+use crate::image::ImageTiling;
+use crate::image::ImageType;
+use crate::image::ImageUsage;
 use crate::instance::Instance;
 use crate::instance::PhysicalDevice;
 use crate::instance::QueueFamily;
@@ -105,6 +111,7 @@ use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SynchronizedVulkanObject;
+use crate::Version;
 use crate::VulkanHandle;
 use crate::VulkanObject;
 use fnv::FnvHasher;
@@ -124,14 +131,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
+
 mod extensions;
-use crate::format::Format;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageFormatProperties;
-use crate::image::ImageTiling;
-use crate::image::ImageType;
-use crate::image::ImageUsage;
-use crate::Version;
+mod features;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -885,7 +887,7 @@ mod tests {
     use crate::device::Device;
     use crate::device::DeviceCreationError;
     use crate::device::DeviceExtensions;
-    use crate::features::Features;
+    use crate::device::Features;
     use crate::instance;
     use std::sync::Arc;
 

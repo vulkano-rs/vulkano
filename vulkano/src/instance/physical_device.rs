@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::features::{Features, FeaturesFfi};
+use crate::device::{Features, FeaturesFfi};
 use crate::instance::limits::Limits;
 use crate::instance::{Instance, InstanceCreationError};
 use crate::sync::PipelineStage;

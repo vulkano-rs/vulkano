@@ -33,7 +33,7 @@ macro_rules! gfx_dev_and_queue {
         use crate::instance;
         use crate::device::Device;
         use crate::device::DeviceExtensions;
-        use crate::features::Features;
+        use crate::device::Features;
 
         let instance = instance!();
 
