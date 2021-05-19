@@ -3544,8 +3544,6 @@ impl Default for PhysicalDeviceProtectedMemoryFeatures {
     }
 }
 
-pub type PhysicalDeviceProtectedMemoryFeaturesKHR = PhysicalDeviceProtectedMemoryFeatures;
-
 #[repr(C)]
 pub struct PhysicalDeviceDescriptorIndexingFeatures {
     pub sType: StructureType,

@@ -186,7 +186,7 @@ features! {
     {multiview_tessellation_shader => vulkan_1_1.multiviewTessellationShader | khr_multiview.multiviewTessellationShader},
     {variable_pointers_storage_buffer => vulkan_1_1.variablePointersStorageBuffer | khr_variable_pointers.variablePointersStorageBuffer},
     {variable_pointers => vulkan_1_1.variablePointers | khr_variable_pointers.variablePointers},
-    {protected_memory => vulkan_1_1.protectedMemory | khr_protected_memory.protectedMemory},
+    {protected_memory => vulkan_1_1.protectedMemory | protected_memory.protectedMemory},
     {sampler_ycbcr_conversion => vulkan_1_1.samplerYcbcrConversion | khr_sampler_ycbcr_conversion.samplerYcbcrConversion},
     {shader_draw_parameters => vulkan_1_1.shaderDrawParameters | shader_draw_parameters.shaderDrawParameters},
 
@@ -251,6 +251,7 @@ pub(crate) struct FeaturesFfi {
     vulkan_1_1: vk::PhysicalDeviceVulkan11Features,
     vulkan_1_2: vk::PhysicalDeviceVulkan12Features,
 
+    protected_memory: vk::PhysicalDeviceProtectedMemoryFeatures,
     shader_draw_parameters: vk::PhysicalDeviceShaderDrawParametersFeatures,
 
     khr_16bit_storage: vk::PhysicalDevice16BitStorageFeaturesKHR,
@@ -258,7 +259,6 @@ pub(crate) struct FeaturesFfi {
     khr_buffer_device_address: vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR,
     khr_imageless_framebuffer: vk::PhysicalDeviceImagelessFramebufferFeaturesKHR,
     khr_multiview: vk::PhysicalDeviceMultiviewFeaturesKHR,
-    khr_protected_memory: vk::PhysicalDeviceProtectedMemoryFeaturesKHR,
     khr_sampler_ycbcr_conversion: vk::PhysicalDeviceSamplerYcbcrConversionFeaturesKHR,
     khr_separate_depth_stencil_layouts: vk::PhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR,
     khr_shader_atomic_int64: vk::PhysicalDeviceShaderAtomicInt64FeaturesKHR,
@@ -289,6 +289,7 @@ impl FeaturesFfi {
             push_struct!(self, vulkan_1_2);
         } else {
             if api_version >= Version::major_minor(1, 1) {
+                push_struct!(self, protected_memory);
                 push_struct!(self, shader_draw_parameters);
             }
 
@@ -297,7 +298,6 @@ impl FeaturesFfi {
             push_struct!(self, khr_buffer_device_address);
             push_struct!(self, khr_imageless_framebuffer);
             push_struct!(self, khr_multiview);
-            push_struct!(self, khr_protected_memory);
             push_struct!(self, khr_sampler_ycbcr_conversion);
             push_struct!(self, khr_separate_depth_stencil_layouts);
             push_struct!(self, khr_shader_atomic_int64);

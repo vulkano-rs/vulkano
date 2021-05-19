@@ -130,14 +130,22 @@ fn init_physical_devices_inner2(
 
             let mut output = vk::PhysicalDeviceProperties2KHR {
                 sType: vk::STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR,
-                pNext: &mut subgroup_properties,
+                pNext: if instance.api_version() >= Version::major_minor(1, 1) {
+                    &mut subgroup_properties
+                } else {
+                    ptr::null_mut()
+                },
                 properties: mem::zeroed(),
             };
 
             vk.GetPhysicalDeviceProperties2KHR(device, &mut output);
 
             extended_properties = PhysicalDeviceExtendedProperties {
-                subgroup_size: Some(subgroup_properties.subgroupSize),
+                subgroup_size: if instance.api_version() >= Version::major_minor(1, 1) {
+                    Some(subgroup_properties.subgroupSize)
+                } else {
+                    None
+                },
 
                 ..extended_properties
             };
