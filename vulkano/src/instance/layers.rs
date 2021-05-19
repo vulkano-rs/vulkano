@@ -133,7 +133,7 @@ impl LayerProperties {
     /// use vulkano::instance::Version;
     ///
     /// for layer in instance::layers_list().unwrap() {
-    ///     if layer.vulkan_version() >= (Version { major: 2, minor: 0, patch: 0 }) {
+    ///     if layer.vulkan_version() >= Version::major_minor(2, 0) {
     ///         println!("Layer {} requires Vulkan 2.0", layer.name());
     ///     }
     /// }

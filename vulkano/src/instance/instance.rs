@@ -374,20 +374,22 @@ impl Instance {
             })
         };
 
-        // Enumerating all physical devices.
-        let physical_devices = init_physical_devices(instance, &vk, &extensions)?;
-
-        Ok(Arc::new(Instance {
+        let mut instance = Instance {
             instance,
             api_version,
             max_api_version,
             //alloc: None,
-            physical_devices,
+            physical_devices: Vec::new(),
             vk,
             extensions,
             layers,
             function_pointers,
-        }))
+        };
+
+        // Enumerating all physical devices.
+        instance.physical_devices = init_physical_devices(&instance)?;
+
+        Ok(Arc::new(instance))
     }
 
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever

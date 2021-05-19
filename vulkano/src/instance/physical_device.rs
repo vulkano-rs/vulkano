@@ -10,13 +10,12 @@
 use crate::check_errors;
 use crate::features::{Features, FeaturesFfi};
 use crate::instance::limits::Limits;
-use crate::instance::{Instance, InstanceCreationError, RawInstanceExtensions};
+use crate::instance::{Instance, InstanceCreationError};
 use crate::sync::PipelineStage;
 use crate::vk;
 use crate::Version;
 use crate::VulkanObject;
 use std::ffi::CStr;
-use std::ffi::CString;
 use std::hash::Hash;
 use std::mem;
 use std::mem::MaybeUninit;
@@ -24,32 +23,35 @@ use std::ptr;
 use std::sync::Arc;
 
 pub(super) fn init_physical_devices(
-    instance: vk::Instance,
-    vk: &vk::InstancePointers,
-    extensions: &RawInstanceExtensions,
+    instance: &Instance,
 ) -> Result<Vec<PhysicalDeviceInfos>, InstanceCreationError> {
+    let vk = instance.pointers();
+    let extensions = instance.loaded_extensions();
+
     let physical_devices: Vec<vk::PhysicalDevice> = unsafe {
         let mut num = 0;
-        check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, ptr::null_mut()))?;
+        check_errors(vk.EnumeratePhysicalDevices(
+            instance.internal_object(),
+            &mut num,
+            ptr::null_mut(),
+        ))?;
 
         let mut devices = Vec::with_capacity(num as usize);
-        check_errors(vk.EnumeratePhysicalDevices(instance, &mut num, devices.as_mut_ptr()))?;
+        check_errors(vk.EnumeratePhysicalDevices(
+            instance.internal_object(),
+            &mut num,
+            devices.as_mut_ptr(),
+        ))?;
         devices.set_len(num as usize);
         devices
     };
 
-    let vk_khr_get_physical_device_properties2 =
-        CString::new(b"VK_KHR_get_physical_device_properties2".to_vec()).unwrap();
-
     // Getting the properties of all physical devices.
     // If possible, we use VK_KHR_get_physical_device_properties2.
-    let physical_devices = if extensions
-        .iter()
-        .any(|v| *v == vk_khr_get_physical_device_properties2)
-    {
-        init_physical_devices_inner2(&vk, physical_devices, &extensions)
+    let physical_devices = if extensions.khr_get_physical_device_properties2 {
+        init_physical_devices_inner2(instance, physical_devices)
     } else {
-        init_physical_devices_inner(&vk, physical_devices)
+        init_physical_devices_inner(instance, physical_devices)
     };
 
     Ok(physical_devices)
@@ -57,9 +59,10 @@ pub(super) fn init_physical_devices(
 
 /// Initialize all physical devices
 fn init_physical_devices_inner(
-    vk: &vk::InstancePointers,
+    instance: &Instance,
     physical_devices: Vec<vk::PhysicalDevice>,
 ) -> Vec<PhysicalDeviceInfos> {
+    let vk = instance.pointers();
     let mut output = Vec::with_capacity(physical_devices.len());
 
     for device in physical_devices.into_iter() {
@@ -85,10 +88,10 @@ fn init_physical_devices_inner(
             output.assume_init()
         };
 
-        let available_features: vk::PhysicalDeviceFeatures = unsafe {
-            let mut output = MaybeUninit::uninit();
-            vk.GetPhysicalDeviceFeatures(device, output.as_mut_ptr());
-            output.assume_init()
+        let available_features: Features = unsafe {
+            let mut output = FeaturesFfi::default();
+            vk.GetPhysicalDeviceFeatures(device, &mut output.head_as_mut().features);
+            Features::from(&output)
         };
 
         output.push(PhysicalDeviceInfos {
@@ -106,10 +109,10 @@ fn init_physical_devices_inner(
 /// Initialize all physical devices, but use VK_KHR_get_physical_device_properties2
 /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
 fn init_physical_devices_inner2(
-    vk: &vk::InstancePointers,
+    instance: &Instance,
     physical_devices: Vec<vk::PhysicalDevice>,
-    extensions: &RawInstanceExtensions,
 ) -> Vec<PhysicalDeviceInfos> {
+    let vk = instance.pointers();
     let mut output = Vec::with_capacity(physical_devices.len());
 
     for device in physical_devices.into_iter() {
@@ -172,10 +175,16 @@ fn init_physical_devices_inner2(
         };
 
         let available_features: Features = unsafe {
-            let mut output = FeaturesFfi::new();
-            let ptr = FeaturesFfi::mut_base_ptr(&mut output) as *mut _;
-            vk.GetPhysicalDeviceFeatures2KHR(device, ptr);
-            Features::from(&output.main)
+            let max_api_version = instance.max_api_version();
+            let api_version = std::cmp::min(
+                max_api_version,
+                Version::from_vulkan_version(properties.apiVersion),
+            );
+
+            let mut output = FeaturesFfi::default();
+            output.make_chain(api_version);
+            vk.GetPhysicalDeviceFeatures2KHR(device, output.head_as_mut());
+            Features::from(&output)
         };
 
         output.push(PhysicalDeviceInfos {

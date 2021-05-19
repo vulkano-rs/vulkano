@@ -103,7 +103,10 @@ impl UnsafeBuffer {
             0
         };
 
-        if usage.device_address && !device.enabled_features().buffer_device_address {
+        if usage.device_address
+            && !(device.enabled_features().buffer_device_address
+                || device.enabled_features().ext_buffer_device_address)
+        {
             usage.device_address = false;
             if vk::BufferUsageFlags::from(usage) == 0 {
                 // return an error iff device_address was the only requested usage and the
