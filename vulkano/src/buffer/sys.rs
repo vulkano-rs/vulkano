@@ -167,7 +167,7 @@ impl UnsafeBuffer {
                 let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
                     Some(vk::MemoryDedicatedRequirementsKHR {
                         sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-                        pNext: ptr::null(),
+                        pNext: ptr::null_mut(),
                         prefersDedicatedAllocation: mem::zeroed(),
                         requiresDedicatedAllocation: mem::zeroed(),
                     })

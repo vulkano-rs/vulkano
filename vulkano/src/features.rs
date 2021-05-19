@@ -188,7 +188,7 @@ features! {
     {variable_pointers => vulkan_1_1.variablePointers | khr_variable_pointers.variablePointers},
     {protected_memory => vulkan_1_1.protectedMemory | khr_protected_memory.protectedMemory},
     {sampler_ycbcr_conversion => vulkan_1_1.samplerYcbcrConversion | khr_sampler_ycbcr_conversion.samplerYcbcrConversion},
-    {shader_draw_parameters => vulkan_1_1.shaderDrawParameters},
+    {shader_draw_parameters => vulkan_1_1.shaderDrawParameters | shader_draw_parameters.shaderDrawParameters},
 
     {sampler_mirror_clamp_to_edge => vulkan_1_2.samplerMirrorClampToEdge},
     {draw_indirect_count => vulkan_1_2.drawIndirectCount},
@@ -251,6 +251,8 @@ pub(crate) struct FeaturesFfi {
     vulkan_1_1: vk::PhysicalDeviceVulkan11Features,
     vulkan_1_2: vk::PhysicalDeviceVulkan12Features,
 
+    shader_draw_parameters: vk::PhysicalDeviceShaderDrawParametersFeatures,
+
     khr_16bit_storage: vk::PhysicalDevice16BitStorageFeaturesKHR,
     khr_8bit_storage: vk::PhysicalDevice8BitStorageFeaturesKHR,
     khr_buffer_device_address: vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR,
@@ -286,6 +288,10 @@ impl FeaturesFfi {
             push_struct!(self, vulkan_1_1);
             push_struct!(self, vulkan_1_2);
         } else {
+            if api_version >= Version::major_minor(1, 1) {
+                push_struct!(self, shader_draw_parameters);
+            }
+
             push_struct!(self, khr_16bit_storage);
             push_struct!(self, khr_8bit_storage);
             push_struct!(self, khr_buffer_device_address);
