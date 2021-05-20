@@ -31,7 +31,7 @@
 //! # High-level wrappers
 //!
 //! In the vulkano library, an image is any object that implements the [`ImageAccess`] trait. You
-//! can create a view by wrapping them in an [`ImageView`].
+//! can create a view by wrapping them in an [`ImageView`](crate::image::view::ImageView).
 //!
 //! Since the `ImageAccess` trait is low-level, you are encouraged to not implement it yourself but
 //! instead use one of the provided implementations that are specialized depending on the way you
@@ -73,6 +73,69 @@ pub mod traits;
 mod usage;
 pub mod view;
 
+/// Specifies how many sample counts supported for an image used for storage operations.
+#[derive(Debug, Copy, Clone)]
+pub struct SampleCounts {
+    // specify an image with one sample per pixel
+    pub sample1: bool,
+    // specify an image with 2 samples per pixel
+    pub sample2: bool,
+    // specify an image with 4 samples per pixel
+    pub sample4: bool,
+    // specify an image with 8 samples per pixel
+    pub sample8: bool,
+    // specify an image with 16 samples per pixel
+    pub sample16: bool,
+    // specify an image with 32 samples per pixel
+    pub sample32: bool,
+    // specify an image with 64 samples per pixel
+    pub sample64: bool,
+}
+
+impl From<vk::SampleCountFlags> for SampleCounts {
+    fn from(sample_counts: vk::SampleCountFlags) -> SampleCounts {
+        SampleCounts {
+            sample1: (sample_counts & vk::SAMPLE_COUNT_1_BIT) != 0,
+            sample2: (sample_counts & vk::SAMPLE_COUNT_2_BIT) != 0,
+            sample4: (sample_counts & vk::SAMPLE_COUNT_4_BIT) != 0,
+            sample8: (sample_counts & vk::SAMPLE_COUNT_8_BIT) != 0,
+            sample16: (sample_counts & vk::SAMPLE_COUNT_16_BIT) != 0,
+            sample32: (sample_counts & vk::SAMPLE_COUNT_32_BIT) != 0,
+            sample64: (sample_counts & vk::SAMPLE_COUNT_64_BIT) != 0,
+        }
+    }
+}
+
+impl From<SampleCounts> for vk::SampleCountFlags {
+    fn from(val: SampleCounts) -> vk::SampleCountFlags {
+        let mut sample_counts = vk::SampleCountFlags::default();
+
+        if val.sample1 {
+            sample_counts |= vk::SAMPLE_COUNT_1_BIT;
+        }
+        if val.sample2 {
+            sample_counts |= vk::SAMPLE_COUNT_2_BIT;
+        }
+        if val.sample4 {
+            sample_counts |= vk::SAMPLE_COUNT_4_BIT;
+        }
+        if val.sample8 {
+            sample_counts |= vk::SAMPLE_COUNT_8_BIT;
+        }
+        if val.sample16 {
+            sample_counts |= vk::SAMPLE_COUNT_16_BIT;
+        }
+        if val.sample32 {
+            sample_counts |= vk::SAMPLE_COUNT_32_BIT;
+        }
+        if val.sample64 {
+            sample_counts |= vk::SAMPLE_COUNT_64_BIT;
+        }
+
+        sample_counts
+    }
+}
+
 /// Specifies how many mipmaps must be allocated.
 ///
 /// Note that at least one mipmap must be allocated, to store the main level of the image.
@@ -101,6 +164,7 @@ impl From<u32> for MipmapsCount {
 }
 
 /// Helper type for creating extents
+#[derive(Debug, Copy, Clone)]
 pub enum Extent {
     E1D([u32; 1]),
     E2D([u32; 2]),
@@ -152,7 +216,7 @@ pub struct ImageFormatProperties {
     pub max_extent: Extent,
     pub max_mip_levels: MipmapsCount,
     pub max_array_layers: u32,
-    pub sample_counts: u32,
+    pub sample_counts: SampleCounts,
     pub max_resource_size: usize,
 }
 
@@ -162,7 +226,7 @@ impl From<vk::ImageFormatProperties> for ImageFormatProperties {
             max_extent: props.maxExtent.into(),
             max_mip_levels: props.maxMipLevels.into(),
             max_array_layers: props.maxArrayLayers,
-            sample_counts: props.sampleCounts,
+            sample_counts: props.sampleCounts.into(),
             max_resource_size: props.maxResourceSize as usize,
         }
     }

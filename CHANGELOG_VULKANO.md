@@ -3,6 +3,23 @@
     Please add new changes at the bottom, preceded by a hyphen -.
     Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
 -->
+
+- **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
+- **Breaking** (but unlikely) Vulkano-shaders now compiles to SPIR-V 1.0 by default. If your shader needs features only available in a higher version, you can specify the target version on the `shader!` macro with the new `vulkan_version: "major.minor"` and `spirv_version: "major.minor"` arguments.
+- **Breaking** change to `ImageFormatProperties::sample_counts` field.
+  - `sample_counts` field is originaly represented as u32 type, which is now represented by `SampleCounts` struct-type which is a boolean collection of supported `sample_counts`.
+  - Added conversion function between SampleCountFlagBits (u32-type) and `SampleCounts` type.
+- Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan 1.1.
+- Added `FunctionPointers::api_version` to query the highest supported instance version.
+- Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return (currently never higher than 1.1, but this may change in the future).
+- Fixed the issue when creating a buffer with exportable fd on Linux(see to #1545).
+- The `draw_indirect` and `draw_indexed_indirect` commands on `AutoCommandBufferBuilder` now check the draw count against the `max_draw_indirect_count` limit.
+- Fixed a few documentation errors.
+- **Breaking** the `ImageAccess` trait now requires the implementation of the `layout_initialized` and `is_layout_initialized` functions
+- implemented `layout_initialized` and `is_layout_initialized` for all image access types
+
+# Version 0.23.0 (2021-04-10)
+
 - **Breaking** Changes to command buffers:
   - `AutoCommandBuffer` and the `CommandBuffer` trait have been split in two, one for primary and the other for secondary command buffers. `AutoCommandBufferBuilder` remains one type, but has a type parameter for the level of command buffer it will be creating, and some of its methods are only implemented for builders that create `PrimaryAutoCommandBuffer`.
   - The `Flags` enum is renamed to `CommandBufferUsage`, and is exported from the main `command_buffer` module. The `None` variant is renamed to `MultipleSubmit`.
@@ -55,8 +72,8 @@
 - Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
 - Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
-- **Breaking** the `ImageAccess` trait now requires the implementation of the `layout_initialized` and `is_layout_initialized` functions
-- implemented `layout_initialized` and `is_layout_initialized` for all image access types
+- Export root-level `entry_point` method on `loader::FunctionPointers` type.
+- Add few more `InstanceExtensions` from KHR and EXT.
 
 # Version 0.22.0 (2021-03-31)
 
