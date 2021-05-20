@@ -102,11 +102,9 @@ pub unsafe trait ImageAccess {
     /// `Preinitialized` state, this may result in the vulkan implementation attempting to use
     /// an image in an invalid layout. The same problem must be considered by the implementer
     /// of the method.
-    unsafe fn layout_initialized(&self) {}
+    unsafe fn layout_initialized(&self);
 
-    fn is_layout_initialized(&self) -> bool {
-        false
-    }
+    fn is_layout_initialized(&self) -> bool;
 
     unsafe fn preinitialized_layout(&self) -> bool {
         self.inner().image.preinitialized_layout()
@@ -375,6 +373,14 @@ where
     #[inline]
     fn inner(&self) -> ImageInner {
         self.image.inner()
+    }
+
+    unsafe fn layout_initialized(&self) {
+        self.image.layout_initialized()
+    }
+
+    fn is_layout_initialized(&self) -> bool {
+        self.image.is_layout_initialized()
     }
 
     #[inline]

@@ -37,8 +37,8 @@ use crate::sync::Sharing;
 use smallvec::SmallVec;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -62,6 +62,9 @@ where
 
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
+
+    // keeps track of whether or not the image was already transitioned to the `GENERAL` layout
+    initialized: AtomicBool,
 
     // Number of times this image is locked on the GPU side.
     gpu_lock: AtomicUsize,
@@ -165,6 +168,7 @@ impl StorageImage {
             dimensions,
             format,
             queue_families,
+            initialized: AtomicBool::new(false),
             gpu_lock: AtomicUsize::new(0),
         }))
     }
@@ -194,6 +198,14 @@ where
             first_mipmap_level: 0,
             num_mipmap_levels: 1,
         }
+    }
+
+    unsafe fn layout_initialized(&self) {
+        self.initialized.store(true, Ordering::SeqCst)
+    }
+
+    fn is_layout_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
     }
 
     #[inline]
@@ -233,12 +245,26 @@ where
 
     #[inline]
     fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
-        // TODO: handle initial layout transition
         if expected_layout != ImageLayout::General && expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: ImageLayout::General,
-            });
+            if self.initialized.load(Ordering::SeqCst) {
+                return Err(AccessError::UnexpectedImageLayout {
+                    requested: expected_layout,
+                    allowed: ImageLayout::General,
+                });
+            } else {
+                return Err(AccessError::UnexpectedImageLayout {
+                    requested: expected_layout,
+                    allowed: ImageLayout::Undefined,
+                });
+            }
+        }
+
+        if expected_layout != ImageLayout::Undefined {
+            if !self.initialized.load(Ordering::SeqCst) {
+                return Err(AccessError::ImageNotInitialized {
+                    requested: expected_layout,
+                });
+            }
         }
 
         let val = self
@@ -261,6 +287,11 @@ where
     #[inline]
     unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
         assert!(new_layout.is_none() || new_layout == Some(ImageLayout::General));
+
+        if let Some(ImageLayout::General) = new_layout {
+            self.initialized.store(true, Ordering::SeqCst);
+        }
+
         self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
     }
 

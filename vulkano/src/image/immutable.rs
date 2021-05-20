@@ -228,7 +228,7 @@ impl ImmutableImage {
             ImageLayout::ShaderReadOnlyOptimal,
             queue_families,
         )?;
-        image.initialized.store(true, Ordering::Relaxed); // Allow uninitialized access for backwards compatibility
+        image.initialized.store(true, Ordering::SeqCst); // Allow uninitialized access for backwards compatibility
         Ok(image)
     }
 
@@ -421,7 +421,7 @@ impl ImmutableImage {
             Err(e) => unreachable!("{:?}", e),
         };
 
-        image.initialized.store(true, Ordering::Relaxed);
+        image.initialized.store(true, Ordering::SeqCst);
 
         Ok((image, future))
     }
@@ -451,6 +451,14 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
             first_mipmap_level: 0,
             num_mipmap_levels: self.image.mipmap_levels() as usize,
         }
+    }
+
+    unsafe fn layout_initialized(&self) {
+        self.initialized.store(true, Ordering::SeqCst);
+    }
+
+    fn is_layout_initialized(&self) -> bool {
+        self.initialized.load(Ordering::SeqCst)
     }
 
     #[inline]
@@ -505,7 +513,7 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
             return Err(AccessError::ExclusiveDenied);
         }
 
-        if !self.initialized.load(Ordering::Relaxed) {
+        if !self.initialized.load(Ordering::SeqCst) {
             return Err(AccessError::BufferNotInitialized);
         }
 
@@ -542,6 +550,14 @@ unsafe impl ImageAccess for SubImage {
     #[inline]
     fn inner(&self) -> ImageInner {
         self.image.inner()
+    }
+
+    unsafe fn layout_initialized(&self) {
+        self.image.layout_initialized()
+    }
+
+    fn is_layout_initialized(&self) -> bool {
+        self.image.is_layout_initialized()
     }
 
     #[inline]
@@ -633,6 +649,14 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
         ImageAccess::inner(&self.image)
     }
 
+    unsafe fn layout_initialized(&self) {
+        self.image.layout_initialized()
+    }
+
+    fn is_layout_initialized(&self) -> bool {
+        self.image.is_layout_initialized()
+    }
+
     #[inline]
     fn initial_layout_requirement(&self) -> ImageLayout {
         ImageLayout::Undefined
@@ -672,7 +696,7 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
             });
         }
 
-        if self.image.initialized.load(Ordering::Relaxed) {
+        if self.image.initialized.load(Ordering::SeqCst) {
             return Err(AccessError::AlreadyInUse);
         }
 
@@ -696,7 +720,7 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     #[inline]
     unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
         assert_eq!(new_layout, Some(self.image.layout));
-        self.image.initialized.store(true, Ordering::Relaxed);
+        self.image.initialized.store(true, Ordering::SeqCst);
     }
 
     #[inline]
