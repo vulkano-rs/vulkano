@@ -762,6 +762,11 @@ impl SyncCommandBufferBuilder {
                                         from_layout,
                                         start_layout,
                                     );
+                                    // TODO: the layout will actually be initialized after this
+                                    //  command buffer has been submitted and executed which means
+                                    //  this isn't safe to do if this command buffer gets dropped
+                                    //  or another command buffer that was recorded later gets
+                                    //  executed before this one
                                     img.layout_initialized();
                                 }
                             }
