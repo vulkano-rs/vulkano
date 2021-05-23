@@ -522,6 +522,9 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
             DeviceRequirement::Features(&["shader_storage_image_write_without_format"])
         }
         Capability::CapabilityMultiViewport => DeviceRequirement::Features(&["multi_viewport"]),
+        Capability::CapabilityDrawParameters => {
+            DeviceRequirement::Features(&["shader_draw_parameters"])
+        }
         Capability::CapabilityStorageUniformBufferBlock16 => {
             DeviceRequirement::Extensions(&["khr_16bit_storage"])
         }
