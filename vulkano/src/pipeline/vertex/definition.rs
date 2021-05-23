@@ -7,18 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::format::Format;
+use crate::pipeline::shader::ShaderInterface;
+use crate::pipeline::vertex::VertexMemberTy;
+use crate::vk;
+use crate::SafeDeref;
 use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::buffer::BufferAccess;
-use crate::format::Format;
-use crate::pipeline::vertex::VertexMemberTy;
-use crate::vk;
-use crate::SafeDeref;
-
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait VertexDefinition<I>:
+pub unsafe trait VertexDefinition:
     VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
 {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
@@ -30,22 +30,22 @@ pub unsafe trait VertexDefinition<I>:
     /// interface.
     fn definition(
         &self,
-        interface: &I,
+        interface: &ShaderInterface,
     ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError>;
 }
 
-unsafe impl<I, T> VertexDefinition<I> for T
+unsafe impl<T> VertexDefinition for T
 where
     T: SafeDeref,
-    T::Target: VertexDefinition<I>,
+    T::Target: VertexDefinition,
 {
-    type BuffersIter = <T::Target as VertexDefinition<I>>::BuffersIter;
-    type AttribsIter = <T::Target as VertexDefinition<I>>::AttribsIter;
+    type BuffersIter = <T::Target as VertexDefinition>::BuffersIter;
+    type AttribsIter = <T::Target as VertexDefinition>::AttribsIter;
 
     #[inline]
     fn definition(
         &self,
-        interface: &I,
+        interface: &ShaderInterface,
     ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         (**self).definition(interface)
     }

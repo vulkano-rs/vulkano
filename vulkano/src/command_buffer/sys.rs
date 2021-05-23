@@ -19,7 +19,6 @@ use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::ShaderStages;
 use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
@@ -30,6 +29,7 @@ use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaceFlags;
 use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
@@ -305,15 +305,14 @@ impl UnsafeCommandBufferBuilder {
     /// Does nothing if the list of descriptor sets is empty, as it would be a no-op and isn't a
     /// valid usage of the command anyway.
     #[inline]
-    pub unsafe fn bind_descriptor_sets<'s, Pl, S, I>(
+    pub unsafe fn bind_descriptor_sets<'s, S, I>(
         &mut self,
         graphics: bool,
-        pipeline_layout: &Pl,
+        pipeline_layout: &PipelineLayout,
         first_binding: u32,
         sets: S,
         dynamic_offsets: I,
     ) where
-        Pl: ?Sized + PipelineLayoutAbstract,
         S: Iterator<Item = &'s UnsafeDescriptorSet>,
         I: Iterator<Item = u32>,
     {
@@ -327,7 +326,9 @@ impl UnsafeCommandBufferBuilder {
         let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.collect();
 
         let num_bindings = sets.len() as u32;
-        debug_assert!(first_binding + num_bindings <= pipeline_layout.num_sets() as u32);
+        debug_assert!(
+            first_binding + num_bindings <= pipeline_layout.desc().descriptor_sets().len() as u32
+        );
 
         let bind_point = if graphics {
             vk::PIPELINE_BIND_POINT_GRAPHICS
@@ -338,7 +339,7 @@ impl UnsafeCommandBufferBuilder {
         vk.CmdBindDescriptorSets(
             cmd,
             bind_point,
-            pipeline_layout.sys().internal_object(),
+            pipeline_layout.internal_object(),
             first_binding,
             num_bindings,
             sets.as_ptr(),
@@ -1237,15 +1238,14 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdPushConstants` on the builder.
     #[inline]
-    pub unsafe fn push_constants<Pl, D>(
+    pub unsafe fn push_constants<D>(
         &mut self,
-        pipeline_layout: &Pl,
+        pipeline_layout: &PipelineLayout,
         stages: ShaderStages,
         offset: u32,
         size: u32,
         data: &D,
     ) where
-        Pl: ?Sized + PipelineLayoutAbstract,
         D: ?Sized,
     {
         let vk = self.device().pointers();
@@ -1259,7 +1259,7 @@ impl UnsafeCommandBufferBuilder {
 
         vk.CmdPushConstants(
             cmd,
-            pipeline_layout.sys().internal_object(),
+            pipeline_layout.internal_object(),
             stages.into(),
             offset as u32,
             size as u32,

@@ -20,6 +20,7 @@ use vulkano::image::{
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::sampler::{Filter, MipmapMode, Sampler, SamplerAddressMode};
 use vulkano::swapchain;
