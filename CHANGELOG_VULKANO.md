@@ -27,6 +27,7 @@
 - Fixed a few documentation errors.
 - It is now possible to construct a graphics pipeline without a fragment shader.
 - Added support for all core Vulkan 1.1 and 1.2 device features.
+- Updated winit to 0.25.
 
 # Version 0.23.0 (2021-04-10)
 
