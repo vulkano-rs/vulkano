@@ -110,7 +110,7 @@ fn main() {
 
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
-    // We have to pass five parameters when creating a device:
+    // We have to pass four parameters when creating a device:
     //
     // - Which physical device to connect to.
     //
@@ -126,7 +126,7 @@ fn main() {
     //   between 0.0 and 1.0. The priority of the queue is a hint to the implementation about how
     //   much it should prioritize queues between one another.
     //
-    // The list of created queues is returned by the function alongside with the device.
+    // The iterator of created queues is returned by the function alongside the device.
     let device_ext = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::none()
@@ -139,20 +139,20 @@ fn main() {
     )
     .unwrap();
 
-    // Since we can request multiple queues, the `queues` variable is in fact an iterator. In this
-    // example we use only one queue, so we just retrieve the first and only element of the
+    // Since we can request multiple queues, the `queues` variable is in fact an iterator. We
+    // only use one queue in this example, so we just retrieve the first and only element of the
     // iterator and throw it away.
     let queue = queues.next().unwrap();
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
     // a swapchain allocates the color buffers that will contain the image that will ultimately
-    // be visible on the screen. These images are returned alongside with the swapchain.
+    // be visible on the screen. These images are returned alongside the swapchain.
     let (mut swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
         let caps = surface.capabilities(physical).unwrap();
 
-        // The alpha mode indicates how the alpha value of the final image will behave. For example
+        // The alpha mode indicates how the alpha value of the final image will behave. For example,
         // you can choose whether the window will be opaque or transparent.
         let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
@@ -163,12 +163,12 @@ fn main() {
         // NOTE:
         // On some drivers the swapchain dimensions are specified by `caps.current_extent` and the
         // swapchain size must use these dimensions.
-        // These dimensions are always the same as the window dimensions
+        // These dimensions are always the same as the window dimensions.
         //
-        // However other drivers dont specify a value i.e. `caps.current_extent` is `None`
-        // These drivers will allow anything but the only sensible value is the window dimensions.
+        // However, other drivers don't specify a value, i.e. `caps.current_extent` is `None`
+        // These drivers will allow anything, but the only sensible value is the window dimensions.
         //
-        // Because for both of these cases, the swapchain needs to be the window dimensions, we just use that.
+        // Both of these cases need the swapchain to use the window dimensions, so we just use that.
         let dimensions: [u32; 2] = surface.window().inner_size().into();
 
         // Please take a look at the docs for the meaning of the parameters we didn't mention.
