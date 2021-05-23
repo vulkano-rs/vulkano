@@ -690,7 +690,7 @@ impl<W> SwapchainBuilder<W> {
         {
             surface_full_screen_exclusive_info = Some(vk::SurfaceFullScreenExclusiveInfoEXT {
                 sType: vk::STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
-                pNext: ptr::null(),
+                pNext: ptr::null_mut(),
                 fullScreenExclusive: fullscreen_exclusive.vk_sys_enum(),
             });
         }

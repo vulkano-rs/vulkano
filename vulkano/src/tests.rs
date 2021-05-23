@@ -13,8 +13,14 @@
 macro_rules! instance {
     () => {{
         use crate::instance;
+        use crate::Version;
 
-        match instance::Instance::new(None, &instance::InstanceExtensions::none(), None) {
+        match instance::Instance::new(
+            None,
+            Version::major_minor(1, 1),
+            &instance::InstanceExtensions::none(),
+            None,
+        ) {
             Ok(i) => i,
             Err(_) => return,
         }
@@ -27,7 +33,7 @@ macro_rules! gfx_dev_and_queue {
         use crate::instance;
         use crate::device::Device;
         use crate::device::DeviceExtensions;
-        use crate::features::Features;
+        use crate::device::Features;
 
         let instance = instance!();
 

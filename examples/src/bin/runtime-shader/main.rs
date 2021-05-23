@@ -49,6 +49,7 @@ use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -64,7 +65,8 @@ vulkano::impl_vertex!(Vertex, position, color);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let instance =
+        Instance::new(None, Version::major_minor(1, 1), &required_extensions, None).unwrap();
     let physical = vk::instance::PhysicalDevice::enumerate(&instance)
         .next()
         .unwrap();

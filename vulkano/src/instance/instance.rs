@@ -35,12 +35,91 @@ use std::sync::Arc;
 /// An instance of a Vulkan context. This is the main object that should be created by an
 /// application before everything else.
 ///
-/// See the documentation of [the `instance` module](index.html) for an introduction about
-/// Vulkan instances.
+/// # Application info
 ///
-/// # Extensions and application infos
+/// When you create an instance, you have the possibility to pass an `ApplicationInfo` struct as
+/// the first parameter. This struct contains various information about your application, most
+/// notably its name and engine.
 ///
-/// Please check the documentation of [the `instance` module](index.html).
+/// Passing such a structure allows for example the driver to let the user configure the driver's
+/// behavior for your application alone through a control panel.
+///
+/// ```no_run
+/// # #[macro_use] extern crate vulkano;
+/// # fn main() {
+/// use vulkano::instance::{Instance, InstanceExtensions};
+/// use vulkano::Version;
+///
+/// // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
+/// // compile-time.
+/// let app_infos = app_info_from_cargo_toml!();
+///
+/// let _instance = Instance::new(Some(&app_infos), Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
+/// # }
+/// ```
+///
+/// # API versions
+///
+/// Both an `Instance` and a [`Device`](crate::device::Device) have a highest version of the Vulkan
+/// API that they support. This places a limit on what Vulkan functions and features are available
+/// to use when used on a particular instance or device. It is possible for the instance and the
+/// device to support different versions. The supported version for an instance can be queried
+/// before creation with
+/// [`FunctionPointers::api_version`](crate::instance::loader::FunctionPointers::api_version),
+/// while for a device it can be retrieved with
+/// [`PhysicalDevice::api_version`](crate::instance::PhysicalDevice::api_version).
+///
+/// When creating an `Instance`, you have to specify a maximum API version that you will use.
+/// This restricts the API version that is available for the instance and any devices created from
+/// it. For example, if both instance and device potentially support Vulkan 1.2, but you specify
+/// 1.1 as the maximum API version when creating the `Instance`, then you can only use Vulkan 1.1
+/// functions, even though they could theoretically support a higher version. You can think of it
+/// as a promise never to use any functionality from a higher version.
+///
+/// The maximum API version is not a _minimum_, so it is possible to set it to a higher version than
+/// what the instance or device inherently support. The final API version that you are able to use
+/// on an instance or device is the lower of the supported API version and the chosen maximum API
+/// version of the `Instance`.
+///
+/// However, due to a quirk in how the Vulkan 1.0 specification was written, if the instance only
+/// supports Vulkan 1.0, then it is not possible to specify a maximum API version higher than 1.0.
+/// Trying to create an `Instance` will return an `IncompatibleDriver` error. Consequently, it is
+/// not possible to use a higher device API version with an instance that only supports 1.0.
+///
+/// # Extensions
+///
+/// When creating an `Instance`, you must provide a list of extensions that must be enabled on the
+/// newly-created instance. Trying to enable an extension that is not supported by the system will
+/// result in an error.
+///
+/// Contrary to OpenGL, it is not possible to use the features of an extension if it was not
+/// explicitly enabled.
+///
+/// Extensions are especially important to take into account if you want to render images on the
+/// screen, as the only way to do so is to use the `VK_KHR_surface` extension. More information
+/// about this in the `swapchain` module.
+///
+/// For example, here is how we create an instance with the `VK_KHR_surface` and
+/// `VK_KHR_android_surface` extensions enabled, which will allow us to render images to an
+/// Android screen. You can compile and run this code on any system, but it is highly unlikely to
+/// succeed on anything else than an Android-running device.
+///
+/// ```no_run
+/// use vulkano::instance::Instance;
+/// use vulkano::instance::InstanceExtensions;
+/// use vulkano::Version;
+///
+/// let extensions = InstanceExtensions {
+///     khr_surface: true,
+///     khr_android_surface: true,
+///     .. InstanceExtensions::none()
+/// };
+///
+/// let instance = match Instance::new(None, Version::major_minor(1, 1), &extensions, None) {
+///     Ok(i) => i,
+///     Err(err) => panic!("Couldn't build instance: {:?}", err)
+/// };
+/// ```
 ///
 /// # Layers
 ///
@@ -53,7 +132,7 @@ use std::sync::Arc;
 /// could send information to a debugger that will debug your application.
 ///
 /// > **Note**: From an application's point of view, layers "just exist". In practice, on Windows
-/// > and Linux layers can be installed by third party installers or by package managers and can
+/// > and Linux, layers can be installed by third party installers or by package managers and can
 /// > also be activated by setting the value of the `VK_INSTANCE_LAYERS` environment variable
 /// > before starting the program. See the documentation of the official Vulkan loader for these
 /// > platforms.
@@ -67,12 +146,13 @@ use std::sync::Arc;
 /// ## Example
 ///
 /// ```
+/// # use std::sync::Arc;
+/// # use std::error::Error;
 /// # use vulkano::instance;
 /// # use vulkano::instance::Instance;
 /// # use vulkano::instance::InstanceExtensions;
-/// # use std::sync::Arc;
-/// # use std::error::Error;
-/// # fn test() -> Result<Arc<Instance>, Box<Error>> {
+/// # use vulkano::Version;
+/// # fn test() -> Result<Arc<Instance>, Box<dyn Error>> {
 /// // For the sake of the example, we activate all the layers that
 /// // contain the word "foo" in their description.
 /// let layers: Vec<_> = instance::layers_list()?
@@ -82,7 +162,7 @@ use std::sync::Arc;
 /// let layer_names = layers.iter()
 ///     .map(|l| l.name());
 ///
-/// let instance = Instance::new(None, &InstanceExtensions::none(), layer_names)?;
+/// let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), layer_names)?;
 /// # Ok(instance)
 /// # }
 /// ```
@@ -91,13 +171,12 @@ pub struct Instance {
     instance: vk::Instance,
     //alloc: Option<Box<Alloc + Send + Sync>>,
 
-    // The desired API version for instances and devices created from it.
-    // TODO: allow the user to specify this on construction.
-    pub(crate) desired_version: Version,
-
     // The highest version that is supported for this instance.
-    // This is the minimum of Instance::desired_version and FunctionPointers::api_version.
+    // This is the minimum of Instance::max_api_version and FunctionPointers::api_version.
     api_version: Version,
+
+    // The highest allowed API version for instances and devices created from it.
+    max_api_version: Version,
 
     pub(super) physical_devices: Vec<PhysicalDeviceInfos>,
     vk: vk::InstancePointers,
@@ -121,8 +200,9 @@ impl Instance {
     /// ```no_run
     /// use vulkano::instance::Instance;
     /// use vulkano::instance::InstanceExtensions;
+    /// use vulkano::Version;
     ///
-    /// let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+    /// let instance = match Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None) {
     ///     Ok(i) => i,
     ///     Err(err) => panic!("Couldn't build instance: {:?}", err)
     /// };
@@ -138,6 +218,7 @@ impl Instance {
     //       the choice to Vulkan
     pub fn new<'a, L, Ext>(
         app_infos: Option<&ApplicationInfo>,
+        max_api_version: Version,
         extensions: Ext,
         layers: L,
     ) -> Result<Arc<Instance>, InstanceCreationError>
@@ -152,6 +233,7 @@ impl Instance {
 
         Instance::new_inner(
             app_infos,
+            max_api_version,
             extensions.into(),
             layers,
             OwnedOrRef::Ref(loader::auto_loader()?),
@@ -162,6 +244,7 @@ impl Instance {
     pub fn with_loader<'a, L, Ext>(
         loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
         app_infos: Option<&ApplicationInfo>,
+        max_api_version: Version,
         extensions: Ext,
         layers: L,
     ) -> Result<Arc<Instance>, InstanceCreationError>
@@ -176,6 +259,7 @@ impl Instance {
 
         Instance::new_inner(
             app_infos,
+            max_api_version,
             extensions.into(),
             layers,
             OwnedOrRef::Owned(loader),
@@ -184,6 +268,7 @@ impl Instance {
 
     fn new_inner(
         app_infos: Option<&ApplicationInfo>,
+        max_api_version: Version,
         extensions: RawInstanceExtensions,
         layers: SmallVec<[CString; 16]>,
         function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
@@ -213,20 +298,7 @@ impl Instance {
             None
         };
 
-        // TODO: allow the user to specify this.
-        // Vulkan 1.0 will return VK_ERROR_INCOMPATIBLE_DRIVER on instance creation if this isn't
-        // 1.0, but higher versions never return this error, and thus will allow a desired version
-        // beyond what they support. The actual support on that particular instance/device is the
-        // minimum of desired and supported.
-        // In other words, it's impossible to use a Vulkan 1.1 or 1.2 device with a 1.0 instance,
-        // because instance creation with a higher desired_version will fail. But it is possible to
-        // use a 1.0 or 1.2 device with a 1.1 instance.
-        let desired_version = Version {
-            major: 1,
-            minor: 1,
-            patch: 0,
-        };
-        let api_version = std::cmp::min(desired_version, function_pointers.api_version()?);
+        let api_version = std::cmp::min(max_api_version, function_pointers.api_version()?);
 
         // Building the `vk::ApplicationInfo` if required.
         let app_infos = if let Some(app_infos) = app_infos {
@@ -255,7 +327,7 @@ impl Instance {
                     .engine_version
                     .map(|v| v.into_vulkan_version())
                     .unwrap_or(0),
-                apiVersion: desired_version.into_vulkan_version(), // TODO:
+                apiVersion: max_api_version.into_vulkan_version(),
             })
         } else {
             None
@@ -302,20 +374,22 @@ impl Instance {
             })
         };
 
-        // Enumerating all physical devices.
-        let physical_devices = init_physical_devices(instance, &vk, &extensions)?;
-
-        Ok(Arc::new(Instance {
+        let mut instance = Instance {
             instance,
             api_version,
-            desired_version,
+            max_api_version,
             //alloc: None,
-            physical_devices,
+            physical_devices: Vec::new(),
             vk,
             extensions,
             layers,
             function_pointers,
-        }))
+        };
+
+        // Enumerating all physical devices.
+        instance.physical_devices = init_physical_devices(&instance)?;
+
+        Ok(Arc::new(instance))
     }
 
     /*/// Same as `new`, but provides an allocator that will be used by the Vulkan library whenever
@@ -327,9 +401,19 @@ impl Instance {
     }*/
 
     /// Returns the Vulkan version supported by this `Instance`.
+    ///
+    /// This is the lower of the
+    /// [driver's supported version](crate::instance::loader::FunctionPointers::api_version) and
+    /// [`max_api_version`](Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
         self.api_version
+    }
+
+    /// Returns the maximum Vulkan version that was specified when creating this `Instance`.
+    #[inline]
+    pub fn max_api_version(&self) -> Version {
+        self.max_api_version
     }
 
     /// Grants access to the Vulkan functions of the instance.
@@ -347,9 +431,10 @@ impl Instance {
     /// ```no_run
     /// use vulkano::instance::Instance;
     /// use vulkano::instance::InstanceExtensions;
+    /// use vulkano::Version;
     ///
     /// let extensions = InstanceExtensions::supported_by_core().unwrap();
-    /// let instance = Instance::new(None, &extensions, None).unwrap();
+    /// let instance = Instance::new(None, Version::major_minor(1, 1), &extensions, None).unwrap();
     /// assert_eq!(instance.loaded_extensions(), extensions);
     /// ```
     #[inline]

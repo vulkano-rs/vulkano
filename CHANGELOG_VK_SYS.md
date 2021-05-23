@@ -1,5 +1,7 @@
 # Unreleased
 
+- Added structs for Vulkan 1.1 and 1.2 features, with `Default` implementations.
+
 # Version 0.6.1 (2021-04-10)
 
 - Add `MEMORY_HEAP_MULTI_INSTANCE_BIT` for `MemoryHeap`.

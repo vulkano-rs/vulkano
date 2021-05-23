@@ -22,19 +22,17 @@ pub struct Version {
     pub patch: u16,
 }
 
-impl fmt::Debug for Version {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
-    }
-}
-
-impl fmt::Display for Version {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(self, formatter)
-    }
-}
-
 impl Version {
+    /// Constructs a `Version` from the given major and minor version numbers.
+    #[inline]
+    pub const fn major_minor(major: u16, minor: u16) -> Version {
+        Version {
+            major,
+            minor,
+            patch: 0,
+        }
+    }
+
     /// Turns a version number given by Vulkan into a `Version` struct.
     #[inline]
     pub fn from_vulkan_version(value: u32) -> Version {
@@ -57,6 +55,18 @@ impl Version {
         assert!(self.patch <= 0xfff);
 
         (self.major as u32) << 22 | (self.minor as u32) << 12 | (self.patch as u32)
+    }
+}
+
+impl fmt::Debug for Version {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, formatter)
     }
 }
 

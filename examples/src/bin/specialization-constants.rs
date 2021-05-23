@@ -18,9 +18,16 @@ use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::Version;
 
 fn main() {
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let instance = Instance::new(
+        None,
+        Version::major_minor(1, 1),
+        &InstanceExtensions::none(),
+        None,
+    )
+    .unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical
         .queue_families()

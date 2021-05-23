@@ -32,15 +32,21 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::sync::Arc;
-
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::ComputePipeline;
+use vulkano::Version;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let instance = Instance::new(
+        None,
+        Version::major_minor(1, 1),
+        &InstanceExtensions::none(),
+        None,
+    )
+    .unwrap();
 
     // Choose which physical device to use.
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();

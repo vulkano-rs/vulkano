@@ -19,6 +19,7 @@ use std::os::raw::c_char;
 use std::os::raw::c_double;
 use std::os::raw::c_ulong;
 use std::os::raw::c_void;
+use std::ptr;
 
 pub type Flags = u32;
 pub type Bool32 = u32;
@@ -1883,6 +1884,7 @@ pub struct AllocationCallbacks {
     pub pfnInternalFree: PFN_vkInternalFreeNotification,
 }
 
+#[derive(Default)]
 #[repr(C)]
 pub struct PhysicalDeviceFeatures {
     pub robustBufferAccess: Bool32,
@@ -3270,11 +3272,23 @@ pub struct MVKSwapchainPerformance {
 }
 
 #[repr(C)]
-pub struct PhysicalDeviceFeatures2KHR {
+pub struct PhysicalDeviceFeatures2 {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub features: PhysicalDeviceFeatures,
 }
+
+impl Default for PhysicalDeviceFeatures2 {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+            pNext: ptr::null_mut(),
+            features: Default::default(),
+        }
+    }
+}
+
+pub type PhysicalDeviceFeatures2KHR = PhysicalDeviceFeatures2;
 
 #[repr(C)]
 pub struct PhysicalDeviceProperties2KHR {
@@ -3286,7 +3300,7 @@ pub struct PhysicalDeviceProperties2KHR {
 #[repr(C)]
 pub struct PhysicalDeviceSubgroupProperties {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub subgroupSize: u32,
     pub supportedStages: ShaderStageFlags,
     pub supportedOperations: SubgroupFeatureFlags,
@@ -3296,14 +3310,14 @@ pub struct PhysicalDeviceSubgroupProperties {
 #[repr(C)]
 pub struct FormatProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub formatProperties: FormatProperties,
 }
 
 #[repr(C)]
 pub struct ImageFormatProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub imageFormatProperties: ImageFormatProperties,
 }
 
@@ -3321,21 +3335,21 @@ pub struct PhysicalDeviceImageFormatInfo2KHR {
 #[repr(C)]
 pub struct QueueFamilyProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub queueFamilyProperties: QueueFamilyProperties,
 }
 
 #[repr(C)]
 pub struct PhysicalDeviceMemoryProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub memoryProperties: PhysicalDeviceMemoryProperties,
 }
 
 #[repr(C)]
 pub struct SparseImageFormatProperties2KHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub properties: SparseImageFormatProperties,
 }
 
@@ -3359,47 +3373,408 @@ pub struct PhysicalDeviceBufferAddressFeaturesEXT {
     pub bufferDeviceAddressMultiDevice: Bool32,
 }
 
+impl Default for PhysicalDeviceBufferAddressFeaturesEXT {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_ADDRESS_FEATURES_EXT,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
 #[repr(C)]
 pub struct PhysicalDeviceVariablePointersFeatures {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub variablePointersStorageBuffer: Bool32,
     pub variablePointers: Bool32,
 }
 
+impl Default for PhysicalDeviceVariablePointersFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_VARIABLE_POINTERS_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceVariablePointersFeaturesKHR = PhysicalDeviceVariablePointersFeatures;
+
 #[repr(C)]
 pub struct PhysicalDeviceShaderAtomicInt64Features {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub shaderBufferInt64Atomics: Bool32,
     pub shaderSharedInt64Atomics: Bool32,
 }
 
+impl Default for PhysicalDeviceShaderAtomicInt64Features {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_ATOMIC_INT64_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceShaderAtomicInt64FeaturesKHR = PhysicalDeviceShaderAtomicInt64Features;
+
 #[repr(C)]
 pub struct PhysicalDevice8BitStorageFeatures {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub storageBuffer8BitAccess: Bool32,
     pub uniformAndStorageBuffer8BitAccess: Bool32,
     pub storagePushConstant8: Bool32,
 }
 
+impl Default for PhysicalDevice8BitStorageFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDevice8BitStorageFeaturesKHR = PhysicalDevice8BitStorageFeatures;
+
 #[repr(C)]
 pub struct PhysicalDevice16BitStorageFeatures {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub storageBuffer16BitAccess: Bool32,
     pub uniformAndStorageBuffer16BitAccess: Bool32,
     pub storagePushConstant16: Bool32,
     pub storageInputOutput16: Bool32,
 }
 
+impl Default for PhysicalDevice16BitStorageFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_16BIT_STORAGE_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDevice16BitStorageFeaturesKHR = PhysicalDevice16BitStorageFeatures;
+
 #[repr(C)]
 pub struct PhysicalDeviceShaderFloat16Int8Features {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub shaderFloat16: Bool32,
     pub shaderInt8: Bool32,
+}
+
+impl Default for PhysicalDeviceShaderFloat16Int8Features {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FLOAT16_INT8_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceShaderFloat16Int8FeaturesKHR = PhysicalDeviceShaderFloat16Int8Features;
+
+#[repr(C)]
+pub struct PhysicalDeviceMultiviewFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub multiview: Bool32,
+    pub multiviewGeometryShader: Bool32,
+    pub multiviewTessellationShader: Bool32,
+}
+
+impl Default for PhysicalDeviceMultiviewFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceMultiviewFeaturesKHR = PhysicalDeviceMultiviewFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceSamplerYcbcrConversionFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub samplerYcbcrConversion: Bool32,
+}
+
+impl Default for PhysicalDeviceSamplerYcbcrConversionFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SAMPLER_YCBCR_CONVERSION_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceSamplerYcbcrConversionFeaturesKHR =
+    PhysicalDeviceSamplerYcbcrConversionFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceProtectedMemoryFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub protectedMemory: Bool32,
+}
+
+impl Default for PhysicalDeviceProtectedMemoryFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceDescriptorIndexingFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub shaderInputAttachmentArrayDynamicIndexing: Bool32,
+    pub shaderUniformTexelBufferArrayDynamicIndexing: Bool32,
+    pub shaderStorageTexelBufferArrayDynamicIndexing: Bool32,
+    pub shaderUniformBufferArrayNonUniformIndexing: Bool32,
+    pub shaderSampledImageArrayNonUniformIndexing: Bool32,
+    pub shaderStorageBufferArrayNonUniformIndexing: Bool32,
+    pub shaderStorageImageArrayNonUniformIndexing: Bool32,
+    pub shaderInputAttachmentArrayNonUniformIndexing: Bool32,
+    pub shaderUniformTexelBufferArrayNonUniformIndexing: Bool32,
+    pub shaderStorageTexelBufferArrayNonUniformIndexing: Bool32,
+    pub descriptorBindingUniformBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingSampledImageUpdateAfterBind: Bool32,
+    pub descriptorBindingStorageImageUpdateAfterBind: Bool32,
+    pub descriptorBindingStorageBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingUniformTexelBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingStorageTexelBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingUpdateUnusedWhilePending: Bool32,
+    pub descriptorBindingPartiallyBound: Bool32,
+    pub descriptorBindingVariableDescriptorCount: Bool32,
+    pub runtimeDescriptorArray: Bool32,
+}
+
+impl Default for PhysicalDeviceDescriptorIndexingFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceDescriptorIndexingFeaturesEXT = PhysicalDeviceDescriptorIndexingFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceScalarBlockLayoutFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub scalarBlockLayout: Bool32,
+}
+
+impl Default for PhysicalDeviceScalarBlockLayoutFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SCALAR_BLOCK_LAYOUT_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceScalarBlockLayoutFeaturesEXT = PhysicalDeviceScalarBlockLayoutFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceImagelessFramebufferFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub imagelessFramebuffer: Bool32,
+}
+
+impl Default for PhysicalDeviceImagelessFramebufferFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGELESS_FRAMEBUFFER_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceImagelessFramebufferFeaturesKHR = PhysicalDeviceImagelessFramebufferFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceUniformBufferStandardLayoutFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub uniformBufferStandardLayout: Bool32,
+}
+
+impl Default for PhysicalDeviceUniformBufferStandardLayoutFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_UNIFORM_BUFFER_STANDARD_LAYOUT_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceUniformBufferStandardLayoutFeaturesKHR =
+    PhysicalDeviceUniformBufferStandardLayoutFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceShaderSubgroupExtendedTypesFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub shaderSubgroupExtendedTypes: Bool32,
+}
+
+impl Default for PhysicalDeviceShaderSubgroupExtendedTypesFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_SUBGROUP_EXTENDED_TYPES_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceShaderSubgroupExtendedTypesFeaturesKHR =
+    PhysicalDeviceShaderSubgroupExtendedTypesFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceSeparateDepthStencilLayoutsFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub separateDepthStencilLayouts: Bool32,
+}
+
+impl Default for PhysicalDeviceSeparateDepthStencilLayoutsFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SEPARATE_DEPTH_STENCIL_LAYOUTS_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR =
+    PhysicalDeviceSeparateDepthStencilLayoutsFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceHostQueryResetFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub hostQueryReset: Bool32,
+}
+
+impl Default for PhysicalDeviceHostQueryResetFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceHostQueryResetFeaturesEXT = PhysicalDeviceHostQueryResetFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceTimelineSemaphoreFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub timelineSemaphore: Bool32,
+}
+
+impl Default for PhysicalDeviceTimelineSemaphoreFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceTimelineSemaphoreFeaturesKHR = PhysicalDeviceTimelineSemaphoreFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceBufferDeviceAddressFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub bufferDeviceAddress: Bool32,
+    pub bufferDeviceAddressCaptureReplay: Bool32,
+    pub bufferDeviceAddressMultiDevice: Bool32,
+}
+
+impl Default for PhysicalDeviceBufferDeviceAddressFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceBufferDeviceAddressFeaturesKHR = PhysicalDeviceBufferDeviceAddressFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceVulkanMemoryModelFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub vulkanMemoryModel: Bool32,
+    pub vulkanMemoryModelDeviceScope: Bool32,
+    pub vulkanMemoryModelAvailabilityVisibilityChains: Bool32,
+}
+
+impl Default for PhysicalDeviceVulkanMemoryModelFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_MEMORY_MODEL_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub type PhysicalDeviceVulkanMemoryModelFeaturesKHR = PhysicalDeviceVulkanMemoryModelFeatures;
+
+#[repr(C)]
+pub struct PhysicalDeviceShaderDrawParametersFeatures {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub shaderDrawParameters: Bool32,
+}
+
+impl Default for PhysicalDeviceShaderDrawParametersFeatures {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_DRAW_PARAMETERS_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
 }
 
 pub type ViSurfaceCreateFlagsNN = Flags;
@@ -3446,7 +3821,7 @@ pub struct DescriptorUpdateTemplateCreateInfoKHR {
 #[repr(C)]
 pub struct MemoryDedicatedRequirementsKHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub prefersDedicatedAllocation: Bool32,
     pub requiresDedicatedAllocation: Bool32,
 }
@@ -3462,14 +3837,14 @@ pub struct MemoryDedicatedAllocateInfoKHR {
 #[repr(C)]
 pub struct BufferMemoryRequirementsInfo2KHR {
     pub sType: StructureType,
-    pub pNext: *mut c_void,
+    pub pNext: *const c_void,
     pub buffer: Buffer,
 }
 
 #[repr(C)]
 pub struct ImageMemoryRequirementsInfo2KHR {
     pub sType: StructureType,
-    pub pNext: *mut c_void,
+    pub pNext: *const c_void,
     pub image: Image,
 }
 
@@ -3537,16 +3912,6 @@ pub struct DebugUtilsLabelEXT {
 }
 
 #[repr(C)]
-pub struct PhysicalDevice16BitStorageFeaturesKHR {
-    pub sType: StructureType,
-    pub pNext: *const c_void,
-    pub storageBuffer16BitAccess: Bool32,
-    pub uniformAndStorageBuffer16BitAccess: Bool32,
-    pub storagePushConstant16: Bool32,
-    pub storageInputOutput16: Bool32,
-}
-
-#[repr(C)]
 pub struct DebugUtilsObjectNameInfoEXT {
     pub sType: StructureType,
     pub pNext: *const c_void,
@@ -3558,7 +3923,7 @@ pub struct DebugUtilsObjectNameInfoEXT {
 #[repr(C)]
 pub struct SurfaceFullScreenExclusiveInfoEXT {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub fullScreenExclusive: FullScreenExclusiveEXT,
 }
 
@@ -3586,7 +3951,7 @@ pub struct ExternalMemoryImageCreateInfo {
 #[repr(C)]
 pub struct MemoryFdPropertiesKHR {
     pub sType: StructureType,
-    pub pNext: *const c_void,
+    pub pNext: *mut c_void,
     pub handleType: ExternalMemoryHandleTypeFlagBits,
     pub memoryTypeBits: u32,
 }
@@ -3605,6 +3970,96 @@ pub struct ImportMemoryFdInfoKHR {
     pub pNext: *const c_void,
     pub handleType: ExternalMemoryHandleTypeFlagBits,
     pub fd: i32,
+}
+
+#[repr(C)]
+pub struct PhysicalDeviceVulkan11Features {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub storageBuffer16BitAccess: Bool32,
+    pub uniformAndStorageBuffer16BitAccess: Bool32,
+    pub storagePushConstant16: Bool32,
+    pub storageInputOutput16: Bool32,
+    pub multiview: Bool32,
+    pub multiviewGeometryShader: Bool32,
+    pub multiviewTessellationShader: Bool32,
+    pub variablePointersStorageBuffer: Bool32,
+    pub variablePointers: Bool32,
+    pub protectedMemory: Bool32,
+    pub samplerYcbcrConversion: Bool32,
+    pub shaderDrawParameters: Bool32,
+}
+
+impl Default for PhysicalDeviceVulkan11Features {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
+}
+
+pub struct PhysicalDeviceVulkan12Features {
+    pub sType: StructureType,
+    pub pNext: *mut c_void,
+    pub samplerMirrorClampToEdge: Bool32,
+    pub drawIndirectCount: Bool32,
+    pub storageBuffer8BitAccess: Bool32,
+    pub uniformAndStorageBuffer8BitAccess: Bool32,
+    pub storagePushConstant8: Bool32,
+    pub shaderBufferInt64Atomics: Bool32,
+    pub shaderSharedInt64Atomics: Bool32,
+    pub shaderFloat16: Bool32,
+    pub shaderInt8: Bool32,
+    pub descriptorIndexing: Bool32,
+    pub shaderInputAttachmentArrayDynamicIndexing: Bool32,
+    pub shaderUniformTexelBufferArrayDynamicIndexing: Bool32,
+    pub shaderStorageTexelBufferArrayDynamicIndexing: Bool32,
+    pub shaderUniformBufferArrayNonUniformIndexing: Bool32,
+    pub shaderSampledImageArrayNonUniformIndexing: Bool32,
+    pub shaderStorageBufferArrayNonUniformIndexing: Bool32,
+    pub shaderStorageImageArrayNonUniformIndexing: Bool32,
+    pub shaderInputAttachmentArrayNonUniformIndexing: Bool32,
+    pub shaderUniformTexelBufferArrayNonUniformIndexing: Bool32,
+    pub shaderStorageTexelBufferArrayNonUniformIndexing: Bool32,
+    pub descriptorBindingUniformBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingSampledImageUpdateAfterBind: Bool32,
+    pub descriptorBindingStorageImageUpdateAfterBind: Bool32,
+    pub descriptorBindingStorageBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingUniformTexelBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingStorageTexelBufferUpdateAfterBind: Bool32,
+    pub descriptorBindingUpdateUnusedWhilePending: Bool32,
+    pub descriptorBindingPartiallyBound: Bool32,
+    pub descriptorBindingVariableDescriptorCount: Bool32,
+    pub runtimeDescriptorArray: Bool32,
+    pub samplerFilterMinmax: Bool32,
+    pub scalarBlockLayout: Bool32,
+    pub imagelessFramebuffer: Bool32,
+    pub uniformBufferStandardLayout: Bool32,
+    pub shaderSubgroupExtendedTypes: Bool32,
+    pub separateDepthStencilLayouts: Bool32,
+    pub hostQueryReset: Bool32,
+    pub timelineSemaphore: Bool32,
+    pub bufferDeviceAddress: Bool32,
+    pub bufferDeviceAddressCaptureReplay: Bool32,
+    pub bufferDeviceAddressMultiDevice: Bool32,
+    pub vulkanMemoryModel: Bool32,
+    pub vulkanMemoryModelDeviceScope: Bool32,
+    pub vulkanMemoryModelAvailabilityVisibilityChains: Bool32,
+    pub shaderOutputViewportIndex: Bool32,
+    pub shaderOutputLayer: Bool32,
+    pub subgroupBroadcastDynamicId: Bool32,
+}
+
+impl Default for PhysicalDeviceVulkan12Features {
+    fn default() -> Self {
+        Self {
+            sType: STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+            pNext: ptr::null_mut(),
+            ..unsafe { mem::zeroed() }
+        }
+    }
 }
 
 macro_rules! ptrs {
