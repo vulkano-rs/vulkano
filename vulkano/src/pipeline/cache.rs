@@ -21,16 +21,14 @@
 //! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
 //! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
 
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-
-use crate::device::Device;
-
 use crate::check_errors;
+use crate::device::Device;
 use crate::vk;
 use crate::OomError;
 use crate::VulkanObject;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// Opaque cache that contains pipeline objects.
 ///
@@ -250,14 +248,12 @@ impl Drop for PipelineCache {
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::CStr, sync::Arc};
-
-    use crate::descriptor::descriptor::DescriptorDesc;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     use crate::pipeline::cache::PipelineCache;
+    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
+    use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::ComputePipeline;
+    use std::{ffi::CStr, sync::Arc};
 
     #[test]
     fn merge_self_forbidden() {
@@ -294,31 +290,12 @@ mod tests {
         };
 
         let shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let pipeline = Arc::new(
@@ -357,31 +334,12 @@ mod tests {
         };
 
         let first_shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            first_module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            first_module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let second_module = unsafe {
@@ -416,31 +374,12 @@ mod tests {
         };
 
         let second_shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            second_module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            second_module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let pipeline = Arc::new(
@@ -488,31 +427,12 @@ mod tests {
         };
 
         let shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let pipeline = Arc::new(

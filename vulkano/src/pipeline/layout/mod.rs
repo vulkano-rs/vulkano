@@ -27,19 +27,7 @@
 //! used by the pipeline.
 //!
 //! The `PipelineLayout` struct describes the pipeline layout to both the Vulkan implementation and
-//! to vulkano. It holds a template parameter whose type must implement the `PipelineLayoutDesc`
-//! trait.
-//!
-//! # The PipelineLayoutAbstract trait
-//!
-//! All the functions in vulkano that operate on pipeline layout objects (for example, creating a
-//! descriptor set) do not take directly a `PipelineLayout` struct as parameter. Instead they can
-//! take any object that implements the `PipelineLayoutAbstract` trait.
-//!
-//! This trait represents any object that holds a `PipelineLayout`. It is implemented on the
-//! `PipelineLayout` struct itself (obviously), but also notably on `GraphicsPipeline` and
-//! `ComputePipeline`. In other words, you can for example create a descriptor set by passing a
-//! graphics pipeline as parameter.
+//! to vulkano. It holds a `PipelineLayoutDesc` value.
 //!
 //! # Custom pipeline layouts
 //!
@@ -49,27 +37,14 @@
 //!
 //! TODO: write this section
 
-pub use self::empty::EmptyPipelineDesc;
+pub use self::desc::PipelineLayoutDesc;
+pub use self::desc::PipelineLayoutDescError;
+pub use self::desc::PipelineLayoutDescPcRange;
+pub use self::desc::PipelineLayoutNotSupersetError;
 pub use self::limits_check::PipelineLayoutLimitsError;
-pub use self::runtime_desc::RuntimePipelineDesc;
-pub use self::runtime_desc::RuntimePipelineDescError;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;
-pub use self::sys::PipelineLayoutSys;
-pub use self::traits::PipelineLayoutAbstract;
-pub use self::traits::PipelineLayoutDesc;
-pub use self::traits::PipelineLayoutDescPcRange;
-pub use self::traits::PipelineLayoutNotSupersetError;
-pub use self::traits::PipelineLayoutPushConstantsCompatible;
-pub use self::traits::PipelineLayoutSetsCompatible;
-pub use self::traits::PipelineLayoutSuperset;
-pub use self::tweaks::PipelineLayoutDescTweaks;
-pub use self::union::PipelineLayoutDescUnion;
 
-mod empty;
+mod desc;
 mod limits_check;
-mod runtime_desc;
 mod sys;
-mod traits;
-mod tweaks;
-mod union;

@@ -42,14 +42,13 @@ use crate::VulkanObject;
 ///
 /// ```rust
 /// use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
-/// use vulkano::descriptor::pipeline_layout::PipelineLayoutAbstract;
 /// # use vulkano::pipeline::GraphicsPipelineAbstract;
 /// # use std::sync::Arc;
 /// # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
 /// // use vulkano::pipeline::GraphicsPipelineAbstract;
 /// // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
 ///
-/// let layout = graphics_pipeline.descriptor_set_layout(0).unwrap();
+/// let layout = graphics_pipeline.layout().descriptor_set_layout(0).unwrap();
 /// let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 /// ```
 ///

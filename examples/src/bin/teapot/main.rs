@@ -214,7 +214,7 @@ fn main() {
                     uniform_buffer.next(uniform_data).unwrap()
                 };
 
-                let layout = pipeline.descriptor_set_layout(0).unwrap();
+                let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
                 let set = Arc::new(
                     PersistentDescriptorSet::start(layout.clone())
                         .add_buffer(uniform_buffer_subbuffer)

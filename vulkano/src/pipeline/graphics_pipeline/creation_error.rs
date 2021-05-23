@@ -11,8 +11,8 @@ use std::error;
 use std::fmt;
 use std::u32;
 
-use crate::descriptor::pipeline_layout::PipelineLayoutNotSupersetError;
 use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::layout::PipelineLayoutNotSupersetError;
 use crate::pipeline::shader::ShaderInterfaceMismatchError;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::Error;
@@ -27,29 +27,11 @@ pub enum GraphicsPipelineCreationError {
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
 
-    /// The interface between the vertex shader and the geometry shader mismatches.
-    VertexGeometryStagesMismatch(ShaderInterfaceMismatchError),
+    /// The provided specialization constants are not compatible with what the shader expects.
+    IncompatibleSpecializationConstants,
 
-    /// The interface between the vertex shader and the tessellation control shader mismatches.
-    VertexTessControlStagesMismatch(ShaderInterfaceMismatchError),
-
-    /// The interface between the vertex shader and the fragment shader mismatches.
-    VertexFragmentStagesMismatch(ShaderInterfaceMismatchError),
-
-    /// The interface between the tessellation control shader and the tessellation evaluation
-    /// shader mismatches.
-    TessControlTessEvalStagesMismatch(ShaderInterfaceMismatchError),
-
-    /// The interface between the tessellation evaluation shader and the geometry shader
-    /// mismatches.
-    TessEvalGeometryStagesMismatch(ShaderInterfaceMismatchError),
-
-    /// The interface between the tessellation evaluation shader and the fragment shader
-    /// mismatches.
-    TessEvalFragmentStagesMismatch(ShaderInterfaceMismatchError),
-
-    /// The interface between the geometry shader and the fragment shader mismatches.
-    GeometryFragmentStagesMismatch(ShaderInterfaceMismatchError),
+    /// The output interface of one shader and the input interface of the next shader does not match.
+    ShaderStagesMismatch(ShaderInterfaceMismatchError),
 
     /// The output of the fragment shader is not compatible with what the render pass subpass
     /// expects.
@@ -190,13 +172,7 @@ impl error::Error for GraphicsPipelineCreationError {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexGeometryStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexTessControlStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::VertexFragmentStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(ref err) => Some(err),
-            GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(ref err) => Some(err),
+            GraphicsPipelineCreationError::ShaderStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatibleVertexDefinition(ref err) => Some(err),
             _ => None,
         }
@@ -212,33 +188,14 @@ impl fmt::Display for GraphicsPipelineCreationError {
             "{}",
             match *self {
                 GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
-                GraphicsPipelineCreationError::VertexGeometryStagesMismatch(_) => {
-                    "the interface between the vertex shader and the geometry shader mismatches"
-                }
-                GraphicsPipelineCreationError::VertexTessControlStagesMismatch(_) => {
-                    "the interface between the vertex shader and the tessellation control shader \
-                 mismatches"
-                }
-                GraphicsPipelineCreationError::VertexFragmentStagesMismatch(_) => {
-                    "the interface between the vertex shader and the fragment shader mismatches"
-                }
-                GraphicsPipelineCreationError::TessControlTessEvalStagesMismatch(_) => {
-                    "the interface between the tessellation control shader and the tessellation \
-                 evaluation shader mismatches"
-                }
-                GraphicsPipelineCreationError::TessEvalGeometryStagesMismatch(_) => {
-                    "the interface between the tessellation evaluation shader and the geometry \
-                 shader mismatches"
-                }
-                GraphicsPipelineCreationError::TessEvalFragmentStagesMismatch(_) => {
-                    "the interface between the tessellation evaluation shader and the fragment \
-                 shader mismatches"
-                }
-                GraphicsPipelineCreationError::GeometryFragmentStagesMismatch(_) => {
-                    "the interface between the geometry shader and the fragment shader mismatches"
+                GraphicsPipelineCreationError::ShaderStagesMismatch(_) => {
+                    "the output interface of one shader and the input interface of the next shader does not match"
                 }
                 GraphicsPipelineCreationError::IncompatiblePipelineLayout(_) => {
                     "the pipeline layout is not compatible with what the shaders expect"
+                }
+                GraphicsPipelineCreationError::IncompatibleSpecializationConstants => {
+                    "the provided specialization constants are not compatible with what the shader expects"
                 }
                 GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible => {
                     "the output of the fragment shader is not compatible with what the render pass \
