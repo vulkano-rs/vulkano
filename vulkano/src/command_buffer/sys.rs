@@ -27,6 +27,7 @@ use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
+use crate::image::SampleCount;
 use crate::pipeline::depth_stencil::StencilFaceFlags;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::layout::PipelineLayout;
@@ -45,15 +46,14 @@ use crate::sync::AccessFlags;
 use crate::sync::Event;
 use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
-use crate::vk;
 use crate::OomError;
 use crate::VulkanObject;
+use ash::vk::Handle;
 use smallvec::SmallVec;
 use std::ffi::CStr;
 use std::fmt;
 use std::mem;
 use std::ops::Range;
-use std::ptr;
 use std::sync::Arc;
 
 /// Command buffer being built.
@@ -65,7 +65,7 @@ use std::sync::Arc;
 /// When you are finished adding commands, you can use the `CommandBufferBuild` trait to turn this
 /// builder into an `UnsafeCommandBuffer`.
 pub struct UnsafeCommandBufferBuilder {
-    command_buffer: vk::CommandBuffer,
+    command_buffer: ash::vk::CommandBuffer,
     device: Arc<Device>,
     usage: CommandBufferUsage,
 }
@@ -76,7 +76,7 @@ impl fmt::Debug for UnsafeCommandBufferBuilder {
         write!(
             f,
             "<Vulkan command buffer builder #{}>",
-            self.command_buffer
+            self.command_buffer.as_raw()
         )
     }
 }
@@ -107,17 +107,17 @@ impl UnsafeCommandBufferBuilder {
         };
 
         let device = pool_alloc.device().clone();
-        let vk = device.pointers();
+        let fns = device.fns();
 
         let vk_flags = {
-            let a = vk::CommandBufferUsageFlags::from(usage);
+            let a = ash::vk::CommandBufferUsageFlags::from(usage);
             let b = match level {
                 CommandBufferLevel::Secondary(ref inheritance)
                     if inheritance.render_pass.is_some() =>
                 {
-                    vk::COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT
+                    ash::vk::CommandBufferUsageFlags::RENDER_PASS_CONTINUE
                 }
-                _ => 0,
+                _ => ash::vk::CommandBufferUsageFlags::empty(),
             };
 
             a | b
@@ -136,11 +136,11 @@ impl UnsafeCommandBufferBuilder {
                         //       the render pass?
                         FramebufferAbstract::inner(fb).internal_object()
                     }
-                    None => 0,
+                    None => ash::vk::Framebuffer::null(),
                 };
                 (rp, sp, fb)
             }
-            _ => (0, 0, 0),
+            _ => (ash::vk::RenderPass::null(), 0, ash::vk::Framebuffer::null()),
         };
 
         let (oqe, qf, ps) = match level {
@@ -149,43 +149,48 @@ impl UnsafeCommandBufferBuilder {
                 query_statistics_flags,
                 ..
             }) => {
-                let ps: vk::QueryPipelineStatisticFlags = query_statistics_flags.into();
+                let ps: ash::vk::QueryPipelineStatisticFlags = query_statistics_flags.into();
                 let (oqe, qf) = match occlusion_query {
                     Some(flags) => {
                         let qf = if flags.precise {
-                            vk::QUERY_CONTROL_PRECISE_BIT
+                            ash::vk::QueryControlFlags::PRECISE
                         } else {
-                            0
+                            ash::vk::QueryControlFlags::empty()
                         };
-                        (vk::TRUE, qf)
+                        (ash::vk::TRUE, qf)
                     }
-                    None => (0, 0),
+                    None => (0, ash::vk::QueryControlFlags::empty()),
                 };
 
                 (oqe, qf, ps)
             }
-            _ => (0, 0, 0),
+            _ => (
+                0,
+                ash::vk::QueryControlFlags::empty(),
+                ash::vk::QueryPipelineStatisticFlags::empty(),
+            ),
         };
 
-        let inheritance = vk::CommandBufferInheritanceInfo {
-            sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO,
-            pNext: ptr::null(),
-            renderPass: rp,
+        let inheritance = ash::vk::CommandBufferInheritanceInfo {
+            render_pass: rp,
             subpass: sp,
             framebuffer: fb,
-            occlusionQueryEnable: oqe,
-            queryFlags: qf,
-            pipelineStatistics: ps,
+            occlusion_query_enable: oqe,
+            query_flags: qf,
+            pipeline_statistics: ps,
+            ..Default::default()
         };
 
-        let infos = vk::CommandBufferBeginInfo {
-            sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-            pNext: ptr::null(),
+        let infos = ash::vk::CommandBufferBeginInfo {
             flags: vk_flags,
-            pInheritanceInfo: &inheritance,
+            p_inheritance_info: &inheritance,
+            ..Default::default()
         };
 
-        check_errors(vk.BeginCommandBuffer(pool_alloc.internal_object(), &infos))?;
+        check_errors(
+            fns.v1_0
+                .begin_command_buffer(pool_alloc.internal_object(), &infos),
+        )?;
 
         Ok(UnsafeCommandBufferBuilder {
             command_buffer: pool_alloc.internal_object(),
@@ -198,8 +203,8 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub fn build(self) -> Result<UnsafeCommandBuffer, OomError> {
         unsafe {
-            let vk = self.device.pointers();
-            check_errors(vk.EndCommandBuffer(self.command_buffer))?;
+            let fns = self.device.fns();
+            check_errors(fns.v1_0.end_command_buffer(self.command_buffer))?;
 
             Ok(UnsafeCommandBuffer {
                 command_buffer: self.command_buffer,
@@ -212,14 +217,15 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
     #[inline]
     pub unsafe fn begin_query(&mut self, query: Query, flags: QueryControlFlags) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
         let flags = if flags.precise {
-            vk::QUERY_CONTROL_PRECISE_BIT
+            ash::vk::QueryControlFlags::PRECISE
         } else {
-            0
+            ash::vk::QueryControlFlags::empty()
         };
-        vk.CmdBeginQuery(cmd, query.pool().internal_object(), query.index(), flags);
+        fns.v1_0
+            .cmd_begin_query(cmd, query.pool().internal_object(), query.index(), flags);
     }
 
     /// Calls `vkCmdBeginRenderPass` on the builder.
@@ -233,7 +239,7 @@ impl UnsafeCommandBufferBuilder {
         F: ?Sized + FramebufferAbstract,
         I: Iterator<Item = ClearValue>,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         // TODO: allow passing a different render pass
@@ -242,32 +248,32 @@ impl UnsafeCommandBufferBuilder {
 
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
             .map(|clear_value| match clear_value {
-                ClearValue::None => vk::ClearValue {
-                    color: vk::ClearColorValue { float32: [0.0; 4] },
+                ClearValue::None => ash::vk::ClearValue {
+                    color: ash::vk::ClearColorValue { float32: [0.0; 4] },
                 },
-                ClearValue::Float(val) => vk::ClearValue {
-                    color: vk::ClearColorValue { float32: val },
+                ClearValue::Float(val) => ash::vk::ClearValue {
+                    color: ash::vk::ClearColorValue { float32: val },
                 },
-                ClearValue::Int(val) => vk::ClearValue {
-                    color: vk::ClearColorValue { int32: val },
+                ClearValue::Int(val) => ash::vk::ClearValue {
+                    color: ash::vk::ClearColorValue { int32: val },
                 },
-                ClearValue::Uint(val) => vk::ClearValue {
-                    color: vk::ClearColorValue { uint32: val },
+                ClearValue::Uint(val) => ash::vk::ClearValue {
+                    color: ash::vk::ClearColorValue { uint32: val },
                 },
-                ClearValue::Depth(val) => vk::ClearValue {
-                    depthStencil: vk::ClearDepthStencilValue {
+                ClearValue::Depth(val) => ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue {
                         depth: val,
                         stencil: 0,
                     },
                 },
-                ClearValue::Stencil(val) => vk::ClearValue {
-                    depthStencil: vk::ClearDepthStencilValue {
+                ClearValue::Stencil(val) => ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue {
                         depth: 0.0,
                         stencil: val,
                     },
                 },
-                ClearValue::DepthStencil((depth, stencil)) => vk::ClearValue {
-                    depthStencil: vk::ClearDepthStencilValue { depth, stencil },
+                ClearValue::DepthStencil((depth, stencil)) => ash::vk::ClearValue {
+                    depth_stencil: ash::vk::ClearDepthStencilValue { depth, stencil },
                 },
             })
             .collect();
@@ -278,26 +284,26 @@ impl UnsafeCommandBufferBuilder {
             0..framebuffer.dimensions()[1],
         ];
 
-        let begin = vk::RenderPassBeginInfo {
-            sType: vk::STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-            pNext: ptr::null(),
-            renderPass: raw_render_pass,
+        let begin = ash::vk::RenderPassBeginInfo {
+            render_pass: raw_render_pass,
             framebuffer: raw_framebuffer,
-            renderArea: vk::Rect2D {
-                offset: vk::Offset2D {
+            render_area: ash::vk::Rect2D {
+                offset: ash::vk::Offset2D {
                     x: rect[0].start as i32,
                     y: rect[1].start as i32,
                 },
-                extent: vk::Extent2D {
+                extent: ash::vk::Extent2D {
                     width: rect[0].end - rect[0].start,
                     height: rect[1].end - rect[1].start,
                 },
             },
-            clearValueCount: raw_clear_values.len() as u32,
-            pClearValues: raw_clear_values.as_ptr(),
+            clear_value_count: raw_clear_values.len() as u32,
+            p_clear_values: raw_clear_values.as_ptr(),
+            ..Default::default()
         };
 
-        vk.CmdBeginRenderPass(cmd, &begin, subpass_contents as u32);
+        fns.v1_0
+            .cmd_begin_render_pass(cmd, &begin, subpass_contents.into());
     }
 
     /// Calls `vkCmdBindDescriptorSets` on the builder.
@@ -316,7 +322,7 @@ impl UnsafeCommandBufferBuilder {
         S: Iterator<Item = &'s UnsafeDescriptorSet>,
         I: Iterator<Item = u32>,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let sets: SmallVec<[_; 12]> = sets.map(|s| s.internal_object()).collect();
@@ -331,12 +337,12 @@ impl UnsafeCommandBufferBuilder {
         );
 
         let bind_point = if graphics {
-            vk::PIPELINE_BIND_POINT_GRAPHICS
+            ash::vk::PipelineBindPoint::GRAPHICS
         } else {
-            vk::PIPELINE_BIND_POINT_COMPUTE
+            ash::vk::PipelineBindPoint::COMPUTE
         };
 
-        vk.CmdBindDescriptorSets(
+        fns.v1_0.cmd_bind_descriptor_sets(
             cmd,
             bind_point,
             pipeline_layout.internal_object(),
@@ -354,18 +360,18 @@ impl UnsafeCommandBufferBuilder {
     where
         B: ?Sized + BufferAccess,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage().index_buffer);
 
-        vk.CmdBindIndexBuffer(
+        fns.v1_0.cmd_bind_index_buffer(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as vk::DeviceSize,
-            index_ty as vk::IndexType,
+            inner.offset as ash::vk::DeviceSize,
+            index_ty.into(),
         );
     }
 
@@ -375,11 +381,11 @@ impl UnsafeCommandBufferBuilder {
     where
         Cp: ?Sized + ComputePipelineAbstract,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdBindPipeline(
+        fns.v1_0.cmd_bind_pipeline(
             cmd,
-            vk::PIPELINE_BIND_POINT_COMPUTE,
+            ash::vk::PipelineBindPoint::COMPUTE,
             pipeline.inner().internal_object(),
         );
     }
@@ -390,10 +396,11 @@ impl UnsafeCommandBufferBuilder {
     where
         Gp: ?Sized + GraphicsPipelineAbstract,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
         let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
-        vk.CmdBindPipeline(cmd, vk::PIPELINE_BIND_POINT_GRAPHICS, inner);
+        fns.v1_0
+            .cmd_bind_pipeline(cmd, ash::vk::PipelineBindPoint::GRAPHICS, inner);
     }
 
     /// Calls `vkCmdBindVertexBuffers` on the builder.
@@ -412,7 +419,7 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let num_bindings = params.raw_buffers.len() as u32;
@@ -426,7 +433,7 @@ impl UnsafeCommandBufferBuilder {
             first_binding + num_bindings <= max_bindings
         });
 
-        vk.CmdBindVertexBuffers(
+        fns.v1_0.cmd_bind_vertex_buffers(
             cmd,
             first_binding,
             num_bindings,
@@ -500,31 +507,31 @@ impl UnsafeCommandBufferBuilder {
                     return None;
                 }
 
-                Some(vk::ImageCopy {
-                    srcSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.aspects.into(),
-                        mipLevel: copy.source_mip_level,
-                        baseArrayLayer: copy.source_base_array_layer + source.first_layer as u32,
-                        layerCount: copy.layer_count,
+                Some(ash::vk::ImageCopy {
+                    src_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: copy.aspects.into(),
+                        mip_level: copy.source_mip_level,
+                        base_array_layer: copy.source_base_array_layer + source.first_layer as u32,
+                        layer_count: copy.layer_count,
                     },
-                    srcOffset: vk::Offset3D {
+                    src_offset: ash::vk::Offset3D {
                         x: copy.source_offset[0],
                         y: copy.source_offset[1],
                         z: copy.source_offset[2],
                     },
-                    dstSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.aspects.into(),
-                        mipLevel: copy.destination_mip_level,
-                        baseArrayLayer: copy.destination_base_array_layer
+                    dst_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: copy.aspects.into(),
+                        mip_level: copy.destination_mip_level,
+                        base_array_layer: copy.destination_base_array_layer
                             + destination.first_layer as u32,
-                        layerCount: copy.layer_count,
+                        layer_count: copy.layer_count,
                     },
-                    dstOffset: vk::Offset3D {
+                    dst_offset: ash::vk::Offset3D {
                         x: copy.destination_offset[0],
                         y: copy.destination_offset[1],
                         z: copy.destination_offset[2],
                     },
-                    extent: vk::Extent3D {
+                    extent: ash::vk::Extent3D {
                         width: copy.extent[0],
                         height: copy.extent[1],
                         depth: copy.extent[2],
@@ -537,14 +544,14 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdCopyImage(
+        fns.v1_0.cmd_copy_image(
             cmd,
             source.image.internal_object(),
-            source_layout as u32,
+            source_layout.into(),
             destination.image.internal_object(),
-            destination_layout as u32,
+            destination_layout.into(),
             regions.len() as u32,
             regions.as_ptr(),
         );
@@ -591,7 +598,7 @@ impl UnsafeCommandBufferBuilder {
                 )
         );
 
-        debug_assert_eq!(source.samples(), 1);
+        debug_assert_eq!(source.samples(), SampleCount::Sample1);
         let source = source.inner();
         debug_assert!(source.image.format_features().blit_src);
         debug_assert!(source.image.usage().transfer_source);
@@ -600,7 +607,7 @@ impl UnsafeCommandBufferBuilder {
                 || source_layout == ImageLayout::TransferSrcOptimal
         );
 
-        debug_assert_eq!(destination.samples(), 1);
+        debug_assert_eq!(destination.samples(), SampleCount::Sample1);
         let destination = destination.inner();
         debug_assert!(destination.image.format_features().blit_dst);
         debug_assert!(destination.image.usage().transfer_destination);
@@ -626,39 +633,39 @@ impl UnsafeCommandBufferBuilder {
                     return None;
                 }
 
-                Some(vk::ImageBlit {
-                    srcSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: blit.aspects.into(),
-                        mipLevel: blit.source_mip_level,
-                        baseArrayLayer: blit.source_base_array_layer + source.first_layer as u32,
-                        layerCount: blit.layer_count,
+                Some(ash::vk::ImageBlit {
+                    src_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: blit.aspects.into(),
+                        mip_level: blit.source_mip_level,
+                        base_array_layer: blit.source_base_array_layer + source.first_layer as u32,
+                        layer_count: blit.layer_count,
                     },
-                    srcOffsets: [
-                        vk::Offset3D {
+                    src_offsets: [
+                        ash::vk::Offset3D {
                             x: blit.source_top_left[0],
                             y: blit.source_top_left[1],
                             z: blit.source_top_left[2],
                         },
-                        vk::Offset3D {
+                        ash::vk::Offset3D {
                             x: blit.source_bottom_right[0],
                             y: blit.source_bottom_right[1],
                             z: blit.source_bottom_right[2],
                         },
                     ],
-                    dstSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: blit.aspects.into(),
-                        mipLevel: blit.destination_mip_level,
-                        baseArrayLayer: blit.destination_base_array_layer
+                    dst_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: blit.aspects.into(),
+                        mip_level: blit.destination_mip_level,
+                        base_array_layer: blit.destination_base_array_layer
                             + destination.first_layer as u32,
-                        layerCount: blit.layer_count,
+                        layer_count: blit.layer_count,
                     },
-                    dstOffsets: [
-                        vk::Offset3D {
+                    dst_offsets: [
+                        ash::vk::Offset3D {
                             x: blit.destination_top_left[0],
                             y: blit.destination_top_left[1],
                             z: blit.destination_top_left[2],
                         },
-                        vk::Offset3D {
+                        ash::vk::Offset3D {
                             x: blit.destination_bottom_right[0],
                             y: blit.destination_bottom_right[1],
                             z: blit.destination_bottom_right[2],
@@ -672,17 +679,17 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdBlitImage(
+        fns.v1_0.cmd_blit_image(
             cmd,
             source.image.internal_object(),
-            source_layout as u32,
+            source_layout.into(),
             destination.image.internal_object(),
-            destination_layout as u32,
+            destination_layout.into(),
             regions.len() as u32,
             regions.as_ptr(),
-            filter as u32,
+            filter.into(),
         );
     }
 
@@ -703,9 +710,9 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdClearAttachments(cmd, attachments.len() as u32, attachments.as_ptr(),
+        fns.v1_0.CmdClearAttachments(cmd, attachments.len() as u32, attachments.as_ptr(),
                                rects.len() as u32, rects.as_ptr());
     }*/
 
@@ -735,10 +742,10 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(layout == ImageLayout::General || layout == ImageLayout::TransferDstOptimal);
 
         let color = match color {
-            ClearValue::Float(val) => vk::ClearColorValue { float32: val },
-            ClearValue::Int(val) => vk::ClearColorValue { int32: val },
-            ClearValue::Uint(val) => vk::ClearColorValue { uint32: val },
-            _ => vk::ClearColorValue { float32: [0.0; 4] },
+            ClearValue::Float(val) => ash::vk::ClearColorValue { float32: val },
+            ClearValue::Int(val) => ash::vk::ClearColorValue { int32: val },
+            ClearValue::Uint(val) => ash::vk::ClearColorValue { uint32: val },
+            _ => ash::vk::ClearColorValue { float32: [0.0; 4] },
         };
 
         let regions: SmallVec<[_; 8]> = regions
@@ -754,12 +761,12 @@ impl UnsafeCommandBufferBuilder {
                     return None;
                 }
 
-                Some(vk::ImageSubresourceRange {
-                    aspectMask: vk::IMAGE_ASPECT_COLOR_BIT,
-                    baseMipLevel: region.base_mip_level + image.first_mipmap_level as u32,
-                    levelCount: region.level_count,
-                    baseArrayLayer: region.base_array_layer + image.first_layer as u32,
-                    layerCount: region.layer_count,
+                Some(ash::vk::ImageSubresourceRange {
+                    aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                    base_mip_level: region.base_mip_level + image.first_mipmap_level as u32,
+                    level_count: region.level_count,
+                    base_array_layer: region.base_array_layer + image.first_layer as u32,
+                    layer_count: region.layer_count,
                 })
             })
             .collect();
@@ -768,12 +775,12 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdClearColorImage(
+        fns.v1_0.cmd_clear_color_image(
             cmd,
             image.image.internal_object(),
-            layout as u32,
+            layout.into(),
             &color,
             regions.len() as u32,
             regions.as_ptr(),
@@ -802,10 +809,10 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(destination.buffer.usage().transfer_destination);
 
         let regions: SmallVec<[_; 8]> = regions
-            .map(|(sr, de, sz)| vk::BufferCopy {
-                srcOffset: (sr + source.offset) as vk::DeviceSize,
-                dstOffset: (de + destination.offset) as vk::DeviceSize,
-                size: sz as vk::DeviceSize,
+            .map(|(sr, de, sz)| ash::vk::BufferCopy {
+                src_offset: (sr + source.offset) as ash::vk::DeviceSize,
+                dst_offset: (de + destination.offset) as ash::vk::DeviceSize,
+                size: sz as ash::vk::DeviceSize,
             })
             .collect();
 
@@ -813,9 +820,9 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdCopyBuffer(
+        fns.v1_0.cmd_copy_buffer(
             cmd,
             source.buffer.internal_object(),
             destination.buffer.internal_object(),
@@ -844,7 +851,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(source.offset < source.buffer.size());
         debug_assert!(source.buffer.usage().transfer_source);
 
-        debug_assert_eq!(destination.samples(), 1);
+        debug_assert_eq!(destination.samples(), SampleCount::Sample1);
         let destination = destination.inner();
         debug_assert!(destination.image.usage().transfer_destination);
         debug_assert!(
@@ -857,23 +864,23 @@ impl UnsafeCommandBufferBuilder {
                 debug_assert!(copy.image_layer_count <= destination.num_layers as u32);
                 debug_assert!(copy.image_mip_level < destination.num_mipmap_levels as u32);
 
-                vk::BufferImageCopy {
-                    bufferOffset: (source.offset + copy.buffer_offset) as vk::DeviceSize,
-                    bufferRowLength: copy.buffer_row_length,
-                    bufferImageHeight: copy.buffer_image_height,
-                    imageSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.image_aspect.into(),
-                        mipLevel: copy.image_mip_level + destination.first_mipmap_level as u32,
-                        baseArrayLayer: copy.image_base_array_layer
+                ash::vk::BufferImageCopy {
+                    buffer_offset: (source.offset + copy.buffer_offset) as ash::vk::DeviceSize,
+                    buffer_row_length: copy.buffer_row_length,
+                    buffer_image_height: copy.buffer_image_height,
+                    image_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: copy.image_aspect.into(),
+                        mip_level: copy.image_mip_level + destination.first_mipmap_level as u32,
+                        base_array_layer: copy.image_base_array_layer
                             + destination.first_layer as u32,
-                        layerCount: copy.image_layer_count,
+                        layer_count: copy.image_layer_count,
                     },
-                    imageOffset: vk::Offset3D {
+                    image_offset: ash::vk::Offset3D {
                         x: copy.image_offset[0],
                         y: copy.image_offset[1],
                         z: copy.image_offset[2],
                     },
-                    imageExtent: vk::Extent3D {
+                    image_extent: ash::vk::Extent3D {
                         width: copy.image_extent[0],
                         height: copy.image_extent[1],
                         depth: copy.image_extent[2],
@@ -886,13 +893,13 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdCopyBufferToImage(
+        fns.v1_0.cmd_copy_buffer_to_image(
             cmd,
             source.buffer.internal_object(),
             destination.image.internal_object(),
-            destination_layout as u32,
+            destination_layout.into(),
             regions.len() as u32,
             regions.as_ptr(),
         );
@@ -914,7 +921,7 @@ impl UnsafeCommandBufferBuilder {
         D: ?Sized + BufferAccess,
         R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
     {
-        debug_assert_eq!(source.samples(), 1);
+        debug_assert_eq!(source.samples(), SampleCount::Sample1);
         let source = source.inner();
         debug_assert!(source.image.usage().transfer_source);
         debug_assert!(
@@ -931,22 +938,22 @@ impl UnsafeCommandBufferBuilder {
                 debug_assert!(copy.image_layer_count <= source.num_layers as u32);
                 debug_assert!(copy.image_mip_level < source.num_mipmap_levels as u32);
 
-                vk::BufferImageCopy {
-                    bufferOffset: (destination.offset + copy.buffer_offset) as vk::DeviceSize,
-                    bufferRowLength: copy.buffer_row_length,
-                    bufferImageHeight: copy.buffer_image_height,
-                    imageSubresource: vk::ImageSubresourceLayers {
-                        aspectMask: copy.image_aspect.into(),
-                        mipLevel: copy.image_mip_level + source.first_mipmap_level as u32,
-                        baseArrayLayer: copy.image_base_array_layer + source.first_layer as u32,
-                        layerCount: copy.image_layer_count,
+                ash::vk::BufferImageCopy {
+                    buffer_offset: (destination.offset + copy.buffer_offset) as ash::vk::DeviceSize,
+                    buffer_row_length: copy.buffer_row_length,
+                    buffer_image_height: copy.buffer_image_height,
+                    image_subresource: ash::vk::ImageSubresourceLayers {
+                        aspect_mask: copy.image_aspect.into(),
+                        mip_level: copy.image_mip_level + source.first_mipmap_level as u32,
+                        base_array_layer: copy.image_base_array_layer + source.first_layer as u32,
+                        layer_count: copy.image_layer_count,
                     },
-                    imageOffset: vk::Offset3D {
+                    image_offset: ash::vk::Offset3D {
                         x: copy.image_offset[0],
                         y: copy.image_offset[1],
                         z: copy.image_offset[2],
                     },
-                    imageExtent: vk::Extent3D {
+                    image_extent: ash::vk::Extent3D {
                         width: copy.image_extent[0],
                         height: copy.image_extent[1],
                         depth: copy.image_extent[2],
@@ -959,12 +966,12 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdCopyImageToBuffer(
+        fns.v1_0.cmd_copy_image_to_buffer(
             cmd,
             source.image.internal_object(),
-            source_layout as u32,
+            source_layout.into(),
             destination.buffer.internal_object(),
             regions.len() as u32,
             regions.as_ptr(),
@@ -990,17 +997,17 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(destination.offset % std::mem::size_of::<T>() == 0);
         debug_assert!(stride % std::mem::size_of::<T>() == 0);
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdCopyQueryPoolResults(
+        fns.v1_0.cmd_copy_query_pool_results(
             cmd,
             queries.pool().internal_object(),
             range.start,
             range.end - range.start,
             destination.buffer.internal_object(),
-            destination.offset as vk::DeviceSize,
-            stride as vk::DeviceSize,
-            vk::QueryResultFlags::from(flags) | T::FLAG,
+            destination.offset as ash::vk::DeviceSize,
+            stride as ash::vk::DeviceSize,
+            ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );
     }
 
@@ -1018,9 +1025,10 @@ impl UnsafeCommandBufferBuilder {
                 && group_counts[2] <= max_group_counts[2]
         });
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdDispatch(cmd, group_counts[0], group_counts[1], group_counts[2]);
+        fns.v1_0
+            .cmd_dispatch(cmd, group_counts[0], group_counts[1], group_counts[2]);
     }
 
     /// Calls `vkCmdDispatchIndirect` on the builder.
@@ -1029,7 +1037,7 @@ impl UnsafeCommandBufferBuilder {
     where
         B: ?Sized + BufferAccess,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let inner = buffer.inner();
@@ -1037,10 +1045,10 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.buffer.usage().indirect_buffer);
         debug_assert_eq!(inner.offset % 4, 0);
 
-        vk.CmdDispatchIndirect(
+        fns.v1_0.cmd_dispatch_indirect(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as vk::DeviceSize,
+            inner.offset as ash::vk::DeviceSize,
         );
     }
 
@@ -1053,9 +1061,9 @@ impl UnsafeCommandBufferBuilder {
         first_vertex: u32,
         first_instance: u32,
     ) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdDraw(
+        fns.v1_0.cmd_draw(
             cmd,
             vertex_count,
             instance_count,
@@ -1074,9 +1082,9 @@ impl UnsafeCommandBufferBuilder {
         vertex_offset: i32,
         first_instance: u32,
     ) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdDrawIndexed(
+        fns.v1_0.cmd_draw_indexed(
             cmd,
             index_count,
             instance_count,
@@ -1092,23 +1100,23 @@ impl UnsafeCommandBufferBuilder {
     where
         B: ?Sized + BufferAccess,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         debug_assert!(
             draw_count == 0
                 || ((stride % 4) == 0)
-                    && stride as usize >= mem::size_of::<vk::DrawIndirectCommand>()
+                    && stride as usize >= mem::size_of::<ash::vk::DrawIndirectCommand>()
         );
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage().indirect_buffer);
 
-        vk.CmdDrawIndirect(
+        fns.v1_0.cmd_draw_indirect(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as vk::DeviceSize,
+            inner.offset as ash::vk::DeviceSize,
             draw_count,
             stride,
         );
@@ -1120,17 +1128,17 @@ impl UnsafeCommandBufferBuilder {
     where
         B: ?Sized + BufferAccess,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let inner = buffer.inner();
         debug_assert!(inner.offset < inner.buffer.size());
         debug_assert!(inner.buffer.usage().indirect_buffer);
 
-        vk.CmdDrawIndexedIndirect(
+        fns.v1_0.cmd_draw_indexed_indirect(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as vk::DeviceSize,
+            inner.offset as ash::vk::DeviceSize,
             draw_count,
             stride,
         );
@@ -1139,17 +1147,18 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdEndQuery` on the builder.
     #[inline]
     pub unsafe fn end_query(&mut self, query: Query) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdEndQuery(cmd, query.pool().internal_object(), query.index());
+        fns.v1_0
+            .cmd_end_query(cmd, query.pool().internal_object(), query.index());
     }
 
     /// Calls `vkCmdEndRenderPass` on the builder.
     #[inline]
     pub unsafe fn end_render_pass(&mut self) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdEndRenderPass(cmd);
+        fns.v1_0.cmd_end_render_pass(cmd);
     }
 
     /// Calls `vkCmdExecuteCommands` on the builder.
@@ -1162,9 +1171,10 @@ impl UnsafeCommandBufferBuilder {
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdExecuteCommands(cmd, cbs.raw_cbs.len() as u32, cbs.raw_cbs.as_ptr());
+        fns.v1_0
+            .cmd_execute_commands(cmd, cbs.raw_cbs.len() as u32, cbs.raw_cbs.as_ptr());
     }
 
     /// Calls `vkCmdFillBuffer` on the builder.
@@ -1173,7 +1183,7 @@ impl UnsafeCommandBufferBuilder {
     where
         B: ?Sized + BufferAccess,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let size = buffer.size();
@@ -1188,11 +1198,11 @@ impl UnsafeCommandBufferBuilder {
             (buffer_inner.internal_object(), offset)
         };
 
-        vk.CmdFillBuffer(
+        fns.v1_0.cmd_fill_buffer(
             cmd,
             buffer_handle,
-            offset as vk::DeviceSize,
-            size as vk::DeviceSize,
+            offset as ash::vk::DeviceSize,
+            size as ash::vk::DeviceSize,
             data,
         );
     }
@@ -1200,29 +1210,29 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdNextSubpass` on the builder.
     #[inline]
     pub unsafe fn next_subpass(&mut self, subpass_contents: SubpassContents) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdNextSubpass(cmd, subpass_contents as u32);
+        fns.v1_0.cmd_next_subpass(cmd, subpass_contents.into());
     }
 
     #[inline]
     pub unsafe fn pipeline_barrier(&mut self, command: &UnsafeCommandBufferBuilderPipelineBarrier) {
         // If barrier is empty, don't do anything.
-        if command.src_stage_mask == 0 || command.dst_stage_mask == 0 {
-            debug_assert!(command.src_stage_mask == 0 && command.dst_stage_mask == 0);
+        if command.src_stage_mask.is_empty() || command.dst_stage_mask.is_empty() {
+            debug_assert!(command.src_stage_mask.is_empty() && command.dst_stage_mask.is_empty());
             debug_assert!(command.memory_barriers.is_empty());
             debug_assert!(command.buffer_barriers.is_empty());
             debug_assert!(command.image_barriers.is_empty());
             return;
         }
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
-        debug_assert_ne!(command.src_stage_mask, 0);
-        debug_assert_ne!(command.dst_stage_mask, 0);
+        debug_assert!(!command.src_stage_mask.is_empty());
+        debug_assert!(!command.dst_stage_mask.is_empty());
 
-        vk.CmdPipelineBarrier(
+        fns.v1_0.cmd_pipeline_barrier(
             cmd,
             command.src_stage_mask,
             command.dst_stage_mask,
@@ -1248,7 +1258,7 @@ impl UnsafeCommandBufferBuilder {
     ) where
         D: ?Sized,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         debug_assert!(stages != ShaderStages::none());
@@ -1257,7 +1267,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert_eq!(offset % 4, 0);
         debug_assert!(mem::size_of_val(data) >= size as usize);
 
-        vk.CmdPushConstants(
+        fns.v1_0.cmd_push_constants(
             cmd,
             pipeline_layout.internal_object(),
             stages.into(),
@@ -1270,22 +1280,23 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdResetEvent` on the builder.
     #[inline]
     pub unsafe fn reset_event(&mut self, event: &Event, stages: PipelineStages) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        vk.CmdResetEvent(cmd, event.internal_object(), stages.into());
+        fns.v1_0
+            .cmd_reset_event(cmd, event.internal_object(), stages.into());
     }
 
     /// Calls `vkCmdResetQueryPool` on the builder.
     #[inline]
     pub unsafe fn reset_query_pool(&mut self, queries: QueriesRange) {
         let range = queries.range();
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdResetQueryPool(
+        fns.v1_0.cmd_reset_query_pool(
             cmd,
             queries.pool().internal_object(),
             range.start,
@@ -1296,49 +1307,51 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdSetBlendConstants` on the builder.
     #[inline]
     pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdSetBlendConstants(cmd, &constants);
+        fns.v1_0.cmd_set_blend_constants(cmd, &constants);
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
     #[inline]
     pub unsafe fn set_depth_bias(&mut self, constant_factor: f32, clamp: f32, slope_factor: f32) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
         debug_assert!(clamp == 0.0 || self.device().enabled_features().depth_bias_clamp);
-        vk.CmdSetDepthBias(cmd, constant_factor, clamp, slope_factor);
+        fns.v1_0
+            .cmd_set_depth_bias(cmd, constant_factor, clamp, slope_factor);
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
     #[inline]
     pub unsafe fn set_depth_bounds(&mut self, min: f32, max: f32) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
         debug_assert!(min >= 0.0 && min <= 1.0);
         debug_assert!(max >= 0.0 && max <= 1.0);
-        vk.CmdSetDepthBounds(cmd, min, max);
+        fns.v1_0.cmd_set_depth_bounds(cmd, min, max);
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
     #[inline]
     pub unsafe fn set_event(&mut self, event: &Event, stages: PipelineStages) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         debug_assert!(!stages.host);
         debug_assert_ne!(stages, PipelineStages::none());
 
-        vk.CmdSetEvent(cmd, event.internal_object(), stages.into());
+        fns.v1_0
+            .cmd_set_event(cmd, event.internal_object(), stages.into());
     }
 
     /// Calls `vkCmdSetLineWidth` on the builder.
     #[inline]
     pub unsafe fn set_line_width(&mut self, line_width: f32) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
         debug_assert!(line_width == 1.0 || self.device().enabled_features().wide_lines);
-        vk.CmdSetLineWidth(cmd, line_width);
+        fns.v1_0.cmd_set_line_width(cmd, line_width);
     }
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
@@ -1348,25 +1361,28 @@ impl UnsafeCommandBufferBuilder {
         face_mask: StencilFaceFlags,
         compare_mask: u32,
     ) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdSetStencilCompareMask(cmd, face_mask as u32, compare_mask);
+        fns.v1_0
+            .cmd_set_stencil_compare_mask(cmd, face_mask.into(), compare_mask);
     }
 
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
     pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaceFlags, reference: u32) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdSetStencilReference(cmd, face_mask as u32, reference);
+        fns.v1_0
+            .cmd_set_stencil_reference(cmd, face_mask.into(), reference);
     }
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
     #[inline]
     pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaceFlags, write_mask: u32) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdSetStencilWriteMask(cmd, face_mask as u32, write_mask);
+        fns.v1_0
+            .cmd_set_stencil_write_mask(cmd, face_mask.into(), write_mask);
     }
 
     /// Calls `vkCmdSetScissor` on the builder.
@@ -1378,7 +1394,7 @@ impl UnsafeCommandBufferBuilder {
         I: Iterator<Item = Scissor>,
     {
         let scissors = scissors
-            .map(|v| vk::Rect2D::from(v.clone()))
+            .map(|v| ash::vk::Rect2D::from(v.clone()))
             .collect::<SmallVec<[_; 16]>>();
         if scissors.is_empty() {
             return;
@@ -1400,9 +1416,10 @@ impl UnsafeCommandBufferBuilder {
             first_scissor + scissors.len() as u32 <= max
         });
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdSetScissor(cmd, first_scissor, scissors.len() as u32, scissors.as_ptr());
+        fns.v1_0
+            .cmd_set_scissor(cmd, first_scissor, scissors.len() as u32, scissors.as_ptr());
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -1429,9 +1446,9 @@ impl UnsafeCommandBufferBuilder {
             first_viewport + viewports.len() as u32 <= max
         });
 
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdSetViewport(
+        fns.v1_0.cmd_set_viewport(
             cmd,
             first_viewport,
             viewports.len() as u32,
@@ -1446,7 +1463,7 @@ impl UnsafeCommandBufferBuilder {
         B: ?Sized + BufferAccess,
         D: ?Sized,
     {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
 
         let size = buffer.size();
@@ -1464,11 +1481,11 @@ impl UnsafeCommandBufferBuilder {
             (buffer_inner.internal_object(), offset)
         };
 
-        vk.CmdUpdateBuffer(
+        fns.v1_0.cmd_update_buffer(
             cmd,
             buffer_handle,
-            offset as vk::DeviceSize,
-            size as vk::DeviceSize,
+            offset as ash::vk::DeviceSize,
+            size as ash::vk::DeviceSize,
             data as *const D as *const _,
         );
     }
@@ -1476,11 +1493,11 @@ impl UnsafeCommandBufferBuilder {
     /// Calls `vkCmdWriteTimestamp` on the builder.
     #[inline]
     pub unsafe fn write_timestamp(&mut self, query: Query, stage: PipelineStage) {
-        let vk = self.device().pointers();
+        let fns = self.device().fns();
         let cmd = self.internal_object();
-        vk.CmdWriteTimestamp(
+        fns.v1_0.cmd_write_timestamp(
             cmd,
-            stage as u32,
+            stage.into(),
             query.pool().internal_object(),
             query.index(),
         );
@@ -1493,15 +1510,15 @@ impl UnsafeCommandBufferBuilder {
     /// compute operations
     #[inline]
     pub unsafe fn debug_marker_begin(&mut self, name: &CStr, color: [f32; 4]) {
-        let vk = self.device().pointers();
+        let fns = self.device().instance().fns();
         let cmd = self.internal_object();
-        let info = vk::DebugUtilsLabelEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-            pNext: ptr::null(),
-            pLabelName: name.as_ptr(),
+        let info = ash::vk::DebugUtilsLabelEXT {
+            p_label_name: name.as_ptr(),
             color,
+            ..Default::default()
         };
-        vk.CmdBeginDebugUtilsLabelEXT(cmd, &info);
+        fns.ext_debug_utils
+            .cmd_begin_debug_utils_label_ext(cmd, &info);
     }
 
     /// Calls `vkCmdEndDebugUtilsLabelEXT` on the builder.
@@ -1511,9 +1528,9 @@ impl UnsafeCommandBufferBuilder {
     /// `vkQueueEndDebugUtilsLabelEXT` on the queue tha `CommandBuffer` is submitted to.
     #[inline]
     pub unsafe fn debug_marker_end(&mut self) {
-        let vk = self.device().pointers();
+        let fns = self.device().instance().fns();
         let cmd = self.internal_object();
-        vk.CmdEndDebugUtilsLabelEXT(cmd);
+        fns.ext_debug_utils.cmd_end_debug_utils_label_ext(cmd);
     }
 
     /// Calls `vkCmdInsertDebugUtilsLabelEXT` on the builder.
@@ -1523,15 +1540,15 @@ impl UnsafeCommandBufferBuilder {
     /// compute operations
     #[inline]
     pub unsafe fn debug_marker_insert(&mut self, name: &CStr, color: [f32; 4]) {
-        let vk = self.device().pointers();
+        let fns = self.device().instance().fns();
         let cmd = self.internal_object();
-        let info = vk::DebugUtilsLabelEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT,
-            pNext: ptr::null(),
-            pLabelName: name.as_ptr(),
+        let info = ash::vk::DebugUtilsLabelEXT {
+            p_label_name: name.as_ptr(),
             color,
+            ..Default::default()
         };
-        vk.CmdInsertDebugUtilsLabelEXT(cmd, &info);
+        fns.ext_debug_utils
+            .cmd_insert_debug_utils_label_ext(cmd, &info);
     }
 }
 
@@ -1543,12 +1560,10 @@ unsafe impl DeviceOwned for UnsafeCommandBufferBuilder {
 }
 
 unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
-    type Object = vk::CommandBuffer;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
+    type Object = ash::vk::CommandBuffer;
 
     #[inline]
-    fn internal_object(&self) -> vk::CommandBuffer {
+    fn internal_object(&self) -> ash::vk::CommandBuffer {
         self.command_buffer
     }
 }
@@ -1556,9 +1571,9 @@ unsafe impl VulkanObject for UnsafeCommandBufferBuilder {
 /// Prototype for a `vkCmdBindVertexBuffers`.
 pub struct UnsafeCommandBufferBuilderBindVertexBuffer {
     // Raw handles of the buffers to bind.
-    raw_buffers: SmallVec<[vk::Buffer; 4]>,
+    raw_buffers: SmallVec<[ash::vk::Buffer; 4]>,
     // Raw offsets of the buffers to bind.
-    offsets: SmallVec<[vk::DeviceSize; 4]>,
+    offsets: SmallVec<[ash::vk::DeviceSize; 4]>,
 }
 
 impl UnsafeCommandBufferBuilderBindVertexBuffer {
@@ -1580,14 +1595,14 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
         let inner = buffer.inner();
         debug_assert!(inner.buffer.usage().vertex_buffer);
         self.raw_buffers.push(inner.buffer.internal_object());
-        self.offsets.push(inner.offset as vk::DeviceSize);
+        self.offsets.push(inner.offset as ash::vk::DeviceSize);
     }
 }
 
 /// Prototype for a `vkCmdExecuteCommands`.
 pub struct UnsafeCommandBufferBuilderExecuteCommands {
     // Raw handles of the command buffers to execute.
-    raw_cbs: SmallVec<[vk::CommandBuffer; 4]>,
+    raw_cbs: SmallVec<[ash::vk::CommandBuffer; 4]>,
 }
 
 impl UnsafeCommandBufferBuilderExecuteCommands {
@@ -1611,7 +1626,7 @@ impl UnsafeCommandBufferBuilderExecuteCommands {
 
     /// Adds a command buffer to the list.
     #[inline]
-    pub unsafe fn add_raw(&mut self, cb: vk::CommandBuffer) {
+    pub unsafe fn add_raw(&mut self, cb: ash::vk::CommandBuffer) {
         self.raw_cbs.push(cb);
     }
 }
@@ -1682,12 +1697,12 @@ pub struct UnsafeCommandBufferBuilderImageBlit {
 /// > multiple different types. Doing so with a single function would be very tedious in terms of
 /// > API.
 pub struct UnsafeCommandBufferBuilderPipelineBarrier {
-    src_stage_mask: vk::PipelineStageFlags,
-    dst_stage_mask: vk::PipelineStageFlags,
-    dependency_flags: vk::DependencyFlags,
-    memory_barriers: SmallVec<[vk::MemoryBarrier; 2]>,
-    buffer_barriers: SmallVec<[vk::BufferMemoryBarrier; 8]>,
-    image_barriers: SmallVec<[vk::ImageMemoryBarrier; 8]>,
+    src_stage_mask: ash::vk::PipelineStageFlags,
+    dst_stage_mask: ash::vk::PipelineStageFlags,
+    dependency_flags: ash::vk::DependencyFlags,
+    memory_barriers: SmallVec<[ash::vk::MemoryBarrier; 2]>,
+    buffer_barriers: SmallVec<[ash::vk::BufferMemoryBarrier; 8]>,
+    image_barriers: SmallVec<[ash::vk::ImageMemoryBarrier; 8]>,
 }
 
 impl UnsafeCommandBufferBuilderPipelineBarrier {
@@ -1695,9 +1710,9 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     #[inline]
     pub fn new() -> UnsafeCommandBufferBuilderPipelineBarrier {
         UnsafeCommandBufferBuilderPipelineBarrier {
-            src_stage_mask: 0,
-            dst_stage_mask: 0,
-            dependency_flags: vk::DEPENDENCY_BY_REGION_BIT,
+            src_stage_mask: ash::vk::PipelineStageFlags::empty(),
+            dst_stage_mask: ash::vk::PipelineStageFlags::empty(),
+            dependency_flags: ash::vk::DependencyFlags::BY_REGION,
             memory_barriers: SmallVec::new(),
             buffer_barriers: SmallVec::new(),
             image_barriers: SmallVec::new(),
@@ -1707,7 +1722,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
     /// Returns true if no barrier or execution dependency has been added yet.
     #[inline]
     pub fn is_empty(&self) -> bool {
-        self.src_stage_mask == 0 || self.dst_stage_mask == 0
+        self.src_stage_mask.is_empty() || self.dst_stage_mask.is_empty()
     }
 
     /// Merges another pipeline builder into this one.
@@ -1741,14 +1756,14 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         by_region: bool,
     ) {
         if !by_region {
-            self.dependency_flags = 0;
+            self.dependency_flags = ash::vk::DependencyFlags::empty();
         }
 
         debug_assert_ne!(source, PipelineStages::none());
         debug_assert_ne!(destination, PipelineStages::none());
 
-        self.src_stage_mask |= vk::PipelineStageFlags::from(source);
-        self.dst_stage_mask |= vk::PipelineStageFlags::from(destination);
+        self.src_stage_mask |= ash::vk::PipelineStageFlags::from(source);
+        self.dst_stage_mask |= ash::vk::PipelineStageFlags::from(destination);
     }
 
     /// Adds a memory barrier. This means that all the memory writes by the given source stages
@@ -1774,11 +1789,10 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 
         self.add_execution_dependency(source_stage, destination_stage, by_region);
 
-        self.memory_barriers.push(vk::MemoryBarrier {
-            sType: vk::STRUCTURE_TYPE_MEMORY_BARRIER,
-            pNext: ptr::null(),
-            srcAccessMask: source_access.into(),
-            dstAccessMask: destination_access.into(),
+        self.memory_barriers.push(ash::vk::MemoryBarrier {
+            src_access_mask: source_access.into(),
+            dst_access_mask: destination_access.into(),
+            ..Default::default()
         });
     }
 
@@ -1826,19 +1840,18 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)
         } else {
-            (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
 
-        self.buffer_barriers.push(vk::BufferMemoryBarrier {
-            sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER,
-            pNext: ptr::null(),
-            srcAccessMask: source_access.into(),
-            dstAccessMask: destination_access.into(),
-            srcQueueFamilyIndex: src_queue,
-            dstQueueFamilyIndex: dest_queue,
+        self.buffer_barriers.push(ash::vk::BufferMemoryBarrier {
+            src_access_mask: source_access.into(),
+            dst_access_mask: destination_access.into(),
+            src_queue_family_index: src_queue,
+            dst_queue_family_index: dest_queue,
             buffer: buffer.internal_object(),
-            offset: offset as vk::DeviceSize,
-            size: size as vk::DeviceSize,
+            offset: offset as ash::vk::DeviceSize,
+            size: size as ash::vk::DeviceSize,
+            ..Default::default()
         });
     }
 
@@ -1891,7 +1904,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         let (src_queue, dest_queue) = if let Some((src_queue, dest_queue)) = queue_transfer {
             (src_queue, dest_queue)
         } else {
-            (vk::QUEUE_FAMILY_IGNORED, vk::QUEUE_FAMILY_IGNORED)
+            (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
 
         if image.format().ty() == FormatTy::Ycbcr {
@@ -1902,23 +1915,22 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         let aspects = image.format().aspects();
         let image = image.inner();
 
-        self.image_barriers.push(vk::ImageMemoryBarrier {
-            sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
-            pNext: ptr::null(),
-            srcAccessMask: source_access.into(),
-            dstAccessMask: destination_access.into(),
-            oldLayout: current_layout as u32,
-            newLayout: new_layout as u32,
-            srcQueueFamilyIndex: src_queue,
-            dstQueueFamilyIndex: dest_queue,
+        self.image_barriers.push(ash::vk::ImageMemoryBarrier {
+            src_access_mask: source_access.into(),
+            dst_access_mask: destination_access.into(),
+            old_layout: current_layout.into(),
+            new_layout: new_layout.into(),
+            src_queue_family_index: src_queue,
+            dst_queue_family_index: dest_queue,
             image: image.image.internal_object(),
-            subresourceRange: vk::ImageSubresourceRange {
-                aspectMask: aspects.into(),
-                baseMipLevel: mipmaps.start + image.first_mipmap_level as u32,
-                levelCount: mipmaps.end - mipmaps.start,
-                baseArrayLayer: layers.start + image.first_layer as u32,
-                layerCount: layers.end - layers.start,
+            subresource_range: ash::vk::ImageSubresourceRange {
+                aspect_mask: aspects.into(),
+                base_mip_level: mipmaps.start + image.first_mipmap_level as u32,
+                level_count: mipmaps.end - mipmaps.start,
+                base_array_layer: layers.start + image.first_layer as u32,
+                layer_count: layers.end - layers.start,
             },
+            ..Default::default()
         });
     }
 }
@@ -1930,7 +1942,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
 /// The command buffer must not outlive the command pool that it was created from,
 /// nor the resources used by the recorded commands.
 pub struct UnsafeCommandBuffer {
-    command_buffer: vk::CommandBuffer,
+    command_buffer: ash::vk::CommandBuffer,
     device: Arc<Device>,
     usage: CommandBufferUsage,
 }
@@ -1950,12 +1962,10 @@ unsafe impl DeviceOwned for UnsafeCommandBuffer {
 }
 
 unsafe impl VulkanObject for UnsafeCommandBuffer {
-    type Object = vk::CommandBuffer;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
+    type Object = ash::vk::CommandBuffer;
 
     #[inline]
-    fn internal_object(&self) -> vk::CommandBuffer {
+    fn internal_object(&self) -> ash::vk::CommandBuffer {
         self.command_buffer
     }
 }

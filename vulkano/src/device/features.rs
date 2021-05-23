@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
 use crate::Version;
 use std::marker::PhantomPinned;
 use std::ptr::addr_of_mut;
@@ -103,7 +102,7 @@ macro_rules! features {
             fn from(features: &Features) -> Self {
                 let mut features_ffi = FeaturesFfi::default();
                 $(
-                    $(features_ffi.$ffi_struct.$($ffi_field).+ |= features.$member as vk::Bool32;)*
+                    $(features_ffi.$ffi_struct.$($ffi_field).+ |= features.$member as ash::vk::Bool32;)*
                 )+
                 features_ffi
             }
@@ -121,174 +120,181 @@ macro_rules! features {
 }
 
 features! {
-    {robust_buffer_access => vulkan_1_0.features.robustBufferAccess},
-    {full_draw_index_uint32 => vulkan_1_0.features.fullDrawIndexUint32},
-    {image_cube_array => vulkan_1_0.features.imageCubeArray},
-    {independent_blend => vulkan_1_0.features.independentBlend},
-    {geometry_shader => vulkan_1_0.features.geometryShader},
-    {tessellation_shader => vulkan_1_0.features.tessellationShader},
-    {sample_rate_shading => vulkan_1_0.features.sampleRateShading},
-    {dual_src_blend => vulkan_1_0.features.dualSrcBlend},
-    {logic_op => vulkan_1_0.features.logicOp},
-    {multi_draw_indirect => vulkan_1_0.features.multiDrawIndirect},
-    {draw_indirect_first_instance => vulkan_1_0.features.drawIndirectFirstInstance},
-    {depth_clamp => vulkan_1_0.features.depthClamp},
-    {depth_bias_clamp => vulkan_1_0.features.depthBiasClamp},
-    {fill_mode_non_solid => vulkan_1_0.features.fillModeNonSolid},
-    {depth_bounds => vulkan_1_0.features.depthBounds},
-    {wide_lines => vulkan_1_0.features.wideLines},
-    {large_points => vulkan_1_0.features.largePoints},
-    {alpha_to_one => vulkan_1_0.features.alphaToOne},
-    {multi_viewport => vulkan_1_0.features.multiViewport},
-    {sampler_anisotropy => vulkan_1_0.features.samplerAnisotropy},
-    {texture_compression_etc2 => vulkan_1_0.features.textureCompressionETC2},
-    {texture_compression_astc_ldr => vulkan_1_0.features.textureCompressionASTC_LDR},
-    {texture_compression_bc => vulkan_1_0.features.textureCompressionBC},
-    {occlusion_query_precise => vulkan_1_0.features.occlusionQueryPrecise},
-    {pipeline_statistics_query => vulkan_1_0.features.pipelineStatisticsQuery},
-    {vertex_pipeline_stores_and_atomics => vulkan_1_0.features.vertexPipelineStoresAndAtomics},
-    {fragment_stores_and_atomics => vulkan_1_0.features.fragmentStoresAndAtomics},
-    {shader_tessellation_and_geometry_point_size => vulkan_1_0.features.shaderTessellationAndGeometryPointSize},
-    {shader_image_gather_extended => vulkan_1_0.features.shaderImageGatherExtended},
-    {shader_storage_image_extended_formats => vulkan_1_0.features.shaderStorageImageExtendedFormats},
-    {shader_storage_image_multisample => vulkan_1_0.features.shaderStorageImageMultisample},
-    {shader_storage_image_read_without_format => vulkan_1_0.features.shaderStorageImageReadWithoutFormat},
-    {shader_storage_image_write_without_format => vulkan_1_0.features.shaderStorageImageWriteWithoutFormat},
-    {shader_uniform_buffer_array_dynamic_indexing => vulkan_1_0.features.shaderUniformBufferArrayDynamicIndexing},
-    {shader_sampled_image_array_dynamic_indexing => vulkan_1_0.features.shaderSampledImageArrayDynamicIndexing},
-    {shader_storage_buffer_array_dynamic_indexing => vulkan_1_0.features.shaderStorageBufferArrayDynamicIndexing},
-    {shader_storage_image_array_dynamic_indexing => vulkan_1_0.features.shaderStorageImageArrayDynamicIndexing},
-    {shader_clip_distance => vulkan_1_0.features.shaderClipDistance},
-    {shader_cull_distance => vulkan_1_0.features.shaderCullDistance},
-    {shader_float64 => vulkan_1_0.features.shaderFloat64},
-    {shader_int64 => vulkan_1_0.features.shaderInt64},
-    {shader_int16 => vulkan_1_0.features.shaderInt16},
-    {shader_resource_residency => vulkan_1_0.features.shaderResourceResidency},
-    {shader_resource_min_lod => vulkan_1_0.features.shaderResourceMinLod},
-    {sparse_binding => vulkan_1_0.features.sparseBinding},
-    {sparse_residency_buffer => vulkan_1_0.features.sparseResidencyBuffer},
-    {sparse_residency_image2d => vulkan_1_0.features.sparseResidencyImage2D},
-    {sparse_residency_image3d => vulkan_1_0.features.sparseResidencyImage3D},
-    {sparse_residency2_samples => vulkan_1_0.features.sparseResidency2Samples},
-    {sparse_residency4_samples => vulkan_1_0.features.sparseResidency4Samples},
-    {sparse_residency8_samples => vulkan_1_0.features.sparseResidency8Samples},
-    {sparse_residency16_samples => vulkan_1_0.features.sparseResidency16Samples},
-    {sparse_residency_aliased => vulkan_1_0.features.sparseResidencyAliased},
-    {variable_multisample_rate => vulkan_1_0.features.variableMultisampleRate},
-    {inherited_queries => vulkan_1_0.features.inheritedQueries},
+    // Vulkan 1.0
+    {robust_buffer_access => vulkan_1_0.features.robust_buffer_access},
+    {full_draw_index_uint32 => vulkan_1_0.features.full_draw_index_uint32},
+    {image_cube_array => vulkan_1_0.features.image_cube_array},
+    {independent_blend => vulkan_1_0.features.independent_blend},
+    {geometry_shader => vulkan_1_0.features.geometry_shader},
+    {tessellation_shader => vulkan_1_0.features.tessellation_shader},
+    {sample_rate_shading => vulkan_1_0.features.sample_rate_shading},
+    {dual_src_blend => vulkan_1_0.features.dual_src_blend},
+    {logic_op => vulkan_1_0.features.logic_op},
+    {multi_draw_indirect => vulkan_1_0.features.multi_draw_indirect},
+    {draw_indirect_first_instance => vulkan_1_0.features.draw_indirect_first_instance},
+    {depth_clamp => vulkan_1_0.features.depth_clamp},
+    {depth_bias_clamp => vulkan_1_0.features.depth_bias_clamp},
+    {fill_mode_non_solid => vulkan_1_0.features.fill_mode_non_solid},
+    {depth_bounds => vulkan_1_0.features.depth_bounds},
+    {wide_lines => vulkan_1_0.features.wide_lines},
+    {large_points => vulkan_1_0.features.large_points},
+    {alpha_to_one => vulkan_1_0.features.alpha_to_one},
+    {multi_viewport => vulkan_1_0.features.multi_viewport},
+    {sampler_anisotropy => vulkan_1_0.features.sampler_anisotropy},
+    {texture_compression_etc2 => vulkan_1_0.features.texture_compression_etc2},
+    {texture_compression_astc_ldr => vulkan_1_0.features.texture_compression_astc_ldr},
+    {texture_compression_bc => vulkan_1_0.features.texture_compression_bc},
+    {occlusion_query_precise => vulkan_1_0.features.occlusion_query_precise},
+    {pipeline_statistics_query => vulkan_1_0.features.pipeline_statistics_query},
+    {vertex_pipeline_stores_and_atomics => vulkan_1_0.features.vertex_pipeline_stores_and_atomics},
+    {fragment_stores_and_atomics => vulkan_1_0.features.fragment_stores_and_atomics},
+    {shader_tessellation_and_geometry_point_size => vulkan_1_0.features.shader_tessellation_and_geometry_point_size},
+    {shader_image_gather_extended => vulkan_1_0.features.shader_image_gather_extended},
+    {shader_storage_image_extended_formats => vulkan_1_0.features.shader_storage_image_extended_formats},
+    {shader_storage_image_multisample => vulkan_1_0.features.shader_storage_image_multisample},
+    {shader_storage_image_read_without_format => vulkan_1_0.features.shader_storage_image_read_without_format},
+    {shader_storage_image_write_without_format => vulkan_1_0.features.shader_storage_image_write_without_format},
+    {shader_uniform_buffer_array_dynamic_indexing => vulkan_1_0.features.shader_uniform_buffer_array_dynamic_indexing},
+    {shader_sampled_image_array_dynamic_indexing => vulkan_1_0.features.shader_sampled_image_array_dynamic_indexing},
+    {shader_storage_buffer_array_dynamic_indexing => vulkan_1_0.features.shader_storage_buffer_array_dynamic_indexing},
+    {shader_storage_image_array_dynamic_indexing => vulkan_1_0.features.shader_storage_image_array_dynamic_indexing},
+    {shader_clip_distance => vulkan_1_0.features.shader_clip_distance},
+    {shader_cull_distance => vulkan_1_0.features.shader_cull_distance},
+    {shader_float64 => vulkan_1_0.features.shader_float64},
+    {shader_int64 => vulkan_1_0.features.shader_int64},
+    {shader_int16 => vulkan_1_0.features.shader_int16},
+    {shader_resource_residency => vulkan_1_0.features.shader_resource_residency},
+    {shader_resource_min_lod => vulkan_1_0.features.shader_resource_min_lod},
+    {sparse_binding => vulkan_1_0.features.sparse_binding},
+    {sparse_residency_buffer => vulkan_1_0.features.sparse_residency_buffer},
+    {sparse_residency_image2d => vulkan_1_0.features.sparse_residency_image2_d},
+    {sparse_residency_image3d => vulkan_1_0.features.sparse_residency_image3_d},
+    {sparse_residency2_samples => vulkan_1_0.features.sparse_residency2_samples},
+    {sparse_residency4_samples => vulkan_1_0.features.sparse_residency4_samples},
+    {sparse_residency8_samples => vulkan_1_0.features.sparse_residency8_samples},
+    {sparse_residency16_samples => vulkan_1_0.features.sparse_residency16_samples},
+    {sparse_residency_aliased => vulkan_1_0.features.sparse_residency_aliased},
+    {variable_multisample_rate => vulkan_1_0.features.variable_multisample_rate},
+    {inherited_queries => vulkan_1_0.features.inherited_queries},
 
-    {storage_buffer_16bit => vulkan_1_1.storageBuffer16BitAccess | khr_16bit_storage.storageBuffer16BitAccess},
-    {storage_uniform_16bit => vulkan_1_1.uniformAndStorageBuffer16BitAccess | khr_16bit_storage.uniformAndStorageBuffer16BitAccess},
-    {storage_push_constant_16bit => vulkan_1_1.storagePushConstant16 | khr_16bit_storage.storagePushConstant16},
-    {storage_input_output_16bit => vulkan_1_1.storageInputOutput16 | khr_16bit_storage.storageInputOutput16},
+    // Vulkan 1.1
+    {storage_buffer_16bit => vulkan_1_1.storage_buffer16_bit_access | khr_16bit_storage.storage_buffer16_bit_access},
+    {storage_uniform_16bit => vulkan_1_1.uniform_and_storage_buffer16_bit_access | khr_16bit_storage.uniform_and_storage_buffer16_bit_access},
+    {storage_push_constant_16bit => vulkan_1_1.storage_push_constant16 | khr_16bit_storage.storage_push_constant16},
+    {storage_input_output_16bit => vulkan_1_1.storage_input_output16 | khr_16bit_storage.storage_input_output16},
     {multiview => vulkan_1_1.multiview | khr_multiview.multiview},
-    {multiview_geometry_shader => vulkan_1_1.multiviewGeometryShader | khr_multiview.multiviewGeometryShader},
-    {multiview_tessellation_shader => vulkan_1_1.multiviewTessellationShader | khr_multiview.multiviewTessellationShader},
-    {variable_pointers_storage_buffer => vulkan_1_1.variablePointersStorageBuffer | khr_variable_pointers.variablePointersStorageBuffer},
-    {variable_pointers => vulkan_1_1.variablePointers | khr_variable_pointers.variablePointers},
-    {protected_memory => vulkan_1_1.protectedMemory | protected_memory.protectedMemory},
-    {sampler_ycbcr_conversion => vulkan_1_1.samplerYcbcrConversion | khr_sampler_ycbcr_conversion.samplerYcbcrConversion},
-    {shader_draw_parameters => vulkan_1_1.shaderDrawParameters | shader_draw_parameters.shaderDrawParameters},
+    {multiview_geometry_shader => vulkan_1_1.multiview_geometry_shader | khr_multiview.multiview_geometry_shader},
+    {multiview_tessellation_shader => vulkan_1_1.multiview_tessellation_shader | khr_multiview.multiview_tessellation_shader},
+    {variable_pointers_storage_buffer => vulkan_1_1.variable_pointers_storage_buffer | khr_variable_pointers.variable_pointers_storage_buffer},
+    {variable_pointers => vulkan_1_1.variable_pointers | khr_variable_pointers.variable_pointers},
+    {protected_memory => vulkan_1_1.protected_memory | protected_memory.protected_memory},
+    {sampler_ycbcr_conversion => vulkan_1_1.sampler_ycbcr_conversion | khr_sampler_ycbcr_conversion.sampler_ycbcr_conversion},
+    {shader_draw_parameters => vulkan_1_1.shader_draw_parameters | shader_draw_parameters.shader_draw_parameters},
 
-    {sampler_mirror_clamp_to_edge => vulkan_1_2.samplerMirrorClampToEdge},
-    {draw_indirect_count => vulkan_1_2.drawIndirectCount},
-    {storage_buffer_8bit => vulkan_1_2.storageBuffer8BitAccess | khr_8bit_storage.storageBuffer8BitAccess},
-    {storage_uniform_8bit => vulkan_1_2.uniformAndStorageBuffer8BitAccess | khr_8bit_storage.uniformAndStorageBuffer8BitAccess},
-    {storage_push_constant_8bit => vulkan_1_2.storagePushConstant8 | khr_8bit_storage.storagePushConstant8},
-    {shader_buffer_int64_atomics => vulkan_1_2.shaderBufferInt64Atomics | khr_shader_atomic_int64.shaderBufferInt64Atomics},
-    {shader_shared_int64_atomics => vulkan_1_2.shaderSharedInt64Atomics | khr_shader_atomic_int64.shaderSharedInt64Atomics},
-    {shader_float16 => vulkan_1_2.shaderFloat16 | khr_shader_float16_int8.shaderFloat16},
-    {shader_int8 => vulkan_1_2.shaderInt8 | khr_shader_float16_int8.shaderInt8},
-    {descriptor_indexing => vulkan_1_2.descriptorIndexing},
-    {shader_input_attachment_array_dynamic_indexing => vulkan_1_2.shaderInputAttachmentArrayDynamicIndexing | ext_descriptor_indexing.shaderInputAttachmentArrayDynamicIndexing},
-    {shader_uniform_texel_buffer_array_dynamic_indexing => vulkan_1_2.shaderUniformTexelBufferArrayDynamicIndexing | ext_descriptor_indexing.shaderUniformTexelBufferArrayDynamicIndexing},
-    {shader_storage_texel_buffer_array_dynamic_indexing => vulkan_1_2.shaderStorageTexelBufferArrayDynamicIndexing | ext_descriptor_indexing.shaderStorageTexelBufferArrayDynamicIndexing},
-    {shader_uniform_buffer_array_non_uniform_indexing => vulkan_1_2.shaderUniformBufferArrayNonUniformIndexing | ext_descriptor_indexing.shaderUniformBufferArrayNonUniformIndexing},
-    {shader_sampled_image_array_non_uniform_indexing => vulkan_1_2.shaderSampledImageArrayNonUniformIndexing | ext_descriptor_indexing.shaderSampledImageArrayNonUniformIndexing},
-    {shader_storage_buffer_array_non_uniform_indexing => vulkan_1_2.shaderStorageBufferArrayNonUniformIndexing | ext_descriptor_indexing.shaderStorageBufferArrayNonUniformIndexing},
-    {shader_storage_image_array_non_uniform_indexing => vulkan_1_2.shaderStorageImageArrayNonUniformIndexing | ext_descriptor_indexing.shaderStorageImageArrayNonUniformIndexing},
-    {shader_input_attachment_array_non_uniform_indexing => vulkan_1_2.shaderInputAttachmentArrayNonUniformIndexing | ext_descriptor_indexing.shaderInputAttachmentArrayNonUniformIndexing},
-    {shader_uniform_texel_buffer_array_non_uniform_indexing => vulkan_1_2.shaderUniformTexelBufferArrayNonUniformIndexing | ext_descriptor_indexing.shaderUniformTexelBufferArrayNonUniformIndexing},
-    {shader_storage_texel_buffer_array_non_uniform_indexing => vulkan_1_2.shaderStorageTexelBufferArrayNonUniformIndexing | ext_descriptor_indexing.shaderStorageTexelBufferArrayNonUniformIndexing},
-    {descriptor_binding_uniform_buffer_update_after_bind => vulkan_1_2.descriptorBindingUniformBufferUpdateAfterBind | ext_descriptor_indexing.descriptorBindingUniformBufferUpdateAfterBind},
-    {descriptor_binding_sampled_image_update_after_bind => vulkan_1_2.descriptorBindingSampledImageUpdateAfterBind | ext_descriptor_indexing.descriptorBindingSampledImageUpdateAfterBind},
-    {descriptor_binding_storage_image_update_after_bind => vulkan_1_2.descriptorBindingStorageImageUpdateAfterBind | ext_descriptor_indexing.descriptorBindingStorageImageUpdateAfterBind},
-    {descriptor_binding_storage_buffer_update_after_bind => vulkan_1_2.descriptorBindingStorageBufferUpdateAfterBind | ext_descriptor_indexing.descriptorBindingStorageBufferUpdateAfterBind},
-    {descriptor_binding_uniform_texel_buffer_update_after_bind => vulkan_1_2.descriptorBindingUniformTexelBufferUpdateAfterBind | ext_descriptor_indexing.descriptorBindingUniformTexelBufferUpdateAfterBind},
-    {descriptor_binding_storage_texel_buffer_update_after_bind => vulkan_1_2.descriptorBindingStorageTexelBufferUpdateAfterBind | ext_descriptor_indexing.descriptorBindingStorageTexelBufferUpdateAfterBind},
-    {descriptor_binding_update_unused_while_pending => vulkan_1_2.descriptorBindingUpdateUnusedWhilePending | ext_descriptor_indexing.descriptorBindingUpdateUnusedWhilePending},
-    {descriptor_binding_partially_bound => vulkan_1_2.descriptorBindingPartiallyBound | ext_descriptor_indexing.descriptorBindingPartiallyBound},
-    {descriptor_binding_variable_descriptor_count => vulkan_1_2.descriptorBindingVariableDescriptorCount | ext_descriptor_indexing.descriptorBindingVariableDescriptorCount},
-    {runtime_descriptor_array => vulkan_1_2.runtimeDescriptorArray | ext_descriptor_indexing.runtimeDescriptorArray},
-    {sampler_filter_minmax => vulkan_1_2.samplerFilterMinmax},
-    {scalar_block_layout => vulkan_1_2.scalarBlockLayout | ext_scalar_block_layout.scalarBlockLayout},
-    {imageless_framebuffer => vulkan_1_2.imagelessFramebuffer | khr_imageless_framebuffer.imagelessFramebuffer},
-    {uniform_buffer_standard_layout => vulkan_1_2.uniformBufferStandardLayout | khr_uniform_buffer_standard_layout.uniformBufferStandardLayout},
-    {shader_subgroup_extended_types => vulkan_1_2.shaderSubgroupExtendedTypes | khr_shader_subgroup_extended_types.shaderSubgroupExtendedTypes},
-    {separate_depth_stencil_layouts => vulkan_1_2.separateDepthStencilLayouts | khr_separate_depth_stencil_layouts.separateDepthStencilLayouts},
-    {host_query_reset => vulkan_1_2.hostQueryReset | ext_host_query_reset.hostQueryReset},
-    {timeline_semaphore => vulkan_1_2.timelineSemaphore | khr_timeline_semaphore.timelineSemaphore},
-    {buffer_device_address => vulkan_1_2.bufferDeviceAddress | khr_buffer_device_address.bufferDeviceAddress},
-    {buffer_device_address_capture_replay => vulkan_1_2.bufferDeviceAddressCaptureReplay | khr_buffer_device_address.bufferDeviceAddressCaptureReplay},
-    {buffer_device_address_multi_device => vulkan_1_2.bufferDeviceAddressMultiDevice | khr_buffer_device_address.bufferDeviceAddressMultiDevice},
-    {vulkan_memory_model => vulkan_1_2.vulkanMemoryModel | khr_vulkan_memory_model.vulkanMemoryModel},
-    {vulkan_memory_model_device_scope => vulkan_1_2.vulkanMemoryModelDeviceScope | khr_vulkan_memory_model.vulkanMemoryModelDeviceScope},
-    {vulkan_memory_model_availability_visibility_chains => vulkan_1_2.vulkanMemoryModelAvailabilityVisibilityChains | khr_vulkan_memory_model.vulkanMemoryModelAvailabilityVisibilityChains},
-    {shader_output_viewport_index => vulkan_1_2.shaderOutputViewportIndex},
-    {shader_output_layer => vulkan_1_2.shaderOutputLayer},
-    {subgroup_broadcast_dynamic_id => vulkan_1_2.subgroupBroadcastDynamicId},
+    // Vulkan 1.2
+    {sampler_mirror_clamp_to_edge => vulkan_1_2.sampler_mirror_clamp_to_edge},
+    {draw_indirect_count => vulkan_1_2.draw_indirect_count},
+    {storage_buffer_8bit => vulkan_1_2.storage_buffer8_bit_access | khr_8bit_storage.storage_buffer8_bit_access},
+    {storage_uniform_8bit => vulkan_1_2.uniform_and_storage_buffer8_bit_access | khr_8bit_storage.uniform_and_storage_buffer8_bit_access},
+    {storage_push_constant_8bit => vulkan_1_2.storage_push_constant8 | khr_8bit_storage.storage_push_constant8},
+    {shader_buffer_int64_atomics => vulkan_1_2.shader_buffer_int64_atomics | khr_shader_atomic_int64.shader_buffer_int64_atomics},
+    {shader_shared_int64_atomics => vulkan_1_2.shader_shared_int64_atomics | khr_shader_atomic_int64.shader_shared_int64_atomics},
+    {shader_float16 => vulkan_1_2.shader_float16 | khr_shader_float16_int8.shader_float16},
+    {shader_int8 => vulkan_1_2.shader_int8 | khr_shader_float16_int8.shader_int8},
+    {descriptor_indexing => vulkan_1_2.descriptor_indexing},
+    {shader_input_attachment_array_dynamic_indexing => vulkan_1_2.shader_input_attachment_array_dynamic_indexing | ext_descriptor_indexing.shader_input_attachment_array_dynamic_indexing},
+    {shader_uniform_texel_buffer_array_dynamic_indexing => vulkan_1_2.shader_uniform_texel_buffer_array_dynamic_indexing | ext_descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing},
+    {shader_storage_texel_buffer_array_dynamic_indexing => vulkan_1_2.shader_storage_texel_buffer_array_dynamic_indexing | ext_descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing},
+    {shader_uniform_buffer_array_non_uniform_indexing => vulkan_1_2.shader_uniform_buffer_array_non_uniform_indexing | ext_descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing},
+    {shader_sampled_image_array_non_uniform_indexing => vulkan_1_2.shader_sampled_image_array_non_uniform_indexing | ext_descriptor_indexing.shader_sampled_image_array_non_uniform_indexing},
+    {shader_storage_buffer_array_non_uniform_indexing => vulkan_1_2.shader_storage_buffer_array_non_uniform_indexing | ext_descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing},
+    {shader_storage_image_array_non_uniform_indexing => vulkan_1_2.shader_storage_image_array_non_uniform_indexing | ext_descriptor_indexing.shader_storage_image_array_non_uniform_indexing},
+    {shader_input_attachment_array_non_uniform_indexing => vulkan_1_2.shader_input_attachment_array_non_uniform_indexing | ext_descriptor_indexing.shader_input_attachment_array_non_uniform_indexing},
+    {shader_uniform_texel_buffer_array_non_uniform_indexing => vulkan_1_2.shader_uniform_texel_buffer_array_non_uniform_indexing | ext_descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing},
+    {shader_storage_texel_buffer_array_non_uniform_indexing => vulkan_1_2.shader_storage_texel_buffer_array_non_uniform_indexing | ext_descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing},
+    {descriptor_binding_uniform_buffer_update_after_bind => vulkan_1_2.descriptor_binding_uniform_buffer_update_after_bind | ext_descriptor_indexing.descriptor_binding_uniform_buffer_update_after_bind},
+    {descriptor_binding_sampled_image_update_after_bind => vulkan_1_2.descriptor_binding_sampled_image_update_after_bind | ext_descriptor_indexing.descriptor_binding_sampled_image_update_after_bind},
+    {descriptor_binding_storage_image_update_after_bind => vulkan_1_2.descriptor_binding_storage_image_update_after_bind | ext_descriptor_indexing.descriptor_binding_storage_image_update_after_bind},
+    {descriptor_binding_storage_buffer_update_after_bind => vulkan_1_2.descriptor_binding_storage_buffer_update_after_bind | ext_descriptor_indexing.descriptor_binding_storage_buffer_update_after_bind},
+    {descriptor_binding_uniform_texel_buffer_update_after_bind => vulkan_1_2.descriptor_binding_uniform_texel_buffer_update_after_bind | ext_descriptor_indexing.descriptor_binding_uniform_texel_buffer_update_after_bind},
+    {descriptor_binding_storage_texel_buffer_update_after_bind => vulkan_1_2.descriptor_binding_storage_texel_buffer_update_after_bind | ext_descriptor_indexing.descriptor_binding_storage_texel_buffer_update_after_bind},
+    {descriptor_binding_update_unused_while_pending => vulkan_1_2.descriptor_binding_update_unused_while_pending | ext_descriptor_indexing.descriptor_binding_update_unused_while_pending},
+    {descriptor_binding_partially_bound => vulkan_1_2.descriptor_binding_partially_bound | ext_descriptor_indexing.descriptor_binding_partially_bound},
+    {descriptor_binding_variable_descriptor_count => vulkan_1_2.descriptor_binding_variable_descriptor_count | ext_descriptor_indexing.descriptor_binding_variable_descriptor_count},
+    {runtime_descriptor_array => vulkan_1_2.runtime_descriptor_array | ext_descriptor_indexing.runtime_descriptor_array},
+    {sampler_filter_minmax => vulkan_1_2.sampler_filter_minmax},
+    {scalar_block_layout => vulkan_1_2.scalar_block_layout | ext_scalar_block_layout.scalar_block_layout},
+    {imageless_framebuffer => vulkan_1_2.imageless_framebuffer | khr_imageless_framebuffer.imageless_framebuffer},
+    {uniform_buffer_standard_layout => vulkan_1_2.uniform_buffer_standard_layout | khr_uniform_buffer_standard_layout.uniform_buffer_standard_layout},
+    {shader_subgroup_extended_types => vulkan_1_2.shader_subgroup_extended_types | khr_shader_subgroup_extended_types.shader_subgroup_extended_types},
+    {separate_depth_stencil_layouts => vulkan_1_2.separate_depth_stencil_layouts | khr_separate_depth_stencil_layouts.separate_depth_stencil_layouts},
+    {host_query_reset => vulkan_1_2.host_query_reset | ext_host_query_reset.host_query_reset},
+    {timeline_semaphore => vulkan_1_2.timeline_semaphore | khr_timeline_semaphore.timeline_semaphore},
+    {buffer_device_address => vulkan_1_2.buffer_device_address | khr_buffer_device_address.buffer_device_address},
+    {buffer_device_address_capture_replay => vulkan_1_2.buffer_device_address_capture_replay | khr_buffer_device_address.buffer_device_address_capture_replay},
+    {buffer_device_address_multi_device => vulkan_1_2.buffer_device_address_multi_device | khr_buffer_device_address.buffer_device_address_multi_device},
+    {vulkan_memory_model => vulkan_1_2.vulkan_memory_model | khr_vulkan_memory_model.vulkan_memory_model},
+    {vulkan_memory_model_device_scope => vulkan_1_2.vulkan_memory_model_device_scope | khr_vulkan_memory_model.vulkan_memory_model_device_scope},
+    {vulkan_memory_model_availability_visibility_chains => vulkan_1_2.vulkan_memory_model_availability_visibility_chains | khr_vulkan_memory_model.vulkan_memory_model_availability_visibility_chains},
+    {shader_output_viewport_index => vulkan_1_2.shader_output_viewport_index},
+    {shader_output_layer => vulkan_1_2.shader_output_layer},
+    {subgroup_broadcast_dynamic_id => vulkan_1_2.subgroup_broadcast_dynamic_id},
 
-    {ext_buffer_device_address => ext_buffer_address.bufferDeviceAddress},
-    {ext_buffer_device_address_capture_replay => ext_buffer_address.bufferDeviceAddressCaptureReplay},
-    {ext_buffer_device_address_multi_device => ext_buffer_address.bufferDeviceAddressMultiDevice},
+    // Extensions
+    {ext_buffer_device_address => ext_buffer_address.buffer_device_address},
+    {ext_buffer_device_address_capture_replay => ext_buffer_address.buffer_device_address_capture_replay},
+    {ext_buffer_device_address_multi_device => ext_buffer_address.buffer_device_address_multi_device},
 }
 
 #[derive(Default)]
 pub(crate) struct FeaturesFfi {
     _pinned: PhantomPinned,
 
-    vulkan_1_0: vk::PhysicalDeviceFeatures2KHR,
-    vulkan_1_1: vk::PhysicalDeviceVulkan11Features,
-    vulkan_1_2: vk::PhysicalDeviceVulkan12Features,
+    vulkan_1_0: ash::vk::PhysicalDeviceFeatures2KHR,
+    vulkan_1_1: ash::vk::PhysicalDeviceVulkan11Features,
+    vulkan_1_2: ash::vk::PhysicalDeviceVulkan12Features,
 
-    protected_memory: vk::PhysicalDeviceProtectedMemoryFeatures,
-    shader_draw_parameters: vk::PhysicalDeviceShaderDrawParametersFeatures,
+    protected_memory: ash::vk::PhysicalDeviceProtectedMemoryFeatures,
+    shader_draw_parameters: ash::vk::PhysicalDeviceShaderDrawParametersFeatures,
 
-    khr_16bit_storage: vk::PhysicalDevice16BitStorageFeaturesKHR,
-    khr_8bit_storage: vk::PhysicalDevice8BitStorageFeaturesKHR,
-    khr_buffer_device_address: vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR,
-    khr_imageless_framebuffer: vk::PhysicalDeviceImagelessFramebufferFeaturesKHR,
-    khr_multiview: vk::PhysicalDeviceMultiviewFeaturesKHR,
-    khr_sampler_ycbcr_conversion: vk::PhysicalDeviceSamplerYcbcrConversionFeaturesKHR,
-    khr_separate_depth_stencil_layouts: vk::PhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR,
-    khr_shader_atomic_int64: vk::PhysicalDeviceShaderAtomicInt64FeaturesKHR,
-    khr_shader_float16_int8: vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR,
-    khr_shader_subgroup_extended_types: vk::PhysicalDeviceShaderSubgroupExtendedTypesFeaturesKHR,
-    khr_timeline_semaphore: vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR,
-    khr_uniform_buffer_standard_layout: vk::PhysicalDeviceUniformBufferStandardLayoutFeaturesKHR,
-    khr_variable_pointers: vk::PhysicalDeviceVariablePointersFeaturesKHR,
-    khr_vulkan_memory_model: vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR,
+    khr_16bit_storage: ash::vk::PhysicalDevice16BitStorageFeaturesKHR,
+    khr_8bit_storage: ash::vk::PhysicalDevice8BitStorageFeaturesKHR,
+    khr_buffer_device_address: ash::vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR,
+    khr_imageless_framebuffer: ash::vk::PhysicalDeviceImagelessFramebufferFeaturesKHR,
+    khr_multiview: ash::vk::PhysicalDeviceMultiviewFeaturesKHR,
+    khr_sampler_ycbcr_conversion: ash::vk::PhysicalDeviceSamplerYcbcrConversionFeaturesKHR,
+    khr_separate_depth_stencil_layouts:
+        ash::vk::PhysicalDeviceSeparateDepthStencilLayoutsFeaturesKHR,
+    khr_shader_atomic_int64: ash::vk::PhysicalDeviceShaderAtomicInt64FeaturesKHR,
+    khr_shader_float16_int8: ash::vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR,
+    khr_shader_subgroup_extended_types:
+        ash::vk::PhysicalDeviceShaderSubgroupExtendedTypesFeaturesKHR,
+    khr_timeline_semaphore: ash::vk::PhysicalDeviceTimelineSemaphoreFeaturesKHR,
+    khr_uniform_buffer_standard_layout:
+        ash::vk::PhysicalDeviceUniformBufferStandardLayoutFeaturesKHR,
+    khr_variable_pointers: ash::vk::PhysicalDeviceVariablePointersFeaturesKHR,
+    khr_vulkan_memory_model: ash::vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR,
 
-    ext_buffer_address: vk::PhysicalDeviceBufferAddressFeaturesEXT,
-    ext_descriptor_indexing: vk::PhysicalDeviceDescriptorIndexingFeaturesEXT,
-    ext_host_query_reset: vk::PhysicalDeviceHostQueryResetFeaturesEXT,
-    ext_scalar_block_layout: vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT,
+    ext_buffer_address: ash::vk::PhysicalDeviceBufferAddressFeaturesEXT,
+    ext_descriptor_indexing: ash::vk::PhysicalDeviceDescriptorIndexingFeaturesEXT,
+    ext_host_query_reset: ash::vk::PhysicalDeviceHostQueryResetFeaturesEXT,
+    ext_scalar_block_layout: ash::vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT,
 }
 
 macro_rules! push_struct {
     ($self:ident, $struct:ident) => {
-        $self.$struct.pNext = $self.vulkan_1_0.pNext;
-        $self.vulkan_1_0.pNext = addr_of_mut!($self.$struct) as _;
+        $self.$struct.p_next = $self.vulkan_1_0.p_next;
+        $self.vulkan_1_0.p_next = addr_of_mut!($self.$struct) as _;
     };
 }
 
 impl FeaturesFfi {
     pub(crate) fn make_chain(&mut self, api_version: Version) {
-        if api_version >= Version::major_minor(1, 2) {
+        if api_version >= Version::V1_2 {
             push_struct!(self, vulkan_1_1);
             push_struct!(self, vulkan_1_2);
         } else {
-            if api_version >= Version::major_minor(1, 1) {
+            if api_version >= Version::V1_1 {
                 push_struct!(self, protected_memory);
                 push_struct!(self, shader_draw_parameters);
             }
@@ -315,11 +321,11 @@ impl FeaturesFfi {
         push_struct!(self, ext_buffer_address);
     }
 
-    pub(crate) fn head_as_ref(&self) -> &vk::PhysicalDeviceFeatures2KHR {
+    pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceFeatures2KHR {
         &self.vulkan_1_0
     }
 
-    pub(crate) fn head_as_mut(&mut self) -> &mut vk::PhysicalDeviceFeatures2KHR {
+    pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceFeatures2KHR {
         &mut self.vulkan_1_0
     }
 }

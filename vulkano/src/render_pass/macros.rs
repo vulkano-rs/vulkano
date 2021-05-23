@@ -72,6 +72,7 @@ macro_rules! ordered_passes_renderpass {
             use $crate::image::ImageLayout;
             use $crate::sync::AccessFlags;
             use $crate::sync::PipelineStages;
+            use std::convert::TryInto;
 
             let mut attachment_num = 0;
             $(
@@ -165,7 +166,7 @@ macro_rules! ordered_passes_renderpass {
 
                     AttachmentDesc {
                         format: $format,
-                        samples: $samples,
+                        samples: $samples.try_into().unwrap(),
                         load: $crate::render_pass::LoadOp::$load,
                         store: $crate::render_pass::StoreOp::$store,
                         stencil_load: $crate::render_pass::LoadOp::$load,

@@ -8,7 +8,6 @@
 // according to those terms.
 
 use crate::swapchain::Swapchain;
-use crate::vk;
 
 /// Represents a region on an image.
 ///
@@ -52,15 +51,15 @@ impl RectangleLayer {
     }
 }
 
-impl From<&RectangleLayer> for vk::RectLayerKHR {
+impl From<&RectangleLayer> for ash::vk::RectLayerKHR {
     #[inline]
     fn from(val: &RectangleLayer) -> Self {
-        vk::RectLayerKHR {
-            offset: vk::Offset2D {
+        ash::vk::RectLayerKHR {
+            offset: ash::vk::Offset2D {
                 x: val.offset[0],
                 y: val.offset[1],
             },
-            extent: vk::Extent2D {
+            extent: ash::vk::Extent2D {
                 width: val.extent[0],
                 height: val.extent[1],
             },

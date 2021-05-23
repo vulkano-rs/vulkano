@@ -8,19 +8,20 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::fns::InstanceFunctions;
 use crate::instance::loader;
 use crate::instance::loader::FunctionPointers;
 use crate::instance::loader::Loader;
 use crate::instance::loader::LoadingError;
 use crate::instance::physical_device::{init_physical_devices, PhysicalDeviceInfos};
 use crate::instance::{InstanceExtensions, RawInstanceExtensions};
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::convert::TryInto;
 use std::error;
 use std::ffi::CString;
 use std::fmt;
@@ -54,7 +55,7 @@ use std::sync::Arc;
 /// // compile-time.
 /// let app_infos = app_info_from_cargo_toml!();
 ///
-/// let _instance = Instance::new(Some(&app_infos), Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
+/// let _instance = Instance::new(Some(&app_infos), Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 /// # }
 /// ```
 ///
@@ -115,7 +116,7 @@ use std::sync::Arc;
 ///     .. InstanceExtensions::none()
 /// };
 ///
-/// let instance = match Instance::new(None, Version::major_minor(1, 1), &extensions, None) {
+/// let instance = match Instance::new(None, Version::V1_1, &extensions, None) {
 ///     Ok(i) => i,
 ///     Err(err) => panic!("Couldn't build instance: {:?}", err)
 /// };
@@ -162,13 +163,13 @@ use std::sync::Arc;
 /// let layer_names = layers.iter()
 ///     .map(|l| l.name());
 ///
-/// let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), layer_names)?;
+/// let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), layer_names)?;
 /// # Ok(instance)
 /// # }
 /// ```
 // TODO: mention that extensions must be supported by layers as well
 pub struct Instance {
-    instance: vk::Instance,
+    instance: ash::vk::Instance,
     //alloc: Option<Box<Alloc + Send + Sync>>,
 
     // The highest version that is supported for this instance.
@@ -179,7 +180,7 @@ pub struct Instance {
     max_api_version: Version,
 
     pub(super) physical_devices: Vec<PhysicalDeviceInfos>,
-    vk: vk::InstancePointers,
+    fns: InstanceFunctions,
     extensions: RawInstanceExtensions,
     layers: SmallVec<[CString; 16]>,
     function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
@@ -202,7 +203,7 @@ impl Instance {
     /// use vulkano::instance::InstanceExtensions;
     /// use vulkano::Version;
     ///
-    /// let instance = match Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None) {
+    /// let instance = match Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None) {
     ///     Ok(i) => i,
     ///     Err(err) => panic!("Couldn't build instance: {:?}", err)
     /// };
@@ -302,32 +303,31 @@ impl Instance {
 
         // Building the `vk::ApplicationInfo` if required.
         let app_infos = if let Some(app_infos) = app_infos {
-            Some(vk::ApplicationInfo {
-                sType: vk::STRUCTURE_TYPE_APPLICATION_INFO,
-                pNext: ptr::null(),
-                pApplicationName: app_infos_strings
+            Some(ash::vk::ApplicationInfo {
+                p_application_name: app_infos_strings
                     .as_ref()
                     .unwrap()
                     .0
                     .as_ref()
                     .map(|s| s.as_ptr())
                     .unwrap_or(ptr::null()),
-                applicationVersion: app_infos
+                application_version: app_infos
                     .application_version
-                    .map(|v| v.into_vulkan_version())
+                    .map(|v| v.try_into().expect("Version out of range"))
                     .unwrap_or(0),
-                pEngineName: app_infos_strings
+                p_engine_name: app_infos_strings
                     .as_ref()
                     .unwrap()
                     .1
                     .as_ref()
                     .map(|s| s.as_ptr())
                     .unwrap_or(ptr::null()),
-                engineVersion: app_infos
+                engine_version: app_infos
                     .engine_version
-                    .map(|v| v.into_vulkan_version())
+                    .map(|v| v.try_into().expect("Version out of range"))
                     .unwrap_or(0),
-                apiVersion: max_api_version.into_vulkan_version(),
+                api_version: max_api_version.try_into().expect("Version out of range"),
+                ..Default::default()
             })
         } else {
             None
@@ -347,29 +347,31 @@ impl Instance {
         // Creating the Vulkan instance.
         let instance = unsafe {
             let mut output = MaybeUninit::uninit();
-            let infos = vk::InstanceCreateInfo {
-                sType: vk::STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,
-                pApplicationInfo: if let Some(app) = app_infos.as_ref() {
+            let infos = ash::vk::InstanceCreateInfo {
+                flags: ash::vk::InstanceCreateFlags::empty(),
+                p_application_info: if let Some(app) = app_infos.as_ref() {
                     app as *const _
                 } else {
                     ptr::null()
                 },
-                enabledLayerCount: layers_ptr.len() as u32,
-                ppEnabledLayerNames: layers_ptr.as_ptr(),
-                enabledExtensionCount: extensions_list.len() as u32,
-                ppEnabledExtensionNames: extensions_list.as_ptr(),
+                enabled_layer_count: layers_ptr.len() as u32,
+                pp_enabled_layer_names: layers_ptr.as_ptr(),
+                enabled_extension_count: extensions_list.len() as u32,
+                pp_enabled_extension_names: extensions_list.as_ptr(),
+                ..Default::default()
             };
 
-            let entry_points = function_pointers.entry_points();
-            check_errors(entry_points.CreateInstance(&infos, ptr::null(), output.as_mut_ptr()))?;
+            let fns = function_pointers.fns();
+            check_errors(
+                fns.v1_0
+                    .create_instance(&infos, ptr::null(), output.as_mut_ptr()),
+            )?;
             output.assume_init()
         };
 
         // Loading the function pointers of the newly-created instance.
-        let vk = {
-            vk::InstancePointers::load(|name| {
+        let fns = {
+            InstanceFunctions::load(|name| {
                 function_pointers.get_instance_proc_addr(instance, name.as_ptr())
             })
         };
@@ -380,7 +382,7 @@ impl Instance {
             max_api_version,
             //alloc: None,
             physical_devices: Vec::new(),
-            vk,
+            fns,
             extensions,
             layers,
             function_pointers,
@@ -418,8 +420,8 @@ impl Instance {
 
     /// Grants access to the Vulkan functions of the instance.
     #[inline]
-    pub fn pointers(&self) -> &vk::InstancePointers {
-        &self.vk
+    pub fn fns(&self) -> &InstanceFunctions {
+        &self.fns
     }
 
     /// Returns the list of extensions that have been loaded.
@@ -434,7 +436,7 @@ impl Instance {
     /// use vulkano::Version;
     ///
     /// let extensions = InstanceExtensions::supported_by_core().unwrap();
-    /// let instance = Instance::new(None, Version::major_minor(1, 1), &extensions, None).unwrap();
+    /// let instance = Instance::new(None, Version::V1_1, &extensions, None).unwrap();
     /// assert_eq!(instance.loaded_extensions(), extensions);
     /// ```
     #[inline]
@@ -463,12 +465,10 @@ impl fmt::Debug for Instance {
 }
 
 unsafe impl VulkanObject for Instance {
-    type Object = vk::Instance;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_INSTANCE;
+    type Object = ash::vk::Instance;
 
     #[inline]
-    fn internal_object(&self) -> vk::Instance {
+    fn internal_object(&self) -> ash::vk::Instance {
         self.instance
     }
 }
@@ -477,7 +477,7 @@ impl Drop for Instance {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            self.vk.DestroyInstance(self.instance, ptr::null());
+            self.fns.v1_0.destroy_instance(self.instance, ptr::null());
         }
     }
 }

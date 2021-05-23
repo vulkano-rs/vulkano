@@ -13,7 +13,6 @@
 //! of pixels or samples.
 //!
 
-use crate::vk;
 
 /// State of the rasterizer.
 #[derive(Clone, Debug)]
@@ -95,13 +94,20 @@ pub struct DepthBias {
 #[repr(u32)]
 pub enum CullMode {
     /// No culling.
-    None = vk::CULL_MODE_NONE,
+    None = ash::vk::CullModeFlags::NONE.as_raw(),
     /// The faces facing the front of the screen (ie. facing the user) will be removed.
-    Front = vk::CULL_MODE_FRONT_BIT,
+    Front = ash::vk::CullModeFlags::FRONT.as_raw(),
     /// The faces facing the back of the screen will be removed.
-    Back = vk::CULL_MODE_BACK_BIT,
+    Back = ash::vk::CullModeFlags::BACK.as_raw(),
     /// All faces will be removed.
-    FrontAndBack = vk::CULL_MODE_FRONT_AND_BACK,
+    FrontAndBack = ash::vk::CullModeFlags::FRONT_AND_BACK.as_raw(),
+}
+
+impl From<CullMode> for ash::vk::CullModeFlags {
+    #[inline]
+    fn from(val: CullMode) -> Self {
+        Self::from_raw(val as u32)
+    }
 }
 
 impl Default for CullMode {
@@ -113,15 +119,22 @@ impl Default for CullMode {
 
 /// Specifies which triangle orientation corresponds to the front or the triangle.
 #[derive(Copy, Clone, Debug)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum FrontFace {
     /// Triangles whose vertices are oriented counter-clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
-    CounterClockwise = vk::FRONT_FACE_COUNTER_CLOCKWISE,
+    CounterClockwise = ash::vk::FrontFace::COUNTER_CLOCKWISE.as_raw(),
 
     /// Triangles whose vertices are oriented clockwise on the screen will be considered
     /// as facing their front. Otherwise they will be considered as facing their back.
-    Clockwise = vk::FRONT_FACE_CLOCKWISE,
+    Clockwise = ash::vk::FrontFace::CLOCKWISE.as_raw(),
+}
+
+impl From<FrontFace> for ash::vk::FrontFace {
+    #[inline]
+    fn from(val: FrontFace) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 impl Default for FrontFace {
@@ -132,11 +145,18 @@ impl Default for FrontFace {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum PolygonMode {
-    Fill = vk::POLYGON_MODE_FILL,
-    Line = vk::POLYGON_MODE_LINE,
-    Point = vk::POLYGON_MODE_POINT,
+    Fill = ash::vk::PolygonMode::FILL.as_raw(),
+    Line = ash::vk::PolygonMode::LINE.as_raw(),
+    Point = ash::vk::PolygonMode::POINT.as_raw(),
+}
+
+impl From<PolygonMode> for ash::vk::PolygonMode {
+    #[inline]
+    fn from(val: PolygonMode) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 impl Default for PolygonMode {

@@ -63,8 +63,7 @@ impl_vertex!(InstanceData, position_offset, scale);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::major_minor(1, 1), &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
 
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!(

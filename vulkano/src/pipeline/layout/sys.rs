@@ -15,7 +15,6 @@ use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::layout::PipelineLayoutDescPcRange;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -30,7 +29,7 @@ use std::sync::Arc;
 /// descriptor sets and push constants available to your shaders.
 pub struct PipelineLayout {
     device: Arc<Device>,
-    layout: vk::PipelineLayout,
+    layout: ash::vk::PipelineLayout,
     descriptor_set_layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
     desc: PipelineLayoutDesc,
 }
@@ -42,7 +41,7 @@ impl PipelineLayout {
         device: Arc<Device>,
         desc: PipelineLayoutDesc,
     ) -> Result<PipelineLayout, PipelineLayoutCreationError> {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         desc.check_against_limits(&device)?;
 
@@ -80,8 +79,8 @@ impl PipelineLayout {
                     return Err(PipelineLayoutCreationError::InvalidPushConstant);
                 }
 
-                out.push(vk::PushConstantRange {
-                    stageFlags: stages.into(),
+                out.push(ash::vk::PushConstantRange {
+                    stage_flags: stages.into(),
                     offset: offset as u32,
                     size: size as u32,
                 });
@@ -94,14 +93,14 @@ impl PipelineLayout {
         // We check that with a debug_assert because it's supposed to be enforced by the
         // `PipelineLayoutDesc`.
         debug_assert!({
-            let mut stages = 0;
+            let mut stages = ash::vk::ShaderStageFlags::empty();
             let mut outcome = true;
             for pc in push_constants.iter() {
-                if (stages & pc.stageFlags) != 0 {
+                if !(stages & pc.stage_flags).is_empty() {
                     outcome = false;
                     break;
                 }
-                stages &= pc.stageFlags;
+                stages &= pc.stage_flags;
             }
             outcome
         });
@@ -111,18 +110,17 @@ impl PipelineLayout {
 
         // Build the final object.
         let layout = unsafe {
-            let infos = vk::PipelineLayoutCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                setLayoutCount: layouts_ids.len() as u32,
-                pSetLayouts: layouts_ids.as_ptr(),
-                pushConstantRangeCount: push_constants.len() as u32,
-                pPushConstantRanges: push_constants.as_ptr(),
+            let infos = ash::vk::PipelineLayoutCreateInfo {
+                flags: ash::vk::PipelineLayoutCreateFlags::empty(),
+                set_layout_count: layouts_ids.len() as u32,
+                p_set_layouts: layouts_ids.as_ptr(),
+                push_constant_range_count: push_constants.len() as u32,
+                p_push_constant_ranges: push_constants.as_ptr(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreatePipelineLayout(
+            check_errors(fns.v1_0.create_pipeline_layout(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -164,8 +162,7 @@ unsafe impl DeviceOwned for PipelineLayout {
 }
 
 unsafe impl VulkanObject for PipelineLayout {
-    type Object = vk::PipelineLayout;
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_LAYOUT;
+    type Object = ash::vk::PipelineLayout;
 
     fn internal_object(&self) -> Self::Object {
         self.layout
@@ -186,8 +183,12 @@ impl Drop for PipelineLayout {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyPipelineLayout(self.device.internal_object(), self.layout, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0.destroy_pipeline_layout(
+                self.device.internal_object(),
+                self.layout,
+                ptr::null(),
+            );
         }
     }
 }

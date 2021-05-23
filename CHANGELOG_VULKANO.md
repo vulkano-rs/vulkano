@@ -6,9 +6,9 @@
 
 - **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
 - **Breaking** (but unlikely) Vulkano-shaders now compiles to SPIR-V 1.0 by default. If your shader needs features only available in a higher version, you can specify the target version on the `shader!` macro with the new `vulkan_version: "major.minor"` and `spirv_version: "major.minor"` arguments.
-- **Breaking** change to `ImageFormatProperties::sample_counts` field.
-  - `sample_counts` field is originaly represented as u32 type, which is now represented by `SampleCounts` struct-type which is a boolean collection of supported `sample_counts`.
-  - Added conversion function between SampleCountFlagBits (u32-type) and `SampleCounts` type.
+- **Breaking** Changes to how image sample counts are represented.
+  - Instead of an integer, functions with a parameter for number of image samples now take a value of `SampleCount`, an enum with variants named `SampleN`, where `N` is a power-of-two integer. It can be converted to a Vulkan `SampleCountFlags`, and from an integer with `try_from`.
+  - `sample_counts` field is originaly represented as u32 type, which is now represented by `SampleCounts` struct-type which is a boolean collection of supported `sample_counts`. It can be converted to and from a Vulkan `SampleCountFlags`.
 - **Breaking** Changes to shader interfaces and pipeline layouts.
   - The module `descriptor::pipeline_layout` has been renamed to `pipeline::layout`.
   - The trait `ShaderInterfaceDef` has been replaced by a simple struct `ShaderInterface`, and its `elements` method returns a slice instead of an iterator. This means you no longer need to define a new type for a shader interface. The accompanying type `ShaderInterfaceDefEntry` has been renamed to `ShaderInterfaceEntry` to match. The `ShaderInterfaceDefMatch` trait and `EmptyShaderInterfaceDef` struct have been removed.
@@ -18,6 +18,10 @@
   - `ComputeEntryPoint` and `GraphicsEntryPoint` now take a value specifying the push constants descriptor, instead of having a type parameter. The corresponding associated type on `EntryPointAbstract` has been removed.
   - The `GraphicsEntryPointAbstract` trait has been removed. `GraphicsPipelineBuilder` now takes a `GraphicsEntryPoint` object directly, and has lifetime parameters for the 5 shader types instead. `EntryPointDummy` is no longer needed and has been removed.
 - **Breaking** The constructors of `Instance` now take an additional argument to specify the maximum API version.
+- **Breaking** Vulkano is now built on top of [Ash](https://github.com/MaikKlein/ash) instead of vk-sys.
+  - The `EntryPoints`, `InstancePointers` and `DevicePointers` types from vk-sys have been replaced with a new module `fns` containing `EntryFunctions`, `InstanceFunctions` and `DeviceFunctions`. Rather than containing the functions directly, there is a member for each Vulkan version and extension, which is loaded from Ash.
+  - The functions to retrieve the function pointers have been renamed to `fns`.
+  - The `TYPE` associated constant has been removed from the `VulkanObject` trait. This is now provided by the Ash `Handle` trait, which the object returned by `internal_object` must implement.
 - Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan 1.1.
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
 - Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return.

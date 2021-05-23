@@ -62,25 +62,22 @@
 //!
 // FIXME: restrictions aren't checked yet
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+pub use crate::pipeline::depth_stencil::Compare;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-
-pub use crate::pipeline::depth_stencil::Compare;
-
 /// Describes how to retrieve data from an image within a shader.
 pub struct Sampler {
-    sampler: vk::Sampler,
+    sampler: ash::vk::Sampler,
     device: Arc<Device>,
     compare_mode: bool,
     unnormalized: bool,
@@ -318,39 +315,42 @@ impl Sampler {
             (b, None) => b,
         };
 
-        let vk = device.pointers();
+        let fns = device.fns();
         let sampler = unsafe {
-            let infos = vk::SamplerCreateInfo {
-                sType: vk::STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                magFilter: mag_filter as u32,
-                minFilter: min_filter as u32,
-                mipmapMode: mipmap_mode as u32,
-                addressModeU: address_u.into(),
-                addressModeV: address_v.into(),
-                addressModeW: address_w.into(),
-                mipLodBias: mip_lod_bias,
-                anisotropyEnable: if max_anisotropy > 1.0 {
-                    vk::TRUE
+            let infos = ash::vk::SamplerCreateInfo {
+                flags: ash::vk::SamplerCreateFlags::empty(),
+                mag_filter: mag_filter.into(),
+                min_filter: min_filter.into(),
+                mipmap_mode: mipmap_mode.into(),
+                address_mode_u: address_u.into(),
+                address_mode_v: address_v.into(),
+                address_mode_w: address_w.into(),
+                mip_lod_bias: mip_lod_bias,
+                anisotropy_enable: if max_anisotropy > 1.0 {
+                    ash::vk::TRUE
                 } else {
-                    vk::FALSE
+                    ash::vk::FALSE
                 },
-                maxAnisotropy: max_anisotropy,
-                compareEnable: if compare.is_some() {
-                    vk::TRUE
+                max_anisotropy: max_anisotropy,
+                compare_enable: if compare.is_some() {
+                    ash::vk::TRUE
                 } else {
-                    vk::FALSE
+                    ash::vk::FALSE
                 },
-                compareOp: compare.map(|c| c as u32).unwrap_or(0),
-                minLod: min_lod,
-                maxLod: max_lod,
-                borderColor: border_color.map(|b| b as u32).unwrap_or(0),
-                unnormalizedCoordinates: vk::FALSE,
+                compare_op: compare
+                    .map(|c| c.into())
+                    .unwrap_or(ash::vk::CompareOp::NEVER),
+                min_lod: min_lod,
+                max_lod: max_lod,
+                border_color: border_color
+                    .map(|b| b.into())
+                    .unwrap_or(ash::vk::BorderColor::FLOAT_TRANSPARENT_BLACK),
+                unnormalized_coordinates: ash::vk::FALSE,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateSampler(
+            check_errors(fns.v1_0.create_sampler(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -406,7 +406,7 @@ impl Sampler {
         address_u: UnnormalizedSamplerAddressMode,
         address_v: UnnormalizedSamplerAddressMode,
     ) -> Result<Arc<Sampler>, SamplerCreationError> {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         let border_color = address_u.border_color();
         let border_color = match (border_color, address_v.border_color()) {
@@ -419,29 +419,30 @@ impl Sampler {
         };
 
         let sampler = unsafe {
-            let infos = vk::SamplerCreateInfo {
-                sType: vk::STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                magFilter: filter as u32,
-                minFilter: filter as u32,
-                mipmapMode: vk::SAMPLER_MIPMAP_MODE_NEAREST,
-                addressModeU: address_u.into(),
-                addressModeV: address_v.into(),
-                addressModeW: vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, // unused by the impl
-                mipLodBias: 0.0,
-                anisotropyEnable: vk::FALSE,
-                maxAnisotropy: 1.0,
-                compareEnable: vk::FALSE,
-                compareOp: vk::COMPARE_OP_NEVER,
-                minLod: 0.0,
-                maxLod: 0.0,
-                borderColor: border_color.map(|b| b as u32).unwrap_or(0),
-                unnormalizedCoordinates: vk::TRUE,
+            let infos = ash::vk::SamplerCreateInfo {
+                flags: ash::vk::SamplerCreateFlags::empty(),
+                mag_filter: filter.into(),
+                min_filter: filter.into(),
+                mipmap_mode: ash::vk::SamplerMipmapMode::NEAREST,
+                address_mode_u: address_u.into(),
+                address_mode_v: address_v.into(),
+                address_mode_w: ash::vk::SamplerAddressMode::CLAMP_TO_EDGE, // unused by the impl
+                mip_lod_bias: 0.0,
+                anisotropy_enable: ash::vk::FALSE,
+                max_anisotropy: 1.0,
+                compare_enable: ash::vk::FALSE,
+                compare_op: ash::vk::CompareOp::NEVER,
+                min_lod: 0.0,
+                max_lod: 0.0,
+                border_color: border_color
+                    .map(|b| b.into())
+                    .unwrap_or(ash::vk::BorderColor::FLOAT_TRANSPARENT_BLACK),
+                unnormalized_coordinates: ash::vk::TRUE,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateSampler(
+            check_errors(fns.v1_0.create_sampler(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -519,12 +520,10 @@ unsafe impl DeviceOwned for Sampler {
 }
 
 unsafe impl VulkanObject for Sampler {
-    type Object = vk::Sampler;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SAMPLER;
+    type Object = ash::vk::Sampler;
 
     #[inline]
-    fn internal_object(&self) -> vk::Sampler {
+    fn internal_object(&self) -> ash::vk::Sampler {
         self.sampler
     }
 }
@@ -540,35 +539,50 @@ impl Drop for Sampler {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroySampler(self.device.internal_object(), self.sampler, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_sampler(self.device.internal_object(), self.sampler, ptr::null());
         }
     }
 }
 
 /// Describes how the color of each pixel should be determined.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum Filter {
     /// The four pixels whose center surround the requested coordinates are taken, then their
     /// values are interpolated.
-    Linear = vk::FILTER_LINEAR,
+    Linear = ash::vk::Filter::LINEAR.as_raw(),
 
     /// The pixel whose center is nearest to the requested coordinates is taken from the source
     /// and its value is returned as-is.
-    Nearest = vk::FILTER_NEAREST,
+    Nearest = ash::vk::Filter::NEAREST.as_raw(),
+}
+
+impl From<Filter> for ash::vk::Filter {
+    #[inline]
+    fn from(val: Filter) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Describes which mipmap from the source to use.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum MipmapMode {
     /// Use the mipmap whose dimensions are the nearest to the dimensions of the destination.
-    Nearest = vk::SAMPLER_MIPMAP_MODE_NEAREST,
+    Nearest = ash::vk::SamplerMipmapMode::NEAREST.as_raw(),
 
     /// Take the mipmap whose dimensions are no greater than that of the destination together
     /// with the next higher level mipmap, calculate the value for both, and interpolate them.
-    Linear = vk::SAMPLER_MIPMAP_MODE_LINEAR,
+    Linear = ash::vk::SamplerMipmapMode::LINEAR.as_raw(),
+}
+
+impl From<MipmapMode> for ash::vk::SamplerMipmapMode {
+    #[inline]
+    fn from(val: MipmapMode) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// How the sampler should behave when it needs to access a pixel that is out of range of the
@@ -609,15 +623,17 @@ impl SamplerAddressMode {
     }
 }
 
-impl From<SamplerAddressMode> for vk::SamplerAddressMode {
+impl From<SamplerAddressMode> for ash::vk::SamplerAddressMode {
     #[inline]
     fn from(val: SamplerAddressMode) -> Self {
         match val {
-            SamplerAddressMode::Repeat => vk::SAMPLER_ADDRESS_MODE_REPEAT,
-            SamplerAddressMode::MirroredRepeat => vk::SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT,
-            SamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-            SamplerAddressMode::ClampToBorder(_) => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER,
-            SamplerAddressMode::MirrorClampToEdge => vk::SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE,
+            SamplerAddressMode::Repeat => ash::vk::SamplerAddressMode::REPEAT,
+            SamplerAddressMode::MirroredRepeat => ash::vk::SamplerAddressMode::MIRRORED_REPEAT,
+            SamplerAddressMode::ClampToEdge => ash::vk::SamplerAddressMode::CLAMP_TO_EDGE,
+            SamplerAddressMode::ClampToBorder(_) => ash::vk::SamplerAddressMode::CLAMP_TO_BORDER,
+            SamplerAddressMode::MirrorClampToEdge => {
+                ash::vk::SamplerAddressMode::MIRROR_CLAMP_TO_EDGE
+            }
         }
     }
 }
@@ -650,13 +666,15 @@ impl UnnormalizedSamplerAddressMode {
     }
 }
 
-impl From<UnnormalizedSamplerAddressMode> for vk::SamplerAddressMode {
+impl From<UnnormalizedSamplerAddressMode> for ash::vk::SamplerAddressMode {
     #[inline]
     fn from(val: UnnormalizedSamplerAddressMode) -> Self {
         match val {
-            UnnormalizedSamplerAddressMode::ClampToEdge => vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+            UnnormalizedSamplerAddressMode::ClampToEdge => {
+                ash::vk::SamplerAddressMode::CLAMP_TO_EDGE
+            }
             UnnormalizedSamplerAddressMode::ClampToBorder(_) => {
-                vk::SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER
+                ash::vk::SamplerAddressMode::CLAMP_TO_BORDER
             }
         }
     }
@@ -669,26 +687,33 @@ impl From<UnnormalizedSamplerAddressMode> for vk::SamplerAddressMode {
 /// Using a border color restricts the sampler to either floating-point images or integer images.
 /// See the documentation of the `sampler` module for more info.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum BorderColor {
     /// The value `(0.0, 0.0, 0.0, 0.0)`. Can only be used with floating-point images.
-    FloatTransparentBlack = vk::BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,
+    FloatTransparentBlack = ash::vk::BorderColor::FLOAT_TRANSPARENT_BLACK.as_raw(),
 
     /// The value `(0, 0, 0, 0)`. Can only be used with integer images.
-    IntTransparentBlack = vk::BORDER_COLOR_INT_TRANSPARENT_BLACK,
+    IntTransparentBlack = ash::vk::BorderColor::INT_TRANSPARENT_BLACK.as_raw(),
 
     /// The value `(0.0, 0.0, 0.0, 1.0)`. Can only be used with floating-point identity-swizzled
     /// images.
-    FloatOpaqueBlack = vk::BORDER_COLOR_FLOAT_OPAQUE_BLACK,
+    FloatOpaqueBlack = ash::vk::BorderColor::FLOAT_OPAQUE_BLACK.as_raw(),
 
     /// The value `(0, 0, 0, 1)`. Can only be used with integer identity-swizzled images.
-    IntOpaqueBlack = vk::BORDER_COLOR_INT_OPAQUE_BLACK,
+    IntOpaqueBlack = ash::vk::BorderColor::INT_OPAQUE_BLACK.as_raw(),
 
     /// The value `(1.0, 1.0, 1.0, 1.0)`. Can only be used with floating-point images.
-    FloatOpaqueWhite = vk::BORDER_COLOR_FLOAT_OPAQUE_WHITE,
+    FloatOpaqueWhite = ash::vk::BorderColor::FLOAT_OPAQUE_WHITE.as_raw(),
 
     /// The value `(1, 1, 1, 1)`. Can only be used with integer images.
-    IntOpaqueWhite = vk::BORDER_COLOR_INT_OPAQUE_WHITE,
+    IntOpaqueWhite = ash::vk::BorderColor::INT_OPAQUE_WHITE.as_raw(),
+}
+
+impl From<BorderColor> for ash::vk::BorderColor {
+    #[inline]
+    fn from(val: BorderColor) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Error that can happen when creating an instance.

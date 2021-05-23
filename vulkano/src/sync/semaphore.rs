@@ -7,17 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::vk;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -28,7 +26,7 @@ pub struct Semaphore<D = Arc<Device>>
 where
     D: SafeDeref<Target = Device>,
 {
-    semaphore: vk::Semaphore,
+    semaphore: ash::vk::Semaphore,
     device: D,
     must_put_in_pool: bool,
 }
@@ -67,17 +65,16 @@ where
     fn alloc_impl(device: D, must_put_in_pool: bool) -> Result<Semaphore<D>, OomError> {
         let semaphore = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
-            static mut INFOS: vk::SemaphoreCreateInfo = vk::SemaphoreCreateInfo {
-                sType: vk::STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-                pNext: 0 as *const _, // ptr::null()
-                flags: 0,             // reserved
+            let infos = ash::vk::SemaphoreCreateInfo {
+                flags: ash::vk::SemaphoreCreateFlags::empty(),
+                ..Default::default()
             };
 
-            let vk = device.pointers();
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateSemaphore(
+            check_errors(fns.v1_0.create_semaphore(
                 device.internal_object(),
-                &INFOS,
+                &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -103,12 +100,10 @@ unsafe impl<D> VulkanObject for Semaphore<D>
 where
     D: SafeDeref<Target = Device>,
 {
-    type Object = vk::Semaphore;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SEMAPHORE;
+    type Object = ash::vk::Semaphore;
 
     #[inline]
-    fn internal_object(&self) -> vk::Semaphore {
+    fn internal_object(&self) -> ash::vk::Semaphore {
         self.semaphore
     }
 }
@@ -124,8 +119,12 @@ where
                 let raw_sem = self.semaphore;
                 self.device.semaphore_pool().lock().unwrap().push(raw_sem);
             } else {
-                let vk = self.device.pointers();
-                vk.DestroySemaphore(self.device.internal_object(), self.semaphore, ptr::null());
+                let fns = self.device.fns();
+                fns.v1_0.destroy_semaphore(
+                    self.device.internal_object(),
+                    self.semaphore,
+                    ptr::null(),
+                );
             }
         }
     }

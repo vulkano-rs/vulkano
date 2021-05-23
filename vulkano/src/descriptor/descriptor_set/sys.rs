@@ -7,6 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::buffer::BufferInner;
+use crate::buffer::BufferView;
+use crate::check_errors;
+use crate::descriptor::descriptor::DescriptorType;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
+use crate::sampler::Sampler;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::cmp;
 use std::error;
@@ -16,21 +28,6 @@ use std::ops;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
-
-use crate::buffer::BufferAccess;
-use crate::buffer::BufferInner;
-use crate::buffer::BufferView;
-use crate::descriptor::descriptor::DescriptorType;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::image::view::ImageViewAbstract;
-use crate::sampler::Sampler;
-
-use crate::check_errors;
-use crate::vk;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// A pool from which descriptor sets can be allocated.
 ///
@@ -232,7 +229,7 @@ descriptors_count! {
 /// A pool has a maximum number of descriptor sets and a maximum number of descriptors (one value
 /// per descriptor type) it can allocate.
 pub struct UnsafeDescriptorPool {
-    pool: vk::DescriptorPool,
+    pool: ash::vk::DescriptorPool,
     device: Arc<Device>,
 }
 
@@ -256,7 +253,7 @@ impl UnsafeDescriptorPool {
         max_sets: u32,
         free_descriptor_set_bit: bool,
     ) -> Result<UnsafeDescriptorPool, OomError> {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         assert_ne!(max_sets, 0, "The maximum number of sets can't be 0");
 
@@ -265,40 +262,40 @@ impl UnsafeDescriptorPool {
         macro_rules! elem {
             ($field:ident, $ty:expr) => {
                 if count.$field >= 1 {
-                    pool_sizes.push(vk::DescriptorPoolSize {
+                    pool_sizes.push(ash::vk::DescriptorPoolSize {
                         ty: $ty,
-                        descriptorCount: count.$field,
+                        descriptor_count: count.$field,
                     });
                 }
             };
         }
 
-        elem!(uniform_buffer, vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER);
-        elem!(storage_buffer, vk::DESCRIPTOR_TYPE_STORAGE_BUFFER);
+        elem!(uniform_buffer, ash::vk::DescriptorType::UNIFORM_BUFFER);
+        elem!(storage_buffer, ash::vk::DescriptorType::STORAGE_BUFFER);
         elem!(
             uniform_buffer_dynamic,
-            vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+            ash::vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
         );
         elem!(
             storage_buffer_dynamic,
-            vk::DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
+            ash::vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
         );
         elem!(
             uniform_texel_buffer,
-            vk::DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+            ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER
         );
         elem!(
             storage_texel_buffer,
-            vk::DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+            ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER
         );
-        elem!(sampled_image, vk::DESCRIPTOR_TYPE_SAMPLED_IMAGE);
-        elem!(storage_image, vk::DESCRIPTOR_TYPE_STORAGE_IMAGE);
-        elem!(sampler, vk::DESCRIPTOR_TYPE_SAMPLER);
+        elem!(sampled_image, ash::vk::DescriptorType::SAMPLED_IMAGE);
+        elem!(storage_image, ash::vk::DescriptorType::STORAGE_IMAGE);
+        elem!(sampler, ash::vk::DescriptorType::SAMPLER);
         elem!(
             combined_image_sampler,
-            vk::DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+            ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER
         );
-        elem!(input_attachment, vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
+        elem!(input_attachment, ash::vk::DescriptorType::INPUT_ATTACHMENT);
 
         assert!(
             !pool_sizes.is_empty(),
@@ -306,21 +303,20 @@ impl UnsafeDescriptorPool {
         );
 
         let pool = unsafe {
-            let infos = vk::DescriptorPoolCreateInfo {
-                sType: vk::STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                pNext: ptr::null(),
+            let infos = ash::vk::DescriptorPoolCreateInfo {
                 flags: if free_descriptor_set_bit {
-                    vk::DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT
+                    ash::vk::DescriptorPoolCreateFlags::FREE_DESCRIPTOR_SET
                 } else {
-                    0
+                    ash::vk::DescriptorPoolCreateFlags::empty()
                 },
-                maxSets: max_sets,
-                poolSizeCount: pool_sizes.len() as u32,
-                pPoolSizes: pool_sizes.as_ptr(),
+                max_sets: max_sets,
+                pool_size_count: pool_sizes.len() as u32,
+                p_pool_sizes: pool_sizes.as_ptr(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateDescriptorPool(
+            check_errors(fns.v1_0.create_descriptor_pool(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -381,7 +377,7 @@ impl UnsafeDescriptorPool {
     // Actual implementation of `alloc`. Separated so that it is not inlined.
     unsafe fn alloc_impl(
         &mut self,
-        layouts: &SmallVec<[vk::DescriptorSetLayout; 8]>,
+        layouts: &SmallVec<[ash::vk::DescriptorSetLayout; 8]>,
     ) -> Result<UnsafeDescriptorPoolAllocIter, DescriptorPoolAllocError> {
         let num = layouts.len();
 
@@ -391,34 +387,36 @@ impl UnsafeDescriptorPool {
             });
         }
 
-        let infos = vk::DescriptorSetAllocateInfo {
-            sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-            pNext: ptr::null(),
-            descriptorPool: self.pool,
-            descriptorSetCount: layouts.len() as u32,
-            pSetLayouts: layouts.as_ptr(),
+        let infos = ash::vk::DescriptorSetAllocateInfo {
+            descriptor_pool: self.pool,
+            descriptor_set_count: layouts.len() as u32,
+            p_set_layouts: layouts.as_ptr(),
+            ..Default::default()
         };
 
         let mut output = Vec::with_capacity(num);
 
-        let vk = self.device.pointers();
-        let ret =
-            vk.AllocateDescriptorSets(self.device.internal_object(), &infos, output.as_mut_ptr());
+        let fns = self.device.fns();
+        let ret = fns.v1_0.allocate_descriptor_sets(
+            self.device.internal_object(),
+            &infos,
+            output.as_mut_ptr(),
+        );
 
         // According to the specs, because `VK_ERROR_FRAGMENTED_POOL` was added after version
         // 1.0 of Vulkan, any negative return value except out-of-memory errors must be
         // considered as a fragmented pool error.
         match ret {
-            vk::ERROR_OUT_OF_HOST_MEMORY => {
+            ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => {
                 return Err(DescriptorPoolAllocError::OutOfHostMemory);
             }
-            vk::ERROR_OUT_OF_DEVICE_MEMORY => {
+            ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
                 return Err(DescriptorPoolAllocError::OutOfDeviceMemory);
             }
-            vk::ERROR_OUT_OF_POOL_MEMORY_KHR => {
+            ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR => {
                 return Err(DescriptorPoolAllocError::OutOfPoolMemory);
             }
-            c if (c as i32) < 0 => {
+            c if c.as_raw() < 0 => {
                 return Err(DescriptorPoolAllocError::FragmentedPool);
             }
             _ => (),
@@ -459,10 +457,10 @@ impl UnsafeDescriptorPool {
     // Actual implementation of `free`. Separated so that it is not inlined.
     unsafe fn free_impl(
         &mut self,
-        sets: &SmallVec<[vk::DescriptorSet; 8]>,
+        sets: &SmallVec<[ash::vk::DescriptorSet; 8]>,
     ) -> Result<(), OomError> {
-        let vk = self.device.pointers();
-        check_errors(vk.FreeDescriptorSets(
+        let fns = self.device.fns();
+        check_errors(fns.v1_0.free_descriptor_sets(
             self.device.internal_object(),
             self.pool,
             sets.len() as u32,
@@ -475,11 +473,11 @@ impl UnsafeDescriptorPool {
     ///
     /// This destroys all descriptor sets and empties the pool.
     pub unsafe fn reset(&mut self) -> Result<(), OomError> {
-        let vk = self.device.pointers();
-        check_errors(vk.ResetDescriptorPool(
+        let fns = self.device.fns();
+        check_errors(fns.v1_0.reset_descriptor_pool(
             self.device.internal_object(),
             self.pool,
-            0, /* reserved flags */
+            ash::vk::DescriptorPoolResetFlags::empty(),
         ))?;
         Ok(())
     }
@@ -505,8 +503,9 @@ impl Drop for UnsafeDescriptorPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyDescriptorPool(self.device.internal_object(), self.pool, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_descriptor_pool(self.device.internal_object(), self.pool, ptr::null());
         }
     }
 }
@@ -551,7 +550,7 @@ impl fmt::Display for DescriptorPoolAllocError {
 /// Iterator to the descriptor sets allocated from an unsafe descriptor pool.
 #[derive(Debug)]
 pub struct UnsafeDescriptorPoolAllocIter {
-    sets: VecIntoIter<vk::DescriptorSet>,
+    sets: VecIntoIter<ash::vk::DescriptorSet>,
 }
 
 impl Iterator for UnsafeDescriptorPoolAllocIter {
@@ -576,7 +575,7 @@ impl ExactSizeIterator for UnsafeDescriptorPoolAllocIter {}
 /// doesn't hold the pool or the device it is associated to.
 /// Instead it is an object meant to be used with the `UnsafeDescriptorPool`.
 pub struct UnsafeDescriptorSet {
-    set: vk::DescriptorSet,
+    set: ash::vk::DescriptorSet,
 }
 
 impl UnsafeDescriptorSet {
@@ -604,7 +603,7 @@ impl UnsafeDescriptorSet {
     where
         I: Iterator<Item = DescriptorWrite>,
     {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         // In this function, we build 4 arrays: one array of image descriptors (image_descriptors),
         // one for buffer descriptors (buffer_descriptors), one for buffer view descriptors
@@ -635,17 +634,16 @@ impl UnsafeDescriptorSet {
 
             // The whole struct thats written here is valid, except for pImageInfo, pBufferInfo
             // and pTexelBufferView which are placeholder values.
-            raw_writes.push(vk::WriteDescriptorSet {
-                sType: vk::STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                pNext: ptr::null(),
-                dstSet: self.set,
-                dstBinding: indiv_write.binding,
-                dstArrayElement: indiv_write.first_array_element,
-                descriptorCount: indiv_write.inner.len() as u32,
-                descriptorType: indiv_write.ty() as u32,
-                pImageInfo: ptr::null(),
-                pBufferInfo: ptr::null(),
-                pTexelBufferView: ptr::null(),
+            raw_writes.push(ash::vk::WriteDescriptorSet {
+                dst_set: self.set,
+                dst_binding: indiv_write.binding,
+                dst_array_element: indiv_write.first_array_element,
+                descriptor_count: indiv_write.inner.len() as u32,
+                descriptor_type: indiv_write.ty().into(),
+                p_image_info: ptr::null(),
+                p_buffer_info: ptr::null(),
+                p_texel_buffer_view: ptr::null(),
+                ..Default::default()
             });
 
             match indiv_write.inner[0] {
@@ -678,7 +676,7 @@ impl UnsafeDescriptorSet {
                 match *elem {
                     DescriptorWriteInner::UniformBuffer(buffer, offset, size)
                     | DescriptorWriteInner::DynamicUniformBuffer(buffer, offset, size) => {
-                        buffer_descriptors.push(vk::DescriptorBufferInfo {
+                        buffer_descriptors.push(ash::vk::DescriptorBufferInfo {
                             buffer,
                             offset: offset as u64,
                             range: size as u64,
@@ -686,45 +684,45 @@ impl UnsafeDescriptorSet {
                     }
                     DescriptorWriteInner::StorageBuffer(buffer, offset, size)
                     | DescriptorWriteInner::DynamicStorageBuffer(buffer, offset, size) => {
-                        buffer_descriptors.push(vk::DescriptorBufferInfo {
+                        buffer_descriptors.push(ash::vk::DescriptorBufferInfo {
                             buffer,
                             offset: offset as u64,
                             range: size as u64,
                         });
                     }
                     DescriptorWriteInner::Sampler(sampler) => {
-                        image_descriptors.push(vk::DescriptorImageInfo {
+                        image_descriptors.push(ash::vk::DescriptorImageInfo {
                             sampler,
-                            imageView: 0,
-                            imageLayout: 0,
+                            image_view: ash::vk::ImageView::null(),
+                            image_layout: ash::vk::ImageLayout::UNDEFINED,
                         });
                     }
                     DescriptorWriteInner::CombinedImageSampler(sampler, view, layout) => {
-                        image_descriptors.push(vk::DescriptorImageInfo {
+                        image_descriptors.push(ash::vk::DescriptorImageInfo {
                             sampler,
-                            imageView: view,
-                            imageLayout: layout,
+                            image_view: view,
+                            image_layout: layout,
                         });
                     }
                     DescriptorWriteInner::StorageImage(view, layout) => {
-                        image_descriptors.push(vk::DescriptorImageInfo {
-                            sampler: 0,
-                            imageView: view,
-                            imageLayout: layout,
+                        image_descriptors.push(ash::vk::DescriptorImageInfo {
+                            sampler: ash::vk::Sampler::null(),
+                            image_view: view,
+                            image_layout: layout,
                         });
                     }
                     DescriptorWriteInner::SampledImage(view, layout) => {
-                        image_descriptors.push(vk::DescriptorImageInfo {
-                            sampler: 0,
-                            imageView: view,
-                            imageLayout: layout,
+                        image_descriptors.push(ash::vk::DescriptorImageInfo {
+                            sampler: ash::vk::Sampler::null(),
+                            image_view: view,
+                            image_layout: layout,
                         });
                     }
                     DescriptorWriteInner::InputAttachment(view, layout) => {
-                        image_descriptors.push(vk::DescriptorImageInfo {
-                            sampler: 0,
-                            imageView: view,
-                            imageLayout: layout,
+                        image_descriptors.push(ash::vk::DescriptorImageInfo {
+                            sampler: ash::vk::Sampler::null(),
+                            image_view: view,
+                            image_layout: layout,
                         });
                     }
                     DescriptorWriteInner::UniformTexelBuffer(view)
@@ -738,17 +736,17 @@ impl UnsafeDescriptorSet {
         // Now that `image_descriptors`, `buffer_descriptors` and `buffer_views_descriptors` are
         // entirely filled and will never move again, we can fill the pointers in `raw_writes`.
         for (i, write) in raw_writes.iter_mut().enumerate() {
-            write.pImageInfo = match raw_writes_img_infos[i] {
+            write.p_image_info = match raw_writes_img_infos[i] {
                 Some(off) => image_descriptors.as_ptr().offset(off as isize),
                 None => ptr::null(),
             };
 
-            write.pBufferInfo = match raw_writes_buf_infos[i] {
+            write.p_buffer_info = match raw_writes_buf_infos[i] {
                 Some(off) => buffer_descriptors.as_ptr().offset(off as isize),
                 None => ptr::null(),
             };
 
-            write.pTexelBufferView = match raw_writes_buf_view_infos[i] {
+            write.p_texel_buffer_view = match raw_writes_buf_view_infos[i] {
                 Some(off) => buffer_views_descriptors.as_ptr().offset(off as isize),
                 None => ptr::null(),
             };
@@ -757,7 +755,7 @@ impl UnsafeDescriptorSet {
         // It is forbidden to call `vkUpdateDescriptorSets` with 0 writes, so we need to perform
         // this emptiness check.
         if !raw_writes.is_empty() {
-            vk.UpdateDescriptorSets(
+            fns.v1_0.update_descriptor_sets(
                 device.internal_object(),
                 raw_writes.len() as u32,
                 raw_writes.as_ptr(),
@@ -769,12 +767,10 @@ impl UnsafeDescriptorSet {
 }
 
 unsafe impl VulkanObject for UnsafeDescriptorSet {
-    type Object = vk::DescriptorSet;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DESCRIPTOR_SET;
+    type Object = ash::vk::DescriptorSet;
 
     #[inline]
-    fn internal_object(&self) -> vk::DescriptorSet {
+    fn internal_object(&self) -> ash::vk::DescriptorSet {
         self.set
     }
 }
@@ -798,17 +794,17 @@ pub struct DescriptorWrite {
 
 #[derive(Debug, Clone)]
 enum DescriptorWriteInner {
-    Sampler(vk::Sampler),
-    StorageImage(vk::ImageView, vk::ImageLayout),
-    SampledImage(vk::ImageView, vk::ImageLayout),
-    CombinedImageSampler(vk::Sampler, vk::ImageView, vk::ImageLayout),
-    UniformTexelBuffer(vk::BufferView),
-    StorageTexelBuffer(vk::BufferView),
-    UniformBuffer(vk::Buffer, usize, usize),
-    StorageBuffer(vk::Buffer, usize, usize),
-    DynamicUniformBuffer(vk::Buffer, usize, usize),
-    DynamicStorageBuffer(vk::Buffer, usize, usize),
-    InputAttachment(vk::ImageView, vk::ImageLayout),
+    Sampler(ash::vk::Sampler),
+    StorageImage(ash::vk::ImageView, ash::vk::ImageLayout),
+    SampledImage(ash::vk::ImageView, ash::vk::ImageLayout),
+    CombinedImageSampler(ash::vk::Sampler, ash::vk::ImageView, ash::vk::ImageLayout),
+    UniformTexelBuffer(ash::vk::BufferView),
+    StorageTexelBuffer(ash::vk::BufferView),
+    UniformBuffer(ash::vk::Buffer, usize, usize),
+    StorageBuffer(ash::vk::Buffer, usize, usize),
+    DynamicUniformBuffer(ash::vk::Buffer, usize, usize),
+    DynamicStorageBuffer(ash::vk::Buffer, usize, usize),
+    InputAttachment(ash::vk::ImageView, ash::vk::ImageLayout),
 }
 
 macro_rules! smallvec {
@@ -834,8 +830,10 @@ impl DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = layouts.storage_image as u32;
-                DescriptorWriteInner::StorageImage(image_view.inner().internal_object(), layout)
+                DescriptorWriteInner::StorageImage(
+                    image_view.inner().internal_object(),
+                    layouts.storage_image.into(),
+                )
             }),
         }
     }
@@ -863,8 +861,10 @@ impl DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = layouts.sampled_image as u32;
-                DescriptorWriteInner::SampledImage(image_view.inner().internal_object(), layout)
+                DescriptorWriteInner::SampledImage(
+                    image_view.inner().internal_object(),
+                    layouts.sampled_image.into(),
+                )
             }),
         }
     }
@@ -888,11 +888,10 @@ impl DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = layouts.combined_image_sampler as u32;
                 DescriptorWriteInner::CombinedImageSampler(
                     sampler.internal_object(),
                     image_view.inner().internal_object(),
-                    layout,
+                    layouts.combined_image_sampler.into(),
                 )
             }),
         }
@@ -1100,8 +1099,10 @@ impl DescriptorWrite {
             binding,
             first_array_element: array_element,
             inner: smallvec!({
-                let layout = layouts.input_attachment as u32;
-                DescriptorWriteInner::InputAttachment(image_view.inner().internal_object(), layout)
+                DescriptorWriteInner::InputAttachment(
+                    image_view.inner().internal_object(),
+                    layouts.input_attachment.into(),
+                )
             }),
         }
     }

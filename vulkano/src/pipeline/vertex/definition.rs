@@ -11,7 +11,6 @@ use crate::buffer::BufferAccess;
 use crate::format::Format;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::VertexMemberTy;
-use crate::vk;
 use crate::SafeDeref;
 use std::error;
 use std::fmt;
@@ -53,12 +52,19 @@ where
 
 /// How the vertex source should be unrolled.
 #[derive(Copy, Clone, Debug)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum InputRate {
     /// Each element of the source corresponds to a vertex.
-    Vertex = vk::VERTEX_INPUT_RATE_VERTEX,
+    Vertex = ash::vk::VertexInputRate::VERTEX.as_raw(),
     /// Each element of the source corresponds to an instance.
-    Instance = vk::VERTEX_INPUT_RATE_INSTANCE,
+    Instance = ash::vk::VertexInputRate::INSTANCE.as_raw(),
+}
+
+impl From<InputRate> for ash::vk::VertexInputRate {
+    #[inline]
+    fn from(val: InputRate) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Information about a single attribute within a vertex.

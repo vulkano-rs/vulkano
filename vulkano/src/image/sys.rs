@@ -23,20 +23,21 @@ use crate::image::ImageCreateFlags;
 use crate::image::ImageDimensions;
 use crate::image::ImageUsage;
 use crate::image::MipmapsCount;
+use crate::image::SampleCount;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MemoryRequirements;
 use crate::sync::Sharing;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
+use crate::Version;
 use crate::VulkanObject;
+use ash::vk::Handle;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
@@ -56,14 +57,14 @@ use std::sync::Arc;
 /// - The image layout must be manually enforced and transitioned.
 ///
 pub struct UnsafeImage {
-    image: vk::Image,
+    image: ash::vk::Image,
     device: Arc<Device>,
     usage: ImageUsage,
     format: Format,
     flags: ImageCreateFlags,
 
     dimensions: ImageDimensions,
-    samples: u32,
+    samples: SampleCount,
     mipmaps: u32,
 
     // Features that are supported for this particular format.
@@ -90,7 +91,7 @@ impl UnsafeImage {
         format: Format,
         flags: ImageCreateFlags,
         dimensions: ImageDimensions,
-        num_samples: u32,
+        num_samples: SampleCount,
         mipmaps: Mi,
         sharing: Sharing<I>,
         linear_tiling: bool,
@@ -101,8 +102,8 @@ impl UnsafeImage {
         I: Iterator<Item = u32>,
     {
         let sharing = match sharing {
-            Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
-            Sharing::Concurrent(ids) => (vk::SHARING_MODE_CONCURRENT, ids.collect()),
+            Sharing::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
+            Sharing::Concurrent(ids) => (ash::vk::SharingMode::CONCURRENT, ids.collect()),
         };
 
         UnsafeImage::new_impl(
@@ -126,9 +127,9 @@ impl UnsafeImage {
         format: Format,
         flags: ImageCreateFlags,
         dimensions: ImageDimensions,
-        num_samples: u32,
+        num_samples: SampleCount,
         mipmaps: MipmapsCount,
-        (sh_mode, sh_indices): (vk::SharingMode, SmallVec<[u32; 8]>),
+        (sh_mode, sh_indices): (ash::vk::SharingMode, SmallVec<[u32; 8]>),
         linear_tiling: bool,
         preinitialized_layout: bool,
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError> {
@@ -142,8 +143,8 @@ impl UnsafeImage {
             unimplemented!();
         }
 
-        let vk = device.pointers();
-        let vk_i = device.instance().pointers();
+        let fns = device.fns();
+        let fns_i = device.instance().fns();
 
         // Checking if image usage conforms to what is supported.
         let format_features = {
@@ -176,7 +177,8 @@ impl UnsafeImage {
             {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if device.loaded_extensions().khr_maintenance1 {
+            if device.api_version() >= Version::V1_1 || device.loaded_extensions().khr_maintenance1
+            {
                 if usage.transfer_source && !features.transfer_src {
                     return Err(ImageCreationError::UnsupportedUsage);
                 }
@@ -240,61 +242,57 @@ impl UnsafeImage {
         };
 
         // Checking whether the number of samples is supported.
-        if num_samples == 0 {
-            return Err(ImageCreationError::UnsupportedSamplesCount {
-                obtained: num_samples,
-            });
-        } else if !num_samples.is_power_of_two() {
-            return Err(ImageCreationError::UnsupportedSamplesCount {
-                obtained: num_samples,
-            });
-        } else {
-            let mut supported_samples = 0x7f; // all bits up to VK_SAMPLE_COUNT_64_BIT
+        let mut supported_samples = ash::vk::SampleCountFlags::from_raw(0x7f); // all bits up to VK_SAMPLE_COUNT_64_BIT
 
-            if usage.sampled {
-                match format.ty() {
-                    FormatTy::Float | FormatTy::Compressed => {
-                        supported_samples &= device
-                            .physical_device()
-                            .limits()
-                            .sampled_image_color_sample_counts();
-                    }
-                    FormatTy::Uint | FormatTy::Sint => {
-                        supported_samples &= device
-                            .physical_device()
-                            .limits()
-                            .sampled_image_integer_sample_counts();
-                    }
-                    FormatTy::Depth => {
-                        supported_samples &= device
-                            .physical_device()
-                            .limits()
-                            .sampled_image_depth_sample_counts();
-                    }
-                    FormatTy::Stencil => {
-                        supported_samples &= device
-                            .physical_device()
-                            .limits()
-                            .sampled_image_stencil_sample_counts();
-                    }
-                    FormatTy::DepthStencil => {
-                        supported_samples &= device
-                            .physical_device()
-                            .limits()
-                            .sampled_image_depth_sample_counts();
-                        supported_samples &= device
-                            .physical_device()
-                            .limits()
-                            .sampled_image_stencil_sample_counts();
-                    }
-                    FormatTy::Ycbcr => {
-                        /*
-                         * VUID-VkImageCreateInfo-format-02562:  If the image format is one of
-                         * those formats requiring sampler ycbcr conversion, samples *must* be
-                         * VK_SAMPLE_COUNT_1_BIT
-                         */
-                        supported_samples &= vk::SAMPLE_COUNT_1_BIT;
-                    }
+        if usage.sampled {
+            match format.ty() {
+                FormatTy::Float | FormatTy::Compressed => {
+                    supported_samples &= device
+                        .physical_device()
+                        .limits()
+                        .sampled_image_color_sample_counts()
+                        .into();
+                }
+                FormatTy::Uint | FormatTy::Sint => {
+                    supported_samples &= device
+                        .physical_device()
+                        .limits()
+                        .sampled_image_integer_sample_counts()
+                        .into();
+                }
+                FormatTy::Depth => {
+                    supported_samples &= device
+                        .physical_device()
+                        .limits()
+                        .sampled_image_depth_sample_counts()
+                        .into();
+                }
+                FormatTy::Stencil => {
+                    supported_samples &= device
+                        .physical_device()
+                        .limits()
+                        .sampled_image_stencil_sample_counts()
+                        .into();
+                }
+                FormatTy::DepthStencil => {
+                    supported_samples &= device
+                        .physical_device()
+                        .limits()
+                        .sampled_image_depth_sample_counts()
+                        .into();
+                    supported_samples &= device
+                        .physical_device()
+                        .limits()
+                        .sampled_image_stencil_sample_counts()
+                        .into();
+                }
+                FormatTy::Ycbcr => {
+                    /*
+                     * VUID-VkImageCreateInfo-format-02562:  If the image format is one of
+                     * those formats requiring sampler ycbcr conversion, samples *must* be
+                     * VK_SAMPLE_COUNT_1_BIT
+                     */
+                    supported_samples &= ash::vk::SampleCountFlags::TYPE_1;
                 }
             }
 
@@ -302,7 +300,8 @@ impl UnsafeImage {
                 supported_samples &= device
                     .physical_device()
                     .limits()
-                    .storage_image_sample_counts();
+                    .storage_image_sample_counts()
+                    .into();
             }
 
             if usage.color_attachment
@@ -315,29 +314,34 @@ impl UnsafeImage {
                         supported_samples &= device
                             .physical_device()
                             .limits()
-                            .framebuffer_color_sample_counts();
+                            .framebuffer_color_sample_counts()
+                            .into();
                     }
                     FormatTy::Depth => {
                         supported_samples &= device
                             .physical_device()
                             .limits()
-                            .framebuffer_depth_sample_counts();
+                            .framebuffer_depth_sample_counts()
+                            .into();
                     }
                     FormatTy::Stencil => {
                         supported_samples &= device
                             .physical_device()
                             .limits()
-                            .framebuffer_stencil_sample_counts();
+                            .framebuffer_stencil_sample_counts()
+                            .into();
                     }
                     FormatTy::DepthStencil => {
                         supported_samples &= device
                             .physical_device()
                             .limits()
-                            .framebuffer_depth_sample_counts();
+                            .framebuffer_depth_sample_counts()
+                            .into();
                         supported_samples &= device
                             .physical_device()
                             .limits()
-                            .framebuffer_stencil_sample_counts();
+                            .framebuffer_stencil_sample_counts()
+                            .into();
                     }
                     FormatTy::Ycbcr => {
                         /*
@@ -349,7 +353,7 @@ impl UnsafeImage {
                 }
             }
 
-            if (num_samples & supported_samples) == 0 {
+            if (ash::vk::SampleCountFlags::from(num_samples) & supported_samples).is_empty() {
                 let err = ImageCreationError::UnsupportedSamplesCount {
                     obtained: num_samples,
                 };
@@ -359,7 +363,7 @@ impl UnsafeImage {
 
         // If the `shaderStorageImageMultisample` feature is not enabled and we have
         // `usage_storage` set to true, then the number of samples must be 1.
-        if usage.storage && num_samples > 1 {
+        if usage.storage && num_samples as u32 > 1 {
             if !device.enabled_features().shader_storage_image_multisample {
                 return Err(ImageCreationError::ShaderStorageImageMultisampleFeatureNotEnabled);
             }
@@ -374,12 +378,12 @@ impl UnsafeImage {
                 if width == 0 || array_layers == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
-                let extent = vk::Extent3D {
+                let extent = ash::vk::Extent3D {
                     width,
                     height: 1,
                     depth: 1,
                 };
-                (vk::IMAGE_TYPE_1D, extent, array_layers)
+                (ash::vk::ImageType::TYPE_1D, extent, array_layers)
             }
             ImageDimensions::Dim2d {
                 width,
@@ -389,12 +393,12 @@ impl UnsafeImage {
                 if width == 0 || height == 0 || array_layers == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
-                let extent = vk::Extent3D {
+                let extent = ash::vk::Extent3D {
                     width,
                     height,
                     depth: 1,
                 };
-                (vk::IMAGE_TYPE_2D, extent, array_layers)
+                (ash::vk::ImageType::TYPE_2D, extent, array_layers)
             }
             ImageDimensions::Dim3d {
                 width,
@@ -404,24 +408,27 @@ impl UnsafeImage {
                 if width == 0 || height == 0 || depth == 0 {
                     return Err(ImageCreationError::UnsupportedDimensions { dimensions });
                 }
-                let extent = vk::Extent3D {
+                let extent = ash::vk::Extent3D {
                     width,
                     height,
                     depth,
                 };
-                (vk::IMAGE_TYPE_3D, extent, 1)
+                (ash::vk::ImageType::TYPE_3D, extent, 1)
             }
         };
 
         // Checking flags requirements.
         if flags.cube_compatible {
-            if !(ty == vk::IMAGE_TYPE_2D && extent.width == extent.height && array_layers >= 6) {
+            if !(ty == ash::vk::ImageType::TYPE_2D
+                && extent.width == extent.height
+                && array_layers >= 6)
+            {
                 return Err(ImageCreationError::CreationFlagRequirementsNotMet);
             }
         }
 
         if flags.array_2d_compatible {
-            if !(ty == vk::IMAGE_TYPE_3D) {
+            if !(ty == ash::vk::ImageType::TYPE_3D) {
                 return Err(ImageCreationError::CreationFlagRequirementsNotMet);
             }
         }
@@ -432,13 +439,13 @@ impl UnsafeImage {
             capabilities_error = Some(err);
         }
         match ty {
-            vk::IMAGE_TYPE_1D => {
+            ash::vk::ImageType::TYPE_1D => {
                 if extent.width > device.physical_device().limits().max_image_dimension_1d() {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
             }
-            vk::IMAGE_TYPE_2D => {
+            ash::vk::ImageType::TYPE_2D => {
                 let limit = device.physical_device().limits().max_image_dimension_2d();
                 if extent.width > limit || extent.height > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
@@ -453,7 +460,7 @@ impl UnsafeImage {
                     }
                 }
             }
-            vk::IMAGE_TYPE_3D => {
+            ash::vk::ImageType::TYPE_3D => {
                 let limit = device.physical_device().limits().max_image_dimension_3d();
                 if extent.width > limit || extent.height > limit || extent.depth > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
@@ -469,20 +476,20 @@ impl UnsafeImage {
         // implementation for additional image capabilities.
         if let Some(capabilities_error) = capabilities_error {
             let tiling = if linear_tiling {
-                vk::IMAGE_TILING_LINEAR
+                ash::vk::ImageTiling::LINEAR
             } else {
-                vk::IMAGE_TILING_OPTIMAL
+                ash::vk::ImageTiling::OPTIMAL
             };
 
             let mut output = MaybeUninit::uninit();
             let physical_device = device.physical_device().internal_object();
-            let r = vk_i.GetPhysicalDeviceImageFormatProperties(
+            let r = fns_i.v1_0.get_physical_device_image_format_properties(
                 physical_device,
-                format as u32,
+                format.into(),
                 ty,
                 tiling,
                 usage_bits,
-                0, /* TODO */
+                ash::vk::ImageCreateFlags::empty(), /* TODO */
                 output.as_mut_ptr(),
             );
 
@@ -496,12 +503,12 @@ impl UnsafeImage {
 
             let output = output.assume_init();
 
-            if extent.width > output.maxExtent.width
-                || extent.height > output.maxExtent.height
-                || extent.depth > output.maxExtent.depth
-                || mipmaps > output.maxMipLevels
-                || array_layers > output.maxArrayLayers
-                || (num_samples & output.sampleCounts) == 0
+            if extent.width > output.max_extent.width
+                || extent.height > output.max_extent.height
+                || extent.depth > output.max_extent.depth
+                || mipmaps > output.max_mip_levels
+                || array_layers > output.max_array_layers
+                || (ash::vk::SampleCountFlags::from(num_samples) & output.sample_counts).is_empty()
             {
                 return Err(capabilities_error);
             }
@@ -509,34 +516,33 @@ impl UnsafeImage {
 
         // Everything now ok. Creating the image.
         let image = {
-            let infos = vk::ImageCreateInfo {
-                sType: vk::STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                pNext: ptr::null(),
+            let infos = ash::vk::ImageCreateInfo {
                 flags: flags.into(),
-                imageType: ty,
-                format: format as u32,
+                image_type: ty,
+                format: format.into(),
                 extent,
-                mipLevels: mipmaps,
-                arrayLayers: array_layers,
-                samples: num_samples,
+                mip_levels: mipmaps,
+                array_layers: array_layers,
+                samples: num_samples.into(),
                 tiling: if linear_tiling {
-                    vk::IMAGE_TILING_LINEAR
+                    ash::vk::ImageTiling::LINEAR
                 } else {
-                    vk::IMAGE_TILING_OPTIMAL
+                    ash::vk::ImageTiling::OPTIMAL
                 },
                 usage: usage_bits,
-                sharingMode: sh_mode,
-                queueFamilyIndexCount: sh_indices.len() as u32,
-                pQueueFamilyIndices: sh_indices.as_ptr(),
-                initialLayout: if preinitialized_layout {
-                    vk::IMAGE_LAYOUT_PREINITIALIZED
+                sharing_mode: sh_mode,
+                queue_family_index_count: sh_indices.len() as u32,
+                p_queue_family_indices: sh_indices.as_ptr(),
+                initial_layout: if preinitialized_layout {
+                    ash::vk::ImageLayout::PREINITIALIZED
                 } else {
-                    vk::IMAGE_LAYOUT_UNDEFINED
+                    ash::vk::ImageLayout::UNDEFINED
                 },
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateImage(
+            check_errors(fns.v1_0.create_image(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -545,47 +551,62 @@ impl UnsafeImage {
             output.assume_init()
         };
 
-        let mem_reqs = if device.loaded_extensions().khr_get_memory_requirements2 {
-            let infos = vk::ImageMemoryRequirementsInfo2KHR {
-                sType: vk::STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR,
-                pNext: ptr::null_mut(),
+        let mem_reqs = if device.api_version() >= Version::V1_1
+            || device.loaded_extensions().khr_get_memory_requirements2
+        {
+            let infos = ash::vk::ImageMemoryRequirementsInfo2 {
                 image,
+                ..Default::default()
             };
 
-            let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
-                Some(vk::MemoryDedicatedRequirementsKHR {
-                    sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-                    pNext: ptr::null_mut(),
-                    prefersDedicatedAllocation: mem::zeroed(),
-                    requiresDedicatedAllocation: mem::zeroed(),
-                })
+            let mut output2 = if device.api_version() >= Version::V1_1
+                || device.loaded_extensions().khr_dedicated_allocation
+            {
+                Some(ash::vk::MemoryDedicatedRequirements::default())
             } else {
                 None
             };
 
-            let mut output = vk::MemoryRequirements2KHR {
-                sType: vk::STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-                pNext: output2
+            let mut output = ash::vk::MemoryRequirements2 {
+                p_next: output2
                     .as_mut()
-                    .map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
+                    .map(|o| o as *mut _)
                     .unwrap_or(ptr::null_mut()) as *mut _,
-                memoryRequirements: mem::zeroed(),
+                ..Default::default()
             };
 
-            vk.GetImageMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
-            debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
+            if device.api_version() >= Version::V1_1 {
+                fns.v1_1.get_image_memory_requirements2(
+                    device.internal_object(),
+                    &infos,
+                    &mut output,
+                );
+            } else {
+                fns.khr_get_memory_requirements2
+                    .get_image_memory_requirements2_khr(
+                        device.internal_object(),
+                        &infos,
+                        &mut output,
+                    );
+            }
 
-            let mut out = MemoryRequirements::from(output.memoryRequirements);
+            debug_assert!(output.memory_requirements.memory_type_bits != 0);
+
+            let mut out = MemoryRequirements::from(output.memory_requirements);
             if let Some(output2) = output2 {
-                debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
-                out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
+                debug_assert_eq!(output2.requires_dedicated_allocation, 0);
+                out.prefer_dedicated = output2.prefers_dedicated_allocation != 0;
             }
             out
         } else {
-            let mut output: MaybeUninit<vk::MemoryRequirements> = MaybeUninit::uninit();
-            vk.GetImageMemoryRequirements(device.internal_object(), image, output.as_mut_ptr());
+            let mut output: MaybeUninit<ash::vk::MemoryRequirements> = MaybeUninit::uninit();
+            fns.v1_0.get_image_memory_requirements(
+                device.internal_object(),
+                image,
+                output.as_mut_ptr(),
+            );
             let output = output.assume_init();
-            debug_assert!(output.memoryTypeBits != 0);
+            debug_assert!(output.memory_type_bits != 0);
             MemoryRequirements::from(output)
         };
 
@@ -611,12 +632,12 @@ impl UnsafeImage {
     /// This function is for example used at the swapchain's initialization.
     pub unsafe fn from_raw(
         device: Arc<Device>,
-        handle: u64,
+        handle: ash::vk::Image,
         usage: ImageUsage,
         format: Format,
         flags: ImageCreateFlags,
         dimensions: ImageDimensions,
-        samples: u32,
+        samples: SampleCount,
         mipmaps: u32,
     ) -> UnsafeImage {
         let format_properties = format.properties(device.physical_device());
@@ -639,12 +660,12 @@ impl UnsafeImage {
     }
 
     pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize) -> Result<(), OomError> {
-        let vk = self.device.pointers();
+        let fns = self.device.fns();
 
         // We check for correctness in debug mode.
         debug_assert!({
             let mut mem_reqs = MaybeUninit::uninit();
-            vk.GetImageMemoryRequirements(
+            fns.v1_0.get_image_memory_requirements(
                 self.device.internal_object(),
                 self.image,
                 mem_reqs.as_mut_ptr(),
@@ -653,14 +674,14 @@ impl UnsafeImage {
             let mem_reqs = mem_reqs.assume_init();
             mem_reqs.size <= (memory.size() - offset) as u64
                 && (offset as u64 % mem_reqs.alignment) == 0
-                && mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
         });
 
-        check_errors(vk.BindImageMemory(
+        check_errors(fns.v1_0.bind_image_memory(
             self.device.internal_object(),
             self.image,
             memory.internal_object(),
-            offset as vk::DeviceSize,
+            offset as ash::vk::DeviceSize,
         ))?;
         Ok(())
     }
@@ -690,14 +711,14 @@ impl UnsafeImage {
     }
 
     #[inline]
-    pub fn samples(&self) -> u32 {
+    pub fn samples(&self) -> SampleCount {
         self.samples
     }
 
     /// Returns a key unique to each `UnsafeImage`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {
-        self.image
+        self.image.as_raw()
     }
 
     /// Queries the layout of an image in memory. Only valid for images with linear tiling.
@@ -792,18 +813,18 @@ impl UnsafeImage {
 
     // Implementation of the `*_layout` functions.
     unsafe fn linear_layout_impl(&self, mip_level: u32, aspect: ImageAspect) -> LinearLayout {
-        let vk = self.device.pointers();
+        let fns = self.device.fns();
 
         assert!(mip_level < self.mipmaps);
 
-        let subresource = vk::ImageSubresource {
-            aspectMask: vk::ImageAspectFlags::from(aspect),
-            mipLevel: mip_level,
-            arrayLayer: 0,
+        let subresource = ash::vk::ImageSubresource {
+            aspect_mask: ash::vk::ImageAspectFlags::from(aspect),
+            mip_level: mip_level,
+            array_layer: 0,
         };
 
         let mut out = MaybeUninit::uninit();
-        vk.GetImageSubresourceLayout(
+        fns.v1_0.get_image_subresource_layout(
             self.device.internal_object(),
             self.image,
             &subresource,
@@ -814,9 +835,9 @@ impl UnsafeImage {
         LinearLayout {
             offset: out.offset as usize,
             size: out.size as usize,
-            row_pitch: out.rowPitch as usize,
-            array_pitch: out.arrayPitch as usize,
-            depth_pitch: out.depthPitch as usize,
+            row_pitch: out.row_pitch as usize,
+            array_pitch: out.array_pitch as usize,
+            depth_pitch: out.depth_pitch as usize,
         }
     }
 
@@ -845,12 +866,10 @@ impl UnsafeImage {
 }
 
 unsafe impl VulkanObject for UnsafeImage {
-    type Object = vk::Image;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_IMAGE;
+    type Object = ash::vk::Image;
 
     #[inline]
-    fn internal_object(&self) -> vk::Image {
+    fn internal_object(&self) -> ash::vk::Image {
         self.image
     }
 }
@@ -870,8 +889,9 @@ impl Drop for UnsafeImage {
         }
 
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyImage(self.device.internal_object(), self.image, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_image(self.device.internal_object(), self.image, ptr::null());
         }
     }
 }
@@ -908,7 +928,7 @@ pub enum ImageCreationError {
         valid_range: Range<u32>,
     },
     /// The requested number of samples is not supported, or is 0.
-    UnsupportedSamplesCount { obtained: u32 },
+    UnsupportedSamplesCount { obtained: SampleCount },
     /// The dimensions are too large, or one of the dimensions is 0.
     UnsupportedDimensions { dimensions: ImageDimensions },
     /// The requested format is not supported by the Vulkan implementation.
@@ -1014,17 +1034,16 @@ pub struct LinearLayout {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::Empty;
-    use std::u32;
-
     use super::ImageCreateFlags;
     use super::ImageCreationError;
     use super::ImageUsage;
     use super::UnsafeImage;
-
     use crate::format::Format;
     use crate::image::ImageDimensions;
+    use crate::image::SampleCount;
     use crate::sync::Sharing;
+    use std::iter::Empty;
+    use std::u32;
 
     #[test]
     fn create_sampled() {
@@ -1046,7 +1065,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 1,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1077,7 +1096,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 1,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1085,74 +1104,6 @@ mod tests {
             )
         }
         .unwrap();
-    }
-
-    #[test]
-    fn zero_sample() {
-        let (device, _) = gfx_dev_and_queue!();
-
-        let usage = ImageUsage {
-            sampled: true,
-            ..ImageUsage::none()
-        };
-
-        let res = unsafe {
-            UnsafeImage::new(
-                device,
-                usage,
-                Format::R8G8B8A8Unorm,
-                ImageCreateFlags::none(),
-                ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
-                0,
-                1,
-                Sharing::Exclusive::<Empty<_>>,
-                false,
-                false,
-            )
-        };
-
-        match res {
-            Err(ImageCreationError::UnsupportedSamplesCount { .. }) => (),
-            _ => panic!(),
-        };
-    }
-
-    #[test]
-    fn non_po2_sample() {
-        let (device, _) = gfx_dev_and_queue!();
-
-        let usage = ImageUsage {
-            sampled: true,
-            ..ImageUsage::none()
-        };
-
-        let res = unsafe {
-            UnsafeImage::new(
-                device,
-                usage,
-                Format::R8G8B8A8Unorm,
-                ImageCreateFlags::none(),
-                ImageDimensions::Dim2d {
-                    width: 32,
-                    height: 32,
-                    array_layers: 1,
-                },
-                5,
-                1,
-                Sharing::Exclusive::<Empty<_>>,
-                false,
-                false,
-            )
-        };
-
-        match res {
-            Err(ImageCreationError::UnsupportedSamplesCount { .. }) => (),
-            _ => panic!(),
-        };
     }
 
     #[test]
@@ -1175,7 +1126,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 0,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1210,7 +1161,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 u32::MAX,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1250,7 +1201,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                2,
+                SampleCount::Sample2,
                 1,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1285,7 +1236,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 u32::MAX,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1321,7 +1272,7 @@ mod tests {
                     height: 32,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 1,
                 Sharing::Exclusive::<Empty<_>>,
                 false,
@@ -1358,7 +1309,7 @@ mod tests {
                     height: 64,
                     array_layers: 1,
                 },
-                1,
+                SampleCount::Sample1,
                 1,
                 Sharing::Exclusive::<Empty<_>>,
                 false,

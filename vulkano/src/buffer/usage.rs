@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
 use std::ops::BitOr;
 
 /// Describes how a buffer is going to be used. This is **not** just an optimization.
@@ -174,38 +173,38 @@ impl BufferUsage {
     }
 }
 
-impl From<BufferUsage> for vk::BufferUsageFlags {
+impl From<BufferUsage> for ash::vk::BufferUsageFlags {
     fn from(val: BufferUsage) -> Self {
-        let mut result = 0;
+        let mut result = ash::vk::BufferUsageFlags::empty();
         if val.transfer_source {
-            result |= vk::BUFFER_USAGE_TRANSFER_SRC_BIT;
+            result |= ash::vk::BufferUsageFlags::TRANSFER_SRC;
         }
         if val.transfer_destination {
-            result |= vk::BUFFER_USAGE_TRANSFER_DST_BIT;
+            result |= ash::vk::BufferUsageFlags::TRANSFER_DST;
         }
         if val.uniform_texel_buffer {
-            result |= vk::BUFFER_USAGE_UNIFORM_TEXEL_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER;
         }
         if val.storage_texel_buffer {
-            result |= vk::BUFFER_USAGE_STORAGE_TEXEL_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::STORAGE_TEXEL_BUFFER;
         }
         if val.uniform_buffer {
-            result |= vk::BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::UNIFORM_BUFFER;
         }
         if val.storage_buffer {
-            result |= vk::BUFFER_USAGE_STORAGE_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::STORAGE_BUFFER;
         }
         if val.index_buffer {
-            result |= vk::BUFFER_USAGE_INDEX_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::INDEX_BUFFER;
         }
         if val.vertex_buffer {
-            result |= vk::BUFFER_USAGE_VERTEX_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::VERTEX_BUFFER;
         }
         if val.indirect_buffer {
-            result |= vk::BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+            result |= ash::vk::BufferUsageFlags::INDIRECT_BUFFER;
         }
         if val.device_address {
-            result |= vk::BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+            result |= ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
         }
         result
     }

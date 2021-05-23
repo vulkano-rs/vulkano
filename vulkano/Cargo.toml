@@ -14,6 +14,7 @@ readme = "../README.md"
 build = "build.rs"
 
 [dependencies]
+ash = "0.32"
 crossbeam-queue = "0.3"
 fnv = "1.0"
 half = "1.7"
@@ -21,4 +22,3 @@ lazy_static = "1.4"
 parking_lot = { version = "0.11.1", features = ["send_guard"] }
 shared_library = "0.1"
 smallvec = "1.6"
-vk-sys = { version = "0.6.1", path = "../vk-sys" }

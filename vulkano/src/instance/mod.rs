@@ -18,7 +18,7 @@
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::Version;
 //!
-//! let instance = match Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None) {
+//! let instance = match Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -33,7 +33,7 @@
 //! # use vulkano::Version;
 //! use vulkano::instance::PhysicalDevice;
 //!
-//! # let instance = Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None).unwrap();
+//! # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
 //!     println!("Available device: {}", physical_device.name());
 //! }

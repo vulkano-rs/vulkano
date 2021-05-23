@@ -22,7 +22,6 @@ use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sampler::Sampler;
-use crate::vk;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
@@ -283,7 +282,7 @@ impl From<OomError> for ImageViewCreationError {
 
 /// A low-level wrapper around a `vkImageView`.
 pub struct UnsafeImageView {
-    view: vk::ImageView,
+    view: ash::vk::ImageView,
     device: Arc<Device>,
 }
 
@@ -307,7 +306,7 @@ impl UnsafeImageView {
         mipmap_levels: Range<u32>,
         array_layers: Range<u32>,
     ) -> Result<UnsafeImageView, OomError> {
-        let vk = image.device().pointers();
+        let fns = image.device().fns();
 
         debug_assert!(mipmap_levels.end > mipmap_levels.start);
         debug_assert!(mipmap_levels.end <= image.mipmap_levels());
@@ -322,25 +321,24 @@ impl UnsafeImageView {
         let aspects = image.format().aspects();
 
         let view = {
-            let infos = vk::ImageViewCreateInfo {
-                sType: vk::STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::ImageViewCreateInfo {
+                flags: ash::vk::ImageViewCreateFlags::empty(),
                 image: image.internal_object(),
-                viewType: ty.into(),
-                format: image.format() as u32,
+                view_type: ty.into(),
+                format: image.format().into(),
                 components: component_mapping.into(),
-                subresourceRange: vk::ImageSubresourceRange {
-                    aspectMask: aspects.into(),
-                    baseMipLevel: mipmap_levels.start,
-                    levelCount: mipmap_levels.end - mipmap_levels.start,
-                    baseArrayLayer: array_layers.start,
-                    layerCount: array_layers.end - array_layers.start,
+                subresource_range: ash::vk::ImageSubresourceRange {
+                    aspect_mask: aspects.into(),
+                    base_mip_level: mipmap_levels.start,
+                    level_count: mipmap_levels.end - mipmap_levels.start,
+                    base_array_layer: array_layers.start,
+                    layer_count: array_layers.end - array_layers.start,
                 },
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateImageView(
+            check_errors(fns.v1_0.create_image_view(
                 image.device().internal_object(),
                 &infos,
                 ptr::null(),
@@ -357,12 +355,10 @@ impl UnsafeImageView {
 }
 
 unsafe impl VulkanObject for UnsafeImageView {
-    type Object = vk::ImageView;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_IMAGE_VIEW;
+    type Object = ash::vk::ImageView;
 
     #[inline]
-    fn internal_object(&self) -> vk::ImageView {
+    fn internal_object(&self) -> ash::vk::ImageView {
         self.view
     }
 }
@@ -378,8 +374,9 @@ impl Drop for UnsafeImageView {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyImageView(self.device.internal_object(), self.view, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_image_view(self.device.internal_object(), self.view, ptr::null());
         }
     }
 }
@@ -403,27 +400,20 @@ impl Hash for UnsafeImageView {
 
 /// The geometry type of an image view.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(i32)]
 pub enum ImageViewType {
-    Dim1d,
-    Dim1dArray,
-    Dim2d,
-    Dim2dArray,
-    Dim3d,
-    Cubemap,
-    CubemapArray,
+    Dim1d = ash::vk::ImageViewType::TYPE_1D.as_raw(),
+    Dim1dArray = ash::vk::ImageViewType::TYPE_1D_ARRAY.as_raw(),
+    Dim2d = ash::vk::ImageViewType::TYPE_2D.as_raw(),
+    Dim2dArray = ash::vk::ImageViewType::TYPE_2D_ARRAY.as_raw(),
+    Dim3d = ash::vk::ImageViewType::TYPE_3D.as_raw(),
+    Cubemap = ash::vk::ImageViewType::CUBE.as_raw(),
+    CubemapArray = ash::vk::ImageViewType::CUBE_ARRAY.as_raw(),
 }
 
-impl From<ImageViewType> for vk::ImageViewType {
-    fn from(image_view_type: ImageViewType) -> Self {
-        match image_view_type {
-            ImageViewType::Dim1d => vk::IMAGE_VIEW_TYPE_1D,
-            ImageViewType::Dim1dArray => vk::IMAGE_VIEW_TYPE_1D_ARRAY,
-            ImageViewType::Dim2d => vk::IMAGE_VIEW_TYPE_2D,
-            ImageViewType::Dim2dArray => vk::IMAGE_VIEW_TYPE_2D_ARRAY,
-            ImageViewType::Dim3d => vk::IMAGE_VIEW_TYPE_3D,
-            ImageViewType::Cubemap => vk::IMAGE_VIEW_TYPE_CUBE,
-            ImageViewType::CubemapArray => vk::IMAGE_VIEW_TYPE_CUBE_ARRAY,
-        }
+impl From<ImageViewType> for ash::vk::ImageViewType {
+    fn from(val: ImageViewType) -> Self {
+        Self::from_raw(val as i32)
     }
 }
 
@@ -459,38 +449,45 @@ impl ComponentMapping {
     }
 }
 
-impl From<ComponentMapping> for vk::ComponentMapping {
+impl From<ComponentMapping> for ash::vk::ComponentMapping {
     #[inline]
     fn from(value: ComponentMapping) -> Self {
         Self {
-            r: value.r as u32,
-            g: value.g as u32,
-            b: value.b as u32,
-            a: value.a as u32,
+            r: value.r.into(),
+            g: value.g.into(),
+            b: value.b.into(),
+            a: value.a.into(),
         }
     }
 }
 
 /// Describes the value that an individual component must return when being accessed.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum ComponentSwizzle {
     /// Returns the value that this component should normally have.
     ///
     /// This is the `Default` value.
-    Identity = vk::COMPONENT_SWIZZLE_IDENTITY,
+    Identity = ash::vk::ComponentSwizzle::IDENTITY.as_raw(),
     /// Always return zero.
-    Zero = vk::COMPONENT_SWIZZLE_ZERO,
+    Zero = ash::vk::ComponentSwizzle::ZERO.as_raw(),
     /// Always return one.
-    One = vk::COMPONENT_SWIZZLE_ONE,
+    One = ash::vk::ComponentSwizzle::ONE.as_raw(),
     /// Returns the value of the first component.
-    Red = vk::COMPONENT_SWIZZLE_R,
+    Red = ash::vk::ComponentSwizzle::R.as_raw(),
     /// Returns the value of the second component.
-    Green = vk::COMPONENT_SWIZZLE_G,
+    Green = ash::vk::ComponentSwizzle::G.as_raw(),
     /// Returns the value of the third component.
-    Blue = vk::COMPONENT_SWIZZLE_B,
+    Blue = ash::vk::ComponentSwizzle::B.as_raw(),
     /// Returns the value of the fourth component.
-    Alpha = vk::COMPONENT_SWIZZLE_A,
+    Alpha = ash::vk::ComponentSwizzle::A.as_raw(),
+}
+
+impl From<ComponentSwizzle> for ash::vk::ComponentSwizzle {
+    #[inline]
+    fn from(val: ComponentSwizzle) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 impl Default for ComponentSwizzle {

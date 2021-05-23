@@ -20,7 +20,6 @@ use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
-use crate::vk;
 use crate::SafeDeref;
 use crate::VulkanObject;
 use std::fmt;
@@ -63,7 +62,7 @@ pub struct GraphicsPipeline<VertexDefinition> {
 
 #[derive(PartialEq, Eq, Hash)]
 struct Inner {
-    pipeline: vk::Pipeline,
+    pipeline: ash::vk::Pipeline,
     device: Arc<Device>,
 }
 
@@ -176,12 +175,10 @@ impl<Mv> fmt::Debug for GraphicsPipeline<Mv> {
 }
 
 unsafe impl<Mv> VulkanObject for GraphicsPipeline<Mv> {
-    type Object = vk::Pipeline;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
+    type Object = ash::vk::Pipeline;
 
     #[inline]
-    fn internal_object(&self) -> vk::Pipeline {
+    fn internal_object(&self) -> ash::vk::Pipeline {
         self.inner.pipeline
     }
 }
@@ -190,8 +187,9 @@ impl Drop for Inner {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyPipeline(self.device.internal_object(), self.pipeline, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_pipeline(self.device.internal_object(), self.pipeline, ptr::null());
         }
     }
 }
@@ -402,15 +400,13 @@ impl Hash for dyn GraphicsPipelineAbstract + Send + Sync {
 
 /// Opaque object that represents the inside of the graphics pipeline.
 #[derive(Debug, Copy, Clone)]
-pub struct GraphicsPipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
+pub struct GraphicsPipelineSys<'a>(ash::vk::Pipeline, PhantomData<&'a ()>);
 
 unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
-    type Object = vk::Pipeline;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
+    type Object = ash::vk::Pipeline;
 
     #[inline]
-    fn internal_object(&self) -> vk::Pipeline {
+    fn internal_object(&self) -> ash::vk::Pipeline {
         self.0
     }
 }

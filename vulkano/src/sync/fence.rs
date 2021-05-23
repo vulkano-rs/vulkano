@@ -7,6 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::Error;
+use crate::OomError;
+use crate::SafeDeref;
+use crate::Success;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -16,16 +24,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
-
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::SafeDeref;
-use crate::Success;
-use crate::VulkanObject;
 
 /// A fence is used to know when a command buffer submission has finished its execution.
 ///
@@ -37,7 +35,7 @@ pub struct Fence<D = Arc<Device>>
 where
     D: SafeDeref<Target = Device>,
 {
-    fence: vk::Fence,
+    fence: ash::vk::Fence,
 
     device: D,
 
@@ -67,8 +65,11 @@ where
             Some(raw_fence) => {
                 unsafe {
                     // Make sure the fence isn't signaled
-                    let vk = device.pointers();
-                    check_errors(vk.ResetFences(device.internal_object(), 1, &raw_fence))?;
+                    let fns = device.fns();
+                    check_errors(
+                        fns.v1_0
+                            .reset_fences(device.internal_object(), 1, &raw_fence),
+                    )?;
                 }
                 Ok(Fence {
                     fence: raw_fence,
@@ -98,19 +99,18 @@ where
 
     fn alloc_impl(device: D, signaled: bool, must_put_in_pool: bool) -> Result<Fence<D>, OomError> {
         let fence = unsafe {
-            let infos = vk::FenceCreateInfo {
-                sType: vk::STRUCTURE_TYPE_FENCE_CREATE_INFO,
-                pNext: ptr::null(),
+            let infos = ash::vk::FenceCreateInfo {
                 flags: if signaled {
-                    vk::FENCE_CREATE_SIGNALED_BIT
+                    ash::vk::FenceCreateFlags::SIGNALED
                 } else {
-                    0
+                    ash::vk::FenceCreateFlags::empty()
                 },
+                ..Default::default()
             };
 
-            let vk = device.pointers();
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateFence(
+            check_errors(fns.v1_0.create_fence(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -135,9 +135,11 @@ where
                 return Ok(true);
             }
 
-            let vk = self.device.pointers();
-            let result =
-                check_errors(vk.GetFenceStatus(self.device.internal_object(), self.fence))?;
+            let fns = self.device.fns();
+            let result = check_errors(
+                fns.v1_0
+                    .get_fence_status(self.device.internal_object(), self.fence),
+            )?;
             match result {
                 Success::Success => {
                     self.signaled.store(true, Ordering::Relaxed);
@@ -169,12 +171,12 @@ where
                 u64::max_value()
             };
 
-            let vk = self.device.pointers();
-            let r = check_errors(vk.WaitForFences(
+            let fns = self.device.fns();
+            let r = check_errors(fns.v1_0.wait_for_fences(
                 self.device.internal_object(),
                 1,
                 &self.fence,
-                vk::TRUE,
+                ash::vk::TRUE,
                 timeout_ns,
             ))?;
 
@@ -201,7 +203,7 @@ where
     {
         let mut device: Option<&Device> = None;
 
-        let fences: SmallVec<[vk::Fence; 8]> = iter
+        let fences: SmallVec<[ash::vk::Fence; 8]> = iter
             .into_iter()
             .filter_map(|fence| {
                 match &mut device {
@@ -233,12 +235,12 @@ where
 
         let r = if let Some(device) = device {
             unsafe {
-                let vk = device.pointers();
-                check_errors(vk.WaitForFences(
+                let fns = device.fns();
+                check_errors(fns.v1_0.wait_for_fences(
                     device.internal_object(),
                     fences.len() as u32,
                     fences.as_ptr(),
-                    vk::TRUE,
+                    ash::vk::TRUE,
                     timeout_ns,
                 ))?
             }
@@ -259,8 +261,11 @@ where
     #[inline]
     pub fn reset(&mut self) -> Result<(), OomError> {
         unsafe {
-            let vk = self.device.pointers();
-            check_errors(vk.ResetFences(self.device.internal_object(), 1, &self.fence))?;
+            let fns = self.device.fns();
+            check_errors(
+                fns.v1_0
+                    .reset_fences(self.device.internal_object(), 1, &self.fence),
+            )?;
             self.signaled.store(false, Ordering::Relaxed);
             Ok(())
         }
@@ -279,7 +284,7 @@ where
     {
         let mut device: Option<&Device> = None;
 
-        let fences: SmallVec<[vk::Fence; 8]> = iter
+        let fences: SmallVec<[ash::vk::Fence; 8]> = iter
             .into_iter()
             .map(|fence| {
                 match &mut device {
@@ -299,8 +304,8 @@ where
 
         if let Some(device) = device {
             unsafe {
-                let vk = device.pointers();
-                check_errors(vk.ResetFences(
+                let fns = device.fns();
+                check_errors(fns.v1_0.reset_fences(
                     device.internal_object(),
                     fences.len() as u32,
                     fences.as_ptr(),
@@ -322,12 +327,10 @@ unsafe impl<D> VulkanObject for Fence<D>
 where
     D: SafeDeref<Target = Device>,
 {
-    type Object = vk::Fence;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_FENCE;
+    type Object = ash::vk::Fence;
 
     #[inline]
-    fn internal_object(&self) -> vk::Fence {
+    fn internal_object(&self) -> ash::vk::Fence {
         self.fence
     }
 }
@@ -343,8 +346,9 @@ where
                 let raw_fence = self.fence;
                 self.device.fence_pool().lock().unwrap().push(raw_fence);
             } else {
-                let vk = self.device.pointers();
-                vk.DestroyFence(self.device.internal_object(), self.fence, ptr::null());
+                let fns = self.device.fns();
+                fns.v1_0
+                    .destroy_fence(self.device.internal_object(), self.fence, ptr::null());
             }
         }
     }

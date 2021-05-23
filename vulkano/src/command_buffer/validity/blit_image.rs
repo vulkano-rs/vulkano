@@ -7,15 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::device::Device;
 use crate::format::FormatTy;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
+use crate::image::SampleCount;
 use crate::sampler::Filter;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
 
 /// Checks whether a blit image command is valid.
 ///
@@ -72,7 +72,7 @@ where
         return Err(CheckBlitImageError::DestinationFormatNotSupported);
     }
 
-    if source.samples() != 1 || destination.samples() != 1 {
+    if source.samples() != SampleCount::Sample1 || destination.samples() != SampleCount::Sample1 {
         return Err(CheckBlitImageError::UnexpectedMultisampled);
     }
 

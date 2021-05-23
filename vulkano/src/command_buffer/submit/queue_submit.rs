@@ -7,34 +7,30 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
-use std::error;
-use std::fmt;
-use std::marker::PhantomData;
-use std::ptr;
-
+use crate::check_errors;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::device::Queue;
 use crate::sync::Fence;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;
-
-use crate::check_errors;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SynchronizedVulkanObject;
 use crate::VulkanObject;
+use smallvec::SmallVec;
+use std::error;
+use std::fmt;
+use std::marker::PhantomData;
 
 /// Prototype for a submission that executes command buffers.
 // TODO: example here
 #[derive(Debug)]
 pub struct SubmitCommandBufferBuilder<'a> {
-    wait_semaphores: SmallVec<[vk::Semaphore; 16]>,
-    destination_stages: SmallVec<[vk::PipelineStageFlags; 8]>,
-    signal_semaphores: SmallVec<[vk::Semaphore; 16]>,
-    command_buffers: SmallVec<[vk::CommandBuffer; 4]>,
-    fence: vk::Fence,
+    wait_semaphores: SmallVec<[ash::vk::Semaphore; 16]>,
+    destination_stages: SmallVec<[ash::vk::PipelineStageFlags; 8]>,
+    signal_semaphores: SmallVec<[ash::vk::Semaphore; 16]>,
+    command_buffers: SmallVec<[ash::vk::CommandBuffer; 4]>,
+    fence: ash::vk::Fence,
     marker: PhantomData<&'a ()>,
 }
 
@@ -47,7 +43,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
             destination_stages: SmallVec::new(),
             signal_semaphores: SmallVec::new(),
             command_buffers: SmallVec::new(),
-            fence: 0,
+            fence: ash::vk::Fence::null(),
             marker: PhantomData,
         }
     }
@@ -72,7 +68,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     /// ```
     #[inline]
     pub fn has_fence(&self) -> bool {
-        self.fence != 0
+        self.fence != ash::vk::Fence::null()
     }
 
     /// Adds an operation that signals a fence after this submission ends.
@@ -141,7 +137,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///
     #[inline]
     pub unsafe fn add_wait_semaphore(&mut self, semaphore: &'a Semaphore, stages: PipelineStages) {
-        debug_assert!(vk::PipelineStageFlags::from(stages) != 0);
+        debug_assert!(!ash::vk::PipelineStageFlags::from(stages).is_empty());
         // TODO: debug assert that the device supports the stages
         self.wait_semaphores.push(semaphore.internal_object());
         self.destination_stages.push(stages.into());
@@ -202,24 +198,23 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     ///
     pub fn submit(self, queue: &Queue) -> Result<(), SubmitCommandBufferError> {
         unsafe {
-            let vk = queue.device().pointers();
+            let fns = queue.device().fns();
             let queue = queue.internal_object_guard();
 
             debug_assert_eq!(self.wait_semaphores.len(), self.destination_stages.len());
 
-            let batch = vk::SubmitInfo {
-                sType: vk::STRUCTURE_TYPE_SUBMIT_INFO,
-                pNext: ptr::null(),
-                waitSemaphoreCount: self.wait_semaphores.len() as u32,
-                pWaitSemaphores: self.wait_semaphores.as_ptr(),
-                pWaitDstStageMask: self.destination_stages.as_ptr(),
-                commandBufferCount: self.command_buffers.len() as u32,
-                pCommandBuffers: self.command_buffers.as_ptr(),
-                signalSemaphoreCount: self.signal_semaphores.len() as u32,
-                pSignalSemaphores: self.signal_semaphores.as_ptr(),
+            let batch = ash::vk::SubmitInfo {
+                wait_semaphore_count: self.wait_semaphores.len() as u32,
+                p_wait_semaphores: self.wait_semaphores.as_ptr(),
+                p_wait_dst_stage_mask: self.destination_stages.as_ptr(),
+                command_buffer_count: self.command_buffers.len() as u32,
+                p_command_buffers: self.command_buffers.as_ptr(),
+                signal_semaphore_count: self.signal_semaphores.len() as u32,
+                p_signal_semaphores: self.signal_semaphores.as_ptr(),
+                ..Default::default()
             };
 
-            check_errors(vk.QueueSubmit(*queue, 1, &batch, self.fence))?;
+            check_errors(fns.v1_0.queue_submit(*queue, 1, &batch, self.fence))?;
             Ok(())
         }
     }
@@ -232,7 +227,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
     // TODO: create multiple batches instead
     pub fn merge(mut self, other: Self) -> Self {
         assert!(
-            self.fence == 0 || other.fence == 0,
+            self.fence == ash::vk::Fence::null() || other.fence == ash::vk::Fence::null(),
             "Can't merge two queue submits that both have a fence"
         );
 
@@ -241,7 +236,7 @@ impl<'a> SubmitCommandBufferBuilder<'a> {
         self.signal_semaphores.extend(other.signal_semaphores);
         self.command_buffers.extend(other.command_buffers);
 
-        if self.fence == 0 {
+        if self.fence == ash::vk::Fence::null() {
             self.fence = other.fence;
         }
 

@@ -12,12 +12,12 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::FormatTy;
 use crate::image::ImageLayout;
+use crate::image::SampleCount;
 use crate::pipeline::shader::ShaderInterface;
 use crate::render_pass::AttachmentDesc;
 use crate::render_pass::LoadOp;
 use crate::render_pass::RenderPassDesc;
 use crate::render_pass::SubpassDesc;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -84,7 +84,7 @@ use std::sync::Mutex;
 /// See the documentation of the macro for more details. TODO: put link here
 pub struct RenderPass {
     // The internal Vulkan object.
-    render_pass: vk::RenderPass,
+    render_pass: ash::vk::RenderPass,
 
     // Device this render pass was created from.
     device: Arc<Device>,
@@ -109,7 +109,7 @@ impl RenderPass {
         device: Arc<Device>,
         description: RenderPassDesc,
     ) -> Result<RenderPass, RenderPassCreationError> {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         // If the first use of an attachment in this render pass is as an input attachment, and
         // the attachment is not also used as a color or depth/stencil attachment in the same
@@ -150,18 +150,16 @@ impl RenderPass {
             .attachments()
             .iter()
             .map(|attachment| {
-                debug_assert!(attachment.samples.is_power_of_two());
-
-                vk::AttachmentDescription {
-                    flags: 0, // FIXME: may alias flag
-                    format: attachment.format as u32,
-                    samples: attachment.samples,
-                    loadOp: attachment.load as u32,
-                    storeOp: attachment.store as u32,
-                    stencilLoadOp: attachment.stencil_load as u32,
-                    stencilStoreOp: attachment.stencil_store as u32,
-                    initialLayout: attachment.initial_layout as u32,
-                    finalLayout: attachment.final_layout as u32,
+                ash::vk::AttachmentDescription {
+                    flags: ash::vk::AttachmentDescriptionFlags::empty(), // FIXME: may alias flag
+                    format: attachment.format.into(),
+                    samples: attachment.samples.into(),
+                    load_op: attachment.load.into(),
+                    store_op: attachment.store.into(),
+                    stencil_load_op: attachment.stencil_load.into(),
+                    stencil_store_op: attachment.stencil_store.into(),
+                    initial_layout: attachment.initial_layout.into(),
+                    final_layout: attachment.final_layout.into(),
                 }
             })
             .collect::<SmallVec<[_; 16]>>();
@@ -184,13 +182,13 @@ impl RenderPass {
                 debug_assert!(pass
                     .resolve_attachments
                     .iter()
-                    .all(|a| attachments[a.0].samples == 1));
+                    .all(|a| attachments[a.0].samples == ash::vk::SampleCountFlags::TYPE_1));
                 debug_assert!(
                     pass.resolve_attachments.is_empty()
                         || pass
                             .color_attachments
                             .iter()
-                            .all(|a| attachments[a.0].samples > 1)
+                            .all(|a| attachments[a.0].samples.as_raw() > 1)
                 );
                 debug_assert!(
                     pass.resolve_attachments.is_empty()
@@ -228,32 +226,32 @@ impl RenderPass {
 
                 let resolve = pass.resolve_attachments.iter().map(|&(offset, img_la)| {
                     debug_assert!(offset < attachments.len());
-                    vk::AttachmentReference {
+                    ash::vk::AttachmentReference {
                         attachment: offset as u32,
-                        layout: img_la as u32,
+                        layout: img_la.into(),
                     }
                 });
 
                 let color = pass.color_attachments.iter().map(|&(offset, img_la)| {
                     debug_assert!(offset < attachments.len());
-                    vk::AttachmentReference {
+                    ash::vk::AttachmentReference {
                         attachment: offset as u32,
-                        layout: img_la as u32,
+                        layout: img_la.into(),
                     }
                 });
 
                 let input = pass.input_attachments.iter().map(|&(offset, img_la)| {
                     debug_assert!(offset < attachments.len());
-                    vk::AttachmentReference {
+                    ash::vk::AttachmentReference {
                         attachment: offset as u32,
-                        layout: img_la as u32,
+                        layout: img_la.into(),
                     }
                 });
 
                 let depthstencil = if let Some((offset, img_la)) = pass.depth_stencil {
-                    Some(vk::AttachmentReference {
+                    Some(ash::vk::AttachmentReference {
                         attachment: offset as u32,
-                        layout: img_la as u32,
+                        layout: img_la.into(),
                     })
                 } else {
                     None
@@ -312,29 +310,29 @@ impl RenderPass {
                     .offset(preserve_ref_index as isize);
                 preserve_ref_index += pass.preserve_attachments.len();
 
-                out.push(vk::SubpassDescription {
-                    flags: 0, // reserved
-                    pipelineBindPoint: vk::PIPELINE_BIND_POINT_GRAPHICS,
-                    inputAttachmentCount: pass.input_attachments.len() as u32,
-                    pInputAttachments: if pass.input_attachments.is_empty() {
+                out.push(ash::vk::SubpassDescription {
+                    flags: ash::vk::SubpassDescriptionFlags::empty(),
+                    pipeline_bind_point: ash::vk::PipelineBindPoint::GRAPHICS,
+                    input_attachment_count: pass.input_attachments.len() as u32,
+                    p_input_attachments: if pass.input_attachments.is_empty() {
                         ptr::null()
                     } else {
                         input_attachments
                     },
-                    colorAttachmentCount: pass.color_attachments.len() as u32,
-                    pColorAttachments: if pass.color_attachments.is_empty() {
+                    color_attachment_count: pass.color_attachments.len() as u32,
+                    p_color_attachments: if pass.color_attachments.is_empty() {
                         ptr::null()
                     } else {
                         color_attachments
                     },
-                    pResolveAttachments: if pass.resolve_attachments.is_empty() {
+                    p_resolve_attachments: if pass.resolve_attachments.is_empty() {
                         ptr::null()
                     } else {
                         resolve_attachments
                     },
-                    pDepthStencilAttachment: depth_stencil,
-                    preserveAttachmentCount: pass.preserve_attachments.len() as u32,
-                    pPreserveAttachments: if pass.preserve_attachments.is_empty() {
+                    p_depth_stencil_attachment: depth_stencil,
+                    preserve_attachment_count: pass.preserve_attachments.len() as u32,
+                    p_preserve_attachments: if pass.preserve_attachments.is_empty() {
                         ptr::null()
                     } else {
                         preserve_attachments
@@ -355,57 +353,56 @@ impl RenderPass {
             .iter()
             .map(|dependency| {
                 debug_assert!(
-                    dependency.source_subpass as u32 == vk::SUBPASS_EXTERNAL
+                    dependency.source_subpass as u32 == ash::vk::SUBPASS_EXTERNAL
                         || dependency.source_subpass < passes.len()
                 );
                 debug_assert!(
-                    dependency.destination_subpass as u32 == vk::SUBPASS_EXTERNAL
+                    dependency.destination_subpass as u32 == ash::vk::SUBPASS_EXTERNAL
                         || dependency.destination_subpass < passes.len()
                 );
 
-                vk::SubpassDependency {
-                    srcSubpass: dependency.source_subpass as u32,
-                    dstSubpass: dependency.destination_subpass as u32,
-                    srcStageMask: dependency.source_stages.into(),
-                    dstStageMask: dependency.destination_stages.into(),
-                    srcAccessMask: dependency.source_access.into(),
-                    dstAccessMask: dependency.destination_access.into(),
-                    dependencyFlags: if dependency.by_region {
-                        vk::DEPENDENCY_BY_REGION_BIT
+                ash::vk::SubpassDependency {
+                    src_subpass: dependency.source_subpass as u32,
+                    dst_subpass: dependency.destination_subpass as u32,
+                    src_stage_mask: dependency.source_stages.into(),
+                    dst_stage_mask: dependency.destination_stages.into(),
+                    src_access_mask: dependency.source_access.into(),
+                    dst_access_mask: dependency.destination_access.into(),
+                    dependency_flags: if dependency.by_region {
+                        ash::vk::DependencyFlags::BY_REGION
                     } else {
-                        0
+                        ash::vk::DependencyFlags::empty()
                     },
                 }
             })
             .collect::<SmallVec<[_; 16]>>();
 
         let render_pass = unsafe {
-            let infos = vk::RenderPassCreateInfo {
-                sType: vk::STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                attachmentCount: attachments.len() as u32,
-                pAttachments: if attachments.is_empty() {
+            let infos = ash::vk::RenderPassCreateInfo {
+                flags: ash::vk::RenderPassCreateFlags::empty(),
+                attachment_count: attachments.len() as u32,
+                p_attachments: if attachments.is_empty() {
                     ptr::null()
                 } else {
                     attachments.as_ptr()
                 },
-                subpassCount: passes.len() as u32,
-                pSubpasses: if passes.is_empty() {
+                subpass_count: passes.len() as u32,
+                p_subpasses: if passes.is_empty() {
                     ptr::null()
                 } else {
                     passes.as_ptr()
                 },
-                dependencyCount: dependencies.len() as u32,
-                pDependencies: if dependencies.is_empty() {
+                dependency_count: dependencies.len() as u32,
+                p_dependencies: if dependencies.is_empty() {
                     ptr::null()
                 } else {
                     dependencies.as_ptr()
                 },
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateRenderPass(
+            check_errors(fns.v1_0.create_render_pass(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -448,9 +445,9 @@ impl RenderPass {
         }
 
         unsafe {
-            let vk = self.device.pointers();
+            let fns = self.device.fns();
             let mut out = MaybeUninit::uninit();
-            vk.GetRenderAreaGranularity(
+            fns.v1_0.get_render_area_granularity(
                 self.device.internal_object(),
                 self.render_pass,
                 out.as_mut_ptr(),
@@ -493,23 +490,25 @@ impl Drop for RenderPass {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyRenderPass(self.device.internal_object(), self.render_pass, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0.destroy_render_pass(
+                self.device.internal_object(),
+                self.render_pass,
+                ptr::null(),
+            );
         }
     }
 }
 
 /// Opaque object that represents the render pass' internals.
 #[derive(Debug, Copy, Clone)]
-pub struct RenderPassSys<'a>(vk::RenderPass, PhantomData<&'a ()>);
+pub struct RenderPassSys<'a>(ash::vk::RenderPass, PhantomData<&'a ()>);
 
 unsafe impl<'a> VulkanObject for RenderPassSys<'a> {
-    type Object = vk::RenderPass;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_RENDER_PASS;
+    type Object = ash::vk::RenderPass;
 
     #[inline]
-    fn internal_object(&self) -> vk::RenderPass {
+    fn internal_object(&self) -> ash::vk::RenderPass {
         self.0
     }
 }
@@ -709,7 +708,7 @@ impl Subpass {
     /// Returns the number of samples in the color and/or depth/stencil attachments. Returns `None`
     /// if there is no such attachment in this subpass.
     #[inline]
-    pub fn num_samples(&self) -> Option<u32> {
+    pub fn num_samples(&self) -> Option<SampleCount> {
         let subpass_desc = self.subpass_desc();
 
         // TODO: chain input attachments as well?

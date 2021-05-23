@@ -110,7 +110,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     render_pass_state: Option<RenderPassState>,
 
     // If any queries are active, this hashmap contains their state.
-    query_state: FnvHashMap<vk::QueryType, QueryState>,
+    query_state: FnvHashMap<ash::vk::QueryType, QueryState>,
 
     _data: PhantomData<L>,
 }
@@ -119,12 +119,12 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 struct RenderPassState {
     subpass: (Arc<RenderPass>, u32),
     contents: SubpassContents,
-    framebuffer: vk::Framebuffer, // Always null for secondary command buffers
+    framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
 }
 
 // The state of an active query.
 struct QueryState {
-    query_pool: vk::QueryPool,
+    query_pool: ash::vk::QueryPool,
     query: u32,
     ty: QueryType,
     flags: QueryControlFlags,
@@ -290,7 +290,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         let render_pass_state = RenderPassState {
                             subpass: (subpass.render_pass().clone(), subpass.index()),
                             contents: SubpassContents::Inline,
-                            framebuffer: 0, // Only needed for primary command buffers
+                            framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
                         };
                         (Some(render_pass), Some(render_pass_state))
                     }
@@ -1956,8 +1956,8 @@ where
             match state.ty {
                 QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
                     Some(inherited_flags) => {
-                        let inherited_flags = vk::QueryControlFlags::from(inherited_flags);
-                        let state_flags = vk::QueryControlFlags::from(state.flags);
+                        let inherited_flags = ash::vk::QueryControlFlags::from(inherited_flags);
+                        let state_flags = ash::vk::QueryControlFlags::from(state.flags);
 
                         if inherited_flags & state_flags != state_flags {
                             return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
@@ -1967,8 +1967,9 @@ where
                 },
                 QueryType::PipelineStatistics(state_flags) => {
                     let inherited_flags = command_buffer.inheritance().query_statistics_flags;
-                    let inherited_flags = vk::QueryPipelineStatisticFlags::from(inherited_flags);
-                    let state_flags = vk::QueryPipelineStatisticFlags::from(state_flags);
+                    let inherited_flags =
+                        ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
+                    let state_flags = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
 
                     if inherited_flags & state_flags != state_flags {
                         return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
