@@ -15,12 +15,12 @@ use std::error;
 use std::fmt;
 
 /// Checks whether an indirect buffer can be bound.
-pub fn check_indirect_buffer<Ib>(
+pub fn check_indirect_buffer<Inb>(
     device: &Device,
-    buffer: &Ib,
+    buffer: &Inb,
 ) -> Result<(), CheckIndirectBufferError>
 where
-    Ib: BufferAccess + Send + Sync + 'static,
+    Inb: BufferAccess + Send + Sync + 'static,
 {
     assert_eq!(
         buffer.inner().buffer.device().internal_object(),
@@ -39,6 +39,13 @@ where
 pub enum CheckIndirectBufferError {
     /// The "indirect buffer" usage must be enabled on the indirect buffer.
     BufferMissingUsage,
+    /// The maximum number of indirect draws has been exceeded.
+    MaxDrawIndirectCountLimitExceeded {
+        /// The limit that must be fulfilled.
+        limit: u32,
+        /// What was requested.
+        requested: u32,
+    },
 }
 
 impl error::Error for CheckIndirectBufferError {}
@@ -52,6 +59,12 @@ impl fmt::Display for CheckIndirectBufferError {
             match *self {
                 CheckIndirectBufferError::BufferMissingUsage => {
                     "the indirect buffer usage must be enabled on the indirect buffer"
+                }
+                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                    limit,
+                    requested,
+                } => {
+                    "the maximum number of indirect draws has been exceeded"
                 }
             }
         )
