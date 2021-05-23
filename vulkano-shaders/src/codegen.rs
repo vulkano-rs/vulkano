@@ -225,14 +225,14 @@ where
         (1, 0) => {}
         (1, 1) | (1, 2) | (1, 3) => {
             cap_checks.push(quote! {
-                if device.api_version() < (Version { major: 1, minor: 1, patch: 0 }) {
+                if device.api_version() < Version::major_minor(1, 1) {
                     panic!("Device API version 1.1 required");
                 }
             });
         }
         (1, 4) => {
             cap_checks.push(quote! {
-                if device.api_version() < (Version { major: 1, minor: 2, patch: 0 })
+                if device.api_version() < Version::major_minor(1, 2)
                     && !device.loaded_extensions().khr_spirv_1_4 {
                     panic!("Device API version 1.2 or extension VK_KHR_spirv_1_4 required");
                 }
@@ -240,7 +240,7 @@ where
         }
         (1, 5) => {
             cap_checks.push(quote! {
-                if device.api_version() < (Version { major: 1, minor: 2, patch: 0 }) {
+                if device.api_version() < Version::major_minor(1, 2) {
                     panic!("Device API version 1.2 required");
                 }
             });
@@ -294,18 +294,15 @@ where
 
     // writing one method for each entry point of this module
     let mut entry_points_inside_impl: Vec<TokenStream> = vec![];
-    let mut entry_points_outside_impl: Vec<TokenStream> = vec![];
     for instruction in doc.instructions.iter() {
         if let &Instruction::EntryPoint { .. } = instruction {
-            let (outside, entry_point, descriptor_sets) = entry_point::write_entry_point(
+            let entry_point = entry_point::write_entry_point(
                 &doc,
                 instruction,
                 &types_meta,
                 exact_entrypoint_interface,
             );
             entry_points_inside_impl.push(entry_point);
-            entry_points_outside_impl.push(outside);
-            entry_points_outside_impl.push(descriptor_sets);
         }
     }
 
@@ -349,11 +346,9 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayout;
+        use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+        use vulkano::pipeline::layout::PipelineLayoutDescPcRange;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
         #[allow(unused_imports)]
@@ -393,8 +388,6 @@ where
 
             #( #entry_points_inside_impl )*
         }
-
-        #( #entry_points_outside_impl )*
 
         pub mod ty {
             #( #uses )*

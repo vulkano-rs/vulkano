@@ -38,18 +38,18 @@ use vulkano::command_buffer::{
     SubpassContents,
 };
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
+use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract, GraphicsPipeline};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -65,7 +65,8 @@ impl_vertex!(Vertex, position);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let instance =
+        Instance::new(None, Version::major_minor(1, 1), &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!(
         "Using device: {} (type: {:?})",

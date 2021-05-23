@@ -82,8 +82,6 @@
 //! TODO: talk about perfs of changing sets
 
 pub use self::descriptor_set::DescriptorSet;
-pub use self::pipeline_layout::PipelineLayoutAbstract;
 
 pub mod descriptor;
 pub mod descriptor_set;
-pub mod pipeline_layout;

@@ -12,7 +12,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::FormatTy;
 use crate::image::ImageLayout;
-use crate::pipeline::shader::ShaderInterfaceDef;
+use crate::pipeline::shader::ShaderInterface;
 use crate::render_pass::AttachmentDesc;
 use crate::render_pass::LoadOp;
 use crate::render_pass::RenderPassDesc;
@@ -737,10 +737,7 @@ impl Subpass {
 
     /// Returns `true` if this subpass is compatible with the fragment output definition.
     // TODO: return proper error
-    pub fn is_compatible_with<S>(&self, shader_interface: &S) -> bool
-    where
-        S: ShaderInterfaceDef,
-    {
+    pub fn is_compatible_with(&self, shader_interface: &ShaderInterface) -> bool {
         self.render_pass
             .desc()
             .is_compatible_with_shader(self.subpass_id, shader_interface)

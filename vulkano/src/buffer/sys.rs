@@ -103,7 +103,10 @@ impl UnsafeBuffer {
             0
         };
 
-        if usage.device_address && !device.enabled_features().buffer_device_address {
+        if usage.device_address
+            && !(device.enabled_features().buffer_device_address
+                || device.enabled_features().ext_buffer_device_address)
+        {
             usage.device_address = false;
             if vk::BufferUsageFlags::from(usage) == 0 {
                 // return an error iff device_address was the only requested usage and the
@@ -164,7 +167,7 @@ impl UnsafeBuffer {
                 let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
                     Some(vk::MemoryDedicatedRequirementsKHR {
                         sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-                        pNext: ptr::null(),
+                        pNext: ptr::null_mut(),
                         prefersDedicatedAllocation: mem::zeroed(),
                         requiresDedicatedAllocation: mem::zeroed(),
                     })

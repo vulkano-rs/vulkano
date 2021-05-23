@@ -21,9 +21,10 @@
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
+//! use vulkano::Version;
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
-//! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+//! let instance = match Instance::new(None, Version::major_minor(1, 1), &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -91,11 +92,17 @@
 
 pub use self::extensions::DeviceExtensions;
 pub use self::extensions::RawDeviceExtensions;
+pub use self::features::Features;
+pub(crate) use self::features::FeaturesFfi;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
-pub use crate::features::Features;
-use crate::features::FeaturesFfi;
+use crate::format::Format;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageFormatProperties;
+use crate::image::ImageTiling;
+use crate::image::ImageType;
+use crate::image::ImageUsage;
 use crate::instance::Instance;
 use crate::instance::PhysicalDevice;
 use crate::instance::QueueFamily;
@@ -104,6 +111,7 @@ use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SynchronizedVulkanObject;
+use crate::Version;
 use crate::VulkanHandle;
 use crate::VulkanObject;
 use fnv::FnvHasher;
@@ -123,15 +131,9 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
+
 mod extensions;
-use crate::format::Format;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageFormatProperties;
-use crate::image::ImageTiling;
-use crate::image::ImageType;
-use crate::image::ImageUsage;
-use crate::Version;
-use std::pin::Pin;
+mod features;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -140,7 +142,7 @@ pub struct Device {
     device: vk::Device,
 
     // The highest version that is supported for this device.
-    // This is the minimum of Instance::desired_version and PhysicalDevice::api_version.
+    // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
     api_version: Version,
 
     vk: vk::DevicePointers,
@@ -193,16 +195,17 @@ impl Device {
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
         Ext: Into<RawDeviceExtensions>,
     {
-        let desired_version = phys.instance().desired_version;
-        let api_version = std::cmp::min(desired_version, phys.api_version());
+        let instance = phys.instance();
+        let vk_i = instance.pointers();
+
+        let max_api_version = instance.max_api_version();
+        let api_version = std::cmp::min(max_api_version, phys.api_version());
 
         let queue_families = queue_families.into_iter();
 
         if !phys.supported_features().superset_of(&requested_features) {
             return Err(DeviceCreationError::FeatureNotPresent);
         }
-
-        let vk_i = phys.instance().pointers();
 
         // this variable will contain the queue family ID and queue ID of each requested queue
         let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
@@ -216,8 +219,7 @@ impl Device {
         // Because there's no way to query the list of layers enabled for an instance, we need
         // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
         // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = phys
-            .instance()
+        let layers_ptr = instance
             .loaded_layers()
             .map(|layer| layer.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
@@ -228,10 +230,11 @@ impl Device {
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
 
-        let mut requested_features = requested_features.clone();
-        // Always enabled; see below.
-        requested_features.robust_buffer_access = true;
-        let requested_features = requested_features;
+        let requested_features = Features {
+            // Always enabled; see below.
+            robust_buffer_access: true,
+            ..*requested_features
+        };
 
         // device creation
         let device = unsafe {
@@ -294,11 +297,20 @@ impl Device {
             //       Note that if we ever remove this, don't forget to adjust the change in
             //       `Device`'s construction below.
 
-            let features = Pin::<Box<FeaturesFfi>>::from(&requested_features);
+            let mut features_ffi = <FeaturesFfi>::from(&requested_features);
+            features_ffi.make_chain(api_version);
+
+            let has_khr_get_physical_device_properties2 = instance
+                .loaded_extensions()
+                .khr_get_physical_device_properties2;
 
             let infos = vk::DeviceCreateInfo {
                 sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                pNext: features.base_ptr() as *const _,
+                pNext: if has_khr_get_physical_device_properties2 {
+                    features_ffi.head_as_ref() as *const _ as _
+                } else {
+                    ptr::null()
+                },
                 flags: 0, // reserved
                 queueCreateInfoCount: queues.len() as u32,
                 pQueueCreateInfos: queues.as_ptr(),
@@ -306,7 +318,11 @@ impl Device {
                 ppEnabledLayerNames: layers_ptr.as_ptr(),
                 enabledExtensionCount: extensions_list.len() as u32,
                 ppEnabledExtensionNames: extensions_list.as_ptr(),
-                pEnabledFeatures: ptr::null(),
+                pEnabledFeatures: if has_khr_get_physical_device_properties2 {
+                    ptr::null()
+                } else {
+                    &features_ffi.head_as_ref().features
+                },
             };
 
             let mut output = MaybeUninit::uninit();
@@ -367,6 +383,10 @@ impl Device {
     }
 
     /// Returns the Vulkan version supported by this `Device`.
+    ///
+    /// This is the lower of the
+    /// [physical device's supported version](crate::instance::PhysicalDevice::api_version) and
+    /// the instance's [`max_api_version`](crate::instance::Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
         self.api_version
@@ -867,7 +887,7 @@ mod tests {
     use crate::device::Device;
     use crate::device::DeviceCreationError;
     use crate::device::DeviceExtensions;
-    use crate::features::Features;
+    use crate::device::Features;
     use crate::instance;
     use std::sync::Arc;
 
