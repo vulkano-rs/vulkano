@@ -148,6 +148,16 @@
 //! Adds the given macro definitions to the pre-processor. This is equivalent to passing `-DNAME=VALUE`
 //! on the command line.
 //!
+//! ## `vulkan_version: "major.minor"` and `spirv_version: "major.minor"`
+//!
+//! Sets the Vulkan and SPIR-V versions to compile into, respectively. These map directly to the
+//! [`set_target_env`](shaderc::CompileOptions::set_target_env) and
+//! [`set_target_spirv`](shaderc::CompileOptions::set_target_spirv) compile options.
+//! If neither option is specified, then SPIR-V 1.0 code targeting Vulkan 1.0 will be generated.
+//!
+//! The generated code must be supported by the device at runtime. If not, then an error will be
+//! returned when calling `Shader::load`.
+//!
 //! ## `types_meta: { use a::b; #[derive(Clone, Default, PartialEq ...)] impl Eq }`
 //!
 //! Extends implementations of Rust structs that represent Shader structs.
@@ -207,12 +217,14 @@ extern crate quote;
 extern crate syn;
 extern crate proc_macro;
 
+use crate::codegen::ShaderKind;
+use shaderc::{EnvVersion, SpirvVersion};
 use std::fs;
 use std::fs::File;
 use std::io::{Read, Result as IoResult};
 use std::path::Path;
+use std::slice::from_raw_parts;
 use std::{env, iter::empty};
-
 use syn::parse::{Parse, ParseStream, Result};
 use syn::{
     Ident, ItemUse, LitBool, LitStr, Meta, MetaList, NestedMeta, Path as SynPath, TypeImplTrait,
@@ -226,9 +238,6 @@ mod parse;
 mod spec_consts;
 mod spirv_search;
 mod structs;
-
-use crate::codegen::ShaderKind;
-use std::slice::from_raw_parts;
 
 enum SourceKind {
     Src(String),
@@ -283,63 +292,34 @@ impl TypesMeta {
 }
 
 struct MacroInput {
-    shader_kind: ShaderKind,
-    source_kind: SourceKind,
+    dump: bool,
+    exact_entrypoint_interface: bool,
     include_directories: Vec<String>,
     macro_defines: Vec<(String, String)>,
+    shader_kind: ShaderKind,
+    source_kind: SourceKind,
+    spirv_version: Option<SpirvVersion>,
     types_meta: TypesMeta,
-    exact_entrypoint_interface: bool,
-    dump: bool,
+    vulkan_version: Option<EnvVersion>,
 }
 
 impl Parse for MacroInput {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut dump = None;
-        let mut shader_kind = None;
-        let mut source_kind = None;
+        let mut exact_entrypoint_interface = None;
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
+        let mut shader_kind = None;
+        let mut source_kind = None;
+        let mut spirv_version = None;
         let mut types_meta = None;
-        let mut exact_entrypoint_interface = None;
+        let mut vulkan_version = None;
 
         while !input.is_empty() {
             let name: Ident = input.parse()?;
             input.parse::<Token![:]>()?;
 
             match name.to_string().as_ref() {
-                "ty" => {
-                    if shader_kind.is_some() {
-                        panic!("Only one `ty` can be defined")
-                    }
-
-                    let ty: LitStr = input.parse()?;
-                    let ty = match ty.value().as_ref() {
-                        "vertex" => ShaderKind::Vertex,
-                        "fragment" => ShaderKind::Fragment,
-                        "geometry" => ShaderKind::Geometry,
-                        "tess_ctrl" => ShaderKind::TessControl,
-                        "tess_eval" => ShaderKind::TessEvaluation,
-                        "compute" => ShaderKind::Compute,
-                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
-                    };
-                    shader_kind = Some(ty);
-                }
-                "src" => {
-                    if source_kind.is_some() {
-                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
-                    }
-
-                    let src: LitStr = input.parse()?;
-                    source_kind = Some(SourceKind::Src(src.value()));
-                }
-                "path" => {
-                    if source_kind.is_some() {
-                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
-                    }
-
-                    let path: LitStr = input.parse()?;
-                    source_kind = Some(SourceKind::Path(path.value()));
-                }
                 "bytes" => {
                     if source_kind.is_some() {
                         panic!("Only one of `src`, `path`, or `bytes` can be defined")
@@ -366,6 +346,20 @@ impl Parse for MacroInput {
                         }
                     }
                 }
+                "dump" => {
+                    if dump.is_some() {
+                        panic!("Only one `dump` can be defined")
+                    }
+                    let dump_lit: LitBool = input.parse()?;
+                    dump = Some(dump_lit.value);
+                }
+                "exact_entrypoint_interface" => {
+                    if exact_entrypoint_interface.is_some() {
+                        panic!("Only one `dump` can be defined")
+                    }
+                    let lit: LitBool = input.parse()?;
+                    exact_entrypoint_interface = Some(lit.value);
+                }
                 "include" => {
                     let in_brackets;
                     bracketed!(in_brackets in input);
@@ -379,6 +373,51 @@ impl Parse for MacroInput {
                             in_brackets.parse::<Token![,]>()?;
                         }
                     }
+                }
+                "path" => {
+                    if source_kind.is_some() {
+                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
+                    }
+
+                    let path: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Path(path.value()));
+                }
+                "spirv_version" => {
+                    let version: LitStr = input.parse()?;
+                    spirv_version = Some(match version.value().as_ref() {
+                        "1.0" => SpirvVersion::V1_0,
+                        "1.1" => SpirvVersion::V1_1,
+                        "1.2" => SpirvVersion::V1_2,
+                        "1.3" => SpirvVersion::V1_3,
+                        "1.4" => SpirvVersion::V1_4,
+                        "1.5" => SpirvVersion::V1_5,
+                        _ => panic!("Unknown SPIR-V version: {}", version.value()),
+                    });
+                }
+                "src" => {
+                    if source_kind.is_some() {
+                        panic!("Only one of `src`, `path`, or `bytes` can be defined")
+                    }
+
+                    let src: LitStr = input.parse()?;
+                    source_kind = Some(SourceKind::Src(src.value()));
+                }
+                "ty" => {
+                    if shader_kind.is_some() {
+                        panic!("Only one `ty` can be defined")
+                    }
+
+                    let ty: LitStr = input.parse()?;
+                    let ty = match ty.value().as_ref() {
+                        "vertex" => ShaderKind::Vertex,
+                        "fragment" => ShaderKind::Fragment,
+                        "geometry" => ShaderKind::Geometry,
+                        "tess_ctrl" => ShaderKind::TessControl,
+                        "tess_eval" => ShaderKind::TessEvaluation,
+                        "compute" => ShaderKind::Compute,
+                        _ => panic!("Unexpected shader type, valid values: vertex, fragment, geometry, tess_ctrl, tess_eval, compute")
+                    };
+                    shader_kind = Some(ty);
                 }
                 "types_meta" => {
                     let in_braces;
@@ -518,19 +557,14 @@ impl Parse for MacroInput {
 
                     types_meta = Some(meta);
                 }
-                "exact_entrypoint_interface" => {
-                    if exact_entrypoint_interface.is_some() {
-                        panic!("Only one `dump` can be defined")
-                    }
-                    let lit: LitBool = input.parse()?;
-                    exact_entrypoint_interface = Some(lit.value);
-                }
-                "dump" => {
-                    if dump.is_some() {
-                        panic!("Only one `dump` can be defined")
-                    }
-                    let dump_lit: LitBool = input.parse()?;
-                    dump = Some(dump_lit.value);
+                "vulkan_version" => {
+                    let version: LitStr = input.parse()?;
+                    vulkan_version = Some(match version.value().as_ref() {
+                        "1.0" => EnvVersion::Vulkan1_0,
+                        "1.1" => EnvVersion::Vulkan1_1,
+                        "1.2" => EnvVersion::Vulkan1_2,
+                        _ => panic!("Unknown Vulkan version: {}", version.value()),
+                    });
                 }
                 name => panic!("Unknown field name: {}", name),
             }
@@ -553,13 +587,15 @@ impl Parse for MacroInput {
         let dump = dump.unwrap_or(false);
 
         Ok(Self {
+            dump,
+            exact_entrypoint_interface: exact_entrypoint_interface.unwrap_or(false),
+            include_directories,
+            macro_defines,
             shader_kind,
             source_kind,
-            include_directories,
-            dump,
-            macro_defines,
+            spirv_version,
             types_meta: types_meta.unwrap_or_else(|| TypesMeta::default()),
-            exact_entrypoint_interface: exact_entrypoint_interface.unwrap_or(false),
+            vulkan_version,
         })
     }
 }
@@ -637,6 +673,8 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             input.shader_kind,
             &include_paths,
             &input.macro_defines,
+            input.vulkan_version,
+            input.spirv_version,
         ) {
             Ok(ok) => ok,
             Err(e) => panic!("{}", e.replace("(s): ", "(s):\n")),

@@ -66,9 +66,7 @@
 //!
 //! ## Creating a descriptor set
 //!
-//! ```ignore
-//! // TODO: write example for: PersistentDescriptorSet::start(layout.clone()).add_buffer(data_buffer.clone())
-//! ```
+//! TODO: write example for: PersistentDescriptorSet::start(layout.clone()).add_buffer(data_buffer.clone())
 //!
 //! ## Passing the descriptor set when drawing
 //!

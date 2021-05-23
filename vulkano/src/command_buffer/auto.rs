@@ -1214,8 +1214,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /// Perform multiple draw operations using a graphics pipeline. One draw is performed for each
-    /// `vulkano::command_buffer::DrawIndirectCommand` struct in `indirect_buffer`.
+    /// Perform multiple draw operations using a graphics pipeline.
+    ///
+    /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
+    /// The maximum number of draw commands in the buffer is limited by the
+    /// [`max_draw_indirect_count`](crate::instance::Limits::max_draw_indirect_count) limit.
+    /// This limit is 1 unless the
+    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// enabled.
     ///
     /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input. It is
     /// used for every draw operation.
@@ -1254,7 +1260,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
-            let draw_count = indirect_buffer.len() as u32;
+            let requested = indirect_buffer.len() as u32;
+            let limit = self
+                .device()
+                .physical_device()
+                .limits()
+                .max_draw_indirect_count();
+
+            if requested > limit {
+                return Err(
+                    CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                        limit,
+                        requested,
+                    }
+                    .into(),
+                );
+            }
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1284,7 +1305,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.inner.draw_indirect(
                 indirect_buffer,
-                draw_count,
+                requested,
                 mem::size_of::<DrawIndirectCommand>() as u32,
             )?;
             Ok(self)
@@ -1372,9 +1393,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /// Perform multiple draw operations using a graphics pipeline, using an index buffer. One
-    /// draw is performed for for each `vulkano::command_buffer::DrawIndirectCommand` struct in
-    /// `indirect_buffer`.
+    /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
+    ///
+    /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
+    /// The maximum number of draw commands in the buffer is limited by the
+    /// [`max_draw_indirect_count`](crate::instance::Limits::max_draw_indirect_count) limit.
+    /// This limit is 1 unless the
+    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// enabled.
     ///
     /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input.
     /// `index_buffer` is a buffer containing indices into the vertex buffer that should be
@@ -1418,7 +1444,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
-            let draw_count = indirect_buffer.len() as u32;
+            let requested = indirect_buffer.len() as u32;
+            let limit = self
+                .device()
+                .physical_device()
+                .limits()
+                .max_draw_indirect_count();
+
+            if requested > limit {
+                return Err(
+                    CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                        limit,
+                        requested,
+                    }
+                    .into(),
+                );
+            }
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1454,7 +1495,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.inner.draw_indexed_indirect(
                 indirect_buffer,
-                draw_count,
+                requested,
                 mem::size_of::<DrawIndexedIndirectCommand>() as u32,
             )?;
             Ok(self)
@@ -1629,7 +1670,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
     ///
-    /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
+    /// [`query_pool.ty().result_size()`](crate::query::QueryType::result_size) elements
     /// will be written for each query in the range, plus 1 extra element per query if
     /// [`QueryResultFlags::with_availability`] is enabled.
     /// The provided buffer must be large enough to hold the data.

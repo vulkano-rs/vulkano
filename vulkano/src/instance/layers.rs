@@ -16,10 +16,10 @@ use std::vec::IntoIter;
 use crate::check_errors;
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
-use crate::version::Version;
 use crate::vk;
 use crate::Error;
 use crate::OomError;
+use crate::Version;
 
 /// Queries the list of layers that are available when creating an instance.
 ///

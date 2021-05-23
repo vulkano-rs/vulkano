@@ -715,6 +715,8 @@ mod tests {
             ShaderKind::Vertex,
             &includes,
             &defines,
+            None,
+            None,
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
