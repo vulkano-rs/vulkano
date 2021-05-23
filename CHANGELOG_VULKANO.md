@@ -13,6 +13,8 @@
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
 - Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return (currently never higher than 1.1, but this may change in the future).
 - Fixed the issue when creating a buffer with exportable fd on Linux(see to #1545).
+- The `draw_indirect` and `draw_indexed_indirect` commands on `AutoCommandBufferBuilder` now check the draw count against the `max_draw_indirect_count` limit.
+- Fixed a few documentation errors.
 - Updated winit to 0.25.
 
 # Version 0.23.0 (2021-04-10)
