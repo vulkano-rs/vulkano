@@ -57,7 +57,6 @@ fn main() {
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
 
     let queue_family = physical
         .queue_families()
@@ -78,11 +77,13 @@ fn main() {
     .unwrap();
 
     let queue = queues.next().unwrap();
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
 
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).unwrap();
         let format = caps.supported_formats[0].0;
         let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let dimensions: [u32; 2] = surface.window().inner_size().into();
 
         Swapchain::start(device.clone(), surface.clone())
             .num_images(caps.min_image_count)
