@@ -1,7 +1,10 @@
 # Unreleased
 <!--
-    Please add new changes at the bottom, preceded by a hyphen -.
-    Breaking changes should be listed first, before other changes, and should be preceded by - **Breaking**.
+    This file is maintained by the repository organization members. Please, do
+    not put changes into this files directly, they lead to frequent merging
+    conflicts. Instead put incoming changelog entries into the Pull Request
+    description. They will be transferred to this file right after the
+    Pull Request merge. 
 -->
 
 - **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
