@@ -89,63 +89,6 @@ pub unsafe trait ImageAccess {
         self.inner().image.format_features().blit_dst
     }
 
-    /// When images are created their memory layout is initially `Undefined` or `Preinitialized`.
-    /// This method allows the image memory barrier creation process to signal when an image
-    /// has been transitioned out of its initial `Undefined` or `Preinitialized` state. This
-    /// allows vulkano to avoid creating unnecessary image memory barriers between future
-    /// uses of the image.
-    ///
-    /// ## Unsafe
-    ///
-    /// If a user calls this method outside of the intended context and signals that the layout
-    /// is no longer `Undefined` or `Preinitialized` when it is still in an `Undefined` or
-    /// `Preinitialized` state, this may result in the vulkan implementation attempting to use
-    /// an image in an invalid layout. The same problem must be considered by the implementer
-    /// of the method.
-    unsafe fn layout_initialized(&self);
-
-    fn is_layout_initialized(&self) -> bool;
-
-    unsafe fn preinitialized_layout(&self) -> bool {
-        self.inner().image.preinitialized_layout()
-    }
-
-    /// Returns the layout that the image has when it is first used in a primary command buffer.
-    ///
-    /// The first time you use an image in an `AutoCommandBufferBuilder`, vulkano will suppose that
-    /// the image is in the layout returned by this function. Later when the command buffer is
-    /// submitted vulkano will check whether the image is actually in this layout, and if it is not
-    /// the case then an error will be returned.
-    /// TODO: ^ that check is not yet implemented
-    fn initial_layout_requirement(&self) -> ImageLayout;
-
-    /// Returns the layout that the image must be returned to before the end of the command buffer.
-    ///
-    /// When an image is used in an `AutoCommandBufferBuilder` vulkano will automatically
-    /// transition this image to the layout returned by this function at the end of the command
-    /// buffer, if necessary.
-    ///
-    /// Except for special cases, this value should likely be the same as the one returned by
-    /// `initial_layout_requirement` so that the user can submit multiple command buffers that use
-    /// this image one after the other.
-    fn final_layout_requirement(&self) -> ImageLayout;
-
-    /// Wraps around this `ImageAccess` and returns an identical `ImageAccess` but whose initial
-    /// layout requirement is either `Undefined` or `Preinitialized`.
-    #[inline]
-    unsafe fn forced_undefined_initial_layout(
-        self,
-        preinitialized: bool,
-    ) -> ImageAccessFromUndefinedLayout<Self>
-    where
-        Self: Sized,
-    {
-        ImageAccessFromUndefinedLayout {
-            image: self,
-            preinitialized,
-        }
-    }
-
     /// Returns an [`ImageDescriptorLayouts`] structure specifying the image layout to use
     /// in descriptors of various kinds.
     ///
@@ -190,6 +133,16 @@ pub unsafe trait ImageAccess {
     /// Returns the current layer level that is accessed by the gpu
     fn current_layer_levels_access(&self) -> std::ops::Range<u32>;
 
+    /// TODO comment
+    fn current_layout(&self) -> ImageLayout;
+
+    /// Returns the layout that the image must be returned to before the end of the command buffer.
+    ///
+    /// When an image is used in an `AutoCommandBufferBuilder` vulkano will automatically
+    /// transition this image to the layout returned by this function at the end of the command
+    /// buffer, if necessary.
+    fn final_layout_requirement(&self) -> Option<ImageLayout>;
+
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
     /// After this function returns `Ok`, you are authorized to use the image on the GPU. If the
@@ -198,7 +151,7 @@ pub unsafe trait ImageAccess {
     ///
     /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
     /// actual layout doesn't match this expected layout, then an error should be returned. If
-    /// `Undefined` is passed, that means that the caller doesn't care about the actual layout,
+    /// `None` is passed, that means that the caller doesn't care about the actual layout,
     /// and that a layout mismatch shouldn't return an error.
     ///
     /// This function exists to prevent the user from causing a data race by reading and writing
@@ -242,7 +195,7 @@ pub unsafe trait ImageAccess {
     ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
     /// - The transitioned layout must not be `Undefined`.
     ///
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>);
+    unsafe fn unlock(&self, transitioned_layout: ImageLayout);
 }
 
 /// Inner information about an image.
@@ -275,16 +228,6 @@ where
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        (**self).initial_layout_requirement()
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        (**self).final_layout_requirement()
-    }
-
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         (**self).descriptor_layouts()
     }
@@ -305,6 +248,16 @@ where
     }
 
     #[inline]
+    fn current_layout(&self) -> ImageLayout {
+        (**self).current_layout()
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        (**self).final_layout_requirement()
+    }
+
+    #[inline]
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
@@ -319,18 +272,8 @@ where
     }
 
     #[inline]
-    unsafe fn unlock(&self, transitioned_layout: Option<ImageLayout>) {
+    unsafe fn unlock(&self, transitioned_layout: ImageLayout) {
         (**self).unlock(transitioned_layout)
-    }
-
-    #[inline]
-    unsafe fn layout_initialized(&self) {
-        (**self).layout_initialized();
-    }
-
-    #[inline]
-    fn is_layout_initialized(&self) -> bool {
-        (**self).is_layout_initialized()
     }
 
     fn current_miplevels_access(&self) -> std::ops::Range<u32> {
@@ -352,115 +295,6 @@ impl PartialEq for dyn ImageAccess + Send + Sync {
 impl Eq for dyn ImageAccess + Send + Sync {}
 
 impl Hash for dyn ImageAccess + Send + Sync {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.inner().hash(state);
-    }
-}
-
-/// Wraps around an object that implements `ImageAccess` and modifies the initial layout
-/// requirement to be either `Undefined` or `Preinitialized`.
-#[derive(Debug, Copy, Clone)]
-pub struct ImageAccessFromUndefinedLayout<I> {
-    image: I,
-    preinitialized: bool,
-}
-
-unsafe impl<I> ImageAccess for ImageAccessFromUndefinedLayout<I>
-where
-    I: ImageAccess,
-{
-    #[inline]
-    fn inner(&self) -> ImageInner {
-        self.image.inner()
-    }
-
-    unsafe fn layout_initialized(&self) {
-        self.image.layout_initialized()
-    }
-
-    fn is_layout_initialized(&self) -> bool {
-        self.image.is_layout_initialized()
-    }
-
-    #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        if self.preinitialized {
-            ImageLayout::Preinitialized
-        } else {
-            ImageLayout::Undefined
-        }
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        self.image.final_layout_requirement()
-    }
-
-    #[inline]
-    fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
-        self.image.descriptor_layouts()
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        self.image.conflicts_buffer(other)
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.image.conflicts_image(other)
-    }
-
-    #[inline]
-    fn conflict_key(&self) -> u64 {
-        self.image.conflict_key()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        self.image.try_gpu_lock(exclusive_access, expected_layout)
-    }
-
-    #[inline]
-    unsafe fn increase_gpu_lock(&self) {
-        self.image.increase_gpu_lock()
-    }
-
-    #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        self.image.unlock(new_layout)
-    }
-
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        self.image.current_miplevels_access()
-    }
-
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        self.image.current_layer_levels_access()
-    }
-}
-
-impl<I> PartialEq for ImageAccessFromUndefinedLayout<I>
-where
-    I: ImageAccess,
-{
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        self.inner() == other.inner()
-    }
-}
-
-impl<I> Eq for ImageAccessFromUndefinedLayout<I> where I: ImageAccess {}
-
-impl<I> Hash for ImageAccessFromUndefinedLayout<I>
-where
-    I: ImageAccess,
-{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

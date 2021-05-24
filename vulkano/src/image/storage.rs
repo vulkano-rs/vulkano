@@ -200,24 +200,6 @@ where
         }
     }
 
-    unsafe fn layout_initialized(&self) {
-        self.initialized.store(true, Ordering::SeqCst)
-    }
-
-    fn is_layout_initialized(&self) -> bool {
-        self.initialized.load(Ordering::SeqCst)
-    }
-
-    #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        ImageLayout::General
-    }
-
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
@@ -244,27 +226,37 @@ where
     }
 
     #[inline]
+    fn current_layout(&self) -> ImageLayout {
+        if self.initialized.load(Ordering::SeqCst) {
+            ImageLayout::General
+        } else {
+            ImageLayout::Undefined
+        }
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        Some(ImageLayout::General)
+    }
+
+    #[inline]
     fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
-        if expected_layout != ImageLayout::General && expected_layout != ImageLayout::Undefined {
-            if self.initialized.load(Ordering::SeqCst) {
+        if self.initialized.load(Ordering::SeqCst) {
+            if expected_layout != ImageLayout::General {
                 return Err(AccessError::UnexpectedImageLayout {
                     requested: expected_layout,
                     allowed: ImageLayout::General,
                 });
-            } else {
-                return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: ImageLayout::Undefined,
-                });
             }
-        }
-
-        if expected_layout != ImageLayout::Undefined {
-            if !self.initialized.load(Ordering::SeqCst) {
-                return Err(AccessError::ImageNotInitialized {
-                    requested: expected_layout,
-                });
-            }
+        } else if expected_layout == ImageLayout::General {
+            return Err(AccessError::ImageNotInitialized {
+                requested: expected_layout,
+            });
+        } else if expected_layout != ImageLayout::Undefined {
+            return Err(AccessError::UnexpectedImageLayout {
+                requested: expected_layout,
+                allowed: ImageLayout::Undefined,
+            });
         }
 
         let val = self
@@ -285,12 +277,9 @@ where
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        assert!(new_layout.is_none() || new_layout == Some(ImageLayout::General));
-
-        if let Some(ImageLayout::General) = new_layout {
-            self.initialized.store(true, Ordering::SeqCst);
-        }
+    unsafe fn unlock(&self, new_layout: ImageLayout) {
+        assert_eq!(new_layout, ImageLayout::General);
+        self.initialized.store(true, Ordering::SeqCst);
 
         self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
     }

@@ -453,24 +453,6 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
         }
     }
 
-    unsafe fn layout_initialized(&self) {
-        self.initialized.store(true, Ordering::SeqCst);
-    }
-
-    fn is_layout_initialized(&self) -> bool {
-        self.initialized.load(Ordering::SeqCst)
-    }
-
-    #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        self.layout
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        self.layout
-    }
-
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
@@ -497,12 +479,22 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     }
 
     #[inline]
+    fn current_layout(&self) -> ImageLayout {
+        self.layout
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        Some(self.layout)
+    }
+
+    #[inline]
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
+        if expected_layout != self.layout {
             return Err(AccessError::UnexpectedImageLayout {
                 requested: expected_layout,
                 allowed: self.layout,
@@ -524,8 +516,8 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     unsafe fn increase_gpu_lock(&self) {}
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        debug_assert!(new_layout.is_none());
+    unsafe fn unlock(&self, new_layout: ImageLayout) {
+        assert_eq!(new_layout, self.layout);
     }
 
     #[inline]
@@ -550,24 +542,6 @@ unsafe impl ImageAccess for SubImage {
     #[inline]
     fn inner(&self) -> ImageInner {
         self.image.inner()
-    }
-
-    unsafe fn layout_initialized(&self) {
-        self.image.layout_initialized()
-    }
-
-    fn is_layout_initialized(&self) -> bool {
-        self.image.is_layout_initialized()
-    }
-
-    #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        self.image.initial_layout_requirement()
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        self.image.final_layout_requirement()
     }
 
     #[inline]
@@ -601,12 +575,22 @@ unsafe impl ImageAccess for SubImage {
     }
 
     #[inline]
+    fn current_layout(&self) -> ImageLayout {
+        self.layout
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        Some(self.layout)
+    }
+
+    #[inline]
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
+        if expected_layout != self.layout {
             return Err(AccessError::UnexpectedImageLayout {
                 requested: expected_layout,
                 allowed: self.layout,
@@ -622,7 +606,7 @@ unsafe impl ImageAccess for SubImage {
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
+    unsafe fn unlock(&self, new_layout: ImageLayout) {
         self.image.unlock(new_layout)
     }
 }
@@ -649,24 +633,6 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
         ImageAccess::inner(&self.image)
     }
 
-    unsafe fn layout_initialized(&self) {
-        self.image.layout_initialized()
-    }
-
-    fn is_layout_initialized(&self) -> bool {
-        self.image.is_layout_initialized()
-    }
-
-    #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        ImageLayout::Undefined
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        self.image.layout
-    }
-
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         None
@@ -685,6 +651,16 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     #[inline]
     fn conflict_key(&self) -> u64 {
         self.image.image.key()
+    }
+
+    #[inline]
+    fn current_layout(&self) -> ImageLayout {
+        ImageLayout::Undefined
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        Some(self.image.layout)
     }
 
     #[inline]
@@ -718,8 +694,8 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        assert_eq!(new_layout, Some(self.image.layout));
+    unsafe fn unlock(&self, new_layout: ImageLayout) {
+        assert_eq!(new_layout, self.image.layout);
         self.image.initialized.store(true, Ordering::SeqCst);
     }
 

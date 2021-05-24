@@ -96,16 +96,6 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        ImageLayout::PresentSrc
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        ImageLayout::PresentSrc
-    }
-
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::ShaderReadOnlyOptimal,
@@ -131,6 +121,27 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
+    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
+        0..self.mipmap_levels()
+    }
+
+    #[inline]
+    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
+        0..1
+    }
+
+    #[inline]
+    fn current_layout(&self) -> ImageLayout {
+        // TODO report correct layout after `unlock` was implemented
+        ImageLayout::PresentSrc
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        Some(ImageLayout::PresentSrc)
+    }
+
+    #[inline]
     fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
         if self.swapchain.is_fullscreen_exclusive() {
             Ok(())
@@ -141,31 +152,11 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    unsafe fn layout_initialized(&self) {
-        self.layout_initialized();
-    }
-
-    #[inline]
-    fn is_layout_initialized(&self) -> bool {
-        self.is_layout_initialized()
-    }
-
-    #[inline]
     unsafe fn increase_gpu_lock(&self) {}
 
     #[inline]
-    unsafe fn unlock(&self, _: Option<ImageLayout>) {
+    unsafe fn unlock(&self, _: ImageLayout) {
         // TODO: store that the image was initialized
-    }
-
-    #[inline]
-    fn current_miplevels_access(&self) -> std::ops::Range<u32> {
-        0..self.mipmap_levels()
-    }
-
-    #[inline]
-    fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        0..1
     }
 }
 

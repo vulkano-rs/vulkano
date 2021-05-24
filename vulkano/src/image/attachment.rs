@@ -444,16 +444,6 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
     }
 
     #[inline]
-    fn initial_layout_requirement(&self) -> ImageLayout {
-        self.attachment_layout
-    }
-
-    #[inline]
-    fn final_layout_requirement(&self) -> ImageLayout {
-        self.attachment_layout
-    }
-
-    #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         Some(ImageDescriptorLayouts {
             storage_image: ImageLayout::ShaderReadOnlyOptimal,
@@ -478,28 +468,37 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
         self.image.key()
     }
 
+    fn current_layout(&self) -> ImageLayout {
+        if self.initialized.load(Ordering::SeqCst) {
+            self.attachment_layout
+        } else {
+            ImageLayout::Undefined
+        }
+    }
+
+    #[inline]
+    fn final_layout_requirement(&self) -> Option<ImageLayout> {
+        Some(self.attachment_layout)
+    }
+
     #[inline]
     fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
-        if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
-            if self.initialized.load(Ordering::SeqCst) {
+        if self.initialized.load(Ordering::SeqCst) {
+            if expected_layout != self.attachment_layout {
                 return Err(AccessError::UnexpectedImageLayout {
                     requested: expected_layout,
                     allowed: self.attachment_layout,
                 });
-            } else {
-                return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: ImageLayout::Undefined,
-                });
             }
-        }
-
-        if expected_layout != ImageLayout::Undefined {
-            if !self.initialized.load(Ordering::SeqCst) {
-                return Err(AccessError::ImageNotInitialized {
-                    requested: expected_layout,
-                });
-            }
+        } else if expected_layout == self.attachment_layout {
+            return Err(AccessError::ImageNotInitialized {
+                requested: expected_layout,
+            });
+        } else if expected_layout != ImageLayout::Undefined {
+            return Err(AccessError::UnexpectedImageLayout {
+                requested: expected_layout,
+                allowed: ImageLayout::Undefined,
+            });
         }
 
         if self
@@ -521,24 +520,12 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: Option<ImageLayout>) {
-        if let Some(new_layout) = new_layout {
-            debug_assert_eq!(new_layout, self.attachment_layout);
-            self.initialized.store(true, Ordering::SeqCst);
-        }
+    unsafe fn unlock(&self, new_layout: ImageLayout) {
+        assert_eq!(new_layout, self.attachment_layout);
+        self.initialized.store(true, Ordering::SeqCst);
 
         let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_val >= 1);
-    }
-
-    #[inline]
-    unsafe fn layout_initialized(&self) {
-        self.initialized.store(true, Ordering::SeqCst);
-    }
-
-    #[inline]
-    fn is_layout_initialized(&self) -> bool {
-        self.initialized.load(Ordering::SeqCst)
     }
 
     #[inline]
