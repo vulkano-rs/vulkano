@@ -393,11 +393,14 @@ mod tests {
     #[test]
     fn check_maintenance_when_trim() {
         let (device, queue) = gfx_dev_and_queue!();
+        let pool = UnsafeCommandPool::new(device.clone(), queue.family(), false, false).unwrap();
 
-        // TODO: test doesn't work with Vulkan 1.1
-        if device.api_version() < Version::V1_1 {
-            let pool = UnsafeCommandPool::new(device, queue.family(), false, false).unwrap();
-
+        if device.api_version() >= Version::V1_1 {
+            match pool.trim() {
+                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => panic!(),
+                _ => (),
+            }
+        } else {
             match pool.trim() {
                 Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => (),
                 _ => panic!(),
