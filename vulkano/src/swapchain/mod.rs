@@ -325,6 +325,7 @@ pub use self::swapchain::FullscreenExclusiveError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::SwapchainAcquireFuture;
+pub use self::swapchain::SwapchainBuilder;
 pub use self::swapchain::SwapchainCreationError;
 
 mod capabilities;
