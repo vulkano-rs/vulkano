@@ -132,8 +132,11 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
 
     #[inline]
     fn current_layout(&self) -> ImageLayout {
-        // TODO report correct layout after `unlock` was implemented
-        ImageLayout::PresentSrc
+        if self.is_layout_initialized() {
+            ImageLayout::PresentSrc
+        } else {
+            ImageLayout::Undefined
+        }
     }
 
     #[inline]
@@ -155,8 +158,9 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     unsafe fn increase_gpu_lock(&self) {}
 
     #[inline]
-    unsafe fn unlock(&self, _: ImageLayout) {
-        // TODO: store that the image was initialized
+    unsafe fn unlock(&self, transitioned_layout: ImageLayout) {
+        assert_eq!(transitioned_layout, ImageLayout::PresentSrc);
+        self.layout_initialized();
     }
 }
 
