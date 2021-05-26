@@ -55,9 +55,6 @@
 - Fixed a bug which caused a segfault when extending memory allocation info in DeviceMemoryBuilder
 - `BufferlessDefinition` and `BufferlessVertices` now derive `Copy` and `Clone`. This allows `GraphicsPipelineBuilder`s that have not yet defined a vertex buffer type to be cloned.
 - Various functions for converting to/from Vulkan flags have been consolidated into implementations of the standard `From` trait.
-- Added support for the `VK_KHR_multiview` extension
-- Vulkano-shaders: Added support for MultiView SPIR-V capability.
-- `multiview` example added showing how to utilize the `VK_KHR_multiview` extension to render to multiple layers of a framebuffer at once
 
 # Version 0.22.0 (2021-03-31)
 
