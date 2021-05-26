@@ -15,8 +15,6 @@
 - Fixed the issue when creating a buffer with exportable fd on Linux(see to #1545).
 - The `draw_indirect` and `draw_indexed_indirect` commands on `AutoCommandBufferBuilder` now check the draw count against the `max_draw_indirect_count` limit.
 - Fixed a few documentation errors.
-- **Breaking** the `ImageAccess` trait now requires the implementation of the `layout_initialized` and `is_layout_initialized` functions
-- implemented `layout_initialized` and `is_layout_initialized` for all image access types
 
 # Version 0.23.0 (2021-04-10)
 
