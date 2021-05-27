@@ -1205,14 +1205,13 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
         if self.swapchain.images[self.image_id]
             .undefined_layout
             .load(Ordering::Relaxed)
-            && layout != ImageLayout::Undefined
         {
             return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
                 requested: layout,
             }));
         }
 
-        if layout != ImageLayout::Undefined && layout != ImageLayout::PresentSrc {
+        if layout != ImageLayout::PresentSrc {
             return Err(AccessCheckError::Denied(
                 AccessError::UnexpectedImageLayout {
                     allowed: ImageLayout::PresentSrc,

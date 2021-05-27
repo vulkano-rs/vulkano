@@ -1199,9 +1199,7 @@ impl SyncCommandBuffer {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::ImageRef(image)) {
-            if layout != ImageLayout::Undefined
-                && value.image_state.as_ref().unwrap().current_layout != layout
-            {
+            if value.image_state.as_ref().unwrap().current_layout != layout {
                 return Err(AccessCheckError::Denied(
                     AccessError::UnexpectedImageLayout {
                         allowed: value.image_state.as_ref().unwrap().current_layout,
@@ -1645,9 +1643,8 @@ mod tests {
     #[test]
     fn double_initial_image_layout_transition() {
         let (device, queue) = gfx_dev_and_queue!();
-        let pool = Device::standard_command_pool(&device, queue.family());
-        let pool_builder_alloc = pool.alloc(false, 2).unwrap().next().unwrap();
 
+        // the image will initially be in an `Undefined` layout
         let img = StorageImage::new(
             device.clone(),
             ImageDimensions::Dim2d {
@@ -1660,31 +1657,23 @@ mod tests {
         )
         .unwrap();
 
+        // helper function for building two command buffers that use the same image and both
+        // assume that the image is still in an `Undefined` layout
         let build_command_buffer = || {
-            let mut cbb1 = AutoCommandBufferBuilder::primary(
+            let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
                 queue.family(),
                 CommandBufferUsage::OneTimeSubmit,
             )
             .unwrap();
-            cbb1.clear_color_image(img.clone(), ClearValue::Float([0.0, 0.0, 0.0, 0.0]))
+            command_buffer_builder
+                .clear_color_image(img.clone(), ClearValue::Float([0.0, 0.0, 0.0, 0.0]))
                 .unwrap();
-            cbb1.build().unwrap()
+            command_buffer_builder.build().unwrap()
         };
 
-        let cb1 = build_command_buffer();
-        let cb2 = build_command_buffer();
-
-        sync::now(device.clone())
-            .then_execute(queue.clone(), cb1)
-            .unwrap()
-            .then_signal_fence_and_flush()
-            .unwrap()
-            .wait(None)
-            .unwrap();
-
-        // TODO using a single future for both command buffers works but probably shouldn't?
-        //  (maybe using a single future fixes the transitions automatically?)
+        let command_buffer_1 = build_command_buffer();
+        let command_buffer_2 = build_command_buffer();
 
         // the image will be transitioned to a `General` layout after the first command buffer
         // has been executed but the second command buffer was built when the image was still
@@ -1692,7 +1681,10 @@ mod tests {
         // second command buffer because it would have tried to insert an incorrect image
         // memory barrier based on the assumption that the image was still `Undefined`
         assert!(matches!(
-            sync::now(device.clone()).then_execute(queue.clone(), cb2),
+            sync::now(device.clone())
+                .then_execute(queue.clone(), command_buffer_1)
+                .unwrap()
+                .then_execute(queue.clone(), command_buffer_2),
             Err(crate::command_buffer::CommandBufferExecError::AccessError { .. })
         ))
     }

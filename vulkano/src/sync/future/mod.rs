@@ -126,8 +126,7 @@ pub unsafe trait GpuFuture: DeviceOwned {
     /// If the access is granted, returns the pipeline stage and access flags of the latest usage
     /// of this resource, or `None` if irrelevant.
     ///
-    /// Implementations must ensure that the image is in the given layout. However if the `layout`
-    /// is `Undefined` then the implementation should accept any actual layout.
+    /// Implementations must ensure that the image is in the given layout.
     ///
     /// > **Note**: Returning `Ok` means "access granted", while returning `Err` means
     /// > "don't know". Therefore returning `Err` is never unsafe.

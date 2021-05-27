@@ -133,7 +133,12 @@ pub unsafe trait ImageAccess {
     /// Returns the current layer level that is accessed by the gpu
     fn current_layer_levels_access(&self) -> std::ops::Range<u32>;
 
-    /// TODO comment
+    /// Returns the current layout of the image.
+    ///
+    /// The implementation should keep track of the current layout using the `transitioned_layout`
+    /// parameter of the `unlock()` function.
+    /// If a command buffer depends on an image layout it will generally use the returned value
+    /// as the `expected_layout` of the `try_gpu_lock()` function.
     fn current_layout(&self) -> ImageLayout;
 
     /// Returns the layout that the image must be returned to before the end of the command buffer.
