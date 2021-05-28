@@ -1489,7 +1489,6 @@ impl<'a> Hash for CbKey<'a> {
 
 #[cfg(test)]
 mod tests {
-    use core::iter;
     use std::sync::Arc;
 
     use crate::buffer::BufferUsage;
@@ -1497,18 +1496,16 @@ mod tests {
     use crate::buffer::ImmutableBuffer;
     use crate::command_buffer::pool::CommandPool;
     use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-    use crate::command_buffer::sys::UnsafeCommandBufferBuilderColorImageClear;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferLevel;
     use crate::command_buffer::CommandBufferUsage;
     use crate::device::Device;
     use crate::format::{ClearValue, Format};
-    use crate::image::{ImageDimensions, ImageLayout, StorageImage};
+    use crate::image::{ImageDimensions, StorageImage};
     use crate::sync::GpuFuture;
 
     use super::SyncCommandBufferBuilder;
     use super::SyncCommandBufferBuilderError;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
     use crate::sync;
 
     #[test]
