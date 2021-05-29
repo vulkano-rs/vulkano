@@ -33,7 +33,8 @@ macro_rules! fns {
     };
 }
 
-// Auto-generated from vk.xml
+// Auto-generated from vk.xml header version 168
+
 fns!(EntryFunctions, {
     v1_0 => EntryFnV1_0,
     v1_1 => EntryFnV1_1,
@@ -72,7 +73,6 @@ fns!(InstanceFunctions, {
     mvk_macos_surface => MvkMacosSurfaceFn,
     nn_vi_surface => NnViSurfaceFn,
     nv_external_memory_capabilities => NvExternalMemoryCapabilitiesFn,
-    qnx_screen_surface => QnxScreenSurfaceFn,
 });
 
 fns!(DeviceFunctions, {
@@ -106,20 +106,14 @@ fns!(DeviceFunctions, {
     khr_sampler_ycbcr_conversion => KhrSamplerYcbcrConversionFn,
     khr_shared_presentable_image => KhrSharedPresentableImageFn,
     khr_swapchain => KhrSwapchainFn,
-    //khr_synchronization2 => KhrSynchronization2Fn,
     khr_timeline_semaphore => KhrTimelineSemaphoreFn,
-    //khr_video_decode_queue => KhrVideoDecodeQueueFn,
-    //khr_video_encode_queue => KhrVideoEncodeQueueFn,
-    //khr_video_queue => KhrVideoQueueFn,
     ext_buffer_device_address => ExtBufferDeviceAddressFn,
     ext_calibrated_timestamps => ExtCalibratedTimestampsFn,
-    //ext_color_write_enable => ExtColorWriteEnableFn,
     ext_conditional_rendering => ExtConditionalRenderingFn,
     ext_debug_marker => ExtDebugMarkerFn,
     ext_discard_rectangles => ExtDiscardRectanglesFn,
     ext_display_control => ExtDisplayControlFn,
     ext_extended_dynamic_state => ExtExtendedDynamicStateFn,
-    //ext_extended_dynamic_state2 => ExtExtendedDynamicState2Fn,
     ext_external_memory_host => ExtExternalMemoryHostFn,
     ext_full_screen_exclusive => ExtFullScreenExclusiveFn,
     ext_hdr_metadata => ExtHdrMetadataFn,
@@ -131,17 +125,13 @@ fns!(DeviceFunctions, {
     ext_tooling_info => ExtToolingInfoFn,
     ext_transform_feedback => ExtTransformFeedbackFn,
     ext_validation_cache => ExtValidationCacheFn,
-    //ext_vertex_input_dynamic_state => ExtVertexInputDynamicStateFn,
     amd_buffer_marker => AmdBufferMarkerFn,
     amd_display_native_hdr => AmdDisplayNativeHdrFn,
     amd_draw_indirect_count => AmdDrawIndirectCountFn,
     amd_shader_info => AmdShaderInfoFn,
     android_external_memory_android_hardware_buffer => AndroidExternalMemoryAndroidHardwareBufferFn,
-    //fuchsia_external_memory => FuchsiaExternalMemoryFn,
-    //fuchsia_external_semaphore => FuchsiaExternalSemaphoreFn,
     google_display_timing => GoogleDisplayTimingFn,
     intel_performance_query => IntelPerformanceQueryFn,
-    //nvx_binary_import => NvxBinaryImportFn,
     nvx_image_view_handle => NvxImageViewHandleFn,
     nv_acquire_winrt_display => NvAcquireWinrtDisplayFn,
     nv_clip_space_w_scaling => NvClipSpaceWScalingFn,

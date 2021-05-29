@@ -19,8 +19,9 @@ macro_rules! extensions {
         $sname:ident,
         $rawname:ident,
         $($member:ident => {
+            doc: $doc:expr,
             raw: $raw:expr,
-            requires_core: $requires_core:ident,
+            requires_core: $requires_core:expr,
             requires_device_extensions: [$($requires_device_extension:ident),*],
             requires_instance_extensions: [$($requires_instance_extension:ident),*]$(,)?
         },)*
@@ -33,6 +34,7 @@ macro_rules! extensions {
                 // #[doc = ..] attribute using concat! and stringify!. Once this is available,
                 // generate documentation here with requirements and a link to the Vulkan
                 // documentation page?
+                #[doc = $doc]
                 pub $member: bool,
             )*
 
