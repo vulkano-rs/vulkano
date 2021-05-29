@@ -97,6 +97,7 @@ pub(crate) use self::features::FeaturesFfi;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
+use crate::extensions::ExtensionRequirementError;
 use crate::fns::DeviceFunctions;
 use crate::format::Format;
 use crate::image::ImageCreateFlags;
@@ -202,46 +203,96 @@ impl Device {
         let max_api_version = instance.max_api_version();
         let api_version = std::cmp::min(max_api_version, phys.api_version());
 
-        let queue_families = queue_families.into_iter();
-
-        if !phys.supported_features().superset_of(&requested_features) {
-            return Err(DeviceCreationError::FeatureNotPresent);
-        }
-
-        // this variable will contain the queue family ID and queue ID of each requested queue
-        let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
-
-        // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
-        // ignored by the driver. For backwards compatibility, the spec recommends passing the
-        // exact instance layers to the device as well. There's no need to support separate
-        // requests at device creation time for legacy drivers: the spec claims that "[at] the
-        // time of deprecation there were no known device-only layers."
-        //
-        // Because there's no way to query the list of layers enabled for an instance, we need
-        // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
-        // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = instance
-            .loaded_layers()
-            .map(|layer| layer.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
-
         let extensions = extensions.into();
         let extensions_list = extensions
             .iter()
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
 
-        let requested_features = Features {
-            // Always enabled; see below.
-            robust_buffer_access: true,
-            ..*requested_features
-        };
+        // Check if the extensions are correct
+        let extensions_struct = DeviceExtensions::from(&extensions);
+        extensions_struct.check_requirements(api_version, instance.loaded_extensions())?;
+
+        if extensions_struct.khr_buffer_device_address
+            && extensions_struct.ext_buffer_device_address
+        {
+            panic!("khr_buffer_device_address and ext_buffer_device_address cannot be enabled together");
+        }
+
+        let mut requested_features = requested_features.clone();
+
+        // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
+        //       if they can possibly perform out-of-bounds reads and writes. If the user tries
+        //       to use a shader that can perform out-of-bounds operations without having
+        //       `robust_buffer_access` enabled, an error is returned.
+        //
+        //       However for the moment this verification isn't performed. In order to be safe,
+        //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
+        //       supported everywhere.
+        //
+        //       The only alternative (while waiting for shaders introspection to work) is to
+        //       make all shaders depend on `robust_buffer_access`. But since usually the
+        //       majority of shaders don't need this feature, it would be very annoying to have
+        //       to enable it manually when you don't need it.
+        //
+        //       Note that if we ever remove this, don't forget to adjust the change in
+        //       `Device`'s construction below.
+        requested_features.robust_buffer_access = true;
+
+        // Certain extensions that were promoted to a core feature, require that this feature is
+        // enabled if the extension is enabled. Rather than being fussy with the user, just
+        // silently enable them here.
+        // TODO: Maybe just not allow enabling promoted extensions?
+        if api_version >= Version::V1_2 {
+            if extensions_struct.khr_shader_draw_parameters {
+                requested_features.shader_draw_parameters = true;
+            }
+
+            if extensions_struct.khr_draw_indirect_count {
+                requested_features.draw_indirect_count = true;
+            }
+
+            if extensions_struct.khr_sampler_mirror_clamp_to_edge {
+                requested_features.sampler_mirror_clamp_to_edge = true;
+            }
+
+            if extensions_struct.ext_descriptor_indexing {
+                requested_features.descriptor_indexing = true;
+            }
+
+            if extensions_struct.ext_sampler_filter_minmax {
+                requested_features.sampler_filter_minmax = true;
+            }
+
+            if extensions_struct.ext_shader_viewport_index_layer {
+                requested_features.shader_output_viewport_index = true;
+                requested_features.shader_output_layer = true;
+            }
+        }
+
+        /*
+        TODO: When these features are added, check that they aren't enabled together.
+        if requested_features.shading_rate_image || requested_features.fragment_density_map {
+            if requested_features.pipeline_fragment_shading_rate {}
+
+            if requested_features.primitive_fragment_shading_rate {}
+
+            if requested_features.attachment_fragment_shading_rate {}
+        }*/
+
+        // Check if the requested features are supported by the physical device.
+        if !phys.supported_features().superset_of(&requested_features) {
+            return Err(DeviceCreationError::FeatureNotPresent);
+        }
 
         // device creation
-        let device = unsafe {
+        let (device, queues) = unsafe {
             // each element of `queues` is a `(queue_family, priorities)`
             // each queue family must only have one entry in `queues`
             let mut queues: Vec<(u32, Vec<f32>)> = Vec::with_capacity(phys.queue_families().len());
+
+            // this variable will contain the queue family ID and queue ID of each requested queue
+            let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
 
             for (queue_family, priority) in queue_families {
                 // checking the parameters
@@ -280,25 +331,22 @@ impl Device {
                 )
                 .collect::<SmallVec<[_; 16]>>();
 
-            // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
-            //       if they can possibly perform out-of-bounds reads and writes. If the user tries
-            //       to use a shader that can perform out-of-bounds operations without having
-            //       `robust_buffer_access` enabled, an error is returned.
-            //
-            //       However for the moment this verification isn't performed. In order to be safe,
-            //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
-            //       supported everywhere.
-            //
-            //       The only alternative (while waiting for shaders introspection to work) is to
-            //       make all shaders depend on `robust_buffer_access`. But since usually the
-            //       majority of shaders don't need this feature, it would be very annoying to have
-            //       to enable it manually when you don't need it.
-            //
-            //       Note that if we ever remove this, don't forget to adjust the change in
-            //       `Device`'s construction below.
-
             let mut features_ffi = <FeaturesFfi>::from(&requested_features);
             features_ffi.make_chain(api_version);
+
+            // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
+            // ignored by the driver. For backwards compatibility, the spec recommends passing the
+            // exact instance layers to the device as well. There's no need to support separate
+            // requests at device creation time for legacy drivers: the spec claims that "[at] the
+            // time of deprecation there were no known device-only layers."
+            //
+            // Because there's no way to query the list of layers enabled for an instance, we need
+            // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
+            // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
+            let layers_ptr = instance
+                .loaded_layers()
+                .map(|layer| layer.as_ptr())
+                .collect::<SmallVec<[_; 16]>>();
 
             let has_khr_get_physical_device_properties2 = instance
                 .loaded_extensions()
@@ -332,7 +380,8 @@ impl Device {
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
-            output.assume_init()
+
+            (output.assume_init(), output_queues)
         };
 
         // loading the function pointers of the newly-created device
@@ -341,7 +390,7 @@ impl Device {
         });
 
         let mut active_queue_families: SmallVec<[u32; 8]> = SmallVec::new();
-        for (queue_family, _) in output_queues.iter() {
+        for (queue_family, _) in queues.iter() {
             if let None = active_queue_families
                 .iter()
                 .find(|&&qf| qf == *queue_family)
@@ -373,13 +422,13 @@ impl Device {
         });
 
         // Iterator for the produced queues.
-        let output_queues = QueuesIter {
+        let queues = QueuesIter {
             next_queue: 0,
             device: device.clone(),
-            families_and_ids: output_queues,
+            families_and_ids: queues,
         };
 
-        Ok((device, output_queues))
+        Ok((device, queues))
     }
 
     /// Returns the Vulkan version supported by this `Device`.
@@ -742,7 +791,7 @@ impl Iterator for QueuesIter {
 impl ExactSizeIterator for QueuesIter {}
 
 /// Error that can be returned when creating a device.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug)]
 pub enum DeviceCreationError {
     /// Failed to create the device for an implementation-specific reason.
     InitializationFailed,
@@ -763,6 +812,8 @@ pub enum DeviceCreationError {
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
+    /// A requirement for an extension was not met.
+    ExtensionRequirementNotMet(ExtensionRequirementError),
 }
 
 impl error::Error for DeviceCreationError {}
@@ -770,35 +821,41 @@ impl error::Error for DeviceCreationError {}
 impl fmt::Display for DeviceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                DeviceCreationError::InitializationFailed => {
+        match *self {
+            DeviceCreationError::InitializationFailed => {
+                write!(
+                    fmt,
                     "failed to create the device for an implementation-specific reason"
-                }
-                DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-                DeviceCreationError::OutOfDeviceMemory =>
-                    "no memory available on the graphical device",
-                DeviceCreationError::DeviceLost => "failed to connect to the device",
-                DeviceCreationError::TooManyQueuesForFamily => {
-                    "tried to create too many queues for a given family"
-                }
-                DeviceCreationError::FeatureNotPresent => {
-                    "some of the requested features are unsupported by the physical device"
-                }
-                DeviceCreationError::PriorityOutOfRange => {
-                    "the priority of one of the queues is out of the [0.0; 1.0] range"
-                }
-                DeviceCreationError::ExtensionNotPresent => {
-                    "some of the requested device extensions are not supported by the physical device"
-                }
-                DeviceCreationError::TooManyObjects => {
-                    "you have reached the limit to the number of devices that can be created from the
-                 same physical device"
-                }
+                )
             }
-        )
+            DeviceCreationError::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            DeviceCreationError::OutOfDeviceMemory => {
+                write!(fmt, "no memory available on the graphical device")
+            }
+            DeviceCreationError::DeviceLost => write!(fmt, "failed to connect to the device"),
+            DeviceCreationError::TooManyQueuesForFamily => {
+                write!(fmt, "tried to create too many queues for a given family")
+            }
+            DeviceCreationError::FeatureNotPresent => {
+                write!(
+                    fmt,
+                    "some of the requested features are unsupported by the physical device"
+                )
+            }
+            DeviceCreationError::PriorityOutOfRange => {
+                write!(
+                    fmt,
+                    "the priority of one of the queues is out of the [0.0; 1.0] range"
+                )
+            }
+            DeviceCreationError::ExtensionNotPresent => {
+                write!(fmt,"some of the requested device extensions are not supported by the physical device")
+            }
+            DeviceCreationError::TooManyObjects => {
+                write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
+            }
+            DeviceCreationError::ExtensionRequirementNotMet(err) => err.fmt(fmt),
+        }
     }
 }
 
@@ -815,6 +872,13 @@ impl From<Error> for DeviceCreationError {
             Error::TooManyObjects => DeviceCreationError::TooManyObjects,
             _ => panic!("Unexpected error value: {}", err as i32),
         }
+    }
+}
+
+impl From<ExtensionRequirementError> for DeviceCreationError {
+    #[inline]
+    fn from(err: ExtensionRequirementError) -> Self {
+        Self::ExtensionRequirementNotMet(err)
     }
 }
 

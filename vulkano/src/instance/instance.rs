@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::extensions::ExtensionRequirementError;
 use crate::fns::InstanceFunctions;
 use crate::instance::loader;
 use crate::instance::loader::FunctionPointers;
@@ -274,6 +275,12 @@ impl Instance {
         layers: SmallVec<[CString; 16]>,
         function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
     ) -> Result<Arc<Instance>, InstanceCreationError> {
+        let api_version = std::cmp::min(max_api_version, function_pointers.api_version()?);
+
+        // Check if the extensions are correct
+        let extensions_struct = InstanceExtensions::from(&extensions);
+        extensions_struct.check_requirements(api_version)?;
+
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
         let def = Default::default();
@@ -298,8 +305,6 @@ impl Instance {
         } else {
             None
         };
-
-        let api_version = std::cmp::min(max_api_version, function_pointers.api_version()?);
 
         // Building the `vk::ApplicationInfo` if required.
         let app_infos = if let Some(app_infos) = app_infos {
@@ -605,11 +610,12 @@ pub enum InstanceCreationError {
     InitializationFailed,
     /// One of the requested layers is missing.
     LayerNotPresent,
-    /// One of the requested extensions is missing.
+    /// One of the requested extensions is not supported by the implementation.
     ExtensionNotPresent,
     /// The version requested is not supported by the implementation.
-    // TODO: more info about this once the question of the version has been resolved
     IncompatibleDriver,
+    /// A requirement for an extension was not met.
+    ExtensionRequirementNotMet(ExtensionRequirementError),
 }
 
 impl error::Error for InstanceCreationError {
@@ -626,19 +632,17 @@ impl error::Error for InstanceCreationError {
 impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                InstanceCreationError::LoadingError(_) =>
-                    "failed to load the Vulkan shared library",
-                InstanceCreationError::OomError(_) => "not enough memory available",
-                InstanceCreationError::InitializationFailed => "initialization failed",
-                InstanceCreationError::LayerNotPresent => "layer not present",
-                InstanceCreationError::ExtensionNotPresent => "extension not present",
-                InstanceCreationError::IncompatibleDriver => "incompatible driver",
+        match *self {
+            InstanceCreationError::LoadingError(_) => {
+                write!(fmt, "failed to load the Vulkan shared library")
             }
-        )
+            InstanceCreationError::OomError(_) => write!(fmt, "not enough memory available"),
+            InstanceCreationError::InitializationFailed => write!(fmt, "initialization failed"),
+            InstanceCreationError::LayerNotPresent => write!(fmt, "layer not present"),
+            InstanceCreationError::ExtensionNotPresent => write!(fmt, "extension not present"),
+            InstanceCreationError::IncompatibleDriver => write!(fmt, "incompatible driver"),
+            InstanceCreationError::ExtensionRequirementNotMet(err) => err.fmt(fmt),
+        }
     }
 }
 
@@ -653,6 +657,13 @@ impl From<LoadingError> for InstanceCreationError {
     #[inline]
     fn from(err: LoadingError) -> InstanceCreationError {
         InstanceCreationError::LoadingError(err)
+    }
+}
+
+impl From<ExtensionRequirementError> for InstanceCreationError {
+    #[inline]
+    fn from(err: ExtensionRequirementError) -> Self {
+        Self::ExtensionRequirementNotMet(err)
     }
 }
 

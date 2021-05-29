@@ -7,21 +7,33 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::instance::loader::LoadingError;
 use crate::Error;
 use crate::OomError;
+use crate::Version;
+use std::error;
+use std::fmt;
 
 macro_rules! extensions {
-    ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
+    (
+        $sname:ident,
+        $rawname:ident,
+        $($member:ident => {
+            raw: $raw:expr,
+            requires_core: $requires_core:ident,
+            requires_device_extensions: [$($requires_device_extension:ident),*],
+            requires_instance_extensions: [$($requires_instance_extension:ident),*]$(,)?
+        },)*
+    ) => (
         /// List of extensions that are enabled or available.
         #[derive(Copy, Clone, PartialEq, Eq)]
-        #[allow(missing_docs)]
         pub struct $sname {
             $(
-                pub $ext: bool,
+                // TODO: Rust 1.54 will allow generating documentation from macro arguments with the
+                // #[doc = ..] attribute using concat! and stringify!. Once this is available,
+                // generate documentation here with requirements and a link to the Vulkan
+                // documentation page?
+                pub $member: bool,
             )*
 
             /// This field ensures that an instance of this `Extensions` struct
@@ -36,7 +48,7 @@ macro_rules! extensions {
             #[inline]
             pub const fn none() -> $sname {
                 $sname {
-                    $($ext: false,)*
+                    $($member: false,)*
                     _unbuildable: Unbuildable(())
                 }
             }
@@ -46,7 +58,7 @@ macro_rules! extensions {
             pub const fn union(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
-                        $ext: self.$ext || other.$ext,
+                        $member: self.$member || other.$member,
                     )*
                     _unbuildable: Unbuildable(())
                 }
@@ -57,7 +69,7 @@ macro_rules! extensions {
             pub const fn intersection(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
-                        $ext: self.$ext && other.$ext,
+                        $member: self.$member && other.$member,
                     )*
                     _unbuildable: Unbuildable(())
                 }
@@ -68,7 +80,7 @@ macro_rules! extensions {
             pub const fn difference(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
-                        $ext: self.$ext && !other.$ext,
+                        $member: self.$member && !other.$member,
                     )*
                     _unbuildable: Unbuildable(())
                 }
@@ -83,10 +95,10 @@ macro_rules! extensions {
                 let mut first = true;
 
                 $(
-                    if self.$ext {
+                    if self.$member {
                         if !first { write!(f, ", ")? }
                         else { first = false; }
-                        f.write_str(str::from_utf8($s).unwrap())?;
+                        f.write_str(str::from_utf8($raw).unwrap())?;
                     }
                 )*
 
@@ -132,8 +144,7 @@ macro_rules! extensions {
                 $rawname(self.0.union(&other.0).cloned().collect())
             }
 
-            // TODO: impl Iterator
-            pub fn iter(&self) -> ::std::collections::hash_set::Iter<CString> { self.0.iter() }
+            pub fn iter(&self) -> impl Iterator<Item = &CString> { self.0.iter() }
         }
 
         impl fmt::Debug for $rawname {
@@ -154,7 +165,7 @@ macro_rules! extensions {
         impl<'a> From<&'a $sname> for $rawname {
             fn from(x: &'a $sname) -> Self {
                 let mut data = HashSet::new();
-                $(if x.$ext { data.insert(CString::new(&$s[..]).unwrap()); })*
+                $(if x.$member { data.insert(CString::new(&$raw[..]).unwrap()); })*
                 $rawname(data)
             }
         }
@@ -163,8 +174,8 @@ macro_rules! extensions {
             fn from(x: &'a $rawname) -> Self {
                 let mut extensions = $sname::none();
                 $(
-                    if x.0.iter().any(|x| x.as_bytes() == &$s[..]) {
-                        extensions.$ext = true;
+                    if x.0.iter().any(|x| x.as_bytes() == &$raw[..]) {
+                        extensions.$member = true;
                     }
                 )*
                 extensions
@@ -230,6 +241,57 @@ impl From<Error> for SupportedExtensionsError {
                 SupportedExtensionsError::OomError(OomError::from(err))
             }
             _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+/// An error that can happen when enabling an extension on an instance or device.
+#[derive(Clone, Copy, Debug)]
+pub struct ExtensionRequirementError {
+    /// The extension in question.
+    pub extension: &'static str,
+    /// The requirement that was not met.
+    pub requirement: ExtensionRequirement,
+}
+
+impl error::Error for ExtensionRequirementError {}
+
+impl fmt::Display for ExtensionRequirementError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "a requirement for the extension {} was not met: {}",
+            self.extension, self.requirement,
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ExtensionRequirement {
+    /// Requires a minimum Vulkan API version.
+    Core(Version),
+    /// Requires a device extension to be also enabled.
+    DeviceExtension(&'static str),
+    /// Requires an instance extension to be also enabled.
+    InstanceExtension(&'static str),
+}
+
+impl fmt::Display for ExtensionRequirement {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            ExtensionRequirement::Core(version) => {
+                write!(
+                    fmt,
+                    "Vulkan API version {}.{}",
+                    version.major, version.minor
+                )
+            }
+            ExtensionRequirement::DeviceExtension(ext) => write!(fmt, "device extension {}", ext),
+            ExtensionRequirement::InstanceExtension(ext) => {
+                write!(fmt, "instance extension {}", ext)
+            }
         }
     }
 }
