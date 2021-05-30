@@ -16,8 +16,9 @@
 //! ```no_run
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
+//! use vulkano::Version;
 //!
-//! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+//! let instance = match Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -29,68 +30,13 @@
 //! ```no_run
 //! # use vulkano::instance::Instance;
 //! # use vulkano::instance::InstanceExtensions;
+//! # use vulkano::Version;
 //! use vulkano::instance::PhysicalDevice;
 //!
-//! # let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+//! # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
 //!     println!("Available device: {}", physical_device.name());
 //! }
-//! ```
-//!
-//! # Extensions
-//!
-//! Notice the second parameter of `Instance::new()`. It is an `InstanceExtensions` struct that
-//! contains a list of extensions that must be enabled on the newly-created instance. Trying to
-//! enable an extension that is not supported by the system will result in an error.
-//!
-//! Contrary to OpenGL, it is not possible to use the features of an extension if it was not
-//! explicitly enabled.
-//!
-//! Extensions are especially important to take into account if you want to render images on the
-//! screen, as the only way to do so is to use the `VK_KHR_surface` extension. More information
-//! about this in the `swapchain` module.
-//!
-//! For example, here is how we create an instance with the `VK_KHR_surface` and
-//! `VK_KHR_android_surface` extensions enabled, which will allow us to render images to an
-//! Android screen. You can compile and run this code on any system, but it is highly unlikely to
-//! succeed on anything else than an Android-running device.
-//!
-//! ```no_run
-//! use vulkano::instance::Instance;
-//! use vulkano::instance::InstanceExtensions;
-//!
-//! let extensions = InstanceExtensions {
-//!     khr_surface: true,
-//!     khr_android_surface: true,
-//!     .. InstanceExtensions::none()
-//! };
-//!
-//! let instance = match Instance::new(None, &extensions, None) {
-//!     Ok(i) => i,
-//!     Err(err) => panic!("Couldn't build instance: {:?}", err)
-//! };
-//! ```
-//!
-//! # Application info
-//!
-//! When you create an instance, you have the possibility to pass an `ApplicationInfo` struct as
-//! the first parameter. This struct contains various information about your application, most
-//! notably its name and engine.
-//!
-//! Passing such a structure allows for example the driver to let the user configure the driver's
-//! behavior for your application alone through a control panel.
-//!
-//! ```no_run
-//! # #[macro_use] extern crate vulkano;
-//! # fn main() {
-//! use vulkano::instance::{Instance, InstanceExtensions};
-//!
-//! // Builds an `ApplicationInfo` by looking at the content of the `Cargo.toml` file at
-//! // compile-time.
-//! let app_infos = app_info_from_cargo_toml!();
-//!
-//! let _instance = Instance::new(Some(&app_infos), &InstanceExtensions::none(), None).unwrap();
-//! # }
 //! ```
 //!
 //! # Enumerating physical devices and creating a device
@@ -104,34 +50,33 @@
 //!
 //! Once you have chosen a physical device, you can create a `Device` object from it. See the
 //! `device` module for more info.
-//!
 
 pub use self::extensions::InstanceExtensions;
 pub use self::extensions::RawInstanceExtensions;
 pub use self::instance::ApplicationInfo;
 pub use self::instance::Instance;
 pub use self::instance::InstanceCreationError;
-pub use self::instance::MemoryHeap;
-pub use self::instance::MemoryHeapsIter;
-pub use self::instance::MemoryType;
-pub use self::instance::MemoryTypesIter;
-pub use self::instance::PhysicalDevice;
-pub use self::instance::PhysicalDeviceType;
-pub use self::instance::PhysicalDevicesIter;
-pub use self::instance::QueueFamiliesIter;
-pub use self::instance::QueueFamily;
 pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 pub use self::layers::LayersIterator;
 pub use self::layers::LayersListError;
 pub use self::limits::Limits;
 pub use self::loader::LoadingError;
+pub use self::physical_device::MemoryHeap;
+pub use self::physical_device::MemoryHeapsIter;
+pub use self::physical_device::MemoryType;
+pub use self::physical_device::MemoryTypesIter;
+pub use self::physical_device::PhysicalDevice;
+pub use self::physical_device::PhysicalDeviceType;
+pub use self::physical_device::PhysicalDevicesIter;
+pub use self::physical_device::QueueFamiliesIter;
+pub use self::physical_device::QueueFamily;
 pub use crate::version::Version;
 
 pub mod debug;
-pub mod loader;
-
 mod extensions;
 mod instance;
 mod layers;
 mod limits;
+pub mod loader;
+mod physical_device;

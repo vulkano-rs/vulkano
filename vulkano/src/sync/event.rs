@@ -7,17 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::vk;
 use crate::OomError;
 use crate::Success;
 use crate::VulkanObject;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// Used to block the GPU execution until an event on the CPU occurs.
 ///
@@ -28,7 +26,7 @@ use crate::VulkanObject;
 #[derive(Debug)]
 pub struct Event {
     // The event.
-    event: vk::Event,
+    event: ash::vk::Event,
     // The device.
     device: Arc<Device>,
     must_put_in_pool: bool,
@@ -47,8 +45,8 @@ impl Event {
             Some(raw_event) => {
                 unsafe {
                     // Make sure the event isn't signaled
-                    let vk = device.pointers();
-                    check_errors(vk.ResetEvent(device.internal_object(), raw_event))?;
+                    let fns = device.fns();
+                    check_errors(fns.v1_0.reset_event(device.internal_object(), raw_event))?;
                 }
                 Ok(Event {
                     event: raw_event,
@@ -71,18 +69,16 @@ impl Event {
 
     fn alloc_impl(device: Arc<Device>, must_put_in_pool: bool) -> Result<Event, OomError> {
         let event = unsafe {
-            // since the creation is constant, we use a `static` instead of a struct on the stack
-            static mut INFOS: vk::EventCreateInfo = vk::EventCreateInfo {
-                sType: vk::STRUCTURE_TYPE_EVENT_CREATE_INFO,
-                pNext: 0 as *const _, //ptr::null(),
-                flags: 0,             // reserved
+            let infos = ash::vk::EventCreateInfo {
+                flags: ash::vk::EventCreateFlags::empty(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            let vk = device.pointers();
-            check_errors(vk.CreateEvent(
+            let fns = device.fns();
+            check_errors(fns.v1_0.create_event(
                 device.internal_object(),
-                &INFOS,
+                &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
@@ -100,9 +96,11 @@ impl Event {
     #[inline]
     pub fn signaled(&self) -> Result<bool, OomError> {
         unsafe {
-            let vk = self.device.pointers();
-            let result =
-                check_errors(vk.GetEventStatus(self.device.internal_object(), self.event))?;
+            let fns = self.device.fns();
+            let result = check_errors(
+                fns.v1_0
+                    .get_event_status(self.device.internal_object(), self.event),
+            )?;
             match result {
                 Success::EventSet => Ok(true),
                 Success::EventReset => Ok(false),
@@ -115,8 +113,11 @@ impl Event {
     #[inline]
     pub fn set_raw(&mut self) -> Result<(), OomError> {
         unsafe {
-            let vk = self.device.pointers();
-            check_errors(vk.SetEvent(self.device.internal_object(), self.event))?;
+            let fns = self.device.fns();
+            check_errors(
+                fns.v1_0
+                    .set_event(self.device.internal_object(), self.event),
+            )?;
             Ok(())
         }
     }
@@ -138,8 +139,11 @@ impl Event {
     #[inline]
     pub fn reset_raw(&mut self) -> Result<(), OomError> {
         unsafe {
-            let vk = self.device.pointers();
-            check_errors(vk.ResetEvent(self.device.internal_object(), self.event))?;
+            let fns = self.device.fns();
+            check_errors(
+                fns.v1_0
+                    .reset_event(self.device.internal_object(), self.event),
+            )?;
             Ok(())
         }
     }
@@ -164,12 +168,10 @@ unsafe impl DeviceOwned for Event {
 }
 
 unsafe impl VulkanObject for Event {
-    type Object = vk::Event;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_EVENT;
+    type Object = ash::vk::Event;
 
     #[inline]
-    fn internal_object(&self) -> vk::Event {
+    fn internal_object(&self) -> ash::vk::Event {
         self.event
     }
 }
@@ -182,8 +184,9 @@ impl Drop for Event {
                 let raw_event = self.event;
                 self.device.event_pool().lock().unwrap().push(raw_event);
             } else {
-                let vk = self.device.pointers();
-                vk.DestroyEvent(self.device.internal_object(), self.event, ptr::null());
+                let fns = self.device.fns();
+                fns.v1_0
+                    .destroy_event(self.device.internal_object(), self.event, ptr::null());
             }
         }
     }

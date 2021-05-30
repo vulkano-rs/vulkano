@@ -27,6 +27,7 @@ use crate::image::ImageLayout;
 use crate::image::ImageTiling;
 use crate::image::ImageType;
 use crate::image::ImageUsage;
+use crate::image::SampleCount;
 use crate::swapchain::CapabilitiesError;
 use crate::swapchain::ColorSpace;
 use crate::swapchain::CompositeAlpha;
@@ -44,7 +45,6 @@ use crate::sync::GpuFuture;
 use crate::sync::PipelineStages;
 use crate::sync::Semaphore;
 use crate::sync::SharingMode;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::Success;
@@ -62,32 +62,29 @@ use std::time::Duration;
 
 /// The way fullscreen exclusivity is handled.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(i32)]
 pub enum FullscreenExclusive {
     /// Indicates that the driver should determine the appropriate full-screen method
     /// by whatever means it deems appropriate.
-    Default,
+    Default = ash::vk::FullScreenExclusiveEXT::DEFAULT.as_raw(),
     /// Indicates that the driver may use full-screen exclusive mechanisms when available.
     /// Such mechanisms may result in better performance and/or the availability of
     /// different presentation capabilities, but may require a more disruptive transition
     // during swapchain initialization, first presentation and/or destruction.
-    Allowed,
+    Allowed = ash::vk::FullScreenExclusiveEXT::ALLOWED.as_raw(),
     /// Indicates that the driver should avoid using full-screen mechanisms which rely
     /// on disruptive transitions.
-    Disallowed,
+    Disallowed = ash::vk::FullScreenExclusiveEXT::DISALLOWED.as_raw(),
     /// Indicates the application will manage full-screen exclusive mode by using
     /// `Swapchain::acquire_fullscreen_exclusive()` and
     /// `Swapchain::release_fullscreen_exclusive()` functions.
-    AppControlled,
+    AppControlled = ash::vk::FullScreenExclusiveEXT::APPLICATION_CONTROLLED.as_raw(),
 }
 
-impl FullscreenExclusive {
-    fn vk_sys_enum(&self) -> u32 {
-        match self {
-            &Self::Default => vk::FULL_SCREEN_EXCLUSIVE_DEFAUlT_EXT,
-            &Self::Allowed => vk::FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT,
-            &Self::Disallowed => vk::FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT,
-            &Self::AppControlled => vk::FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT,
-        }
+impl From<FullscreenExclusive> for ash::vk::FullScreenExclusiveEXT {
+    #[inline]
+    fn from(val: FullscreenExclusive) -> Self {
+        Self::from_raw(val as i32)
     }
 }
 
@@ -223,7 +220,7 @@ pub struct Swapchain<W> {
     // The surface, which we need to keep alive.
     surface: Arc<Surface<W>>,
     // The swapchain object.
-    swapchain: vk::SwapchainKHR,
+    swapchain: ash::vk::SwapchainKHR,
 
     // The images of this swapchain.
     images: Vec<ImageEntry>,
@@ -398,10 +395,13 @@ impl<W> Swapchain<W> {
 
         unsafe {
             check_errors(
-                self.device.pointers().AcquireFullScreenExclusiveModeEXT(
-                    self.device.internal_object(),
-                    self.swapchain,
-                ),
+                self.device
+                    .fns()
+                    .ext_full_screen_exclusive
+                    .acquire_full_screen_exclusive_mode_ext(
+                        self.device.internal_object(),
+                        self.swapchain,
+                    ),
             )?;
         }
 
@@ -421,10 +421,13 @@ impl<W> Swapchain<W> {
 
         unsafe {
             check_errors(
-                self.device.pointers().ReleaseFullScreenExclusiveModeEXT(
-                    self.device.internal_object(),
-                    self.swapchain,
-                ),
+                self.device
+                    .fns()
+                    .ext_full_screen_exclusive
+                    .release_full_screen_exclusive_mode_ext(
+                        self.device.internal_object(),
+                        self.swapchain,
+                    ),
             )?;
         }
 
@@ -465,12 +468,10 @@ impl<W> Swapchain<W> {
 }
 
 unsafe impl<W> VulkanObject for Swapchain<W> {
-    type Object = vk::SwapchainKHR;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SWAPCHAIN_KHR;
+    type Object = ash::vk::SwapchainKHR;
 
     #[inline]
-    fn internal_object(&self) -> vk::SwapchainKHR {
+    fn internal_object(&self) -> ash::vk::SwapchainKHR {
         self.swapchain
     }
 }
@@ -492,8 +493,12 @@ impl<W> Drop for Swapchain<W> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroySwapchainKHR(self.device.internal_object(), self.swapchain, ptr::null());
+            let fns = self.device.fns();
+            fns.khr_swapchain.destroy_swapchain_khr(
+                self.device.internal_object(),
+                self.swapchain,
+                ptr::null(),
+            );
             self.surface.flag().store(false, Ordering::Release);
         }
     }
@@ -623,9 +628,9 @@ impl<W> SwapchainBuilder<W> {
         if layers < 1 || layers > capabilities.max_image_array_layers {
             return Err(SwapchainCreationError::UnsupportedArrayLayers);
         }
-        if (vk::ImageUsageFlags::from(usage)
-            & vk::ImageUsageFlags::from(capabilities.supported_usage_flags))
-            != vk::ImageUsageFlags::from(usage)
+        if (ash::vk::ImageUsageFlags::from(usage)
+            & ash::vk::ImageUsageFlags::from(capabilities.supported_usage_flags))
+            != ash::vk::ImageUsageFlags::from(usage)
         {
             return Err(SwapchainCreationError::UnsupportedUsageFlags);
         }
@@ -678,6 +683,9 @@ impl<W> SwapchainBuilder<W> {
 
         let mut surface_full_screen_exclusive_info = None;
 
+        // TODO: VK_EXT_FULL_SCREEN_EXCLUSIVE requires these extensions, so they should always
+        // be enabled if it is. A separate check here is unnecessary; this should be checked at
+        // device creation.
         if device.loaded_extensions().ext_full_screen_exclusive
             && surface
                 .instance()
@@ -688,10 +696,9 @@ impl<W> SwapchainBuilder<W> {
                 .loaded_extensions()
                 .khr_get_surface_capabilities2
         {
-            surface_full_screen_exclusive_info = Some(vk::SurfaceFullScreenExclusiveInfoEXT {
-                sType: vk::STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT,
-                pNext: ptr::null(),
-                fullScreenExclusive: fullscreen_exclusive.vk_sys_enum(),
+            surface_full_screen_exclusive_info = Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {
+                full_screen_exclusive: fullscreen_exclusive.into(),
+                ..Default::default()
             });
         }
 
@@ -721,46 +728,52 @@ impl<W> SwapchainBuilder<W> {
             }
         }
 
-        let vk = device.pointers();
+        let fns = device.fns();
 
         let swapchain = unsafe {
             let (sh_mode, sh_count, sh_indices) = match sharing_mode {
-                SharingMode::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, 0, ptr::null()),
-                SharingMode::Concurrent(ref ids) => {
-                    (vk::SHARING_MODE_CONCURRENT, ids.len() as u32, ids.as_ptr())
-                }
+                SharingMode::Exclusive => (ash::vk::SharingMode::EXCLUSIVE, 0, ptr::null()),
+                SharingMode::Concurrent(ref ids) => (
+                    ash::vk::SharingMode::CONCURRENT,
+                    ids.len() as u32,
+                    ids.as_ptr(),
+                ),
             };
 
-            let infos = vk::SwapchainCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-                pNext: p_next,
-                flags: 0, // reserved
+            let infos = ash::vk::SwapchainCreateInfoKHR {
+                p_next,
+                flags: ash::vk::SwapchainCreateFlagsKHR::empty(),
                 surface: surface.internal_object(),
-                minImageCount: num_images,
-                imageFormat: format as u32,
-                imageColorSpace: color_space as u32,
-                imageExtent: vk::Extent2D {
+                min_image_count: num_images,
+                image_format: format.into(),
+                image_color_space: color_space.into(),
+                image_extent: ash::vk::Extent2D {
                     width: dimensions[0],
                     height: dimensions[1],
                 },
-                imageArrayLayers: layers,
-                imageUsage: usage.into(),
-                imageSharingMode: sh_mode,
-                queueFamilyIndexCount: sh_count,
-                pQueueFamilyIndices: sh_indices,
-                preTransform: transform as u32,
-                compositeAlpha: composite_alpha as u32,
-                presentMode: present_mode as u32,
-                clipped: if clipped { vk::TRUE } else { vk::FALSE },
-                oldSwapchain: if let Some(ref old_swapchain) = old_swapchain {
+                image_array_layers: layers,
+                image_usage: usage.into(),
+                image_sharing_mode: sh_mode,
+                queue_family_index_count: sh_count,
+                p_queue_family_indices: sh_indices,
+                pre_transform: transform.into(),
+                composite_alpha: composite_alpha.into(),
+                present_mode: present_mode.into(),
+                clipped: if clipped {
+                    ash::vk::TRUE
+                } else {
+                    ash::vk::FALSE
+                },
+                old_swapchain: if let Some(ref old_swapchain) = old_swapchain {
                     old_swapchain.swapchain
                 } else {
-                    0
+                    ash::vk::SwapchainKHR::null()
                 },
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateSwapchainKHR(
+            check_errors(fns.khr_swapchain.create_swapchain_khr(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -771,7 +784,7 @@ impl<W> SwapchainBuilder<W> {
 
         let image_handles = unsafe {
             let mut num = 0;
-            check_errors(vk.GetSwapchainImagesKHR(
+            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
                 device.internal_object(),
                 swapchain,
                 &mut num,
@@ -779,7 +792,7 @@ impl<W> SwapchainBuilder<W> {
             ))?;
 
             let mut images = Vec::with_capacity(num as usize);
-            check_errors(vk.GetSwapchainImagesKHR(
+            check_errors(fns.khr_swapchain.get_swapchain_images_khr(
                 device.internal_object(),
                 swapchain,
                 &mut num,
@@ -798,8 +811,16 @@ impl<W> SwapchainBuilder<W> {
                     array_layers: layers,
                 };
 
-                let img =
-                    UnsafeImage::from_raw(device.clone(), image, usage, format, flags, dims, 1, 1);
+                let img = UnsafeImage::from_raw(
+                    device.clone(),
+                    image,
+                    usage,
+                    format,
+                    flags,
+                    dims,
+                    SampleCount::Sample1,
+                    1,
+                );
 
                 ImageEntry {
                     image: img,
@@ -1651,7 +1672,7 @@ pub unsafe fn acquire_next_image_raw<W>(
     semaphore: Option<&Semaphore>,
     fence: Option<&Fence>,
 ) -> Result<AcquiredImage, AcquireError> {
-    let vk = swapchain.device.pointers();
+    let fns = swapchain.device.fns();
 
     let timeout_ns = if let Some(timeout) = timeout {
         timeout
@@ -1663,14 +1684,20 @@ pub unsafe fn acquire_next_image_raw<W>(
     };
 
     let mut out = MaybeUninit::uninit();
-    let r = check_errors(vk.AcquireNextImageKHR(
-        swapchain.device.internal_object(),
-        swapchain.swapchain,
-        timeout_ns,
-        semaphore.map(|s| s.internal_object()).unwrap_or(0),
-        fence.map(|f| f.internal_object()).unwrap_or(0),
-        out.as_mut_ptr(),
-    ))?;
+    let r = check_errors(
+        fns.khr_swapchain.acquire_next_image_khr(
+            swapchain.device.internal_object(),
+            swapchain.swapchain,
+            timeout_ns,
+            semaphore
+                .map(|s| s.internal_object())
+                .unwrap_or(ash::vk::Semaphore::null()),
+            fence
+                .map(|f| f.internal_object())
+                .unwrap_or(ash::vk::Fence::null()),
+            out.as_mut_ptr(),
+        ),
+    )?;
 
     let out = out.assume_init();
     let (id, suboptimal) = match r {

@@ -37,6 +37,10 @@
 //! variable, it will be immediately destroyed and your callback will not work.
 //!
 
+use crate::check_errors;
+use crate::instance::Instance;
+use crate::Error;
+use crate::VulkanObject;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -46,14 +50,6 @@ use std::panic;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::instance::Instance;
-
-use crate::check_errors;
-use crate::vk;
-use crate::vk::{Bool32, DebugUtilsMessengerCallbackDataEXT};
-use crate::Error;
-use crate::VulkanObject;
-
 /// Registration of a callback called by validation layers.
 ///
 /// The callback can be called as long as this object is alive.
@@ -61,7 +57,7 @@ use crate::VulkanObject;
               to be called"]
 pub struct DebugCallback {
     instance: Arc<Instance>,
-    debug_report_callback: vk::DebugUtilsMessengerEXT,
+    debug_report_callback: ash::vk::DebugUtilsMessengerEXT,
     user_callback: Box<Box<dyn Fn(&Message) + Send>>,
 }
 
@@ -86,99 +82,104 @@ impl DebugCallback {
         // that can't be cast to a `*const c_void`.
         let user_callback = Box::new(Box::new(user_callback) as Box<_>);
 
-        extern "system" fn callback(
-            severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-            ty: vk::DebugUtilsMessageTypeFlagsEXT,
-            callback_data: *const DebugUtilsMessengerCallbackDataEXT,
+        unsafe extern "system" fn callback(
+            severity: ash::vk::DebugUtilsMessageSeverityFlagsEXT,
+            ty: ash::vk::DebugUtilsMessageTypeFlagsEXT,
+            callback_data: *const ash::vk::DebugUtilsMessengerCallbackDataEXT,
             user_data: *mut c_void,
-        ) -> Bool32 {
-            unsafe {
-                let user_callback = user_data as *mut Box<dyn Fn()> as *const _;
-                let user_callback: &Box<dyn Fn(&Message)> = &*user_callback;
+        ) -> ash::vk::Bool32 {
+            let user_callback = user_data as *mut Box<dyn Fn()> as *const _;
+            let user_callback: &Box<dyn Fn(&Message)> = &*user_callback;
 
-                let layer_prefix = (*callback_data).pMessageIdName.as_ref().map(|msg_id_name| {
+            let layer_prefix = (*callback_data)
+                .p_message_id_name
+                .as_ref()
+                .map(|msg_id_name| {
                     CStr::from_ptr(msg_id_name)
                         .to_str()
                         .expect("debug callback message not utf-8")
                 });
 
-                let description = CStr::from_ptr((*callback_data).pMessage)
-                    .to_str()
-                    .expect("debug callback message not utf-8");
+            let description = CStr::from_ptr((*callback_data).p_message)
+                .to_str()
+                .expect("debug callback message not utf-8");
 
-                let message = Message {
-                    severity: MessageSeverity {
-                        information: (severity & vk::DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT)
-                            != 0,
-                        warning: (severity & vk::DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0,
-                        error: (severity & vk::DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0,
-                        verbose: (severity & vk::DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) != 0,
-                    },
-                    ty: MessageType {
-                        general: (ty & vk::DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT) != 0,
-                        validation: (ty & vk::DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT) != 0,
-                        performance: (ty & vk::DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT) != 0,
-                    },
-                    layer_prefix,
-                    description,
-                };
+            let message = Message {
+                severity: MessageSeverity {
+                    information: !(severity & ash::vk::DebugUtilsMessageSeverityFlagsEXT::INFO)
+                        .is_empty(),
+                    warning: !(severity & ash::vk::DebugUtilsMessageSeverityFlagsEXT::WARNING)
+                        .is_empty(),
+                    error: !(severity & ash::vk::DebugUtilsMessageSeverityFlagsEXT::ERROR)
+                        .is_empty(),
+                    verbose: !(severity & ash::vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE)
+                        .is_empty(),
+                },
+                ty: MessageType {
+                    general: !(ty & ash::vk::DebugUtilsMessageTypeFlagsEXT::GENERAL).is_empty(),
+                    validation: !(ty & ash::vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION)
+                        .is_empty(),
+                    performance: !(ty & ash::vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE)
+                        .is_empty(),
+                },
+                layer_prefix,
+                description,
+            };
 
-                // Since we box the closure, the type system doesn't detect that the `UnwindSafe`
-                // bound is enforced. Therefore we enforce it manually.
-                let _ = panic::catch_unwind(panic::AssertUnwindSafe(move || {
-                    user_callback(&message);
-                }));
+            // Since we box the closure, the type system doesn't detect that the `UnwindSafe`
+            // bound is enforced. Therefore we enforce it manually.
+            let _ = panic::catch_unwind(panic::AssertUnwindSafe(move || {
+                user_callback(&message);
+            }));
 
-                vk::FALSE
-            }
+            ash::vk::FALSE
         }
 
         let severity = {
-            let mut flags = 0;
+            let mut flags = ash::vk::DebugUtilsMessageSeverityFlagsEXT::empty();
             if severity.information {
-                flags |= vk::DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageSeverityFlagsEXT::INFO;
             }
             if severity.warning {
-                flags |= vk::DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageSeverityFlagsEXT::WARNING;
             }
             if severity.error {
-                flags |= vk::DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageSeverityFlagsEXT::ERROR;
             }
             if severity.verbose {
-                flags |= vk::DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE;
             }
             flags
         };
 
         let ty = {
-            let mut flags = 0;
+            let mut flags = ash::vk::DebugUtilsMessageTypeFlagsEXT::empty();
             if ty.general {
-                flags |= vk::DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageTypeFlagsEXT::GENERAL;
             }
             if ty.validation {
-                flags |= vk::DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION;
             }
             if ty.performance {
-                flags |= vk::DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+                flags |= ash::vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
             }
             flags
         };
 
-        let infos = vk::DebugUtilsMessengerCreateInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-            pNext: ptr::null(),
-            flags: 0,
-            messageSeverity: severity,
-            messageType: ty,
-            pfnUserCallback: callback,
-            pUserData: &*user_callback as &Box<_> as *const Box<_> as *const c_void as *mut _,
+        let infos = ash::vk::DebugUtilsMessengerCreateInfoEXT {
+            flags: ash::vk::DebugUtilsMessengerCreateFlagsEXT::empty(),
+            message_severity: severity,
+            message_type: ty,
+            pfn_user_callback: Some(callback),
+            p_user_data: &*user_callback as &Box<_> as *const Box<_> as *const c_void as *mut _,
+            ..Default::default()
         };
 
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         let debug_report_callback = unsafe {
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateDebugUtilsMessengerEXT(
+            check_errors(fns.ext_debug_utils.create_debug_utils_messenger_ext(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -218,8 +219,8 @@ impl Drop for DebugCallback {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.instance.pointers();
-            vk.DestroyDebugUtilsMessengerEXT(
+            let fns = self.instance.fns();
+            fns.ext_debug_utils.destroy_debug_utils_messenger_ext(
                 self.instance.internal_object(),
                 self.debug_report_callback,
                 ptr::null(),

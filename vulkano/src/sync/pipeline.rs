@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
 use std::ops;
 
 macro_rules! pipeline_stages {
@@ -30,10 +29,10 @@ macro_rules! pipeline_stages {
             }
         }
 
-        impl From<PipelineStages> for vk::PipelineStageFlags {
+        impl From<PipelineStages> for ash::vk::PipelineStageFlags {
             #[inline]
             fn from(val: PipelineStages) -> Self {
-                let mut result = 0;
+                let mut result = ash::vk::PipelineStageFlags::empty();
                 $(
                     if val.$elem { result |= $val }
                 )+
@@ -67,13 +66,13 @@ macro_rules! pipeline_stages {
         #[repr(u32)]
         pub enum PipelineStage {
             $(
-                $var = $val,
+                $var = $val.as_raw(),
             )+
         }
 
         impl PipelineStage {
             #[inline]
-            pub fn required_queue_flags(&self) -> vk::QueueFlags {
+            pub fn required_queue_flags(&self) -> ash::vk::QueueFlags {
                 match self {
                     $(
                         Self::$var => $queue,
@@ -84,24 +83,31 @@ macro_rules! pipeline_stages {
     );
 }
 
+impl From<PipelineStage> for ash::vk::PipelineStageFlags {
+    #[inline]
+    fn from(val: PipelineStage) -> Self {
+        Self::from_raw(val as u32)
+    }
+}
+
 pipeline_stages! {
-    top_of_pipe, TopOfPipe => vk::PIPELINE_STAGE_TOP_OF_PIPE_BIT, 0;
-    draw_indirect, DrawIndirect => vk::PIPELINE_STAGE_DRAW_INDIRECT_BIT, vk::QUEUE_GRAPHICS_BIT | vk::QUEUE_COMPUTE_BIT;
-    vertex_input, VertexInput => vk::PIPELINE_STAGE_VERTEX_INPUT_BIT, vk::QUEUE_GRAPHICS_BIT;
-    vertex_shader, VertexShader => vk::PIPELINE_STAGE_VERTEX_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
-    tessellation_control_shader, TessellationControlShader => vk::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
-    tessellation_evaluation_shader, TessellationEvaluationShader => vk::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
-    geometry_shader, GeometryShader => vk::PIPELINE_STAGE_GEOMETRY_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
-    fragment_shader, FragmentShader => vk::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, vk::QUEUE_GRAPHICS_BIT;
-    early_fragment_tests, EarlyFragmentTests => vk::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, vk::QUEUE_GRAPHICS_BIT;
-    late_fragment_tests, LateFragmentTests => vk::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, vk::QUEUE_GRAPHICS_BIT;
-    color_attachment_output, ColorAttachmentOutput => vk::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, vk::QUEUE_GRAPHICS_BIT;
-    compute_shader, ComputeShader => vk::PIPELINE_STAGE_COMPUTE_SHADER_BIT, vk::QUEUE_COMPUTE_BIT;
-    transfer, Transfer => vk::PIPELINE_STAGE_TRANSFER_BIT, vk::QUEUE_GRAPHICS_BIT | vk::QUEUE_COMPUTE_BIT | vk::QUEUE_TRANSFER_BIT;
-    bottom_of_pipe, BottomOfPipe => vk::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0;
-    host, Host => vk::PIPELINE_STAGE_HOST_BIT, 0;
-    all_graphics, AllGraphics => vk::PIPELINE_STAGE_ALL_GRAPHICS_BIT, vk::QUEUE_GRAPHICS_BIT;
-    all_commands, AllCommands => vk::PIPELINE_STAGE_ALL_COMMANDS_BIT, 0;
+    top_of_pipe, TopOfPipe => ash::vk::PipelineStageFlags::TOP_OF_PIPE, ash::vk::QueueFlags::empty();
+    draw_indirect, DrawIndirect => ash::vk::PipelineStageFlags::DRAW_INDIRECT, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE;
+    vertex_input, VertexInput => ash::vk::PipelineStageFlags::VERTEX_INPUT, ash::vk::QueueFlags::GRAPHICS;
+    vertex_shader, VertexShader => ash::vk::PipelineStageFlags::VERTEX_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    tessellation_control_shader, TessellationControlShader => ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    tessellation_evaluation_shader, TessellationEvaluationShader => ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    geometry_shader, GeometryShader => ash::vk::PipelineStageFlags::GEOMETRY_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    fragment_shader, FragmentShader => ash::vk::PipelineStageFlags::FRAGMENT_SHADER, ash::vk::QueueFlags::GRAPHICS;
+    early_fragment_tests, EarlyFragmentTests => ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
+    late_fragment_tests, LateFragmentTests => ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS, ash::vk::QueueFlags::GRAPHICS;
+    color_attachment_output, ColorAttachmentOutput => ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT, ash::vk::QueueFlags::GRAPHICS;
+    compute_shader, ComputeShader => ash::vk::PipelineStageFlags::COMPUTE_SHADER, ash::vk::QueueFlags::COMPUTE;
+    transfer, Transfer => ash::vk::PipelineStageFlags::TRANSFER, ash::vk::QueueFlags::GRAPHICS | ash::vk::QueueFlags::COMPUTE | ash::vk::QueueFlags::TRANSFER;
+    bottom_of_pipe, BottomOfPipe => ash::vk::PipelineStageFlags::BOTTOM_OF_PIPE, ash::vk::QueueFlags::empty();
+    host, Host => ash::vk::PipelineStageFlags::HOST, ash::vk::QueueFlags::empty();
+    all_graphics, AllGraphics => ash::vk::PipelineStageFlags::ALL_GRAPHICS, ash::vk::QueueFlags::GRAPHICS;
+    all_commands, AllCommands => ash::vk::PipelineStageFlags::ALL_COMMANDS, ash::vk::QueueFlags::empty();
 }
 
 macro_rules! access_flags {
@@ -134,10 +140,10 @@ macro_rules! access_flags {
             }
         }
 
-        impl From<AccessFlags> for vk::AccessFlags {
+        impl From<AccessFlags> for ash::vk::AccessFlags {
             #[inline]
             fn from(val: AccessFlags) -> Self {
-                let mut result = 0;
+                let mut result = ash::vk::AccessFlags::empty();
                 $(
                     if val.$elem { result |= $val }
                 )+
@@ -170,23 +176,23 @@ macro_rules! access_flags {
 }
 
 access_flags! {
-    indirect_command_read => vk::ACCESS_INDIRECT_COMMAND_READ_BIT,
-    index_read => vk::ACCESS_INDEX_READ_BIT,
-    vertex_attribute_read => vk::ACCESS_VERTEX_ATTRIBUTE_READ_BIT,
-    uniform_read => vk::ACCESS_UNIFORM_READ_BIT,
-    input_attachment_read => vk::ACCESS_INPUT_ATTACHMENT_READ_BIT,
-    shader_read => vk::ACCESS_SHADER_READ_BIT,
-    shader_write => vk::ACCESS_SHADER_WRITE_BIT,
-    color_attachment_read => vk::ACCESS_COLOR_ATTACHMENT_READ_BIT,
-    color_attachment_write => vk::ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-    depth_stencil_attachment_read => vk::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT,
-    depth_stencil_attachment_write => vk::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-    transfer_read => vk::ACCESS_TRANSFER_READ_BIT,
-    transfer_write => vk::ACCESS_TRANSFER_WRITE_BIT,
-    host_read => vk::ACCESS_HOST_READ_BIT,
-    host_write => vk::ACCESS_HOST_WRITE_BIT,
-    memory_read => vk::ACCESS_MEMORY_READ_BIT,
-    memory_write => vk::ACCESS_MEMORY_WRITE_BIT,
+    indirect_command_read => ash::vk::AccessFlags::INDIRECT_COMMAND_READ,
+    index_read => ash::vk::AccessFlags::INDEX_READ,
+    vertex_attribute_read => ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
+    uniform_read => ash::vk::AccessFlags::UNIFORM_READ,
+    input_attachment_read => ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
+    shader_read => ash::vk::AccessFlags::SHADER_READ,
+    shader_write => ash::vk::AccessFlags::SHADER_WRITE,
+    color_attachment_read => ash::vk::AccessFlags::COLOR_ATTACHMENT_READ,
+    color_attachment_write => ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+    depth_stencil_attachment_read => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+    depth_stencil_attachment_write => ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+    transfer_read => ash::vk::AccessFlags::TRANSFER_READ,
+    transfer_write => ash::vk::AccessFlags::TRANSFER_WRITE,
+    host_read => ash::vk::AccessFlags::HOST_READ,
+    host_write => ash::vk::AccessFlags::HOST_WRITE,
+    memory_read => ash::vk::AccessFlags::MEMORY_READ,
+    memory_write => ash::vk::AccessFlags::MEMORY_WRITE,
 }
 
 impl AccessFlags {

@@ -7,18 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::BufferAccess;
+use crate::format::Format;
+use crate::pipeline::shader::ShaderInterface;
+use crate::pipeline::vertex::VertexMemberTy;
+use crate::SafeDeref;
 use std::error;
 use std::fmt;
 use std::sync::Arc;
 
-use crate::buffer::BufferAccess;
-use crate::format::Format;
-use crate::pipeline::vertex::VertexMemberTy;
-use crate::vk;
-use crate::SafeDeref;
-
 /// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait VertexDefinition<I>:
+pub unsafe trait VertexDefinition:
     VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
 {
     /// Iterator that returns the offset, the stride (in bytes) and input rate of each buffer.
@@ -30,22 +29,22 @@ pub unsafe trait VertexDefinition<I>:
     /// interface.
     fn definition(
         &self,
-        interface: &I,
+        interface: &ShaderInterface,
     ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError>;
 }
 
-unsafe impl<I, T> VertexDefinition<I> for T
+unsafe impl<T> VertexDefinition for T
 where
     T: SafeDeref,
-    T::Target: VertexDefinition<I>,
+    T::Target: VertexDefinition,
 {
-    type BuffersIter = <T::Target as VertexDefinition<I>>::BuffersIter;
-    type AttribsIter = <T::Target as VertexDefinition<I>>::AttribsIter;
+    type BuffersIter = <T::Target as VertexDefinition>::BuffersIter;
+    type AttribsIter = <T::Target as VertexDefinition>::AttribsIter;
 
     #[inline]
     fn definition(
         &self,
-        interface: &I,
+        interface: &ShaderInterface,
     ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
         (**self).definition(interface)
     }
@@ -53,12 +52,19 @@ where
 
 /// How the vertex source should be unrolled.
 #[derive(Copy, Clone, Debug)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum InputRate {
     /// Each element of the source corresponds to a vertex.
-    Vertex = vk::VERTEX_INPUT_RATE_VERTEX,
+    Vertex = ash::vk::VertexInputRate::VERTEX.as_raw(),
     /// Each element of the source corresponds to an instance.
-    Instance = vk::VERTEX_INPUT_RATE_INSTANCE,
+    Instance = ash::vk::VertexInputRate::INSTANCE.as_raw(),
+}
+
+impl From<InputRate> for ash::vk::VertexInputRate {
+    #[inline]
+    fn from(val: InputRate) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Information about a single attribute within a vertex.

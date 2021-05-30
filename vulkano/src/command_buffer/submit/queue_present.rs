@@ -20,7 +20,6 @@ use crate::swapchain::Swapchain;
 use crate::sync::Semaphore;
 
 use crate::check_errors;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SynchronizedVulkanObject;
@@ -29,11 +28,11 @@ use crate::VulkanObject;
 /// Prototype for a submission that presents a swapchain on the screen.
 // TODO: example here
 pub struct SubmitPresentBuilder<'a> {
-    wait_semaphores: SmallVec<[vk::Semaphore; 8]>,
-    swapchains: SmallVec<[vk::SwapchainKHR; 4]>,
+    wait_semaphores: SmallVec<[ash::vk::Semaphore; 8]>,
+    swapchains: SmallVec<[ash::vk::SwapchainKHR; 4]>,
     image_indices: SmallVec<[u32; 4]>,
-    present_regions: SmallVec<[vk::PresentRegionKHR; 4]>,
-    rect_layers: SmallVec<[vk::RectLayerKHR; 4]>,
+    present_regions: SmallVec<[ash::vk::PresentRegionKHR; 4]>,
+    rect_layers: SmallVec<[ash::vk::RectLayerKHR; 4]>,
     marker: PhantomData<&'a ()>,
 }
 
@@ -108,15 +107,15 @@ impl<'a> SubmitPresentBuilder<'a> {
                     for rectangle in &present_region.rectangles {
                         self.rect_layers.push(rectangle.into());
                     }
-                    vk::PresentRegionKHR {
-                        rectangleCount: present_region.rectangles.len() as u32,
+                    ash::vk::PresentRegionKHR {
+                        rectangle_count: present_region.rectangles.len() as u32,
                         // Set this to null for now; in submit fill it with self.rect_layers
-                        pRectangles: ptr::null(),
+                        p_rectangles: ptr::null(),
                     }
                 }
-                None => vk::PresentRegionKHR {
-                    rectangleCount: 0,
-                    pRectangles: ptr::null(),
+                None => ash::vk::PresentRegionKHR {
+                    rectangle_count: 0,
+                    p_rectangles: ptr::null(),
                 },
             };
             self.present_regions.push(vk_present_region);
@@ -146,40 +145,39 @@ impl<'a> SubmitPresentBuilder<'a> {
                     debug_assert_eq!(self.swapchains.len(), self.present_regions.len());
                     let mut current_index = 0;
                     for present_region in &mut self.present_regions {
-                        present_region.pRectangles = self.rect_layers[current_index..].as_ptr();
-                        current_index += present_region.rectangleCount as usize;
+                        present_region.p_rectangles = self.rect_layers[current_index..].as_ptr();
+                        current_index += present_region.rectangle_count as usize;
                     }
-                    Some(vk::PresentRegionsKHR {
-                        sType: vk::STRUCTURE_TYPE_PRESENT_REGIONS_KHR,
-                        pNext: ptr::null(),
-                        swapchainCount: self.present_regions.len() as u32,
-                        pRegions: self.present_regions.as_ptr(),
+                    Some(ash::vk::PresentRegionsKHR {
+                        swapchain_count: self.present_regions.len() as u32,
+                        p_regions: self.present_regions.as_ptr(),
+                        ..Default::default()
                     })
                 } else {
                     None
                 }
             };
 
-            let mut results = vec![vk::SUCCESS; self.swapchains.len()];
+            let mut results = vec![ash::vk::Result::SUCCESS; self.swapchains.len()];
 
-            let vk = queue.device().pointers();
+            let fns = queue.device().fns();
             let queue = queue.internal_object_guard();
 
-            let infos = vk::PresentInfoKHR {
-                sType: vk::STRUCTURE_TYPE_PRESENT_INFO_KHR,
-                pNext: present_regions
+            let infos = ash::vk::PresentInfoKHR {
+                p_next: present_regions
                     .as_ref()
-                    .map(|pr| pr as *const vk::PresentRegionsKHR as *const _)
+                    .map(|pr| pr as *const ash::vk::PresentRegionsKHR as *const _)
                     .unwrap_or(ptr::null()),
-                waitSemaphoreCount: self.wait_semaphores.len() as u32,
-                pWaitSemaphores: self.wait_semaphores.as_ptr(),
-                swapchainCount: self.swapchains.len() as u32,
-                pSwapchains: self.swapchains.as_ptr(),
-                pImageIndices: self.image_indices.as_ptr(),
-                pResults: results.as_mut_ptr(),
+                wait_semaphore_count: self.wait_semaphores.len() as u32,
+                p_wait_semaphores: self.wait_semaphores.as_ptr(),
+                swapchain_count: self.swapchains.len() as u32,
+                p_swapchains: self.swapchains.as_ptr(),
+                p_image_indices: self.image_indices.as_ptr(),
+                p_results: results.as_mut_ptr(),
+                ..Default::default()
             };
 
-            check_errors(vk.QueuePresentKHR(*queue, &infos))?;
+            check_errors(fns.khr_swapchain.queue_present_khr(*queue, &infos))?;
 
             for result in results {
                 check_errors(result)?;

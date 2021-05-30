@@ -1,6 +1,12 @@
 # Unreleased
 
-# Version 0.6.0 (2020-03-05)
+- Added structs for Vulkan 1.1 and 1.2 features, with `Default` implementations.
+
+# Version 0.6.1 (2021-04-10)
+
+- Add `MEMORY_HEAP_MULTI_INSTANCE_BIT` for `MemoryHeap`.
+
+# Version 0.6.0 (2021-03-05)
 
 - Added support for VK1.2 formats.
 - Added support for additional image aspect bits.

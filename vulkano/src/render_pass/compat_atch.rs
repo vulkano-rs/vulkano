@@ -10,9 +10,9 @@
 //! This module contains the `ensure_image_view_compatible` function, which verifies whether
 //! an image view can be used as a render pass attachment.
 
-use crate::format::Format;
 use crate::image::view::ImageViewAbstract;
 use crate::render_pass::RenderPassDesc;
+use crate::{format::Format, image::SampleCount};
 use std::error;
 use std::fmt;
 
@@ -119,9 +119,9 @@ pub enum IncompatibleRenderPassAttachmentError {
     /// the image.
     SamplesMismatch {
         /// Number of samples expected by the render pass.
-        expected: u32,
+        expected: SampleCount,
         /// Number of samples of the image.
-        obtained: u32,
+        obtained: SampleCount,
     },
 
     /// The image view has a component swizzle that is different from identity.

@@ -9,18 +9,58 @@
 
 // The `Version` object is reexported from the `instance` module.
 
-use std::cmp::Ordering;
+use std::convert::TryFrom;
 use std::fmt;
 
 /// Represents an API version of Vulkan.
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
     /// Major version number.
-    pub major: u16,
+    pub major: u32,
     /// Minor version number.
-    pub minor: u16,
+    pub minor: u32,
     /// Patch version number.
-    pub patch: u16,
+    pub patch: u32,
+}
+
+impl Version {
+    pub const V1_0: Version = Version::major_minor(1, 0);
+    pub const V1_1: Version = Version::major_minor(1, 1);
+    pub const V1_2: Version = Version::major_minor(1, 2);
+
+    /// Constructs a `Version` from the given major and minor version numbers.
+    #[inline]
+    pub const fn major_minor(major: u32, minor: u32) -> Version {
+        Version {
+            major,
+            minor,
+            patch: 0,
+        }
+    }
+}
+
+impl From<u32> for Version {
+    #[inline]
+    fn from(val: u32) -> Self {
+        Version {
+            major: ash::vk::version_major(val),
+            minor: ash::vk::version_minor(val),
+            patch: ash::vk::version_patch(val),
+        }
+    }
+}
+
+impl TryFrom<Version> for u32 {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: Version) -> Result<Self, Self::Error> {
+        if val.major <= 0x3ff && val.minor <= 0x3ff && val.patch <= 0xfff {
+            Ok(ash::vk::make_version(val.major, val.minor, val.patch))
+        } else {
+            Err(())
+        }
+    }
 }
 
 impl fmt::Debug for Version {
@@ -35,58 +75,10 @@ impl fmt::Display for Version {
     }
 }
 
-impl PartialOrd for Version {
-    #[inline]
-    fn partial_cmp(&self, other: &Version) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Version {
-    fn cmp(&self, other: &Version) -> Ordering {
-        match self.major.cmp(&other.major) {
-            Ordering::Equal => (),
-            o => return o,
-        };
-
-        match self.minor.cmp(&other.minor) {
-            Ordering::Equal => (),
-            o => return o,
-        };
-
-        self.patch.cmp(&other.patch)
-    }
-}
-
-impl Version {
-    /// Turns a version number given by Vulkan into a `Version` struct.
-    #[inline]
-    pub fn from_vulkan_version(value: u32) -> Version {
-        Version {
-            major: ((value & 0xffc00000) >> 22) as u16,
-            minor: ((value & 0x003ff000) >> 12) as u16,
-            patch: (value & 0x00000fff) as u16,
-        }
-    }
-
-    /// Turns a `Version` into a version number accepted by Vulkan.
-    ///
-    /// # Panic
-    ///
-    /// Panics if the values in the `Version` are out of acceptable range.
-    #[inline]
-    pub fn into_vulkan_version(&self) -> u32 {
-        assert!(self.major <= 0x3ff);
-        assert!(self.minor <= 0x3ff);
-        assert!(self.patch <= 0xfff);
-
-        (self.major as u32) << 22 | (self.minor as u32) << 12 | (self.patch as u32)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::Version;
+    use std::convert::TryFrom;
 
     #[test]
     fn into_vk_version() {
@@ -95,7 +87,7 @@ mod tests {
             minor: 0,
             patch: 0,
         };
-        assert_eq!(version.into_vulkan_version(), 0x400000);
+        assert_eq!(u32::try_from(version).unwrap(), 0x400000);
     }
 
     #[test]

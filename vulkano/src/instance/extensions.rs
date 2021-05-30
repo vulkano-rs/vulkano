@@ -18,7 +18,6 @@ use crate::check_errors;
 use crate::extensions::SupportedExtensionsError;
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
-use crate::vk;
 
 macro_rules! instance_extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
@@ -38,22 +37,22 @@ macro_rules! instance_extensions {
                         -> Result<Self, SupportedExtensionsError>
                 where L: loader::Loader
             {
-                let entry_points = ptrs.entry_points();
+                let fns = ptrs.fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
                     properties
                 };
-                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extensionName.as_ptr()) }.to_owned()).collect()))
+                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) }.to_owned()).collect()))
             }
 
             /// Returns a `RawExtensions` object with extensions supported by the core driver.
@@ -89,16 +88,16 @@ macro_rules! instance_extensions {
                         -> Result<Self, SupportedExtensionsError>
                 where L: loader::Loader
             {
-                let entry_points = ptrs.entry_points();
+                let fns = ptrs.fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
@@ -107,7 +106,7 @@ macro_rules! instance_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
+                    let name = unsafe { CStr::from_ptr(property.extension_name.as_ptr()) };
                     $(
                         // TODO: Check specVersion?
                         if name.to_bytes() == &$s[..] {
@@ -145,21 +144,32 @@ macro_rules! instance_extensions {
 instance_extensions! {
     InstanceExtensions,
     RawInstanceExtensions,
-    khr_surface => b"VK_KHR_surface",
-    khr_display => b"VK_KHR_display",
-    khr_xlib_surface => b"VK_KHR_xlib_surface",
-    khr_xcb_surface => b"VK_KHR_xcb_surface",
-    khr_wayland_surface => b"VK_KHR_wayland_surface",
+
+    // List in order: khr, ext, then alphabetical
     khr_android_surface => b"VK_KHR_android_surface",
+    khr_device_group_creation => b"VK_KHR_device_group_creation",
+    khr_display => b"VK_KHR_display",
+    khr_external_fence_capabilities => b"VK_KHR_external_fence_capabilities",
+    khr_external_memory_capabilities => b"VK_KHR_external_memory_capabilities",
+    khr_external_semaphore_capabilities => b"VK_KHR_external_semaphore_capabilities",
+    khr_get_display_properties2 => b"VK_KHR_get_display_properties2",
+    khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
+    khr_get_surface_capabilities2 => b"VK_KHR_get_surface_capabilities2",
+    khr_surface => b"VK_KHR_surface",
+    khr_wayland_surface => b"VK_KHR_wayland_surface",
     khr_win32_surface => b"VK_KHR_win32_surface",
+    khr_xcb_surface => b"VK_KHR_xcb_surface",
+    khr_xlib_surface => b"VK_KHR_xlib_surface",
+    ext_acquire_xlib_display => b"VK_EXT_acquire_xlib_display",
+    ext_debug_report => b"VK_EXT_debug_report",
     ext_debug_utils => b"VK_EXT_debug_utils",
+    ext_direct_mode_display => b"VK_EXT_direct_mode_display",
+    ext_display_surface_counter => b"VK_EXT_display_surface_counter",
+    ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
     mvk_ios_surface => b"VK_MVK_ios_surface",
     mvk_macos_surface => b"VK_MVK_macos_surface",
     mvk_moltenvk => b"VK_MVK_moltenvk",     // TODO: confirm that it's an instance extension
     nn_vi_surface => b"VK_NN_vi_surface",
-    ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
-    khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
-    khr_get_surface_capabilities2 => b"VK_KHR_get_surface_capabilities2",
 }
 
 /// This helper type can only be instantiated inside this module.

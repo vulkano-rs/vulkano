@@ -7,30 +7,26 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::entry_point;
+use crate::enums::Capability;
+use crate::enums::StorageClass;
+use crate::parse;
+use crate::parse::Instruction;
+pub use crate::parse::ParseError;
+use crate::read_file_to_string;
+use crate::spec_consts;
+use crate::structs;
+use crate::TypesMeta;
+use proc_macro2::{Span, TokenStream};
+pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
+use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
 use std::iter::Iterator;
 use std::path::Path;
 use std::{
     cell::{RefCell, RefMut},
     io::Error as IoError,
 };
-
-use proc_macro2::{Span, TokenStream};
-use shaderc::{CompileOptions, Compiler, TargetEnv};
 use syn::Ident;
-
-pub use crate::parse::ParseError;
-pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
-
-use crate::enums::Capability;
-use crate::enums::StorageClass;
-use crate::parse::Instruction;
-
-use crate::entry_point;
-use crate::parse;
-use crate::read_file_to_string;
-use crate::spec_consts;
-use crate::structs;
-use crate::TypesMeta;
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
@@ -157,12 +153,22 @@ pub fn compile(
     ty: ShaderKind,
     include_directories: &[impl AsRef<Path>],
     macro_defines: &[(impl AsRef<str>, impl AsRef<str>)],
+    vulkan_version: Option<EnvVersion>,
+    spirv_version: Option<SpirvVersion>,
 ) -> Result<(CompilationArtifact, Vec<String>), String> {
     let includes_tracker = RefCell::new(Vec::new());
     let mut compiler = Compiler::new().ok_or("failed to create GLSL compiler")?;
     let mut compile_options = CompileOptions::new().ok_or("failed to initialize compile option")?;
-    const ENV_VULKAN_VERSION: u32 = (1 << 22) | (1 << 12);
-    compile_options.set_target_env(TargetEnv::Vulkan, ENV_VULKAN_VERSION);
+
+    compile_options.set_target_env(
+        TargetEnv::Vulkan,
+        vulkan_version.unwrap_or(EnvVersion::Vulkan1_0) as u32,
+    );
+
+    if let Some(spirv_version) = spirv_version {
+        compile_options.set_target_spirv(spirv_version);
+    }
+
     let root_source_path = if let &Some(ref path) = &path {
         path
     } else {
@@ -215,6 +221,33 @@ where
 
     // checking whether each required capability is enabled in the Vulkan device
     let mut cap_checks: Vec<TokenStream> = vec![];
+    match doc.version {
+        (1, 0) => {}
+        (1, 1) | (1, 2) | (1, 3) => {
+            cap_checks.push(quote! {
+                if device.api_version() < Version::V1_1 {
+                    panic!("Device API version 1.1 required");
+                }
+            });
+        }
+        (1, 4) => {
+            cap_checks.push(quote! {
+                if device.api_version() < Version::V1_2
+                    && !device.loaded_extensions().khr_spirv_1_4 {
+                    panic!("Device API version 1.2 or extension VK_KHR_spirv_1_4 required");
+                }
+            });
+        }
+        (1, 5) => {
+            cap_checks.push(quote! {
+                if device.api_version() < Version::V1_2 {
+                    panic!("Device API version 1.2 required");
+                }
+            });
+        }
+        _ => return Err(Error::UnsupportedSpirvVersion),
+    }
+
     for i in doc.instructions.iter() {
         let dev_req = {
             match i {
@@ -261,18 +294,15 @@ where
 
     // writing one method for each entry point of this module
     let mut entry_points_inside_impl: Vec<TokenStream> = vec![];
-    let mut entry_points_outside_impl: Vec<TokenStream> = vec![];
     for instruction in doc.instructions.iter() {
         if let &Instruction::EntryPoint { .. } = instruction {
-            let (outside, entry_point, descriptor_sets) = entry_point::write_entry_point(
+            let entry_point = entry_point::write_entry_point(
                 &doc,
                 instruction,
                 &types_meta,
                 exact_entrypoint_interface,
             );
             entry_points_inside_impl.push(entry_point);
-            entry_points_outside_impl.push(outside);
-            entry_points_outside_impl.push(descriptor_sets);
         }
     }
 
@@ -316,15 +346,15 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayout;
+        use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
+        use vulkano::pipeline::layout::PipelineLayoutDescPcRange;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationMapEntry;
+        #[allow(unused_imports)]
+        use vulkano::Version;
 
         pub struct #struct_name {
             shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
@@ -359,8 +389,6 @@ where
             #( #entry_points_inside_impl )*
         }
 
-        #( #entry_points_outside_impl )*
-
         pub mod ty {
             #( #uses )*
             #structs
@@ -379,6 +407,7 @@ where
 
 #[derive(Debug)]
 pub enum Error {
+    UnsupportedSpirvVersion,
     IoError(IoError),
     ParseError(ParseError),
 }
@@ -493,6 +522,9 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
             DeviceRequirement::Features(&["shader_storage_image_write_without_format"])
         }
         Capability::CapabilityMultiViewport => DeviceRequirement::Features(&["multi_viewport"]),
+        Capability::CapabilityDrawParameters => {
+            DeviceRequirement::Features(&["shader_draw_parameters"])
+        }
         Capability::CapabilityStorageUniformBufferBlock16 => {
             DeviceRequirement::Extensions(&["khr_16bit_storage"])
         }
@@ -592,6 +624,8 @@ mod tests {
             ShaderKind::Vertex,
             &includes,
             &defines,
+            None,
+            None,
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
@@ -618,6 +652,8 @@ mod tests {
             ShaderKind::Vertex,
             &includes,
             &defines,
+            None,
+            None,
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
@@ -648,6 +684,8 @@ mod tests {
             ShaderKind::Vertex,
             &includes,
             &defines,
+            None,
+            None,
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
@@ -671,6 +709,8 @@ mod tests {
             ShaderKind::Vertex,
             &empty_includes,
             &defines,
+            None,
+            None,
         )
         .expect("Cannot resolve include files");
 
@@ -689,6 +729,8 @@ mod tests {
                 root_path.join("tests").join("include_dir_b"),
             ],
             &defines,
+            None,
+            None,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
@@ -714,6 +756,8 @@ mod tests {
             ShaderKind::Vertex,
             &[root_path.join("tests").join("include_dir_a")],
             &defines,
+            None,
+            None,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
@@ -749,6 +793,8 @@ mod tests {
             ShaderKind::Vertex,
             &empty_includes,
             &defines,
+            None,
+            None,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
@@ -773,6 +819,8 @@ mod tests {
                 root_path.join("tests").join("include_dir_c"),
             ],
             &defines,
+            None,
+            None,
         )
         .expect("Cannot resolve include files");
         assert_eq!(
@@ -807,6 +855,8 @@ mod tests {
             ShaderKind::Vertex,
             &empty_includes,
             &no_defines,
+            None,
+            None,
         );
         assert!(compile_no_defines.is_err());
 
@@ -817,6 +867,8 @@ mod tests {
             ShaderKind::Vertex,
             &empty_includes,
             &defines,
+            None,
+            None,
         );
         compile_defines.expect("Setting shader macros did not work");
     }

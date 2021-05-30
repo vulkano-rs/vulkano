@@ -17,29 +17,22 @@
 //! code, therefore the whole shader-related API is unsafe. You are encouraged to use the
 //! `vulkano-shaders` crate that will generate Rust code that wraps around vulkano's shaders API.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::format::Format;
+use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::OomError;
+use crate::VulkanObject;
 use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
-use std::iter;
-use std::iter::Empty as EmptyIter;
-use std::marker::PhantomData;
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-
-use crate::descriptor::pipeline_layout::EmptyPipelineDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::format::Format;
-use crate::pipeline::input_assembly::PrimitiveTopology;
-
-use crate::check_errors;
-use crate::device::Device;
-use crate::vk;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// Contains SPIR-V code with one or more entry points.
 ///
@@ -48,7 +41,7 @@ use crate::VulkanObject;
 #[derive(Debug)]
 pub struct ShaderModule {
     // The module.
-    module: vk::ShaderModule,
+    module: ash::vk::ShaderModule,
     // Pointer to the device.
     device: Arc<Device>,
 }
@@ -96,17 +89,16 @@ impl ShaderModule {
         spirv_len: usize,
     ) -> Result<Arc<ShaderModule>, OomError> {
         let module = {
-            let infos = vk::ShaderModuleCreateInfo {
-                sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                codeSize: spirv_len,
-                pCode: spirv,
+            let infos = ash::vk::ShaderModuleCreateInfo {
+                flags: ash::vk::ShaderModuleCreateFlags::empty(),
+                code_size: spirv_len,
+                p_code: spirv,
+                ..Default::default()
             };
 
-            let vk = device.pointers();
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateShaderModule(
+            check_errors(fns.v1_0.create_shader_module(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -133,22 +125,23 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, S, I, O, L>(
+    pub unsafe fn graphics_entry_point<'a>(
         &'a self,
         name: &'a CStr,
-        input: I,
-        output: O,
-        layout: L,
+        layout_desc: PipelineLayoutDesc,
+        spec_constants: &'static [SpecializationMapEntry],
+        input: ShaderInterface,
+        output: ShaderInterface,
         ty: GraphicsShaderType,
-    ) -> GraphicsEntryPoint<'a, S, I, O, L> {
+    ) -> GraphicsEntryPoint<'a> {
         GraphicsEntryPoint {
             module: self,
-            name: name,
-            input: input,
-            output: output,
-            layout: layout,
-            ty: ty,
-            marker: PhantomData,
+            name,
+            layout_desc,
+            spec_constants,
+            input,
+            output,
+            ty,
         }
     }
 
@@ -164,27 +157,26 @@ impl ShaderModule {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_entry_point<'a, S, L>(
+    pub unsafe fn compute_entry_point<'a>(
         &'a self,
         name: &'a CStr,
-        layout: L,
-    ) -> ComputeEntryPoint<'a, S, L> {
+        layout_desc: PipelineLayoutDesc,
+        spec_constants: &'static [SpecializationMapEntry],
+    ) -> ComputeEntryPoint<'a> {
         ComputeEntryPoint {
             module: self,
-            name: name,
-            layout: layout,
-            marker: PhantomData,
+            name,
+            layout_desc,
+            spec_constants,
         }
     }
 }
 
 unsafe impl VulkanObject for ShaderModule {
-    type Object = vk::ShaderModule;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SHADER_MODULE;
+    type Object = ash::vk::ShaderModule;
 
     #[inline]
-    fn internal_object(&self) -> vk::ShaderModule {
+    fn internal_object(&self) -> ash::vk::ShaderModule {
         self.module
     }
 }
@@ -193,50 +185,62 @@ impl Drop for ShaderModule {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyShaderModule(self.device.internal_object(), self.module, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_shader_module(self.device.internal_object(), self.module, ptr::null());
         }
     }
 }
 
-pub unsafe trait GraphicsEntryPointAbstract: EntryPointAbstract {
-    type InputDefinition: ShaderInterfaceDef;
-    type OutputDefinition: ShaderInterfaceDef;
+pub unsafe trait EntryPointAbstract {
+    /// Returns the module this entry point comes from.
+    fn module(&self) -> &ShaderModule;
 
-    /// Returns the input attributes used by the shader stage.
-    fn input(&self) -> &Self::InputDefinition;
+    /// Returns the name of the entry point.
+    fn name(&self) -> &CStr;
 
-    /// Returns the output attributes used by the shader stage.
-    fn output(&self) -> &Self::OutputDefinition;
+    /// Returns the pipeline layout used by the shader stage.
+    fn layout_desc(&self) -> &PipelineLayoutDesc;
 
-    /// Returns the type of shader.
-    fn ty(&self) -> GraphicsShaderType;
+    /// Returns the layout of the specialization constants.
+    fn spec_constants(&self) -> &[SpecializationMapEntry];
 }
 
 /// Represents a shader entry point in a shader module.
 ///
 /// Can be obtained by calling `entry_point()` on the shader module.
-#[derive(Debug, Copy, Clone)]
-pub struct GraphicsEntryPoint<'a, S, I, O, L> {
+#[derive(Clone, Debug)]
+pub struct GraphicsEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    input: I,
-    layout: L,
-    output: O,
+    layout_desc: PipelineLayoutDesc,
+    spec_constants: &'static [SpecializationMapEntry],
+    input: ShaderInterface,
+    output: ShaderInterface,
     ty: GraphicsShaderType,
-    marker: PhantomData<S>,
 }
 
-unsafe impl<'a, S, I, O, L> EntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
-where
-    L: PipelineLayoutDesc,
-    I: ShaderInterfaceDef,
-    O: ShaderInterfaceDef,
-    S: SpecializationConstants,
-{
-    type PipelineLayout = L;
-    type SpecializationConstants = S;
+impl<'a> GraphicsEntryPoint<'a> {
+    /// Returns the input attributes used by the shader stage.
+    #[inline]
+    pub fn input(&self) -> &ShaderInterface {
+        &self.input
+    }
 
+    /// Returns the output attributes used by the shader stage.
+    #[inline]
+    pub fn output(&self) -> &ShaderInterface {
+        &self.output
+    }
+
+    /// Returns the type of shader.
+    #[inline]
+    pub fn ty(&self) -> GraphicsShaderType {
+        self.ty
+    }
+}
+
+unsafe impl<'a> EntryPointAbstract for GraphicsEntryPoint<'a> {
     #[inline]
     fn module(&self) -> &ShaderModule {
         self.module
@@ -248,34 +252,12 @@ where
     }
 
     #[inline]
-    fn layout(&self) -> &L {
-        &self.layout
-    }
-}
-
-unsafe impl<'a, S, I, O, L> GraphicsEntryPointAbstract for GraphicsEntryPoint<'a, S, I, O, L>
-where
-    L: PipelineLayoutDesc,
-    I: ShaderInterfaceDef,
-    O: ShaderInterfaceDef,
-    S: SpecializationConstants,
-{
-    type InputDefinition = I;
-    type OutputDefinition = O;
-
-    #[inline]
-    fn input(&self) -> &I {
-        &self.input
+    fn layout_desc(&self) -> &PipelineLayoutDesc {
+        &self.layout_desc
     }
 
-    #[inline]
-    fn output(&self) -> &O {
-        &self.output
-    }
-
-    #[inline]
-    fn ty(&self) -> GraphicsShaderType {
-        self.ty
+    fn spec_constants(&self) -> &[SpecializationMapEntry] {
+        self.spec_constants
     }
 }
 
@@ -330,39 +312,18 @@ impl GeometryShaderExecutionMode {
     }
 }
 
-pub unsafe trait EntryPointAbstract {
-    type PipelineLayout: PipelineLayoutDesc;
-    type SpecializationConstants: SpecializationConstants;
-
-    /// Returns the module this entry point comes from.
-    fn module(&self) -> &ShaderModule;
-
-    /// Returns the name of the entry point.
-    fn name(&self) -> &CStr;
-
-    /// Returns the pipeline layout used by the shader stage.
-    fn layout(&self) -> &Self::PipelineLayout;
-}
-
 /// Represents the entry point of a compute shader in a shader module.
 ///
 /// Can be obtained by calling `compute_shader_entry_point()` on the shader module.
-#[derive(Debug, Copy, Clone)]
-pub struct ComputeEntryPoint<'a, S, L> {
+#[derive(Debug, Clone)]
+pub struct ComputeEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    layout: L,
-    marker: PhantomData<S>,
+    layout_desc: PipelineLayoutDesc,
+    spec_constants: &'static [SpecializationMapEntry],
 }
 
-unsafe impl<'a, S, L> EntryPointAbstract for ComputeEntryPoint<'a, S, L>
-where
-    L: PipelineLayoutDesc,
-    S: SpecializationConstants,
-{
-    type PipelineLayout = L;
-    type SpecializationConstants = S;
-
+unsafe impl<'a> EntryPointAbstract for ComputeEntryPoint<'a> {
     #[inline]
     fn module(&self) -> &ShaderModule {
         self.module
@@ -374,118 +335,53 @@ where
     }
 
     #[inline]
-    fn layout(&self) -> &L {
-        &self.layout
+    fn layout_desc(&self) -> &PipelineLayoutDesc {
+        &self.layout_desc
+    }
+
+    #[inline]
+    fn spec_constants(&self) -> &[SpecializationMapEntry] {
+        self.spec_constants
     }
 }
 
-/// A dummy that implements `GraphicsEntryPointAbstract` and `EntryPointAbstract`.
-///
-/// When a function has a signature like: `fn foo<S: EntryPointAbstract>(shader: Option<S>)`, you
-/// can pass `None::<EmptyEntryPointDummy>`.
-///
-/// This object is meant to be a replacement to `!` before it is stabilized.
-// TODO: ^
-#[derive(Debug, Copy, Clone)]
-pub enum EmptyEntryPointDummy {}
-
-unsafe impl EntryPointAbstract for EmptyEntryPointDummy {
-    type PipelineLayout = EmptyPipelineDesc;
-    type SpecializationConstants = ();
-
-    #[inline]
-    fn module(&self) -> &ShaderModule {
-        unreachable!()
-    }
-
-    #[inline]
-    fn name(&self) -> &CStr {
-        unreachable!()
-    }
-
-    #[inline]
-    fn layout(&self) -> &EmptyPipelineDesc {
-        unreachable!()
-    }
-}
-
-unsafe impl GraphicsEntryPointAbstract for EmptyEntryPointDummy {
-    type InputDefinition = EmptyShaderInterfaceDef;
-    type OutputDefinition = EmptyShaderInterfaceDef;
-
-    #[inline]
-    fn input(&self) -> &EmptyShaderInterfaceDef {
-        unreachable!()
-    }
-
-    #[inline]
-    fn output(&self) -> &EmptyShaderInterfaceDef {
-        unreachable!()
-    }
-
-    #[inline]
-    fn ty(&self) -> GraphicsShaderType {
-        unreachable!()
-    }
-}
-
-/// Types that contain the definition of an interface between two shader stages, or between
+/// Type that contains the definition of an interface between two shader stages, or between
 /// the outside and a shader stage.
-///
-/// # Safety
-///
-/// - Must only provide one entry per location.
-/// - The format of each element must not be larger than 128 bits.
-///
-pub unsafe trait ShaderInterfaceDef {
-    /// Iterator returned by `elements`.
-    type Iter: ExactSizeIterator<Item = ShaderInterfaceDefEntry>;
-
-    /// Iterates over the elements of the interface.
-    fn elements(&self) -> Self::Iter;
+#[derive(Clone, Debug)]
+pub struct ShaderInterface {
+    elements: Vec<ShaderInterfaceEntry>,
 }
 
-/// Entry of a shader interface definition.
-#[derive(Debug, Clone)]
-pub struct ShaderInterfaceDefEntry {
-    /// Range of locations covered by the element.
-    pub location: Range<u32>,
-    /// Format of a each location of the element.
-    pub format: Format,
-    /// Name of the element, or `None` if the name is unknown.
-    pub name: Option<Cow<'static, str>>,
-}
-
-/// Description of an empty shader interface.
-#[derive(Debug, Copy, Clone)]
-pub struct EmptyShaderInterfaceDef;
-
-unsafe impl ShaderInterfaceDef for EmptyShaderInterfaceDef {
-    type Iter = EmptyIter<ShaderInterfaceDefEntry>;
-
+impl ShaderInterface {
+    /// Constructs a new `ShaderInterface`.
+    ///
+    /// # Safety
+    ///
+    /// - Must only provide one entry per location.
+    /// - The format of each element must not be larger than 128 bits.
+    // TODO: could this be made safe?
     #[inline]
-    fn elements(&self) -> Self::Iter {
-        iter::empty()
+    pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry>) -> ShaderInterface {
+        ShaderInterface { elements }
     }
-}
 
-/// Extension trait for `ShaderInterfaceDef` that specifies that the interface is potentially
-/// compatible with another one.
-pub unsafe trait ShaderInterfaceDefMatch<I>: ShaderInterfaceDef
-where
-    I: ShaderInterfaceDef,
-{
-    /// Returns `Ok` if the two definitions match.
-    fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError>;
-}
+    /// Creates a description of an empty shader interface.
+    pub const fn empty() -> ShaderInterface {
+        ShaderInterface {
+            elements: Vec::new(),
+        }
+    }
 
-// TODO: turn this into a default impl that can be specialized
-unsafe impl<T, I> ShaderInterfaceDefMatch<I> for T
-where
-    T: ShaderInterfaceDef,
-    I: ShaderInterfaceDef,
-{
-    fn matches(&self, other: &I) -> Result<(), ShaderInterfaceMismatchError> {
+    /// Returns a slice containing the elements of the interface.
+    #[inline]
+    pub fn elements(&self) -> &[ShaderInterfaceEntry] {
+        self.elements.as_ref()
+    }
+
+    /// Checks whether the interface is potentially compatible with another one.
+    ///
+    /// Returns `Ok` if the two interfaces are compatible.
+    pub fn matches(&self, other: &ShaderInterface) -> Result<(), ShaderInterfaceMismatchError> {
         if self.elements().len() != other.elements().len() {
             return Err(ShaderInterfaceMismatchError::ElementsCountMismatch {
                 self_elements: self.elements().len() as u32,
@@ -497,6 +393,7 @@ where
             for loc in a.location.clone() {
                 let b = match other
                     .elements()
+                    .iter()
                     .find(|e| loc >= e.location.start && loc < e.location.end)
                 {
                     None => {
@@ -526,6 +423,17 @@ where
 
         Ok(())
     }
+}
+
+/// Entry of a shader interface definition.
+#[derive(Debug, Clone)]
+pub struct ShaderInterfaceEntry {
+    /// Range of locations covered by the element.
+    pub location: Range<u32>,
+    /// Format of a each location of the element.
+    pub format: Format,
+    /// Name of the element, or `None` if the name is unknown.
+    pub name: Option<Cow<'static, str>>,
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.
@@ -655,6 +563,7 @@ unsafe impl SpecializationConstants for () {
 
 /// Describes an individual constant to set in the shader. Also a field in the struct.
 // Implementation note: has the same memory representation as a `VkSpecializationMapEntry`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(C)]
 pub struct SpecializationMapEntry {
     /// Identifier of the constant in the shader that corresponds to this field.

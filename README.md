@@ -95,15 +95,16 @@ community members.
 
 **New Pull Requests are usually scheduled for review by the end of each week.**
 The older PRs that already in review have priority over the new ones. We are trying to push
-development forward as quick as possible, but the review process sometimes may take time,
+development forward as quick as possible, but the review process sometimes takes time,
 please be patient as the maintainers need time to check everything properly.
 
 If something needs to get promoted urgently, please ping current Vulkano
 maintainer([@Eliah-Lakhin](https://github.com/Eliah-Lakhin/)) in the PR's
 or Issue's comments.
 
-If your change adds, removes or modifies a trait or a function, please add an entry to the
-changelog file(s) as part of your pull request.
+If your change adds, removes or modifies a trait or a function, please
+specify changelog entries **in the Pull Request description**(not in the changelog file directly).
+They will be transferred to the changelog right after the PR merge.
 
 Every PR must pass tests in order to be merged to `master`.
 

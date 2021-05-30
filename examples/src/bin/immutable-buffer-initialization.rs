@@ -13,18 +13,25 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, ImmutableBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::descriptor::PipelineLayoutAbstract;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::ComputePipeline;
+use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::Version;
 
 fn main() {
     // The most part of this example is exactly the same as `basic-compute-shader`. You should read the
     // `basic-compute-shader` example if you haven't done so yet.
 
-    let instance = Instance::new(None, &InstanceExtensions::none(), None).unwrap();
+    let instance = Instance::new(
+        None,
+        Version::V1_1,
+        &InstanceExtensions::none(),
+        None,
+    )
+    .unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     let queue_family = physical

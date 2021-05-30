@@ -31,6 +31,7 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::MipmapsCount;
+use crate::image::SampleCount;
 use crate::instance::QueueFamily;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
@@ -267,7 +268,7 @@ impl ImmutableImage {
                 format,
                 flags,
                 dimensions,
-                1,
+                SampleCount::Sample1,
                 mipmaps,
                 sharing,
                 false,

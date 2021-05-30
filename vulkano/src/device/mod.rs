@@ -21,9 +21,10 @@
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::instance::PhysicalDevice;
+//! use vulkano::Version;
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
-//! let instance = match Instance::new(None, &InstanceExtensions::none(), None) {
+//! let instance = match Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None) {
 //!     Ok(i) => i,
 //!     Err(err) => panic!("Couldn't build instance: {:?}", err)
 //! };
@@ -91,21 +92,28 @@
 
 pub use self::extensions::DeviceExtensions;
 pub use self::extensions::RawDeviceExtensions;
+pub use self::features::Features;
+pub(crate) use self::features::FeaturesFfi;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
-pub use crate::features::Features;
-use crate::features::FeaturesFfi;
+use crate::fns::DeviceFunctions;
+use crate::format::Format;
+use crate::image::ImageCreateFlags;
+use crate::image::ImageFormatProperties;
+use crate::image::ImageTiling;
+use crate::image::ImageType;
+use crate::image::ImageUsage;
 use crate::instance::Instance;
 use crate::instance::PhysicalDevice;
 use crate::instance::QueueFamily;
 use crate::memory::pool::StdMemoryPool;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SynchronizedVulkanObject;
-use crate::VulkanHandle;
+use crate::Version;
 use crate::VulkanObject;
+use ash::vk::Handle;
 use fnv::FnvHasher;
 use smallvec::SmallVec;
 use std::collections::hash_map::Entry;
@@ -116,6 +124,7 @@ use std::fmt;
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::ptr;
@@ -123,21 +132,21 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
+
 mod extensions;
-use crate::format::Format;
-use crate::image::ImageCreateFlags;
-use crate::image::ImageFormatProperties;
-use crate::image::ImageTiling;
-use crate::image::ImageType;
-use crate::image::ImageUsage;
-use std::pin::Pin;
+mod features;
 
 /// Represents a Vulkan context.
 pub struct Device {
     instance: Arc<Instance>,
     physical_device: usize,
-    device: vk::Device,
-    vk: vk::DevicePointers,
+    device: ash::vk::Device,
+
+    // The highest version that is supported for this device.
+    // This is the minimum of Instance::max_api_version and PhysicalDevice::api_version.
+    api_version: Version,
+
+    fns: DeviceFunctions,
     standard_pool: Mutex<Weak<StdMemoryPool>>,
     standard_descriptor_pool: Mutex<Weak<StdDescriptorPool>>,
     standard_command_pools:
@@ -146,9 +155,9 @@ pub struct Device {
     extensions: DeviceExtensions,
     active_queue_families: SmallVec<[u32; 8]>,
     allocation_count: Mutex<u32>,
-    fence_pool: Mutex<Vec<vk::Fence>>,
-    semaphore_pool: Mutex<Vec<vk::Semaphore>>,
-    event_pool: Mutex<Vec<vk::Event>>,
+    fence_pool: Mutex<Vec<ash::vk::Fence>>,
+    semaphore_pool: Mutex<Vec<ash::vk::Semaphore>>,
+    event_pool: Mutex<Vec<ash::vk::Event>>,
 }
 
 // The `StandardCommandPool` type doesn't implement Send/Sync, so we have to manually reimplement
@@ -187,13 +196,17 @@ impl Device {
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
         Ext: Into<RawDeviceExtensions>,
     {
+        let instance = phys.instance();
+        let fns_i = instance.fns();
+
+        let max_api_version = instance.max_api_version();
+        let api_version = std::cmp::min(max_api_version, phys.api_version());
+
         let queue_families = queue_families.into_iter();
 
         if !phys.supported_features().superset_of(&requested_features) {
             return Err(DeviceCreationError::FeatureNotPresent);
         }
-
-        let vk_i = phys.instance().pointers();
 
         // this variable will contain the queue family ID and queue ID of each requested queue
         let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
@@ -207,8 +220,7 @@ impl Device {
         // Because there's no way to query the list of layers enabled for an instance, we need
         // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
         // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = phys
-            .instance()
+        let layers_ptr = instance
             .loaded_layers()
             .map(|layer| layer.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
@@ -219,10 +231,11 @@ impl Device {
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
 
-        let mut requested_features = requested_features.clone();
-        // Always enabled; see below.
-        requested_features.robust_buffer_access = true;
-        let requested_features = requested_features;
+        let requested_features = Features {
+            // Always enabled; see below.
+            robust_buffer_access: true,
+            ..*requested_features
+        };
 
         // device creation
         let device = unsafe {
@@ -256,52 +269,64 @@ impl Device {
             // turning `queues` into an array of `vkDeviceQueueCreateInfo` suitable for Vulkan
             let queues = queues
                 .iter()
-                .map(|&(queue_id, ref priorities)| {
-                    vk::DeviceQueueCreateInfo {
-                        sType: vk::STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-                        pNext: ptr::null(),
-                        flags: 0, // reserved
-                        queueFamilyIndex: queue_id,
-                        queueCount: priorities.len() as u32,
-                        pQueuePriorities: priorities.as_ptr(),
-                    }
-                })
+                .map(
+                    |&(queue_id, ref priorities)| ash::vk::DeviceQueueCreateInfo {
+                        flags: ash::vk::DeviceQueueCreateFlags::empty(),
+                        queue_family_index: queue_id,
+                        queue_count: priorities.len() as u32,
+                        p_queue_priorities: priorities.as_ptr(),
+                        ..Default::default()
+                    },
+                )
                 .collect::<SmallVec<[_; 16]>>();
 
-            // TODO: The plan regarding `robustBufferAccess` is to check the shaders' code to see
+            // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
             //       if they can possibly perform out-of-bounds reads and writes. If the user tries
             //       to use a shader that can perform out-of-bounds operations without having
-            //       `robustBufferAccess` enabled, an error is returned.
+            //       `robust_buffer_access` enabled, an error is returned.
             //
             //       However for the moment this verification isn't performed. In order to be safe,
-            //       we always enable the `robustBufferAccess` feature as it is guaranteed to be
+            //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
             //       supported everywhere.
             //
             //       The only alternative (while waiting for shaders introspection to work) is to
-            //       make all shaders depend on `robustBufferAccess`. But since usually the
+            //       make all shaders depend on `robust_buffer_access`. But since usually the
             //       majority of shaders don't need this feature, it would be very annoying to have
             //       to enable it manually when you don't need it.
             //
             //       Note that if we ever remove this, don't forget to adjust the change in
             //       `Device`'s construction below.
 
-            let features = Pin::<Box<FeaturesFfi>>::from(&requested_features);
+            let mut features_ffi = <FeaturesFfi>::from(&requested_features);
+            features_ffi.make_chain(api_version);
 
-            let infos = vk::DeviceCreateInfo {
-                sType: vk::STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                pNext: features.base_ptr() as *const _,
-                flags: 0, // reserved
-                queueCreateInfoCount: queues.len() as u32,
-                pQueueCreateInfos: queues.as_ptr(),
-                enabledLayerCount: layers_ptr.len() as u32,
-                ppEnabledLayerNames: layers_ptr.as_ptr(),
-                enabledExtensionCount: extensions_list.len() as u32,
-                ppEnabledExtensionNames: extensions_list.as_ptr(),
-                pEnabledFeatures: ptr::null(),
+            let has_khr_get_physical_device_properties2 = instance
+                .loaded_extensions()
+                .khr_get_physical_device_properties2;
+
+            let infos = ash::vk::DeviceCreateInfo {
+                p_next: if has_khr_get_physical_device_properties2 {
+                    features_ffi.head_as_ref() as *const _ as _
+                } else {
+                    ptr::null()
+                },
+                flags: ash::vk::DeviceCreateFlags::empty(),
+                queue_create_info_count: queues.len() as u32,
+                p_queue_create_infos: queues.as_ptr(),
+                enabled_layer_count: layers_ptr.len() as u32,
+                pp_enabled_layer_names: layers_ptr.as_ptr(),
+                enabled_extension_count: extensions_list.len() as u32,
+                pp_enabled_extension_names: extensions_list.as_ptr(),
+                p_enabled_features: if has_khr_get_physical_device_properties2 {
+                    ptr::null()
+                } else {
+                    &features_ffi.head_as_ref().features
+                },
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk_i.CreateDevice(
+            check_errors(fns_i.v1_0.create_device(
                 phys.internal_object(),
                 &infos,
                 ptr::null(),
@@ -311,8 +336,8 @@ impl Device {
         };
 
         // loading the function pointers of the newly-created device
-        let vk = vk::DevicePointers::load(|name| unsafe {
-            vk_i.GetDeviceProcAddr(device, name.as_ptr()) as *const _
+        let fns = DeviceFunctions::load(|name| unsafe {
+            mem::transmute(fns_i.v1_0.get_device_proc_addr(device, name.as_ptr()))
         });
 
         let mut active_queue_families: SmallVec<[u32; 8]> = SmallVec::new();
@@ -329,7 +354,8 @@ impl Device {
             instance: phys.instance().clone(),
             physical_device: phys.index(),
             device: device,
-            vk: vk,
+            api_version,
+            fns,
             standard_pool: Mutex::new(Weak::new()),
             standard_descriptor_pool: Mutex::new(Weak::new()),
             standard_command_pools: Mutex::new(Default::default()),
@@ -356,10 +382,20 @@ impl Device {
         Ok((device, output_queues))
     }
 
-    /// Grants access to the pointers to the Vulkan functions of the device.
+    /// Returns the Vulkan version supported by this `Device`.
+    ///
+    /// This is the lower of the
+    /// [physical device's supported version](crate::instance::PhysicalDevice::api_version) and
+    /// the instance's [`max_api_version`](crate::instance::Instance::max_api_version).
     #[inline]
-    pub fn pointers(&self) -> &vk::DevicePointers {
-        &self.vk
+    pub fn api_version(&self) -> Version {
+        self.api_version
+    }
+
+    /// Grants access to the Vulkan functions of the device.
+    #[inline]
+    pub fn fns(&self) -> &DeviceFunctions {
+        &self.fns
     }
 
     /// Waits until all work on this device has finished. You should never need to call
@@ -374,7 +410,7 @@ impl Device {
     /// while this function is waiting.
     ///
     pub unsafe fn wait(&self) -> Result<(), OomError> {
-        check_errors(self.vk.DeviceWaitIdle(self.device))?;
+        check_errors(self.fns.v1_0.device_wait_idle(self.device))?;
         Ok(())
     }
 
@@ -485,15 +521,15 @@ impl Device {
         &self.allocation_count
     }
 
-    pub(crate) fn fence_pool(&self) -> &Mutex<Vec<vk::Fence>> {
+    pub(crate) fn fence_pool(&self) -> &Mutex<Vec<ash::vk::Fence>> {
         &self.fence_pool
     }
 
-    pub(crate) fn semaphore_pool(&self) -> &Mutex<Vec<vk::Semaphore>> {
+    pub(crate) fn semaphore_pool(&self) -> &Mutex<Vec<ash::vk::Semaphore>> {
         &self.semaphore_pool
     }
 
-    pub(crate) fn event_pool(&self) -> &Mutex<Vec<vk::Event>> {
+    pub(crate) fn event_pool(&self) -> &Mutex<Vec<ash::vk::Event>> {
         &self.event_pool
     }
 
@@ -507,7 +543,9 @@ impl Device {
         name: &CStr,
     ) -> Result<(), OomError> {
         assert!(object.device().internal_object() == self.internal_object());
-        unsafe { self.set_object_name_raw(T::TYPE, object.internal_object().value(), name) }
+        unsafe {
+            self.set_object_name_raw(T::Object::TYPE, object.internal_object().as_raw(), name)
+        }
     }
 
     /// Assigns a human-readable name to `object` for debugging purposes.
@@ -516,18 +554,22 @@ impl Device {
     /// `object` must be a Vulkan handle owned by this device, and its type must be accurately described by `ty`.
     pub unsafe fn set_object_name_raw(
         &self,
-        ty: vk::ObjectType,
+        ty: ash::vk::ObjectType,
         object: u64,
         name: &CStr,
     ) -> Result<(), OomError> {
-        let info = vk::DebugUtilsObjectNameInfoEXT {
-            sType: vk::STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,
-            pNext: ptr::null(),
-            objectType: ty,
-            objectHandle: object,
-            pObjectName: name.as_ptr(),
+        let info = ash::vk::DebugUtilsObjectNameInfoEXT {
+            object_type: ty,
+            object_handle: object,
+            p_object_name: name.as_ptr(),
+            ..Default::default()
         };
-        check_errors(self.vk.SetDebugUtilsObjectNameEXT(self.device, &info))?;
+        check_errors(
+            self.instance
+                .fns()
+                .ext_debug_utils
+                .set_debug_utils_object_name_ext(self.device, &info),
+        )?;
         Ok(())
     }
 
@@ -542,13 +584,13 @@ impl Device {
         usage: ImageUsage,
         create_flags: ImageCreateFlags,
     ) -> Result<ImageFormatProperties, String> {
-        let vk_i = self.instance().pointers();
+        let fns_i = self.instance().fns();
         let mut output = MaybeUninit::uninit();
         let physical_device = self.physical_device().internal_object();
         unsafe {
-            let r = vk_i.GetPhysicalDeviceImageFormatProperties(
+            let r = fns_i.v1_0.get_physical_device_image_format_properties(
                 physical_device,
-                format as u32,
+                format.into(),
                 ty.into(),
                 tiling.into(),
                 usage.into(),
@@ -577,12 +619,10 @@ impl fmt::Debug for Device {
 }
 
 unsafe impl VulkanObject for Device {
-    type Object = vk::Device;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DEVICE;
+    type Object = ash::vk::Device;
 
     #[inline]
-    fn internal_object(&self) -> vk::Device {
+    fn internal_object(&self) -> ash::vk::Device {
         self.device
     }
 }
@@ -592,15 +632,21 @@ impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
             for &raw_fence in self.fence_pool.lock().unwrap().iter() {
-                self.vk.DestroyFence(self.device, raw_fence, ptr::null());
+                self.fns
+                    .v1_0
+                    .destroy_fence(self.device, raw_fence, ptr::null());
             }
             for &raw_sem in self.semaphore_pool.lock().unwrap().iter() {
-                self.vk.DestroySemaphore(self.device, raw_sem, ptr::null());
+                self.fns
+                    .v1_0
+                    .destroy_semaphore(self.device, raw_sem, ptr::null());
             }
             for &raw_event in self.event_pool.lock().unwrap().iter() {
-                self.vk.DestroyEvent(self.device, raw_event, ptr::null());
+                self.fns
+                    .v1_0
+                    .destroy_event(self.device, raw_event, ptr::null());
             }
-            self.vk.DestroyDevice(self.device, ptr::null());
+            self.fns.v1_0.destroy_device(self.device, ptr::null());
         }
     }
 }
@@ -670,9 +716,12 @@ impl Iterator for QueuesIter {
             self.next_queue += 1;
 
             let mut output = MaybeUninit::uninit();
-            self.device
-                .vk
-                .GetDeviceQueue(self.device.device, family, id, output.as_mut_ptr());
+            self.device.fns.v1_0.get_device_queue(
+                self.device.device,
+                family,
+                id,
+                output.as_mut_ptr(),
+            );
 
             Some(Arc::new(Queue {
                 queue: Mutex::new(output.assume_init()),
@@ -773,7 +822,7 @@ impl From<Error> for DeviceCreationError {
 // TODO: should use internal synchronization?
 #[derive(Debug)]
 pub struct Queue {
-    queue: Mutex<vk::Queue>,
+    queue: Mutex<ash::vk::Queue>,
     device: Arc<Device>,
     family: u32,
     id: u32, // id within family
@@ -815,9 +864,9 @@ impl Queue {
     #[inline]
     pub fn wait(&self) -> Result<(), OomError> {
         unsafe {
-            let vk = self.device.pointers();
+            let fns = self.device.fns();
             let queue = self.queue.lock().unwrap();
-            check_errors(vk.QueueWaitIdle(*queue))?;
+            check_errors(fns.v1_0.queue_wait_idle(*queue))?;
             Ok(())
         }
     }
@@ -838,10 +887,10 @@ unsafe impl DeviceOwned for Queue {
 }
 
 unsafe impl SynchronizedVulkanObject for Queue {
-    type Object = vk::Queue;
+    type Object = ash::vk::Queue;
 
     #[inline]
-    fn internal_object_guard(&self) -> MutexGuard<vk::Queue> {
+    fn internal_object_guard(&self) -> MutexGuard<ash::vk::Queue> {
         self.queue.lock().unwrap()
     }
 }
@@ -851,7 +900,7 @@ mod tests {
     use crate::device::Device;
     use crate::device::DeviceCreationError;
     use crate::device::DeviceExtensions;
-    use crate::features::Features;
+    use crate::device::Features;
     use crate::instance;
     use std::sync::Arc;
 

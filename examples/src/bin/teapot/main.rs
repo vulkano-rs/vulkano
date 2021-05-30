@@ -33,6 +33,7 @@ use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -43,7 +44,7 @@ fn main() {
     // `triangle` example if you haven't done so yet.
 
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!(
         "Using device: {} (type: {:?})",
@@ -55,7 +56,6 @@ fn main() {
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
-    let dimensions: [u32; 2] = surface.window().inner_size().into();
 
     let queue_family = physical
         .queue_families()
@@ -76,11 +76,13 @@ fn main() {
     .unwrap();
 
     let queue = queues.next().unwrap();
+    let dimensions: [u32; 2] = surface.window().inner_size().into();
 
     let (mut swapchain, images) = {
         let caps = surface.capabilities(physical).unwrap();
         let format = caps.supported_formats[0].0;
         let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
+        let dimensions: [u32; 2] = surface.window().inner_size().into();
 
         Swapchain::start(device.clone(), surface.clone())
             .num_images(caps.min_image_count)
@@ -212,7 +214,7 @@ fn main() {
                     uniform_buffer.next(uniform_data).unwrap()
                 };
 
-                let layout = pipeline.descriptor_set_layout(0).unwrap();
+                let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
                 let set = Arc::new(
                     PersistentDescriptorSet::start(layout.clone())
                         .add_buffer(uniform_buffer_subbuffer)

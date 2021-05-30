@@ -13,7 +13,6 @@ use crate::descriptor::DescriptorSet;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
-use crate::vk;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::ops::Range;
@@ -27,24 +26,24 @@ pub struct StateCacher {
     // The dynamic state to synchronize with `CmdSetState`.
     dynamic_state: DynamicState,
     // The compute pipeline currently bound. 0 if nothing bound.
-    compute_pipeline: vk::Pipeline,
+    compute_pipeline: ash::vk::Pipeline,
     // The graphics pipeline currently bound. 0 if nothing bound.
-    graphics_pipeline: vk::Pipeline,
+    graphics_pipeline: ash::vk::Pipeline,
     // The descriptor sets for the compute pipeline.
-    compute_descriptor_sets: SmallVec<[(vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
+    compute_descriptor_sets: SmallVec<[(ash::vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
     // The descriptor sets for the graphics pipeline.
-    graphics_descriptor_sets: SmallVec<[(vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
+    graphics_descriptor_sets: SmallVec<[(ash::vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
     // If the user starts comparing descriptor sets, but drops the helper struct in the middle of
     // the processing then we will end up in a weird state. This bool is true when we start
     // comparing sets, and is set to false when we end up comparing. If it was true when we start
     // comparing, we know that something bad happened and we flush the cache.
     poisoned_descriptor_sets: bool,
     // The vertex buffers currently bound.
-    vertex_buffers: SmallVec<[(vk::Buffer, vk::DeviceSize); 12]>,
+    vertex_buffers: SmallVec<[(ash::vk::Buffer, ash::vk::DeviceSize); 12]>,
     // Same as `poisoned_descriptor_sets` but for vertex buffers.
     poisoned_vertex_buffers: bool,
     // The index buffer, offset, and index type currently bound. `None` if nothing bound.
-    index_buffer: Option<(vk::Buffer, usize, IndexType)>,
+    index_buffer: Option<(ash::vk::Buffer, usize, IndexType)>,
 }
 
 /// Outcome of an operation.
@@ -62,8 +61,8 @@ impl StateCacher {
     pub fn new() -> StateCacher {
         StateCacher {
             dynamic_state: DynamicState::none(),
-            compute_pipeline: 0,
-            graphics_pipeline: 0,
+            compute_pipeline: ash::vk::Pipeline::null(),
+            graphics_pipeline: ash::vk::Pipeline::null(),
             compute_descriptor_sets: SmallVec::new(),
             graphics_descriptor_sets: SmallVec::new(),
             poisoned_descriptor_sets: false,
@@ -78,8 +77,8 @@ impl StateCacher {
     #[inline]
     pub fn invalidate(&mut self) {
         self.dynamic_state = DynamicState::none();
-        self.compute_pipeline = 0;
-        self.graphics_pipeline = 0;
+        self.compute_pipeline = ash::vk::Pipeline::null();
+        self.graphics_pipeline = ash::vk::Pipeline::null();
         self.compute_descriptor_sets = SmallVec::new();
         self.graphics_descriptor_sets = SmallVec::new();
         self.vertex_buffers = SmallVec::new();
@@ -241,7 +240,7 @@ pub struct StateCacherDescriptorSets<'s> {
     // Reference to the parent's `poisoned_descriptor_sets`.
     poisoned: &'s mut bool,
     // Reference to the descriptor sets list to compare to.
-    state: &'s mut SmallVec<[(vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
+    state: &'s mut SmallVec<[(ash::vk::DescriptorSet, SmallVec<[u32; 32]>); 12]>,
     // Next offset within the list to compare to.
     offset: usize,
     // Contains the return value of `compare`.
@@ -295,7 +294,7 @@ pub struct StateCacherVertexBuffers<'s> {
     // Reference to the parent's `poisoned_vertex_buffers`.
     poisoned: &'s mut bool,
     // Reference to the vertex buffers list to compare to.
-    state: &'s mut SmallVec<[(vk::Buffer, vk::DeviceSize); 12]>,
+    state: &'s mut SmallVec<[(ash::vk::Buffer, ash::vk::DeviceSize); 12]>,
     // Next offset within the list to compare to.
     offset: usize,
     // Contains the offset of the first vertex buffer that differs.
@@ -314,7 +313,7 @@ impl<'s> StateCacherVertexBuffers<'s> {
         let raw = {
             let inner = buffer.inner();
             let raw = inner.buffer.internal_object();
-            let offset = inner.offset as vk::DeviceSize;
+            let offset = inner.offset as ash::vk::DeviceSize;
             (raw, offset)
         };
 

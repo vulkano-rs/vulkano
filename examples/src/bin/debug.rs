@@ -15,6 +15,7 @@ use vulkano::image::MipmapsCount;
 use vulkano::instance;
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
+use vulkano::Version;
 
 fn main() {
     // Vulkano Debugging Example Code
@@ -55,8 +56,8 @@ fn main() {
     let layers = vec!["VK_LAYER_KHRONOS_validation"];
 
     // Important: pass the extension(s) and layer(s) when creating the vulkano instance
-    let instance =
-        Instance::new(None, &extensions, layers).expect("failed to create Vulkan instance");
+    let instance = Instance::new(None, Version::V1_1, &extensions, layers)
+        .expect("failed to create Vulkan instance");
 
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
     // After creating the instance we must register the debugging callback.                                      //

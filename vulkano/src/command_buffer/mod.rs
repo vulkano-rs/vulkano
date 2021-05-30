@@ -187,12 +187,19 @@ impl Default for DynamicState {
 
 /// Describes what a subpass in a command buffer will contain.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum SubpassContents {
     /// The subpass will only directly contain commands.
-    Inline = vk::SUBPASS_CONTENTS_INLINE,
+    Inline = ash::vk::SubpassContents::INLINE.as_raw(),
     /// The subpass will only contain secondary command buffers invocations.
-    SecondaryCommandBuffers = vk::SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS,
+    SecondaryCommandBuffers = ash::vk::SubpassContents::SECONDARY_COMMAND_BUFFERS.as_raw(),
+}
+
+impl From<SubpassContents> for ash::vk::SubpassContents {
+    #[inline]
+    fn from(val: SubpassContents) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Determines the kind of command buffer to create.
@@ -279,29 +286,26 @@ impl CommandBufferLevel<Framebuffer<()>> {
 /// The safest option is `SimultaneousUse`, but it may be slower than the other two.
 // NOTE: The ordering is important: the variants are listed from least to most permissive!
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(u32)]
 pub enum CommandBufferUsage {
     /// The command buffer can only be submitted once before being destroyed. Any further submit is
     /// forbidden. This makes it possible for the implementation to perform additional
     /// optimizations.
-    OneTimeSubmit,
+    OneTimeSubmit = ash::vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT.as_raw(),
 
     /// The command buffer can be used multiple times, but must not execute or record more than once
     /// simultaneously. In other words, it is as if executing the command buffer borrows it mutably.
-    MultipleSubmit,
+    MultipleSubmit = 0,
 
     /// The command buffer can be executed multiple times in parallel on different queues.
     /// If it's a secondary command buffer, it can be recorded to multiple primary command buffers
     /// at once.
-    SimultaneousUse,
+    SimultaneousUse = ash::vk::CommandBufferUsageFlags::SIMULTANEOUS_USE.as_raw(),
 }
 
-impl From<CommandBufferUsage> for vk::CommandBufferUsageFlags {
+impl From<CommandBufferUsage> for ash::vk::CommandBufferUsageFlags {
     #[inline]
     fn from(val: CommandBufferUsage) -> Self {
-        match val {
-            CommandBufferUsage::OneTimeSubmit => vk::COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-            CommandBufferUsage::MultipleSubmit => 0,
-            CommandBufferUsage::SimultaneousUse => vk::COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        }
+        Self::from_raw(val as u32)
     }
 }

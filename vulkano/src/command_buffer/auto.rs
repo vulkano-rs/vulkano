@@ -38,7 +38,6 @@ use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::{DescriptorBufferDesc, DescriptorDescTy};
 use crate::descriptor::descriptor_set::{DescriptorSetDesc, DescriptorSetsCollection};
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -51,6 +50,7 @@ use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::instance::QueueFamily;
 use crate::pipeline::input_assembly::Index;
+use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::vertex::VertexSource;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
@@ -110,7 +110,7 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     render_pass_state: Option<RenderPassState>,
 
     // If any queries are active, this hashmap contains their state.
-    query_state: FnvHashMap<vk::QueryType, QueryState>,
+    query_state: FnvHashMap<ash::vk::QueryType, QueryState>,
 
     _data: PhantomData<L>,
 }
@@ -119,12 +119,12 @@ pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
 struct RenderPassState {
     subpass: (Arc<RenderPass>, u32),
     contents: SubpassContents,
-    framebuffer: vk::Framebuffer, // Always null for secondary command buffers
+    framebuffer: ash::vk::Framebuffer, // Always null for secondary command buffers
 }
 
 // The state of an active query.
 struct QueryState {
-    query_pool: vk::QueryPool,
+    query_pool: ash::vk::QueryPool,
     query: u32,
     ty: QueryType,
     flags: QueryControlFlags,
@@ -290,7 +290,7 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
                         let render_pass_state = RenderPassState {
                             subpass: (subpass.render_pass().clone(), subpass.index()),
                             contents: SubpassContents::Inline,
-                            framebuffer: 0, // Only needed for primary command buffers
+                            framebuffer: ash::vk::Framebuffer::null(), // Only needed for primary command buffers
                         };
                         (Some(render_pass), Some(render_pass_state))
                     }
@@ -1069,8 +1069,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
 
             self.ensure_outside_render_pass()?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             check_dispatch(pipeline.device(), group_counts)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1079,12 +1079,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.inner.bind_pipeline_compute(pipeline.clone());
             }
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 false,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1123,8 +1123,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_outside_render_pass()?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -1132,12 +1132,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.inner.bind_pipeline_compute(pipeline.clone());
             }
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 false,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1174,8 +1174,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1186,13 +1186,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1214,8 +1214,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /// Perform multiple draw operations using a graphics pipeline. One draw is performed for each
-    /// `vulkano::command_buffer::DrawIndirectCommand` struct in `indirect_buffer`.
+    /// Perform multiple draw operations using a graphics pipeline.
+    ///
+    /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
+    /// The maximum number of draw commands in the buffer is limited by the
+    /// [`max_draw_indirect_count`](crate::instance::Limits::max_draw_indirect_count) limit.
+    /// This limit is 1 unless the
+    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// enabled.
     ///
     /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input. It is
     /// used for every draw operation.
@@ -1250,11 +1256,26 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
-            let draw_count = indirect_buffer.len() as u32;
+            let requested = indirect_buffer.len() as u32;
+            let limit = self
+                .device()
+                .physical_device()
+                .limits()
+                .max_draw_indirect_count();
+
+            if requested > limit {
+                return Err(
+                    CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                        limit,
+                        requested,
+                    }
+                    .into(),
+                );
+            }
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1264,13 +1285,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1284,7 +1305,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.inner.draw_indirect(
                 indirect_buffer,
-                draw_count,
+                requested,
                 mem::size_of::<DrawIndirectCommand>() as u32,
             )?;
             Ok(self)
@@ -1324,8 +1345,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1342,13 +1363,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1372,9 +1393,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         }
     }
 
-    /// Perform multiple draw operations using a graphics pipeline, using an index buffer. One
-    /// draw is performed for for each `vulkano::command_buffer::DrawIndirectCommand` struct in
-    /// `indirect_buffer`.
+    /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
+    ///
+    /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
+    /// The maximum number of draw commands in the buffer is limited by the
+    /// [`max_draw_indirect_count`](crate::instance::Limits::max_draw_indirect_count) limit.
+    /// This limit is 1 unless the
+    /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
+    /// enabled.
     ///
     /// `vertex_buffer` is a set of vertex and/or instance buffers used to provide input.
     /// `index_buffer` is a buffer containing indices into the vertex buffer that should be
@@ -1414,11 +1440,26 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(&pipeline, &constants)?;
-            check_descriptor_sets_validity(&pipeline, &sets)?;
+            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
-            let draw_count = indirect_buffer.len() as u32;
+            let requested = indirect_buffer.len() as u32;
+            let limit = self
+                .device()
+                .physical_device()
+                .limits()
+                .max_draw_indirect_count();
+
+            if requested > limit {
+                return Err(
+                    CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
+                        limit,
+                        requested,
+                    }
+                    .into(),
+                );
+            }
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1434,13 +1475,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.clone(), constants);
+            push_constants(&mut self.inner, pipeline.layout(), constants);
             set_state(&mut self.inner, &dynamic);
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 true,
-                pipeline.clone(),
+                pipeline.layout(),
                 sets,
                 dynamic_offsets,
             )?;
@@ -1454,7 +1495,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.inner.draw_indexed_indirect(
                 indirect_buffer,
-                draw_count,
+                requested,
                 mem::size_of::<DrawIndexedIndirectCommand>() as u32,
             )?;
             Ok(self)
@@ -1629,7 +1670,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Adds a command that copies the results of a range of queries to a buffer on the GPU.
     ///
-    /// [`query_pool.ty().data_size()`](crate::query::QueryType::data_size) elements
+    /// [`query_pool.ty().result_size()`](crate::query::QueryType::result_size) elements
     /// will be written for each query in the range, plus 1 extra element per query if
     /// [`QueryResultFlags::with_availability`] is enabled.
     /// The provided buffer must be large enough to hold the data.
@@ -1928,8 +1969,8 @@ where
             match state.ty {
                 QueryType::Occlusion => match command_buffer.inheritance().occlusion_query {
                     Some(inherited_flags) => {
-                        let inherited_flags = vk::QueryControlFlags::from(inherited_flags);
-                        let state_flags = vk::QueryControlFlags::from(state.flags);
+                        let inherited_flags = ash::vk::QueryControlFlags::from(inherited_flags);
+                        let state_flags = ash::vk::QueryControlFlags::from(state.flags);
 
                         if inherited_flags & state_flags != state_flags {
                             return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
@@ -1939,8 +1980,9 @@ where
                 },
                 QueryType::PipelineStatistics(state_flags) => {
                     let inherited_flags = command_buffer.inheritance().query_statistics_flags;
-                    let inherited_flags = vk::QueryPipelineStatisticFlags::from(inherited_flags);
-                    let state_flags = vk::QueryPipelineStatisticFlags::from(state_flags);
+                    let inherited_flags =
+                        ash::vk::QueryPipelineStatisticFlags::from(inherited_flags);
+                    let state_flags = ash::vk::QueryPipelineStatisticFlags::from(state_flags);
 
                     if inherited_flags & state_flags != state_flags {
                         return Err(AutoCommandBufferBuilderContextError::QueryNotInherited);
@@ -2043,19 +2085,12 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
 }
 
 // Shortcut function to set the push constants.
-unsafe fn push_constants<Pl, Pc>(
+unsafe fn push_constants<Pc>(
     destination: &mut SyncCommandBufferBuilder,
-    pipeline: Pl,
+    pipeline_layout: &Arc<PipelineLayout>,
     push_constants: Pc,
-) where
-    Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
-{
-    for num_range in 0..pipeline.num_push_constants_ranges() {
-        let range = match pipeline.push_constants_range(num_range) {
-            Some(r) => r,
-            None => continue,
-        };
-
+) {
+    for range in pipeline_layout.desc().push_constants() {
         debug_assert_eq!(range.offset % 4, 0);
         debug_assert_eq!(range.size % 4, 0);
 
@@ -2064,8 +2099,8 @@ unsafe fn push_constants<Pl, Pc>(
             range.size as usize,
         );
 
-        destination.push_constants::<_, [u8]>(
-            pipeline.clone(),
+        destination.push_constants::<[u8]>(
+            pipeline_layout.clone(),
             range.stages,
             range.offset as u32,
             range.size as u32,
@@ -2135,16 +2170,15 @@ unsafe fn vertex_buffers(
     Ok(())
 }
 
-unsafe fn descriptor_sets<Pl, S, Do, Doi>(
+unsafe fn descriptor_sets<S, Do, Doi>(
     destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
     gfx: bool,
-    pipeline: Pl,
+    pipeline_layout: &Arc<PipelineLayout>,
     sets: S,
     dynamic_offsets: Do,
 ) -> Result<(), SyncCommandBufferBuilderError>
 where
-    Pl: PipelineLayoutAbstract + Send + Sync + Clone + 'static,
     S: DescriptorSetsCollection,
     Do: IntoIterator<Item = u32, IntoIter = Doi>,
     Doi: Iterator<Item = u32> + Send + Sync + 'static,
@@ -2155,7 +2189,7 @@ where
     // Ensure that the number of dynamic_offsets is correct and that each
     // dynamic offset is a multiple of the minimum offset alignment specified
     // by the physical device.
-    let limits = pipeline.device().physical_device().limits();
+    let limits = pipeline_layout.device().physical_device().limits();
     let min_uniform_off_align = limits.min_uniform_buffer_offset_alignment() as u32;
     let min_storage_off_align = limits.min_storage_buffer_offset_alignment() as u32;
     let mut dynamic_offset_index = 0;
@@ -2221,7 +2255,7 @@ where
     }
     sets_binder.submit(
         gfx,
-        pipeline.clone(),
+        pipeline_layout.clone(),
         first_binding,
         dynamic_offsets.into_iter(),
     )?;

@@ -22,7 +22,6 @@
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 //!
 
-use crate::vk;
 
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
@@ -151,30 +150,30 @@ impl AttachmentBlend {
     }
 }
 
-impl From<AttachmentBlend> for vk::PipelineColorBlendAttachmentState {
+impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
     #[inline]
     fn from(val: AttachmentBlend) -> Self {
-        vk::PipelineColorBlendAttachmentState {
-            blendEnable: if val.enabled { vk::TRUE } else { vk::FALSE },
-            srcColorBlendFactor: val.color_source as u32,
-            dstColorBlendFactor: val.color_destination as u32,
-            colorBlendOp: val.color_op as u32,
-            srcAlphaBlendFactor: val.alpha_source as u32,
-            dstAlphaBlendFactor: val.alpha_destination as u32,
-            alphaBlendOp: val.alpha_op as u32,
-            colorWriteMask: {
-                let mut mask = 0;
+        ash::vk::PipelineColorBlendAttachmentState {
+            blend_enable: if val.enabled { ash::vk::TRUE } else { ash::vk::FALSE },
+            src_color_blend_factor: val.color_source.into(),
+            dst_color_blend_factor: val.color_destination.into(),
+            color_blend_op: val.color_op.into(),
+            src_alpha_blend_factor: val.alpha_source.into(),
+            dst_alpha_blend_factor: val.alpha_destination.into(),
+            alpha_blend_op: val.alpha_op.into(),
+            color_write_mask: {
+                let mut mask = ash::vk::ColorComponentFlags::empty();
                 if val.mask_red {
-                    mask |= vk::COLOR_COMPONENT_R_BIT;
+                    mask |= ash::vk::ColorComponentFlags::R;
                 }
                 if val.mask_green {
-                    mask |= vk::COLOR_COMPONENT_G_BIT;
+                    mask |= ash::vk::ColorComponentFlags::G;
                 }
                 if val.mask_blue {
-                    mask |= vk::COLOR_COMPONENT_B_BIT;
+                    mask |= ash::vk::ColorComponentFlags::B;
                 }
                 if val.mask_alpha {
-                    mask |= vk::COLOR_COMPONENT_A_BIT;
+                    mask |= ash::vk::ColorComponentFlags::A;
                 }
                 mask
             },
@@ -190,40 +189,47 @@ impl From<AttachmentBlend> for vk::PipelineColorBlendAttachmentState {
 ///
 /// Also note that some implementations don't support logic operations.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum LogicOp {
     /// Returns `0`.
-    Clear = vk::LOGIC_OP_CLEAR,
+    Clear = ash::vk::LogicOp::CLEAR.as_raw(),
     /// Returns `source & destination`.
-    And = vk::LOGIC_OP_AND,
+    And = ash::vk::LogicOp::AND.as_raw(),
     /// Returns `source & !destination`.
-    AndReverse = vk::LOGIC_OP_AND_REVERSE,
+    AndReverse = ash::vk::LogicOp::AND_REVERSE.as_raw(),
     /// Returns `source`.
-    Copy = vk::LOGIC_OP_COPY,
+    Copy = ash::vk::LogicOp::COPY.as_raw(),
     /// Returns `!source & destination`.
-    AndInverted = vk::LOGIC_OP_AND_INVERTED,
+    AndInverted = ash::vk::LogicOp::AND_INVERTED.as_raw(),
     /// Returns `destination`.
-    Noop = vk::LOGIC_OP_NO_OP,
+    Noop = ash::vk::LogicOp::NO_OP.as_raw(),
     /// Returns `source ^ destination`.
-    Xor = vk::LOGIC_OP_XOR,
+    Xor = ash::vk::LogicOp::XOR.as_raw(),
     /// Returns `source | destination`.
-    Or = vk::LOGIC_OP_OR,
+    Or = ash::vk::LogicOp::OR.as_raw(),
     /// Returns `!(source | destination)`.
-    Nor = vk::LOGIC_OP_NOR,
+    Nor = ash::vk::LogicOp::NOR.as_raw(),
     /// Returns `!(source ^ destination)`.
-    Equivalent = vk::LOGIC_OP_EQUIVALENT,
+    Equivalent = ash::vk::LogicOp::EQUIVALENT.as_raw(),
     /// Returns `!destination`.
-    Invert = vk::LOGIC_OP_INVERT,
+    Invert = ash::vk::LogicOp::INVERT.as_raw(),
     /// Returns `source | !destination.
-    OrReverse = vk::LOGIC_OP_OR_REVERSE,
+    OrReverse = ash::vk::LogicOp::OR_REVERSE.as_raw(),
     /// Returns `!source`.
-    CopyInverted = vk::LOGIC_OP_COPY_INVERTED,
+    CopyInverted = ash::vk::LogicOp::COPY_INVERTED.as_raw(),
     /// Returns `!source | destination`.
-    OrInverted = vk::LOGIC_OP_OR_INVERTED,
+    OrInverted = ash::vk::LogicOp::OR_INVERTED.as_raw(),
     /// Returns `!(source & destination)`.
-    Nand = vk::LOGIC_OP_NAND,
+    Nand = ash::vk::LogicOp::NAND.as_raw(),
     /// Returns `!0` (all bits set to 1).
-    Set = vk::LOGIC_OP_SET,
+    Set = ash::vk::LogicOp::SET.as_raw(),
+}
+
+impl From<LogicOp> for ash::vk::LogicOp {
+    #[inline]
+    fn from(val: LogicOp) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 impl Default for LogicOp {
@@ -234,35 +240,49 @@ impl Default for LogicOp {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum BlendOp {
-    Add = vk::BLEND_OP_ADD,
-    Subtract = vk::BLEND_OP_SUBTRACT,
-    ReverseSubtract = vk::BLEND_OP_REVERSE_SUBTRACT,
-    Min = vk::BLEND_OP_MIN,
-    Max = vk::BLEND_OP_MAX,
+    Add = ash::vk::BlendOp::ADD.as_raw(),
+    Subtract = ash::vk::BlendOp::SUBTRACT.as_raw(),
+    ReverseSubtract = ash::vk::BlendOp::REVERSE_SUBTRACT.as_raw(),
+    Min = ash::vk::BlendOp::MIN.as_raw(),
+    Max = ash::vk::BlendOp::MAX.as_raw(),
+}
+
+impl From<BlendOp> for ash::vk::BlendOp {
+    #[inline]
+    fn from(val: BlendOp) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum BlendFactor {
-    Zero = vk::BLEND_FACTOR_ZERO,
-    One = vk::BLEND_FACTOR_ONE,
-    SrcColor = vk::BLEND_FACTOR_SRC_COLOR,
-    OneMinusSrcColor = vk::BLEND_FACTOR_ONE_MINUS_SRC_COLOR,
-    DstColor = vk::BLEND_FACTOR_DST_COLOR,
-    OneMinusDstColor = vk::BLEND_FACTOR_ONE_MINUS_DST_COLOR,
-    SrcAlpha = vk::BLEND_FACTOR_SRC_ALPHA,
-    OneMinusSrcAlpha = vk::BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,
-    DstAlpha = vk::BLEND_FACTOR_DST_ALPHA,
-    OneMinusDstAlpha = vk::BLEND_FACTOR_ONE_MINUS_DST_ALPHA,
-    ConstantColor = vk::BLEND_FACTOR_CONSTANT_COLOR,
-    OneMinusConstantColor = vk::BLEND_FACTOR_ONE_MINUS_CONSTANT_COLOR,
-    ConstantAlpha = vk::BLEND_FACTOR_CONSTANT_ALPHA,
-    OneMinusConstantAlpha = vk::BLEND_FACTOR_ONE_MINUS_CONSTANT_ALPHA,
-    SrcAlphaSaturate = vk::BLEND_FACTOR_SRC_ALPHA_SATURATE,
-    Src1Color = vk::BLEND_FACTOR_SRC1_COLOR,
-    OneMinusSrc1Color = vk::BLEND_FACTOR_ONE_MINUS_SRC1_COLOR,
-    Src1Alpha = vk::BLEND_FACTOR_SRC1_ALPHA,
-    OneMinusSrc1Alpha = vk::BLEND_FACTOR_ONE_MINUS_SRC1_ALPHA,
+    Zero = ash::vk::BlendFactor::ZERO.as_raw(),
+    One = ash::vk::BlendFactor::ONE.as_raw(),
+    SrcColor = ash::vk::BlendFactor::SRC_COLOR.as_raw(),
+    OneMinusSrcColor = ash::vk::BlendFactor::ONE_MINUS_SRC_COLOR.as_raw(),
+    DstColor = ash::vk::BlendFactor::DST_COLOR.as_raw(),
+    OneMinusDstColor = ash::vk::BlendFactor::ONE_MINUS_DST_COLOR.as_raw(),
+    SrcAlpha = ash::vk::BlendFactor::SRC_ALPHA.as_raw(),
+    OneMinusSrcAlpha = ash::vk::BlendFactor::ONE_MINUS_SRC_ALPHA.as_raw(),
+    DstAlpha = ash::vk::BlendFactor::DST_ALPHA.as_raw(),
+    OneMinusDstAlpha = ash::vk::BlendFactor::ONE_MINUS_DST_ALPHA.as_raw(),
+    ConstantColor = ash::vk::BlendFactor::CONSTANT_COLOR.as_raw(),
+    OneMinusConstantColor = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_COLOR.as_raw(),
+    ConstantAlpha = ash::vk::BlendFactor::CONSTANT_ALPHA.as_raw(),
+    OneMinusConstantAlpha = ash::vk::BlendFactor::ONE_MINUS_CONSTANT_ALPHA.as_raw(),
+    SrcAlphaSaturate = ash::vk::BlendFactor::SRC_ALPHA_SATURATE.as_raw(),
+    Src1Color = ash::vk::BlendFactor::SRC1_COLOR.as_raw(),
+    OneMinusSrc1Color = ash::vk::BlendFactor::ONE_MINUS_SRC1_COLOR.as_raw(),
+    Src1Alpha = ash::vk::BlendFactor::SRC1_ALPHA.as_raw(),
+    OneMinusSrc1Alpha = ash::vk::BlendFactor::ONE_MINUS_SRC1_ALPHA.as_raw(),
+}
+
+impl From<BlendFactor> for ash::vk::BlendFactor {
+    #[inline]
+    fn from(val: BlendFactor) -> Self {
+        Self::from_raw(val as i32)
+    }
 }

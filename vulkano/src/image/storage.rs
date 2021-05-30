@@ -23,6 +23,7 @@ use crate::image::ImageDimensions;
 use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
+use crate::image::SampleCount;
 use crate::instance::QueueFamily;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
@@ -132,7 +133,7 @@ impl StorageImage {
                 format,
                 flags,
                 dimensions,
-                1,
+                SampleCount::Sample1,
                 1,
                 sharing,
                 false,

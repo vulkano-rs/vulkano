@@ -43,7 +43,7 @@ where
     // TODO: The sum of offset and the address of the range of VkDeviceMemory object that is
     //       backing buffer, must be a multiple of the type indicated by indexType
 
-    // TODO: fullDrawIndexUint32 feature
+    // TODO: full_draw_index_uint32 feature
 
     Ok(CheckIndexBuffer {
         num_indices: buffer.len(),

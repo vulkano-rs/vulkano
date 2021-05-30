@@ -7,12 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::num::NonZeroU64;
-use std::ops::Range;
-use std::ptr;
-
 use crate::buffer::sys::{DeviceAddressUsageNotEnabledError, UnsafeBuffer};
 use crate::buffer::BufferSlice;
 use crate::device::DeviceOwned;
@@ -20,8 +14,11 @@ use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::memory::Content;
 use crate::sync::AccessError;
-
-use crate::{vk, SafeDeref, VulkanObject};
+use crate::{SafeDeref, VulkanObject};
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::num::NonZeroU64;
+use std::ops::Range;
 
 /// Trait for objects that represent a way for the GPU to have access to a buffer or a slice of a
 /// buffer.
@@ -161,14 +158,14 @@ pub unsafe trait BufferAccess: DeviceOwned {
 
         let dev = self.device();
         unsafe {
-            let info = vk::BufferDeviceAddressInfo {
-                sType: vk::STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO,
-                pNext: ptr::null(),
+            let info = ash::vk::BufferDeviceAddressInfo {
                 buffer: inner.buffer.internal_object(),
+                ..Default::default()
             };
             let ptr = dev
-                .pointers()
-                .GetBufferDeviceAddressEXT(dev.internal_object(), &info);
+                .fns()
+                .ext_buffer_device_address
+                .get_buffer_device_address_ext(dev.internal_object(), &info);
 
             if ptr == 0 {
                 panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");

@@ -62,14 +62,14 @@
 #![allow(dead_code)] // TODO: remove
 #![allow(unused_variables)] // TODO: remove
 
-extern crate vk_sys as vk;
-
+pub use ash::vk::Handle;
 pub use half;
 use std::error;
 use std::fmt;
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::MutexGuard;
+pub use version::Version;
 
 #[macro_use]
 mod tests;
@@ -79,11 +79,11 @@ pub mod buffer;
 pub mod command_buffer;
 pub mod descriptor;
 pub mod device;
-mod features;
 pub mod format;
 mod version;
 #[macro_use]
 pub mod render_pass;
+mod fns;
 pub mod image;
 pub mod instance;
 pub mod memory;
@@ -99,30 +99,10 @@ unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}
 unsafe impl<T: ?Sized> SafeDeref for Arc<T> {}
 unsafe impl<T: ?Sized> SafeDeref for Box<T> {}
 
-pub trait VulkanHandle {
-    fn value(&self) -> u64;
-}
-
-impl VulkanHandle for usize {
-    #[inline]
-    fn value(&self) -> u64 {
-        *self as u64
-    }
-}
-impl VulkanHandle for u64 {
-    #[inline]
-    fn value(&self) -> u64 {
-        *self
-    }
-}
-
 /// Gives access to the internal identifier of an object.
 pub unsafe trait VulkanObject {
     /// The type of the object.
-    type Object: VulkanHandle;
-
-    /// The `ObjectType` of the internal Vulkan handle.
-    const TYPE: vk::ObjectType;
+    type Object: ash::vk::Handle;
 
     /// Returns a reference to the object.
     fn internal_object(&self) -> Self::Object;
@@ -132,7 +112,7 @@ pub unsafe trait VulkanObject {
 // TODO: remove ; crappy design
 pub unsafe trait SynchronizedVulkanObject {
     /// The type of the object.
-    type Object: VulkanHandle;
+    type Object: ash::vk::Handle;
 
     /// Returns a reference to the object.
     fn internal_object_guard(&self) -> MutexGuard<Self::Object>;
@@ -176,15 +156,15 @@ impl From<Error> for OomError {
 
 /// All possible success codes returned by any Vulkan function.
 #[derive(Debug, Copy, Clone)]
-#[repr(u32)]
+#[repr(i32)]
 enum Success {
-    Success = vk::SUCCESS,
-    NotReady = vk::NOT_READY,
-    Timeout = vk::TIMEOUT,
-    EventSet = vk::EVENT_SET,
-    EventReset = vk::EVENT_RESET,
-    Incomplete = vk::INCOMPLETE,
-    Suboptimal = vk::SUBOPTIMAL_KHR,
+    Success = ash::vk::Result::SUCCESS.as_raw(),
+    NotReady = ash::vk::Result::NOT_READY.as_raw(),
+    Timeout = ash::vk::Result::TIMEOUT.as_raw(),
+    EventSet = ash::vk::Result::EVENT_SET.as_raw(),
+    EventReset = ash::vk::Result::EVENT_RESET.as_raw(),
+    Incomplete = ash::vk::Result::INCOMPLETE.as_raw(),
+    Suboptimal = ash::vk::Result::SUBOPTIMAL_KHR.as_raw(),
 }
 
 /// All possible errors returned by any Vulkan function.
@@ -192,58 +172,60 @@ enum Success {
 /// This type is not public. Instead all public error types should implement `From<Error>` and
 /// panic for error code that aren't supposed to happen.
 #[derive(Debug, Copy, Clone)]
-#[repr(u32)]
+#[repr(i32)]
 // TODO: being pub is necessary because of the weird visibility rules in rustc
 pub(crate) enum Error {
-    OutOfHostMemory = vk::ERROR_OUT_OF_HOST_MEMORY,
-    OutOfDeviceMemory = vk::ERROR_OUT_OF_DEVICE_MEMORY,
-    InitializationFailed = vk::ERROR_INITIALIZATION_FAILED,
-    DeviceLost = vk::ERROR_DEVICE_LOST,
-    MemoryMapFailed = vk::ERROR_MEMORY_MAP_FAILED,
-    LayerNotPresent = vk::ERROR_LAYER_NOT_PRESENT,
-    ExtensionNotPresent = vk::ERROR_EXTENSION_NOT_PRESENT,
-    FeatureNotPresent = vk::ERROR_FEATURE_NOT_PRESENT,
-    IncompatibleDriver = vk::ERROR_INCOMPATIBLE_DRIVER,
-    TooManyObjects = vk::ERROR_TOO_MANY_OBJECTS,
-    FormatNotSupported = vk::ERROR_FORMAT_NOT_SUPPORTED,
-    SurfaceLost = vk::ERROR_SURFACE_LOST_KHR,
-    NativeWindowInUse = vk::ERROR_NATIVE_WINDOW_IN_USE_KHR,
-    OutOfDate = vk::ERROR_OUT_OF_DATE_KHR,
-    IncompatibleDisplay = vk::ERROR_INCOMPATIBLE_DISPLAY_KHR,
-    ValidationFailed = vk::ERROR_VALIDATION_FAILED_EXT,
-    OutOfPoolMemory = vk::ERROR_OUT_OF_POOL_MEMORY_KHR,
-    FullscreenExclusiveLost = vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT,
+    OutOfHostMemory = ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY.as_raw(),
+    OutOfDeviceMemory = ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY.as_raw(),
+    InitializationFailed = ash::vk::Result::ERROR_INITIALIZATION_FAILED.as_raw(),
+    DeviceLost = ash::vk::Result::ERROR_DEVICE_LOST.as_raw(),
+    MemoryMapFailed = ash::vk::Result::ERROR_MEMORY_MAP_FAILED.as_raw(),
+    LayerNotPresent = ash::vk::Result::ERROR_LAYER_NOT_PRESENT.as_raw(),
+    ExtensionNotPresent = ash::vk::Result::ERROR_EXTENSION_NOT_PRESENT.as_raw(),
+    FeatureNotPresent = ash::vk::Result::ERROR_FEATURE_NOT_PRESENT.as_raw(),
+    IncompatibleDriver = ash::vk::Result::ERROR_INCOMPATIBLE_DRIVER.as_raw(),
+    TooManyObjects = ash::vk::Result::ERROR_TOO_MANY_OBJECTS.as_raw(),
+    FormatNotSupported = ash::vk::Result::ERROR_FORMAT_NOT_SUPPORTED.as_raw(),
+    SurfaceLost = ash::vk::Result::ERROR_SURFACE_LOST_KHR.as_raw(),
+    NativeWindowInUse = ash::vk::Result::ERROR_NATIVE_WINDOW_IN_USE_KHR.as_raw(),
+    OutOfDate = ash::vk::Result::ERROR_OUT_OF_DATE_KHR.as_raw(),
+    IncompatibleDisplay = ash::vk::Result::ERROR_INCOMPATIBLE_DISPLAY_KHR.as_raw(),
+    ValidationFailed = ash::vk::Result::ERROR_VALIDATION_FAILED_EXT.as_raw(),
+    OutOfPoolMemory = ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR.as_raw(),
+    FullscreenExclusiveLost = ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT.as_raw(),
 }
 
 /// Checks whether the result returned correctly.
-fn check_errors(result: vk::Result) -> Result<Success, Error> {
+fn check_errors(result: ash::vk::Result) -> Result<Success, Error> {
     match result {
-        vk::SUCCESS => Ok(Success::Success),
-        vk::NOT_READY => Ok(Success::NotReady),
-        vk::TIMEOUT => Ok(Success::Timeout),
-        vk::EVENT_SET => Ok(Success::EventSet),
-        vk::EVENT_RESET => Ok(Success::EventReset),
-        vk::INCOMPLETE => Ok(Success::Incomplete),
-        vk::ERROR_OUT_OF_HOST_MEMORY => Err(Error::OutOfHostMemory),
-        vk::ERROR_OUT_OF_DEVICE_MEMORY => Err(Error::OutOfDeviceMemory),
-        vk::ERROR_INITIALIZATION_FAILED => Err(Error::InitializationFailed),
-        vk::ERROR_DEVICE_LOST => Err(Error::DeviceLost),
-        vk::ERROR_MEMORY_MAP_FAILED => Err(Error::MemoryMapFailed),
-        vk::ERROR_LAYER_NOT_PRESENT => Err(Error::LayerNotPresent),
-        vk::ERROR_EXTENSION_NOT_PRESENT => Err(Error::ExtensionNotPresent),
-        vk::ERROR_FEATURE_NOT_PRESENT => Err(Error::FeatureNotPresent),
-        vk::ERROR_INCOMPATIBLE_DRIVER => Err(Error::IncompatibleDriver),
-        vk::ERROR_TOO_MANY_OBJECTS => Err(Error::TooManyObjects),
-        vk::ERROR_FORMAT_NOT_SUPPORTED => Err(Error::FormatNotSupported),
-        vk::ERROR_SURFACE_LOST_KHR => Err(Error::SurfaceLost),
-        vk::ERROR_NATIVE_WINDOW_IN_USE_KHR => Err(Error::NativeWindowInUse),
-        vk::SUBOPTIMAL_KHR => Ok(Success::Suboptimal),
-        vk::ERROR_OUT_OF_DATE_KHR => Err(Error::OutOfDate),
-        vk::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
-        vk::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
-        vk::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
-        vk::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => Err(Error::FullscreenExclusiveLost),
-        vk::ERROR_INVALID_SHADER_NV => panic!(
+        ash::vk::Result::SUCCESS => Ok(Success::Success),
+        ash::vk::Result::NOT_READY => Ok(Success::NotReady),
+        ash::vk::Result::TIMEOUT => Ok(Success::Timeout),
+        ash::vk::Result::EVENT_SET => Ok(Success::EventSet),
+        ash::vk::Result::EVENT_RESET => Ok(Success::EventReset),
+        ash::vk::Result::INCOMPLETE => Ok(Success::Incomplete),
+        ash::vk::Result::ERROR_OUT_OF_HOST_MEMORY => Err(Error::OutOfHostMemory),
+        ash::vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => Err(Error::OutOfDeviceMemory),
+        ash::vk::Result::ERROR_INITIALIZATION_FAILED => Err(Error::InitializationFailed),
+        ash::vk::Result::ERROR_DEVICE_LOST => Err(Error::DeviceLost),
+        ash::vk::Result::ERROR_MEMORY_MAP_FAILED => Err(Error::MemoryMapFailed),
+        ash::vk::Result::ERROR_LAYER_NOT_PRESENT => Err(Error::LayerNotPresent),
+        ash::vk::Result::ERROR_EXTENSION_NOT_PRESENT => Err(Error::ExtensionNotPresent),
+        ash::vk::Result::ERROR_FEATURE_NOT_PRESENT => Err(Error::FeatureNotPresent),
+        ash::vk::Result::ERROR_INCOMPATIBLE_DRIVER => Err(Error::IncompatibleDriver),
+        ash::vk::Result::ERROR_TOO_MANY_OBJECTS => Err(Error::TooManyObjects),
+        ash::vk::Result::ERROR_FORMAT_NOT_SUPPORTED => Err(Error::FormatNotSupported),
+        ash::vk::Result::ERROR_SURFACE_LOST_KHR => Err(Error::SurfaceLost),
+        ash::vk::Result::ERROR_NATIVE_WINDOW_IN_USE_KHR => Err(Error::NativeWindowInUse),
+        ash::vk::Result::SUBOPTIMAL_KHR => Ok(Success::Suboptimal),
+        ash::vk::Result::ERROR_OUT_OF_DATE_KHR => Err(Error::OutOfDate),
+        ash::vk::Result::ERROR_INCOMPATIBLE_DISPLAY_KHR => Err(Error::IncompatibleDisplay),
+        ash::vk::Result::ERROR_VALIDATION_FAILED_EXT => Err(Error::ValidationFailed),
+        ash::vk::Result::ERROR_OUT_OF_POOL_MEMORY_KHR => Err(Error::OutOfPoolMemory),
+        ash::vk::Result::ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => {
+            Err(Error::FullscreenExclusiveLost)
+        }
+        ash::vk::Result::ERROR_INVALID_SHADER_NV => panic!(
             "Vulkan function returned \
                                                VK_ERROR_INVALID_SHADER_NV"
         ),

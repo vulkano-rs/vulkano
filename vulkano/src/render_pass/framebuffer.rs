@@ -15,7 +15,6 @@ use crate::render_pass::ensure_image_view_compatible;
 use crate::render_pass::AttachmentsList;
 use crate::render_pass::IncompatibleRenderPassAttachmentError;
 use crate::render_pass::RenderPass;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SafeDeref;
@@ -77,7 +76,7 @@ use std::sync::Arc;
 pub struct Framebuffer<A> {
     device: Arc<Device>,
     render_pass: Arc<RenderPass>,
-    framebuffer: vk::Framebuffer,
+    framebuffer: ash::vk::Framebuffer,
     dimensions: [u32; 3],
     resources: A,
 }
@@ -121,7 +120,7 @@ impl Framebuffer<()> {
 /// Prototype of a framebuffer.
 pub struct FramebufferBuilder<A> {
     render_pass: Arc<RenderPass>,
-    raw_ids: SmallVec<[vk::ImageView; 8]>,
+    raw_ids: SmallVec<[ash::vk::ImageView; 8]>,
     dimensions: FramebufferBuilderDimensions,
     attachments: A,
 }
@@ -269,7 +268,7 @@ where
         }
 
         // Compute the dimensions.
-        let dimensions = match self.dimensions {
+        let mut dimensions = match self.dimensions {
             FramebufferBuilderDimensions::Specific(dims)
             | FramebufferBuilderDimensions::AutoIdentical(Some(dims))
             | FramebufferBuilderDimensions::AutoSmaller(Some(dims)) => dims,
@@ -292,8 +291,6 @@ where
             }
         }
 
-        let mut layers = dimensions[2];
-
         if let Some(multiview) = self.render_pass.desc().multiview() {
             // There needs to be at least as many layers in the framebuffer
             // as the highest layer that gets referenced by the multiview masking.
@@ -309,27 +306,26 @@ where
             // the underlying images generally have more layers
             // but these layers get used by the multiview functionality.
             if multiview.view_masks.iter().any(|&mask| mask != 0) {
-                layers = 1;
+                dimensions[2] = 1;
             }
         }
 
         let framebuffer = unsafe {
-            let vk = device.pointers();
+            let fns = device.fns();
 
-            let infos = vk::FramebufferCreateInfo {
-                sType: vk::STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                renderPass: self.render_pass.inner().internal_object(),
-                attachmentCount: self.raw_ids.len() as u32,
-                pAttachments: self.raw_ids.as_ptr(),
+            let infos = ash::vk::FramebufferCreateInfo {
+                flags: ash::vk::FramebufferCreateFlags::empty(),
+                render_pass: self.render_pass.inner().internal_object(),
+                attachment_count: self.raw_ids.len() as u32,
+                p_attachments: self.raw_ids.as_ptr(),
                 width: dimensions[0],
                 height: dimensions[1],
-                layers,
+                layers: dimensions[2],
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateFramebuffer(
+            check_errors(fns.v1_0.create_framebuffer(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -486,23 +482,25 @@ impl<A> Drop for Framebuffer<A> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyFramebuffer(self.device.internal_object(), self.framebuffer, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0.destroy_framebuffer(
+                self.device.internal_object(),
+                self.framebuffer,
+                ptr::null(),
+            );
         }
     }
 }
 
 /// Opaque object that represents the internals of a framebuffer.
 #[derive(Debug, Copy, Clone)]
-pub struct FramebufferSys<'a>(vk::Framebuffer, PhantomData<&'a ()>);
+pub struct FramebufferSys<'a>(ash::vk::Framebuffer, PhantomData<&'a ()>);
 
 unsafe impl<'a> VulkanObject for FramebufferSys<'a> {
-    type Object = vk::Framebuffer;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_FRAMEBUFFER;
+    type Object = ash::vk::Framebuffer;
 
     #[inline]
-    fn internal_object(&self) -> vk::Framebuffer {
+    fn internal_object(&self) -> ash::vk::Framebuffer {
         self.0
     }
 }

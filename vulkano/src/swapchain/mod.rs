@@ -58,6 +58,7 @@
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
 //! use vulkano::swapchain::Surface;
+//! use vulkano::Version;
 //!
 //! let instance = {
 //!     let extensions = InstanceExtensions {
@@ -66,7 +67,7 @@
 //!         .. InstanceExtensions::none()
 //!     };
 //!
-//!      match Instance::new(None, &extensions, None) {
+//!      match Instance::new(None, Version::V1_1, &extensions, None) {
 //!         Ok(i) => i,
 //!         Err(err) => panic!("Couldn't build instance: {:?}", err)
 //!     }
@@ -324,6 +325,7 @@ pub use self::swapchain::FullscreenExclusiveError;
 pub use self::swapchain::PresentFuture;
 pub use self::swapchain::Swapchain;
 pub use self::swapchain::SwapchainAcquireFuture;
+pub use self::swapchain::SwapchainBuilder;
 pub use self::swapchain::SwapchainCreationError;
 
 mod capabilities;

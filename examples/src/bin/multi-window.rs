@@ -34,6 +34,7 @@ use vulkano::swapchain::Surface;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
 use vulkano::sync::{FlushError, GpuFuture};
+use vulkano::Version;
 use vulkano_win::VkSurfaceBuild;
 use winit::event::ElementState;
 use winit::event::KeyboardInput;
@@ -52,7 +53,8 @@ struct WindowSurface {
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, &required_extensions, None).unwrap();
+    let instance =
+        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let event_loop = EventLoop::new();
 
     // A hashmap that contains all of our created windows and their resources

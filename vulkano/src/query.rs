@@ -16,7 +16,6 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::Success;
@@ -32,7 +31,7 @@ use std::sync::Arc;
 /// A collection of one or more queries of a particular type.
 #[derive(Debug)]
 pub struct QueryPool {
-    pool: vk::QueryPool,
+    pool: ash::vk::QueryPool,
     device: Arc<Device>,
     num_slots: u32,
     ty: QueryType,
@@ -53,22 +52,23 @@ impl QueryPool {
 
                 flags.into()
             }
-            QueryType::Occlusion | QueryType::Timestamp => 0,
+            QueryType::Occlusion | QueryType::Timestamp => {
+                ash::vk::QueryPipelineStatisticFlags::empty()
+            }
         };
 
         let pool = unsafe {
-            let infos = vk::QueryPoolCreateInfo {
-                sType: vk::STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                queryType: ty.into(),
-                queryCount: num_slots,
-                pipelineStatistics: statistics,
+            let infos = ash::vk::QueryPoolCreateInfo {
+                flags: ash::vk::QueryPoolCreateFlags::empty(),
+                query_type: ty.into(),
+                query_count: num_slots,
+                pipeline_statistics: statistics,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            let vk = device.pointers();
-            check_errors(vk.CreateQueryPool(
+            let fns = device.fns();
+            check_errors(fns.v1_0.create_query_pool(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -125,12 +125,10 @@ impl QueryPool {
 }
 
 unsafe impl VulkanObject for QueryPool {
-    type Object = vk::QueryPool;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_QUERY_POOL;
+    type Object = ash::vk::QueryPool;
 
     #[inline]
-    fn internal_object(&self) -> vk::QueryPool {
+    fn internal_object(&self) -> ash::vk::QueryPool {
         self.pool
     }
 }
@@ -146,8 +144,9 @@ impl Drop for QueryPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyQueryPool(self.device.internal_object(), self.pool, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_query_pool(self.device.internal_object(), self.pool, ptr::null());
         }
     }
 }
@@ -253,7 +252,7 @@ impl<'a> QueriesRange<'a> {
 
     /// Copies the results of this range of queries to a buffer on the CPU.
     ///
-    /// [`self.pool().ty().data_size()`](QueryType::data_size) elements
+    /// [`self.pool().ty().result_size()`](QueryType::result_size) elements
     /// will be written for each query in the range, plus 1 extra element per query if
     /// [`QueryResultFlags::with_availability`] is enabled.
     /// The provided buffer must be large enough to hold the data.
@@ -277,16 +276,16 @@ impl<'a> QueriesRange<'a> {
         )?;
 
         let result = unsafe {
-            let vk = self.pool.device.pointers();
-            check_errors(vk.GetQueryPoolResults(
+            let fns = self.pool.device.fns();
+            check_errors(fns.v1_0.get_query_pool_results(
                 self.pool.device.internal_object(),
                 self.pool.internal_object(),
                 self.range.start,
                 self.range.end - self.range.start,
                 std::mem::size_of_val(destination),
                 destination.as_mut_ptr() as *mut c_void,
-                stride as vk::DeviceSize,
-                vk::QueryResultFlags::from(flags) | T::FLAG,
+                stride as ash::vk::DeviceSize,
+                ash::vk::QueryResultFlags::from(flags) | T::FLAG,
             ))?
         };
 
@@ -408,15 +407,15 @@ impl error::Error for GetResultsError {
 /// This is implemented for `u32` and `u64`. Unless you really know what you're doing, you should
 /// not implement this trait for any other type.
 pub unsafe trait QueryResultElement {
-    const FLAG: vk::QueryResultFlags;
+    const FLAG: ash::vk::QueryResultFlags;
 }
 
 unsafe impl QueryResultElement for u32 {
-    const FLAG: vk::QueryResultFlags = 0;
+    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::empty();
 }
 
 unsafe impl QueryResultElement for u64 {
-    const FLAG: vk::QueryResultFlags = vk::QUERY_RESULT_64_BIT;
+    const FLAG: ash::vk::QueryResultFlags = ash::vk::QueryResultFlags::TYPE_64;
 }
 
 /// The type of query that a query pool should perform.
@@ -448,13 +447,13 @@ impl QueryType {
     }
 }
 
-impl From<QueryType> for vk::QueryType {
+impl From<QueryType> for ash::vk::QueryType {
     #[inline]
     fn from(value: QueryType) -> Self {
         match value {
-            QueryType::Occlusion => vk::QUERY_TYPE_OCCLUSION,
-            QueryType::PipelineStatistics(_) => vk::QUERY_TYPE_PIPELINE_STATISTICS,
-            QueryType::Timestamp => vk::QUERY_TYPE_TIMESTAMP,
+            QueryType::Occlusion => ash::vk::QueryType::OCCLUSION,
+            QueryType::PipelineStatistics(_) => ash::vk::QueryType::PIPELINE_STATISTICS,
+            QueryType::Timestamp => ash::vk::QueryType::TIMESTAMP,
         }
     }
 }
@@ -468,12 +467,12 @@ pub struct QueryControlFlags {
     pub precise: bool,
 }
 
-impl From<QueryControlFlags> for vk::QueryControlFlags {
+impl From<QueryControlFlags> for ash::vk::QueryControlFlags {
     #[inline]
     fn from(value: QueryControlFlags) -> Self {
-        let mut result = 0;
+        let mut result = ash::vk::QueryControlFlags::empty();
         if value.precise {
-            result |= vk::QUERY_CONTROL_PRECISE_BIT;
+            result |= ash::vk::QueryControlFlags::PRECISE;
         }
         result
     }
@@ -592,41 +591,42 @@ impl QueryPipelineStatisticFlags {
     }
 }
 
-impl From<QueryPipelineStatisticFlags> for vk::QueryPipelineStatisticFlags {
-    fn from(value: QueryPipelineStatisticFlags) -> vk::QueryPipelineStatisticFlags {
-        let mut result = 0;
+impl From<QueryPipelineStatisticFlags> for ash::vk::QueryPipelineStatisticFlags {
+    fn from(value: QueryPipelineStatisticFlags) -> ash::vk::QueryPipelineStatisticFlags {
+        let mut result = ash::vk::QueryPipelineStatisticFlags::empty();
         if value.input_assembly_vertices {
-            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_VERTICES;
         }
         if value.input_assembly_primitives {
-            result |= vk::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::INPUT_ASSEMBLY_PRIMITIVES;
         }
         if value.vertex_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::VERTEX_SHADER_INVOCATIONS;
         }
         if value.geometry_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::GEOMETRY_SHADER_INVOCATIONS;
         }
         if value.geometry_shader_primitives {
-            result |= vk::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::GEOMETRY_SHADER_PRIMITIVES;
         }
         if value.clipping_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::CLIPPING_INVOCATIONS;
         }
         if value.clipping_primitives {
-            result |= vk::QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::CLIPPING_PRIMITIVES;
         }
         if value.fragment_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::FRAGMENT_SHADER_INVOCATIONS;
         }
         if value.tessellation_control_shader_patches {
-            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::TESSELLATION_CONTROL_SHADER_PATCHES;
         }
         if value.tessellation_evaluation_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT;
+            result |=
+                ash::vk::QueryPipelineStatisticFlags::TESSELLATION_EVALUATION_SHADER_INVOCATIONS;
         }
         if value.compute_shader_invocations {
-            result |= vk::QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
+            result |= ash::vk::QueryPipelineStatisticFlags::COMPUTE_SHADER_INVOCATIONS;
         }
         result
     }
@@ -650,18 +650,18 @@ pub struct QueryResultFlags {
     pub partial: bool,
 }
 
-impl From<QueryResultFlags> for vk::QueryResultFlags {
+impl From<QueryResultFlags> for ash::vk::QueryResultFlags {
     #[inline]
     fn from(value: QueryResultFlags) -> Self {
-        let mut result = 0;
+        let mut result = ash::vk::QueryResultFlags::empty();
         if value.wait {
-            result |= vk::QUERY_RESULT_WAIT_BIT;
+            result |= ash::vk::QueryResultFlags::WAIT;
         }
         if value.with_availability {
-            result |= vk::QUERY_RESULT_WITH_AVAILABILITY_BIT;
+            result |= ash::vk::QueryResultFlags::WITH_AVAILABILITY;
         }
         if value.partial {
-            result |= vk::QUERY_RESULT_PARTIAL_BIT;
+            result |= ash::vk::QueryResultFlags::PARTIAL;
         }
         result
     }

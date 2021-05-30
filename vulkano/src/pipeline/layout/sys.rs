@@ -7,6 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::check_errors;
+use crate::descriptor::descriptor::ShaderStages;
+use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDescPcRange;
+use crate::pipeline::layout::PipelineLayoutLimitsError;
+use crate::Error;
+use crate::OomError;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -14,71 +25,42 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::check_errors;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
-
-use crate::descriptor::descriptor::DescriptorDesc;
-use crate::descriptor::descriptor::ShaderStages;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
-use crate::descriptor::pipeline_layout::PipelineLayoutAbstract;
-use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
-use crate::descriptor::pipeline_layout::PipelineLayoutLimitsError;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
-/// descriptor sets and push constants available to your shaders
-pub struct PipelineLayout<L> {
+/// descriptor sets and push constants available to your shaders.
+pub struct PipelineLayout {
     device: Arc<Device>,
-    layout: vk::PipelineLayout,
-    layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
-    desc: L,
+    layout: ash::vk::PipelineLayout,
+    descriptor_set_layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
+    desc: PipelineLayoutDesc,
 }
 
-impl<L> PipelineLayout<L>
-where
-    L: PipelineLayoutDesc,
-{
+impl PipelineLayout {
     /// Creates a new `PipelineLayout`.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if one of the layout returned by `provided_set_layout()` belongs to a different
-    ///   device than the one passed as parameter.
     #[inline]
     pub fn new(
         device: Arc<Device>,
-        desc: L,
-    ) -> Result<PipelineLayout<L>, PipelineLayoutCreationError> {
-        let vk = device.pointers();
+        desc: PipelineLayoutDesc,
+    ) -> Result<PipelineLayout, PipelineLayoutCreationError> {
+        let fns = device.fns();
 
         desc.check_against_limits(&device)?;
 
         // Building the list of `UnsafeDescriptorSetLayout` objects.
-        let layouts = {
+        let descriptor_set_layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
-            for num in 0..desc.num_sets() {
-                layouts.push(match desc.provided_set_layout(num) {
-                    Some(l) => {
-                        assert_eq!(l.device().internal_object(), device.internal_object());
-                        l
-                    }
-                    None => {
-                        let sets_iter = 0..desc.num_bindings_in_set(num).unwrap_or(0);
-                        let desc_iter = sets_iter.map(|d| desc.descriptor(num, d));
-                        Arc::new(UnsafeDescriptorSetLayout::new(device.clone(), desc_iter)?)
-                    }
+            for set in desc.descriptor_sets() {
+                layouts.push({
+                    Arc::new(UnsafeDescriptorSetLayout::new(
+                        device.clone(),
+                        set.iter().map(|s| s.clone()),
+                    )?)
                 });
             }
             layouts
         };
 
         // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
-        let layouts_ids = layouts
+        let layouts_ids = descriptor_set_layouts
             .iter()
             .map(|l| l.internal_object())
             .collect::<SmallVec<[_; 16]>>();
@@ -87,24 +69,18 @@ where
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
-            for pc_id in 0..desc.num_push_constants_ranges() {
-                let PipelineLayoutDescPcRange {
-                    offset,
-                    size,
-                    stages,
-                } = {
-                    match desc.push_constants_range(pc_id) {
-                        Some(o) => o,
-                        None => continue,
-                    }
-                };
-
+            for &PipelineLayoutDescPcRange {
+                offset,
+                size,
+                stages,
+            } in desc.push_constants()
+            {
                 if stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
                     return Err(PipelineLayoutCreationError::InvalidPushConstant);
                 }
 
-                out.push(vk::PushConstantRange {
-                    stageFlags: stages.into(),
+                out.push(ash::vk::PushConstantRange {
+                    stage_flags: stages.into(),
                     offset: offset as u32,
                     size: size as u32,
                 });
@@ -117,14 +93,14 @@ where
         // We check that with a debug_assert because it's supposed to be enforced by the
         // `PipelineLayoutDesc`.
         debug_assert!({
-            let mut stages = 0;
+            let mut stages = ash::vk::ShaderStageFlags::empty();
             let mut outcome = true;
             for pc in push_constants.iter() {
-                if (stages & pc.stageFlags) != 0 {
+                if !(stages & pc.stage_flags).is_empty() {
                     outcome = false;
                     break;
                 }
-                stages &= pc.stageFlags;
+                stages &= pc.stage_flags;
             }
             outcome
         });
@@ -134,18 +110,17 @@ where
 
         // Build the final object.
         let layout = unsafe {
-            let infos = vk::PipelineLayoutCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                setLayoutCount: layouts_ids.len() as u32,
-                pSetLayouts: layouts_ids.as_ptr(),
-                pushConstantRangeCount: push_constants.len() as u32,
-                pPushConstantRanges: push_constants.as_ptr(),
+            let infos = ash::vk::PipelineLayoutCreateInfo {
+                flags: ash::vk::PipelineLayoutCreateFlags::empty(),
+                set_layout_count: layouts_ids.len() as u32,
+                p_set_layouts: layouts_ids.as_ptr(),
+                push_constant_range_count: push_constants.len() as u32,
+                p_push_constant_ranges: push_constants.as_ptr(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreatePipelineLayout(
+            check_errors(fns.v1_0.create_pipeline_layout(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -156,80 +131,45 @@ where
 
         Ok(PipelineLayout {
             device: device.clone(),
-            layout: layout,
-            layouts: layouts,
-            desc: desc,
+            layout,
+            descriptor_set_layouts,
+            desc,
         })
     }
 }
 
-impl<L> PipelineLayout<L>
-where
-    L: PipelineLayoutDesc,
-{
+impl PipelineLayout {
     /// Returns the description of the pipeline layout.
     #[inline]
-    pub fn desc(&self) -> &L {
+    pub fn desc(&self) -> &PipelineLayoutDesc {
         &self.desc
     }
-}
 
-unsafe impl<D> PipelineLayoutAbstract for PipelineLayout<D>
-where
-    D: PipelineLayoutDesc,
-{
+    /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
+    ///
+    /// Returns `None` if out of range or if the set is empty for this index.
     #[inline]
-    fn sys(&self) -> PipelineLayoutSys {
-        PipelineLayoutSys(&self.layout)
-    }
-
-    #[inline]
-    fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
-        self.layouts.get(index)
+    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+        self.descriptor_set_layouts.get(index)
     }
 }
 
-unsafe impl<D> PipelineLayoutDesc for PipelineLayout<D>
-where
-    D: PipelineLayoutDesc,
-{
-    #[inline]
-    fn num_sets(&self) -> usize {
-        self.desc.num_sets()
-    }
-
-    #[inline]
-    fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        self.desc.num_bindings_in_set(set)
-    }
-
-    #[inline]
-    fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        self.desc.descriptor(set, binding)
-    }
-
-    #[inline]
-    fn num_push_constants_ranges(&self) -> usize {
-        self.desc.num_push_constants_ranges()
-    }
-
-    #[inline]
-    fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-        self.desc.push_constants_range(num)
-    }
-}
-
-unsafe impl<D> DeviceOwned for PipelineLayout<D> {
+unsafe impl DeviceOwned for PipelineLayout {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
-impl<D> fmt::Debug for PipelineLayout<D>
-where
-    D: fmt::Debug,
-{
+unsafe impl VulkanObject for PipelineLayout {
+    type Object = ash::vk::PipelineLayout;
+
+    fn internal_object(&self) -> Self::Object {
+        self.layout
+    }
+}
+
+impl fmt::Debug for PipelineLayout {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("PipelineLayout")
             .field("raw", &self.layout)
@@ -239,31 +179,17 @@ where
     }
 }
 
-impl<L> Drop for PipelineLayout<L> {
+impl Drop for PipelineLayout {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyPipelineLayout(self.device.internal_object(), self.layout, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0.destroy_pipeline_layout(
+                self.device.internal_object(),
+                self.layout,
+                ptr::null(),
+            );
         }
-    }
-}
-
-/// Opaque object that is borrowed from a `PipelineLayout`.
-///
-/// This object exists so that we can pass it around without having to be generic over the template
-/// parameter of the `PipelineLayout`.
-#[derive(Copy, Clone)]
-pub struct PipelineLayoutSys<'a>(&'a vk::PipelineLayout);
-
-unsafe impl<'a> VulkanObject for PipelineLayoutSys<'a> {
-    type Object = vk::PipelineLayout;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_LAYOUT;
-
-    #[inline]
-    fn internal_object(&self) -> vk::PipelineLayout {
-        *self.0
     }
 }
 

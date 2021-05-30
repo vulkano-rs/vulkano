@@ -17,7 +17,6 @@ use std::str;
 use crate::check_errors;
 use crate::extensions::SupportedExtensionsError;
 use crate::instance::PhysicalDevice;
-use crate::vk;
 use crate::VulkanObject;
 
 macro_rules! device_extensions {
@@ -30,22 +29,22 @@ macro_rules! device_extensions {
         impl $rawname {
             /// See the docs of supported_by_device().
             pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
-                let vk = physical_device.instance().pointers();
+                let fns = physical_device.instance().fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
                     properties
                 };
-                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extensionName.as_ptr()) }.to_owned()).collect()))
+                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) }.to_owned()).collect()))
             }
 
             /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
@@ -61,16 +60,16 @@ macro_rules! device_extensions {
         impl $sname {
             /// See the docs of supported_by_device().
             pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
-                let vk = physical_device.instance().pointers();
+                let fns = physical_device.instance().fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
@@ -79,7 +78,7 @@ macro_rules! device_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
+                    let name = unsafe { CStr::from_ptr(property.extension_name.as_ptr()) };
                     $(
                         // TODO: Check specVersion?
                         if name.to_bytes() == &$s[..] {
@@ -128,23 +127,26 @@ device_extensions! {
         // https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451
         khr_portability_subset,
     ],
-    khr_swapchain => b"VK_KHR_swapchain",
-    khr_display_swapchain => b"VK_KHR_display_swapchain",
-    khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
-    khr_maintenance1 => b"VK_KHR_maintenance1",
-    khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
-    khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
-    khr_incremental_present => b"VK_KHR_incremental_present",
+
+    // List in order: khr, ext, then alphabetical
     khr_16bit_storage => b"VK_KHR_16bit_storage",
     khr_8bit_storage => b"VK_KHR_8bit_storage",
-    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
-    ext_debug_utils => b"VK_EXT_debug_utils",
-    khr_multiview => b"VK_KHR_multiview",
-    ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
+    khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
+    khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_external_memory => b"VK_KHR_external_memory",
     khr_external_memory_fd => b"VK_KHR_external_memory_fd",
-    ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
+    khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
+    khr_incremental_present => b"VK_KHR_incremental_present",
+    khr_maintenance1 => b"VK_KHR_maintenance1",
+    khr_multiview => b"VK_KHR_multiview",
     khr_portability_subset => b"VK_KHR_portability_subset",
+    khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
+    khr_spirv_1_4 => b"VK_KHR_spirv_1_4",
+    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
+    khr_swapchain => b"VK_KHR_swapchain",
+    ext_debug_utils => b"VK_EXT_debug_utils",
+    ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
+    ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
 }
 
 /// This helper type can only be instantiated inside this module.

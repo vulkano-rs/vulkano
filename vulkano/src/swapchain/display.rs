@@ -32,7 +32,6 @@ use crate::check_errors;
 use crate::instance::Instance;
 use crate::instance::PhysicalDevice;
 use crate::swapchain::SupportedSurfaceTransforms;
-use crate::vk;
 use crate::OomError;
 use crate::VulkanObject;
 use std::ffi::CStr;
@@ -49,35 +48,41 @@ pub struct DisplayPlane {
     instance: Arc<Instance>,
     physical_device: usize,
     index: u32,
-    properties: vk::DisplayPlanePropertiesKHR,
-    supported_displays: Vec<vk::DisplayKHR>,
+    properties: ash::vk::DisplayPlanePropertiesKHR,
+    supported_displays: Vec<ash::vk::DisplayKHR>,
 }
 
 impl DisplayPlane {
     /// See the docs of enumerate().
     pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
-        let vk = device.instance().pointers();
+        let fns = device.instance().fns();
 
         assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
 
         let num = unsafe {
             let mut num: u32 = 0;
-            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(
-                device.internal_object(),
-                &mut num,
-                ptr::null_mut(),
-            ))?;
+            check_errors(
+                fns.khr_display
+                    .get_physical_device_display_plane_properties_khr(
+                        device.internal_object(),
+                        &mut num,
+                        ptr::null_mut(),
+                    ),
+            )?;
             num
         };
 
-        let planes: Vec<vk::DisplayPlanePropertiesKHR> = unsafe {
+        let planes: Vec<ash::vk::DisplayPlanePropertiesKHR> = unsafe {
             let mut planes = Vec::with_capacity(num as usize);
             let mut num = num;
-            check_errors(vk.GetPhysicalDeviceDisplayPlanePropertiesKHR(
-                device.internal_object(),
-                &mut num,
-                planes.as_mut_ptr(),
-            ))?;
+            check_errors(
+                fns.khr_display
+                    .get_physical_device_display_plane_properties_khr(
+                        device.internal_object(),
+                        &mut num,
+                        planes.as_mut_ptr(),
+                    ),
+            )?;
             planes.set_len(num as usize);
             planes
         };
@@ -88,7 +93,7 @@ impl DisplayPlane {
             .map(|(index, prop)| {
                 let num = unsafe {
                     let mut num: u32 = 0;
-                    check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(
+                    check_errors(fns.khr_display.get_display_plane_supported_displays_khr(
                         device.internal_object(),
                         index as u32,
                         &mut num,
@@ -98,10 +103,10 @@ impl DisplayPlane {
                     num
                 };
 
-                let supported_displays: Vec<vk::DisplayKHR> = unsafe {
+                let supported_displays: Vec<ash::vk::DisplayKHR> = unsafe {
                     let mut displays = Vec::with_capacity(num as usize);
                     let mut num = num;
-                    check_errors(vk.GetDisplayPlaneSupportedDisplaysKHR(
+                    check_errors(fns.khr_display.get_display_plane_supported_displays_khr(
                         device.internal_object(),
                         index as u32,
                         &mut num,
@@ -169,18 +174,18 @@ impl DisplayPlane {
 pub struct Display {
     instance: Arc<Instance>,
     physical_device: usize,
-    properties: Arc<vk::DisplayPropertiesKHR>, // TODO: Arc because struct isn't clone
+    properties: Arc<ash::vk::DisplayPropertiesKHR>, // TODO: Arc because struct isn't clone
 }
 
 impl Display {
     /// See the docs of enumerate().
     pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
-        let vk = device.instance().pointers();
+        let fns = device.instance().fns();
         assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
 
         let num = unsafe {
             let mut num = 0;
-            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(
+            check_errors(fns.khr_display.get_physical_device_display_properties_khr(
                 device.internal_object(),
                 &mut num,
                 ptr::null_mut(),
@@ -188,10 +193,10 @@ impl Display {
             num
         };
 
-        let displays: Vec<vk::DisplayPropertiesKHR> = unsafe {
+        let displays: Vec<ash::vk::DisplayPropertiesKHR> = unsafe {
             let mut displays = Vec::with_capacity(num as usize);
             let mut num = num;
-            check_errors(vk.GetPhysicalDeviceDisplayPropertiesKHR(
+            check_errors(fns.khr_display.get_physical_device_display_properties_khr(
                 device.internal_object(),
                 &mut num,
                 displays.as_mut_ptr(),
@@ -227,7 +232,7 @@ impl Display {
     #[inline]
     pub fn name(&self) -> &str {
         unsafe {
-            CStr::from_ptr(self.properties.displayName)
+            CStr::from_ptr(self.properties.display_name)
                 .to_str()
                 .expect("non UTF-8 characters in display name")
         }
@@ -242,7 +247,7 @@ impl Display {
     /// Returns the physical dimensions of the display in millimeters.
     #[inline]
     pub fn physical_dimensions(&self) -> [u32; 2] {
-        let ref r = self.properties.physicalDimensions;
+        let ref r = self.properties.physical_dimensions;
         [r.width, r.height]
     }
 
@@ -252,35 +257,35 @@ impl Display {
     /// > only the "best" resolution.
     #[inline]
     pub fn physical_resolution(&self) -> [u32; 2] {
-        let ref r = self.properties.physicalResolution;
+        let ref r = self.properties.physical_resolution;
         [r.width, r.height]
     }
 
     /// Returns the transforms supported by this display.
     #[inline]
     pub fn supported_transforms(&self) -> SupportedSurfaceTransforms {
-        self.properties.supportedTransforms.into()
+        self.properties.supported_transforms.into()
     }
 
     /// Returns true if TODO.
     #[inline]
     pub fn plane_reorder_possible(&self) -> bool {
-        self.properties.planeReorderPossible != 0
+        self.properties.plane_reorder_possible != 0
     }
 
     /// Returns true if TODO.
     #[inline]
     pub fn persistent_content(&self) -> bool {
-        self.properties.persistentContent != 0
+        self.properties.persistent_content != 0
     }
 
     /// See the docs of display_modes().
     pub fn display_modes_raw(&self) -> Result<IntoIter<DisplayMode>, OomError> {
-        let vk = self.instance.pointers();
+        let fns = self.instance.fns();
 
         let num = unsafe {
             let mut num = 0;
-            check_errors(vk.GetDisplayModePropertiesKHR(
+            check_errors(fns.khr_display.get_display_mode_properties_khr(
                 self.physical_device().internal_object(),
                 self.properties.display,
                 &mut num,
@@ -289,10 +294,10 @@ impl Display {
             num
         };
 
-        let modes: Vec<vk::DisplayModePropertiesKHR> = unsafe {
+        let modes: Vec<ash::vk::DisplayModePropertiesKHR> = unsafe {
             let mut modes = Vec::with_capacity(num as usize);
             let mut num = num;
-            check_errors(vk.GetDisplayModePropertiesKHR(
+            check_errors(fns.khr_display.get_display_mode_properties_khr(
                 self.physical_device().internal_object(),
                 self.properties.display,
                 &mut num,
@@ -306,7 +311,7 @@ impl Display {
             .into_iter()
             .map(|mode| DisplayMode {
                 display: self.clone(),
-                display_mode: mode.displayMode,
+                display_mode: mode.display_mode,
                 parameters: mode.parameters,
             })
             .collect::<Vec<_>>()
@@ -327,12 +332,10 @@ impl Display {
 }
 
 unsafe impl VulkanObject for Display {
-    type Object = vk::DisplayKHR;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DISPLAY_KHR;
+    type Object = ash::vk::DisplayKHR;
 
     #[inline]
-    fn internal_object(&self) -> vk::DisplayKHR {
+    fn internal_object(&self) -> ash::vk::DisplayKHR {
         self.properties.display
     }
 }
@@ -340,30 +343,29 @@ unsafe impl VulkanObject for Display {
 /// Represents a mode on a specific display.
 pub struct DisplayMode {
     display: Display,
-    display_mode: vk::DisplayModeKHR,
-    parameters: vk::DisplayModeParametersKHR,
+    display_mode: ash::vk::DisplayModeKHR,
+    parameters: ash::vk::DisplayModeParametersKHR,
 }
 
 impl DisplayMode {
     /*pub fn new(display: &Display) -> Result<Arc<DisplayMode>, OomError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
         assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
 
-        let parameters = vk::DisplayModeParametersKHR {
-            visibleRegion: vk::Extent2D { width: , height:  },
+        let parameters = ash::vk::DisplayModeParametersKHR {
+            visibleRegion: ash::vk::Extent2D { width: , height:  },
             refreshRate: ,
         };
 
         let display_mode = {
-            let infos = vk::DisplayModeCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_DISPLAY_MODE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0,   // reserved
+            let infos = ash::vk::DisplayModeCreateInfoKHR {
+                flags: ash::vk::DisplayModeCreateFlags::empty(),
                 parameters: parameters,
+                ..Default::default()
             };
 
             let mut output = mem::uninitialized();
-            check_errors(vk.CreateDisplayModeKHR(display.device.internal_object(),
+            check_errors(fns.v1_0.CreateDisplayModeKHR(display.device.internal_object(),
                                                       display.display, &infos, ptr::null(),
                                                       &mut output))?;
             output
@@ -385,24 +387,22 @@ impl DisplayMode {
     /// Returns the dimensions of the region that is visible on the monitor.
     #[inline]
     pub fn visible_region(&self) -> [u32; 2] {
-        let ref d = self.parameters.visibleRegion;
+        let ref d = self.parameters.visible_region;
         [d.width, d.height]
     }
 
     /// Returns the refresh rate of this mode.
     #[inline]
     pub fn refresh_rate(&self) -> u32 {
-        self.parameters.refreshRate
+        self.parameters.refresh_rate
     }
 }
 
 unsafe impl VulkanObject for DisplayMode {
-    type Object = vk::DisplayModeKHR;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DISPLAY_MODE_KHR;
+    type Object = ash::vk::DisplayModeKHR;
 
     #[inline]
-    fn internal_object(&self) -> vk::DisplayModeKHR {
+    fn internal_object(&self) -> ash::vk::DisplayModeKHR {
         self.display_mode
     }
 }

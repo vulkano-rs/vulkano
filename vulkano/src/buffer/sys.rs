@@ -24,7 +24,6 @@
 //!   sparse binding.
 //! - Type safety.
 
-use crate::buffer::BufferUsage;
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -32,23 +31,23 @@ use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MemoryRequirements;
 use crate::sync::Sharing;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
+use crate::{buffer::BufferUsage, Version};
+use ash::vk::Handle;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::mem;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
 /// Data storage in a GPU-accessible location.
 pub struct UnsafeBuffer {
-    buffer: vk::Buffer,
+    buffer: ash::vk::Buffer,
     device: Arc<Device>,
     size: usize,
     usage: BufferUsage,
@@ -74,7 +73,7 @@ impl UnsafeBuffer {
     where
         I: Iterator<Item = u32>,
     {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         // Ensure we're not trying to create an empty buffer.
         let size = if size == 0 {
@@ -100,12 +99,15 @@ impl UnsafeBuffer {
 
             sparse_level.into()
         } else {
-            0
+            ash::vk::BufferCreateFlags::empty()
         };
 
-        if usage.device_address && !device.enabled_features().buffer_device_address {
+        if usage.device_address
+            && !(device.enabled_features().buffer_device_address
+                || device.enabled_features().ext_buffer_device_address)
+        {
             usage.device_address = false;
-            if vk::BufferUsageFlags::from(usage) == 0 {
+            if ash::vk::BufferUsageFlags::from(usage).is_empty() {
                 // return an error iff device_address was the only requested usage and the
                 // feature isn't enabled. Otherwise we'll hit that assert below.
                 // TODO: This is weird, why not just return an error always if the feature is not enabled?
@@ -114,32 +116,33 @@ impl UnsafeBuffer {
             }
         }
 
-        let usage_bits = usage.into();
+        let usage_bits = ash::vk::BufferUsageFlags::from(usage);
         // Checking for empty BufferUsage.
         assert!(
-            usage_bits != 0,
+            !usage_bits.is_empty(),
             "Can't create buffer with empty BufferUsage"
         );
 
         let buffer = {
             let (sh_mode, sh_indices) = match sharing {
-                Sharing::Exclusive => (vk::SHARING_MODE_EXCLUSIVE, SmallVec::<[u32; 8]>::new()),
-                Sharing::Concurrent(ids) => (vk::SHARING_MODE_CONCURRENT, ids.collect()),
+                Sharing::Exclusive => {
+                    (ash::vk::SharingMode::EXCLUSIVE, SmallVec::<[u32; 8]>::new())
+                }
+                Sharing::Concurrent(ids) => (ash::vk::SharingMode::CONCURRENT, ids.collect()),
             };
 
-            let infos = vk::BufferCreateInfo {
-                sType: vk::STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-                pNext: ptr::null(),
+            let infos = ash::vk::BufferCreateInfo {
                 flags,
                 size: size as u64,
                 usage: usage_bits,
-                sharingMode: sh_mode,
-                queueFamilyIndexCount: sh_indices.len() as u32,
-                pQueueFamilyIndices: sh_indices.as_ptr(),
+                sharing_mode: sh_mode,
+                queue_family_index_count: sh_indices.len() as u32,
+                p_queue_family_indices: sh_indices.as_ptr(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateBuffer(
+            check_errors(fns.v1_0.create_buffer(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -154,53 +157,62 @@ impl UnsafeBuffer {
                 al * (1 + (val - 1) / al)
             }
 
-            let mut output = if device.loaded_extensions().khr_get_memory_requirements2 {
-                let infos = vk::BufferMemoryRequirementsInfo2KHR {
-                    sType: vk::STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR,
-                    pNext: ptr::null_mut(),
+            let mut output = if device.api_version() >= Version::V1_1
+                || device.loaded_extensions().khr_get_memory_requirements2
+            {
+                let infos = ash::vk::BufferMemoryRequirementsInfo2 {
                     buffer: buffer,
+                    ..Default::default()
                 };
 
                 let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
-                    Some(vk::MemoryDedicatedRequirementsKHR {
-                        sType: vk::STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-                        pNext: ptr::null(),
-                        prefersDedicatedAllocation: mem::zeroed(),
-                        requiresDedicatedAllocation: mem::zeroed(),
-                    })
+                    Some(ash::vk::MemoryDedicatedRequirementsKHR::default())
                 } else {
                     None
                 };
 
-                let mut output = vk::MemoryRequirements2KHR {
-                    sType: vk::STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-                    pNext: output2
+                let mut output = ash::vk::MemoryRequirements2 {
+                    p_next: output2
                         .as_mut()
-                        .map(|o| o as *mut vk::MemoryDedicatedRequirementsKHR)
+                        .map(|o| o as *mut ash::vk::MemoryDedicatedRequirementsKHR)
                         .unwrap_or(ptr::null_mut()) as *mut _,
-                    memoryRequirements: mem::zeroed(),
+                    ..Default::default()
                 };
 
-                vk.GetBufferMemoryRequirements2KHR(device.internal_object(), &infos, &mut output);
-                debug_assert!(output.memoryRequirements.size >= size as u64);
-                debug_assert!(output.memoryRequirements.memoryTypeBits != 0);
+                if device.api_version() >= Version::V1_1 {
+                    fns.v1_1.get_buffer_memory_requirements2(
+                        device.internal_object(),
+                        &infos,
+                        &mut output,
+                    );
+                } else {
+                    fns.khr_get_memory_requirements2
+                        .get_buffer_memory_requirements2_khr(
+                            device.internal_object(),
+                            &infos,
+                            &mut output,
+                        );
+                }
 
-                let mut out = MemoryRequirements::from(output.memoryRequirements);
+                debug_assert!(output.memory_requirements.size >= size as u64);
+                debug_assert!(output.memory_requirements.memory_type_bits != 0);
+
+                let mut out = MemoryRequirements::from(output.memory_requirements);
                 if let Some(output2) = output2 {
-                    debug_assert_eq!(output2.requiresDedicatedAllocation, 0);
-                    out.prefer_dedicated = output2.prefersDedicatedAllocation != 0;
+                    debug_assert_eq!(output2.requires_dedicated_allocation, 0);
+                    out.prefer_dedicated = output2.prefers_dedicated_allocation != 0;
                 }
                 out
             } else {
-                let mut output: MaybeUninit<vk::MemoryRequirements> = MaybeUninit::uninit();
-                vk.GetBufferMemoryRequirements(
+                let mut output: MaybeUninit<ash::vk::MemoryRequirements> = MaybeUninit::uninit();
+                fns.v1_0.get_buffer_memory_requirements(
                     device.internal_object(),
                     buffer,
                     output.as_mut_ptr(),
                 );
                 let output = output.assume_init();
                 debug_assert!(output.size >= size as u64);
-                debug_assert!(output.memoryTypeBits != 0);
+                debug_assert!(output.memory_type_bits != 0);
                 MemoryRequirements::from(output)
             };
 
@@ -242,12 +254,12 @@ impl UnsafeBuffer {
 
     /// Binds device memory to this buffer.
     pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize) -> Result<(), OomError> {
-        let vk = self.device.pointers();
+        let fns = self.device.fns();
 
         // We check for correctness in debug mode.
         debug_assert!({
             let mut mem_reqs = MaybeUninit::uninit();
-            vk.GetBufferMemoryRequirements(
+            fns.v1_0.get_buffer_memory_requirements(
                 self.device.internal_object(),
                 self.buffer,
                 mem_reqs.as_mut_ptr(),
@@ -256,7 +268,7 @@ impl UnsafeBuffer {
             let mem_reqs = mem_reqs.assume_init();
             mem_reqs.size <= (memory.size() - offset) as u64
                 && (offset as u64 % mem_reqs.alignment) == 0
-                && mem_reqs.memoryTypeBits & (1 << memory.memory_type().id()) != 0
+                && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
         });
 
         // Check for alignment correctness.
@@ -273,11 +285,11 @@ impl UnsafeBuffer {
             }
         }
 
-        check_errors(vk.BindBufferMemory(
+        check_errors(fns.v1_0.bind_buffer_memory(
             self.device.internal_object(),
             self.buffer,
             memory.internal_object(),
-            offset as vk::DeviceSize,
+            offset as ash::vk::DeviceSize,
         ))?;
         Ok(())
     }
@@ -297,17 +309,15 @@ impl UnsafeBuffer {
     /// Returns a key unique to each `UnsafeBuffer`. Can be used for the `conflicts_key` method.
     #[inline]
     pub fn key(&self) -> u64 {
-        self.buffer
+        self.buffer.as_raw()
     }
 }
 
 unsafe impl VulkanObject for UnsafeBuffer {
-    type Object = vk::Buffer;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_BUFFER;
+    type Object = ash::vk::Buffer;
 
     #[inline]
-    fn internal_object(&self) -> vk::Buffer {
+    fn internal_object(&self) -> ash::vk::Buffer {
         self.buffer
     }
 }
@@ -330,8 +340,9 @@ impl Drop for UnsafeBuffer {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyBuffer(self.device.internal_object(), self.buffer, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_buffer(self.device.internal_object(), self.buffer, ptr::null());
         }
     }
 }
@@ -370,15 +381,15 @@ impl SparseLevel {
     }
 }
 
-impl From<SparseLevel> for vk::BufferCreateFlags {
+impl From<SparseLevel> for ash::vk::BufferCreateFlags {
     #[inline]
     fn from(val: SparseLevel) -> Self {
-        let mut result = vk::BUFFER_CREATE_SPARSE_BINDING_BIT;
+        let mut result = ash::vk::BufferCreateFlags::SPARSE_BINDING;
         if val.sparse_residency {
-            result |= vk::BUFFER_CREATE_SPARSE_RESIDENCY_BIT;
+            result |= ash::vk::BufferCreateFlags::SPARSE_RESIDENCY;
         }
         if val.sparse_aliased {
-            result |= vk::BUFFER_CREATE_SPARSE_ALIASED_BIT;
+            result |= ash::vk::BufferCreateFlags::SPARSE_ALIASED;
         }
         result
     }

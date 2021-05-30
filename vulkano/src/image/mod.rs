@@ -31,7 +31,7 @@
 //! # High-level wrappers
 //!
 //! In the vulkano library, an image is any object that implements the [`ImageAccess`] trait. You
-//! can create a view by wrapping them in an [`ImageView`].
+//! can create a view by wrapping them in an [`ImageView`](crate::image::view::ImageView).
 //!
 //! Since the `ImageAccess` trait is low-level, you are encouraged to not implement it yourself but
 //! instead use one of the provided implementations that are specialized depending on the way you
@@ -73,6 +73,106 @@ pub mod traits;
 mod usage;
 pub mod view;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum SampleCount {
+    Sample1 = ash::vk::SampleCountFlags::TYPE_1.as_raw(),
+    Sample2 = ash::vk::SampleCountFlags::TYPE_2.as_raw(),
+    Sample4 = ash::vk::SampleCountFlags::TYPE_4.as_raw(),
+    Sample8 = ash::vk::SampleCountFlags::TYPE_8.as_raw(),
+    Sample16 = ash::vk::SampleCountFlags::TYPE_16.as_raw(),
+    Sample32 = ash::vk::SampleCountFlags::TYPE_32.as_raw(),
+    Sample64 = ash::vk::SampleCountFlags::TYPE_64.as_raw(),
+}
+
+impl From<SampleCount> for ash::vk::SampleCountFlags {
+    #[inline]
+    fn from(val: SampleCount) -> Self {
+        Self::from_raw(val as u32)
+    }
+}
+
+impl TryFrom<u32> for SampleCount {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: u32) -> Result<Self, Self::Error> {
+        match val {
+            1 => Ok(Self::Sample1),
+            2 => Ok(Self::Sample2),
+            4 => Ok(Self::Sample4),
+            8 => Ok(Self::Sample8),
+            16 => Ok(Self::Sample16),
+            32 => Ok(Self::Sample32),
+            64 => Ok(Self::Sample64),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Specifies how many sample counts supported for an image used for storage operations.
+#[derive(Debug, Copy, Clone)]
+pub struct SampleCounts {
+    // specify an image with one sample per pixel
+    pub sample1: bool,
+    // specify an image with 2 samples per pixel
+    pub sample2: bool,
+    // specify an image with 4 samples per pixel
+    pub sample4: bool,
+    // specify an image with 8 samples per pixel
+    pub sample8: bool,
+    // specify an image with 16 samples per pixel
+    pub sample16: bool,
+    // specify an image with 32 samples per pixel
+    pub sample32: bool,
+    // specify an image with 64 samples per pixel
+    pub sample64: bool,
+}
+
+impl From<ash::vk::SampleCountFlags> for SampleCounts {
+    fn from(sample_counts: ash::vk::SampleCountFlags) -> SampleCounts {
+        SampleCounts {
+            sample1: !(sample_counts & ash::vk::SampleCountFlags::TYPE_1).is_empty(),
+            sample2: !(sample_counts & ash::vk::SampleCountFlags::TYPE_2).is_empty(),
+            sample4: !(sample_counts & ash::vk::SampleCountFlags::TYPE_4).is_empty(),
+            sample8: !(sample_counts & ash::vk::SampleCountFlags::TYPE_8).is_empty(),
+            sample16: !(sample_counts & ash::vk::SampleCountFlags::TYPE_16).is_empty(),
+            sample32: !(sample_counts & ash::vk::SampleCountFlags::TYPE_32).is_empty(),
+            sample64: !(sample_counts & ash::vk::SampleCountFlags::TYPE_64).is_empty(),
+        }
+    }
+}
+
+impl From<SampleCounts> for ash::vk::SampleCountFlags {
+    fn from(val: SampleCounts) -> ash::vk::SampleCountFlags {
+        let mut sample_counts = ash::vk::SampleCountFlags::default();
+
+        if val.sample1 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_1;
+        }
+        if val.sample2 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_2;
+        }
+        if val.sample4 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_4;
+        }
+        if val.sample8 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_8;
+        }
+        if val.sample16 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_16;
+        }
+        if val.sample32 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_32;
+        }
+        if val.sample64 {
+            sample_counts |= ash::vk::SampleCountFlags::TYPE_64;
+        }
+
+        sample_counts
+    }
+}
+
 /// Specifies how many mipmaps must be allocated.
 ///
 /// Note that at least one mipmap must be allocated, to store the main level of the image.
@@ -101,29 +201,30 @@ impl From<u32> for MipmapsCount {
 }
 
 /// Helper type for creating extents
+#[derive(Debug, Copy, Clone)]
 pub enum Extent {
     E1D([u32; 1]),
     E2D([u32; 2]),
     E3D([u32; 3]),
 }
 
-impl From<vk::Extent2D> for Extent {
-    fn from(extent: vk::Extent2D) -> Self {
+impl From<ash::vk::Extent2D> for Extent {
+    fn from(extent: ash::vk::Extent2D) -> Self {
         Extent::E2D([extent.width, extent.height])
     }
 }
 
-impl From<vk::Extent3D> for Extent {
-    fn from(extent: vk::Extent3D) -> Self {
+impl From<ash::vk::Extent3D> for Extent {
+    fn from(extent: ash::vk::Extent3D) -> Self {
         Extent::E3D([extent.width, extent.height, extent.depth])
     }
 }
-impl TryFrom<Extent> for vk::Extent2D {
+impl TryFrom<Extent> for ash::vk::Extent2D {
     type Error = ();
 
     fn try_from(extent: Extent) -> Result<Self, Self::Error> {
         match extent {
-            Extent::E2D(a) => Ok(vk::Extent2D {
+            Extent::E2D(a) => Ok(ash::vk::Extent2D {
                 width: a[0],
                 height: a[1],
             }),
@@ -132,12 +233,12 @@ impl TryFrom<Extent> for vk::Extent2D {
     }
 }
 
-impl TryFrom<Extent> for vk::Extent3D {
+impl TryFrom<Extent> for ash::vk::Extent3D {
     type Error = ();
 
     fn try_from(extent: Extent) -> Result<Self, Self::Error> {
         match extent {
-            Extent::E3D(a) => Ok(vk::Extent3D {
+            Extent::E3D(a) => Ok(ash::vk::Extent3D {
                 width: a[0],
                 height: a[1],
                 depth: a[2],
@@ -152,18 +253,18 @@ pub struct ImageFormatProperties {
     pub max_extent: Extent,
     pub max_mip_levels: MipmapsCount,
     pub max_array_layers: u32,
-    pub sample_counts: u32,
+    pub sample_counts: SampleCounts,
     pub max_resource_size: usize,
 }
 
-impl From<vk::ImageFormatProperties> for ImageFormatProperties {
-    fn from(props: vk::ImageFormatProperties) -> Self {
+impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
+    fn from(props: ash::vk::ImageFormatProperties) -> Self {
         Self {
-            max_extent: props.maxExtent.into(),
-            max_mip_levels: props.maxMipLevels.into(),
-            max_array_layers: props.maxArrayLayers,
-            sample_counts: props.sampleCounts,
-            max_resource_size: props.maxResourceSize as usize,
+            max_extent: props.max_extent.into(),
+            max_mip_levels: props.max_mip_levels.into(),
+            max_array_layers: props.max_array_layers,
+            sample_counts: props.sample_counts.into(),
+            max_resource_size: props.max_resource_size as usize,
         }
     }
 }
@@ -195,59 +296,54 @@ impl ImageCreateFlags {
     }
 }
 
-impl From<ImageCreateFlags> for vk::ImageCreateFlags {
+impl From<ImageCreateFlags> for ash::vk::ImageCreateFlags {
     fn from(flags: ImageCreateFlags) -> Self {
         let mut vk_flags = Self::default();
         if flags.sparse_binding {
-            vk_flags |= vk::IMAGE_CREATE_SPARSE_BINDING_BIT
+            vk_flags |= ash::vk::ImageCreateFlags::SPARSE_BINDING
         };
         if flags.sparse_residency {
-            vk_flags |= vk::IMAGE_CREATE_SPARSE_RESIDENCY_BIT
+            vk_flags |= ash::vk::ImageCreateFlags::SPARSE_RESIDENCY
         };
         if flags.sparse_aliased {
-            vk_flags |= vk::IMAGE_CREATE_SPARSE_ALIASED_BIT
+            vk_flags |= ash::vk::ImageCreateFlags::SPARSE_ALIASED
         };
         if flags.mutable_format {
-            vk_flags |= vk::IMAGE_CREATE_MUTABLE_FORMAT_BIT
+            vk_flags |= ash::vk::ImageCreateFlags::MUTABLE_FORMAT
         };
         if flags.cube_compatible {
-            vk_flags |= vk::IMAGE_CREATE_CUBE_COMPATIBLE_BIT
+            vk_flags |= ash::vk::ImageCreateFlags::CUBE_COMPATIBLE
         };
         if flags.array_2d_compatible {
-            vk_flags |= vk::IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT_KHR
+            vk_flags |= ash::vk::ImageCreateFlags::TYPE_2D_ARRAY_COMPATIBLE_KHR
         };
         vk_flags
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(i32)]
 pub enum ImageType {
-    Dim1d,
-    Dim2d,
-    Dim3d,
+    Dim1d = ash::vk::ImageType::TYPE_1D.as_raw(),
+    Dim2d = ash::vk::ImageType::TYPE_2D.as_raw(),
+    Dim3d = ash::vk::ImageType::TYPE_3D.as_raw(),
 }
-impl From<ImageType> for vk::ImageType {
-    fn from(image_type: ImageType) -> Self {
-        match image_type {
-            ImageType::Dim1d => vk::IMAGE_TYPE_1D,
-            ImageType::Dim2d => vk::IMAGE_TYPE_2D,
-            ImageType::Dim3d => vk::IMAGE_TYPE_3D,
-        }
+impl From<ImageType> for ash::vk::ImageType {
+    fn from(val: ImageType) -> Self {
+        ash::vk::ImageType::from_raw(val as i32)
     }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[repr(i32)]
 pub enum ImageTiling {
-    Optimal,
-    Linear,
+    Optimal = ash::vk::ImageTiling::OPTIMAL.as_raw(),
+    Linear = ash::vk::ImageTiling::LINEAR.as_raw(),
 }
 
-impl From<ImageTiling> for vk::ImageTiling {
-    fn from(image_tiling: ImageTiling) -> Self {
-        match image_tiling {
-            ImageTiling::Optimal => vk::IMAGE_TILING_OPTIMAL,
-            ImageTiling::Linear => vk::IMAGE_TILING_LINEAR,
-        }
+impl From<ImageTiling> for ash::vk::ImageTiling {
+    fn from(val: ImageTiling) -> Self {
+        ash::vk::ImageTiling::from_raw(val as i32)
     }
 }
 

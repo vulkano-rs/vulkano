@@ -7,8 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
-
 /// Layout of an image.
 ///
 /// > **Note**: In vulkano, image layouts are mostly a low-level detail. You can ignore them,
@@ -27,18 +25,25 @@ use crate::vk;
 /// Transitioning between layouts can only be done through a GPU-side operation that is part of
 /// a command buffer.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum ImageLayout {
-    Undefined = vk::IMAGE_LAYOUT_UNDEFINED,
-    General = vk::IMAGE_LAYOUT_GENERAL,
-    ColorAttachmentOptimal = vk::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    DepthStencilAttachmentOptimal = vk::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    DepthStencilReadOnlyOptimal = vk::IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    ShaderReadOnlyOptimal = vk::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    TransferSrcOptimal = vk::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    TransferDstOptimal = vk::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    Preinitialized = vk::IMAGE_LAYOUT_PREINITIALIZED,
-    PresentSrc = vk::IMAGE_LAYOUT_PRESENT_SRC_KHR,
+    Undefined = ash::vk::ImageLayout::UNDEFINED.as_raw(),
+    General = ash::vk::ImageLayout::GENERAL.as_raw(),
+    ColorAttachmentOptimal = ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL.as_raw(),
+    DepthStencilAttachmentOptimal = ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL.as_raw(),
+    DepthStencilReadOnlyOptimal = ash::vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL.as_raw(),
+    ShaderReadOnlyOptimal = ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL.as_raw(),
+    TransferSrcOptimal = ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL.as_raw(),
+    TransferDstOptimal = ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL.as_raw(),
+    Preinitialized = ash::vk::ImageLayout::PREINITIALIZED.as_raw(),
+    PresentSrc = ash::vk::ImageLayout::PRESENT_SRC_KHR.as_raw(),
+}
+
+impl From<ImageLayout> for ash::vk::ImageLayout {
+    #[inline]
+    fn from(val: ImageLayout) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// The set of layouts to use for an image when used in descriptor of various kinds.

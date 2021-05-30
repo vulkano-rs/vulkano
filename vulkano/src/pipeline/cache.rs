@@ -21,23 +21,20 @@
 //! of [`get_data`](struct.PipelineCache.html#method.get_data) for example of how to store the data
 //! on the disk, and [`with_data`](struct.PipelineCache.html#method.with_data) for how to reload it.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::OomError;
+use crate::VulkanObject;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
-
-use crate::device::Device;
-
-use crate::check_errors;
-use crate::vk;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// Opaque cache that contains pipeline objects.
 ///
 /// See [the documentation of the module](index.html) for more info.
 pub struct PipelineCache {
     device: Arc<Device>,
-    cache: vk::PipelineCache,
+    cache: ash::vk::PipelineCache,
 }
 
 impl PipelineCache {
@@ -108,21 +105,20 @@ impl PipelineCache {
         device: Arc<Device>,
         initial_data: Option<&[u8]>,
     ) -> Result<Arc<PipelineCache>, OomError> {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         let cache = {
-            let infos = vk::PipelineCacheCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                initialDataSize: initial_data.map(|d| d.len()).unwrap_or(0),
-                pInitialData: initial_data
+            let infos = ash::vk::PipelineCacheCreateInfo {
+                flags: ash::vk::PipelineCacheCreateFlags::empty(),
+                initial_data_size: initial_data.map(|d| d.len()).unwrap_or(0),
+                p_initial_data: initial_data
                     .map(|d| d.as_ptr() as *const _)
                     .unwrap_or(ptr::null()),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreatePipelineCache(
+            check_errors(fns.v1_0.create_pipeline_cache(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -152,7 +148,7 @@ impl PipelineCache {
         I: IntoIterator<Item = &'a &'a Arc<PipelineCache>>,
     {
         unsafe {
-            let vk = self.device.pointers();
+            let fns = self.device.fns();
 
             let pipelines = pipelines
                 .into_iter()
@@ -162,7 +158,7 @@ impl PipelineCache {
                 })
                 .collect::<Vec<_>>();
 
-            check_errors(vk.MergePipelineCaches(
+            check_errors(fns.v1_0.merge_pipeline_caches(
                 self.device.internal_object(),
                 self.cache,
                 pipelines.len() as u32,
@@ -203,10 +199,10 @@ impl PipelineCache {
     /// ```
     pub fn get_data(&self) -> Result<Vec<u8>, OomError> {
         unsafe {
-            let vk = self.device.pointers();
+            let fns = self.device.fns();
 
             let mut num = 0;
-            check_errors(vk.GetPipelineCacheData(
+            check_errors(fns.v1_0.get_pipeline_cache_data(
                 self.device.internal_object(),
                 self.cache,
                 &mut num,
@@ -214,7 +210,7 @@ impl PipelineCache {
             ))?;
 
             let mut data: Vec<u8> = Vec::with_capacity(num as usize);
-            check_errors(vk.GetPipelineCacheData(
+            check_errors(fns.v1_0.get_pipeline_cache_data(
                 self.device.internal_object(),
                 self.cache,
                 &mut num,
@@ -228,12 +224,10 @@ impl PipelineCache {
 }
 
 unsafe impl VulkanObject for PipelineCache {
-    type Object = vk::PipelineCache;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE_CACHE;
+    type Object = ash::vk::PipelineCache;
 
     #[inline]
-    fn internal_object(&self) -> vk::PipelineCache {
+    fn internal_object(&self) -> ash::vk::PipelineCache {
         self.cache
     }
 }
@@ -242,22 +236,21 @@ impl Drop for PipelineCache {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyPipelineCache(self.device.internal_object(), self.cache, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_pipeline_cache(self.device.internal_object(), self.cache, ptr::null());
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{ffi::CStr, sync::Arc};
-
-    use crate::descriptor::descriptor::DescriptorDesc;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDesc;
-    use crate::descriptor::pipeline_layout::PipelineLayoutDescPcRange;
     use crate::pipeline::cache::PipelineCache;
+    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
+    use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::ComputePipeline;
+    use std::{ffi::CStr, sync::Arc};
 
     #[test]
     fn merge_self_forbidden() {
@@ -294,31 +287,12 @@ mod tests {
         };
 
         let shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let pipeline = Arc::new(
@@ -357,31 +331,12 @@ mod tests {
         };
 
         let first_shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            first_module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            first_module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let second_module = unsafe {
@@ -416,31 +371,12 @@ mod tests {
         };
 
         let second_shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            second_module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            second_module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let pipeline = Arc::new(
@@ -488,31 +424,12 @@ mod tests {
         };
 
         let shader = unsafe {
-            #[derive(Clone)]
-            struct Layout;
-            unsafe impl PipelineLayoutDesc for Layout {
-                fn num_sets(&self) -> usize {
-                    0
-                }
-
-                fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                    None
-                }
-
-                fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                    None
-                }
-
-                fn num_push_constants_ranges(&self) -> usize {
-                    0
-                }
-
-                fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> {
-                    None
-                }
-            }
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
-            module.compute_entry_point(CStr::from_ptr(NAME.as_ptr() as *const _), Layout)
+            module.compute_entry_point(
+                CStr::from_ptr(NAME.as_ptr() as *const _),
+                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                <()>::descriptors(),
+            )
         };
 
         let pipeline = Arc::new(

@@ -21,11 +21,15 @@
 //! By default vulkano will use the `auto_loader()` function, which tries to automatically load
 //! a Vulkan implementation from the system.
 
-use crate::vk;
+use crate::check_errors;
+use crate::fns::EntryFunctions;
+use crate::OomError;
 use crate::SafeDeref;
+use crate::Version;
 use lazy_static::lazy_static;
 use shared_library;
 use std::error;
+use std::ffi::CStr;
 use std::fmt;
 use std::mem;
 use std::ops::Deref;
@@ -40,9 +44,9 @@ pub unsafe trait Loader {
     /// The returned function must stay valid for as long as `self` is alive.
     fn get_instance_proc_addr(
         &self,
-        instance: vk::Instance,
+        instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> extern "system" fn() -> ();
+    ) -> *const c_void;
 }
 
 unsafe impl<T> Loader for T
@@ -53,9 +57,9 @@ where
     #[inline]
     fn get_instance_proc_addr(
         &self,
-        instance: vk::Instance,
+        instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> extern "system" fn() -> () {
+    ) -> *const c_void {
         (**self).get_instance_proc_addr(instance, name)
     }
 }
@@ -63,10 +67,8 @@ where
 /// Implementation of `Loader` that loads Vulkan from a dynamic library.
 pub struct DynamicLibraryLoader {
     vk_lib: shared_library::dynamic_library::DynamicLibrary,
-    get_proc_addr: extern "system" fn(
-        instance: vk::Instance,
-        pName: *const c_char,
-    ) -> extern "system" fn() -> (),
+    get_proc_addr:
+        extern "system" fn(instance: ash::vk::Instance, pName: *const c_char) -> *const c_void,
 }
 
 impl DynamicLibraryLoader {
@@ -102,9 +104,9 @@ unsafe impl Loader for DynamicLibraryLoader {
     #[inline]
     fn get_instance_proc_addr(
         &self,
-        instance: vk::Instance,
+        instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> extern "system" fn() -> () {
+    ) -> *const c_void {
         (self.get_proc_addr)(instance, name)
     }
 }
@@ -112,7 +114,7 @@ unsafe impl Loader for DynamicLibraryLoader {
 /// Wraps around a loader and contains function pointers.
 pub struct FunctionPointers<L> {
     loader: L,
-    entry_points: vk::EntryPoints,
+    fns: EntryFunctions,
 }
 
 impl<L> FunctionPointers<L> {
@@ -121,29 +123,55 @@ impl<L> FunctionPointers<L> {
     where
         L: Loader,
     {
-        let entry_points = vk::EntryPoints::load(|name| unsafe {
-            mem::transmute(loader.get_instance_proc_addr(0, name.as_ptr()))
+        let fns = EntryFunctions::load(|name| unsafe {
+            mem::transmute(loader.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr()))
         });
 
-        FunctionPointers {
-            loader,
-            entry_points,
-        }
+        FunctionPointers { loader, fns }
     }
 
     /// Returns the collection of Vulkan entry points from the Vulkan loader.
     #[inline]
-    pub(crate) fn entry_points(&self) -> &vk::EntryPoints {
-        &self.entry_points
+    pub fn fns(&self) -> &EntryFunctions {
+        &self.fns
+    }
+
+    /// Returns the highest Vulkan version that is supported for instances.
+    pub fn api_version(&self) -> Result<Version, OomError>
+    where
+        L: Loader,
+    {
+        // Per the Vulkan spec:
+        // If the vkGetInstanceProcAddr returns NULL for vkEnumerateInstanceVersion, it is a
+        // Vulkan 1.0 implementation. Otherwise, the application can call vkEnumerateInstanceVersion
+        // to determine the version of Vulkan.
+        unsafe {
+            let name = CStr::from_bytes_with_nul_unchecked(b"vkEnumerateInstanceVersion\0");
+            let func = self.get_instance_proc_addr(ash::vk::Instance::null(), name.as_ptr());
+
+            if func.is_null() {
+                Ok(Version {
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                })
+            } else {
+                type Pfn = extern "system" fn(pApiVersion: *mut u32) -> ash::vk::Result;
+                let func: Pfn = mem::transmute(func);
+                let mut api_version = 0;
+                check_errors(func(&mut api_version))?;
+                Ok(Version::from(api_version))
+            }
+        }
     }
 
     /// Calls `get_instance_proc_addr` on the underlying loader.
     #[inline]
     pub fn get_instance_proc_addr(
         &self,
-        instance: vk::Instance,
+        instance: ash::vk::Instance,
         name: *const c_char,
-    ) -> extern "system" fn() -> ()
+    ) -> *const c_void
     where
         L: Loader,
     {
@@ -165,16 +193,16 @@ macro_rules! statically_linked_vulkan_loader {
     () => {{
         extern "C" {
             fn vkGetInstanceProcAddr(
-                instance: vk::Instance,
+                instance: ash::vk::Instance,
                 pName: *const c_char,
-            ) -> vk::PFN_vkVoidFunction;
+            ) -> ash::vk::PFN_vkVoidFunction;
         }
 
         struct StaticallyLinkedVulkanLoader;
         unsafe impl Loader for StaticallyLinkedVulkanLoader {
             fn get_instance_proc_addr(
                 &self,
-                instance: vk::Instance,
+                instance: ash::vk::Instance,
                 name: *const c_char,
             ) -> extern "system" fn() -> () {
                 unsafe { vkGetInstanceProcAddr(instance, name) }

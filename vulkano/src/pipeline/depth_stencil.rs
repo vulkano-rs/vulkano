@@ -20,7 +20,6 @@
 //! value in the stencil buffer at each fragment's location. Depending on the outcome of the
 //! depth and stencil tests, the value of the stencil buffer at that location can be updated.
 
-use crate::vk;
 use std::ops::Range;
 use std::u32;
 
@@ -164,25 +163,39 @@ impl Default for Stencil {
 
 /// Operation to perform after the depth and stencil tests.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum StencilOp {
-    Keep = vk::STENCIL_OP_KEEP,
-    Zero = vk::STENCIL_OP_ZERO,
-    Replace = vk::STENCIL_OP_REPLACE,
-    IncrementAndClamp = vk::STENCIL_OP_INCREMENT_AND_CLAMP,
-    DecrementAndClamp = vk::STENCIL_OP_DECREMENT_AND_CLAMP,
-    Invert = vk::STENCIL_OP_INVERT,
-    IncrementAndWrap = vk::STENCIL_OP_INCREMENT_AND_WRAP,
-    DecrementAndWrap = vk::STENCIL_OP_DECREMENT_AND_WRAP,
+    Keep = ash::vk::StencilOp::KEEP.as_raw(),
+    Zero = ash::vk::StencilOp::ZERO.as_raw(),
+    Replace = ash::vk::StencilOp::REPLACE.as_raw(),
+    IncrementAndClamp = ash::vk::StencilOp::INCREMENT_AND_CLAMP.as_raw(),
+    DecrementAndClamp = ash::vk::StencilOp::DECREMENT_AND_CLAMP.as_raw(),
+    Invert = ash::vk::StencilOp::INVERT.as_raw(),
+    IncrementAndWrap = ash::vk::StencilOp::INCREMENT_AND_WRAP.as_raw(),
+    DecrementAndWrap = ash::vk::StencilOp::DECREMENT_AND_WRAP.as_raw(),
+}
+
+impl From<StencilOp> for ash::vk::StencilOp {
+    #[inline]
+    fn from(val: StencilOp) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Enum to specify which stencil state to use
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
 pub enum StencilFaceFlags {
-    StencilFaceFrontBit = vk::STENCIL_FACE_FRONT_BIT,
-    StencilFaceBackBit = vk::STENCIL_FACE_BACK_BIT,
-    StencilFrontAndBack = vk::STENCIL_FRONT_AND_BACK,
+    StencilFaceFrontBit = ash::vk::StencilFaceFlags::FRONT.as_raw(),
+    StencilFaceBackBit = ash::vk::StencilFaceFlags::BACK.as_raw(),
+    StencilFrontAndBack = ash::vk::StencilFaceFlags::FRONT_AND_BACK.as_raw(),
+}
+
+impl From<StencilFaceFlags> for ash::vk::StencilFaceFlags {
+    #[inline]
+    fn from(val: StencilFaceFlags) -> Self {
+        Self::from_raw(val as u32)
+    }
 }
 
 /// Container for dynamic StencilFaceFlags and value
@@ -222,22 +235,29 @@ impl DepthBounds {
 ///
 /// Used for both depth testing and stencil testing.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum Compare {
     /// The test never passes.
-    Never = vk::COMPARE_OP_NEVER,
+    Never = ash::vk::CompareOp::NEVER.as_raw(),
     /// The test passes if `value < reference_value`.
-    Less = vk::COMPARE_OP_LESS,
+    Less = ash::vk::CompareOp::LESS.as_raw(),
     /// The test passes if `value == reference_value`.
-    Equal = vk::COMPARE_OP_EQUAL,
+    Equal = ash::vk::CompareOp::EQUAL.as_raw(),
     /// The test passes if `value <= reference_value`.
-    LessOrEqual = vk::COMPARE_OP_LESS_OR_EQUAL,
+    LessOrEqual = ash::vk::CompareOp::LESS_OR_EQUAL.as_raw(),
     /// The test passes if `value > reference_value`.
-    Greater = vk::COMPARE_OP_GREATER,
+    Greater = ash::vk::CompareOp::GREATER.as_raw(),
     /// The test passes if `value != reference_value`.
-    NotEqual = vk::COMPARE_OP_NOT_EQUAL,
+    NotEqual = ash::vk::CompareOp::NOT_EQUAL.as_raw(),
     /// The test passes if `value >= reference_value`.
-    GreaterOrEqual = vk::COMPARE_OP_GREATER_OR_EQUAL,
+    GreaterOrEqual = ash::vk::CompareOp::GREATER_OR_EQUAL.as_raw(),
     /// The test always passes.
-    Always = vk::COMPARE_OP_ALWAYS,
+    Always = ash::vk::CompareOp::ALWAYS.as_raw(),
+}
+
+impl From<Compare> for ash::vk::CompareOp {
+    #[inline]
+    fn from(val: Compare) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
