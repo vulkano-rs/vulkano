@@ -547,6 +547,7 @@ enumeration! {
         CapabilityStorageImageReadWithoutFormat = 55,
         CapabilityStorageImageWriteWithoutFormat = 56,
         CapabilityMultiViewport = 57,
+        CapabilityDrawParameters = 4427,
         CapabilityStorageUniformBufferBlock16 = 4433,
         CapabilityStorageUniform16 = 4434,
         CapabilityStoragePushConstant16 = 4435,
