@@ -7,6 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::check_errors;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::instance::QueueFamily;
+use crate::Error;
+use crate::OomError;
+use crate::Version;
+use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::error;
 use std::fmt;
@@ -15,16 +23,6 @@ use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 use std::vec::IntoIter as VecIntoIter;
-
-use crate::instance::QueueFamily;
-
-use crate::check_errors;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::vk;
-use crate::Error;
-use crate::OomError;
-use crate::VulkanObject;
 
 /// Low-level implementation of a command pool.
 ///
@@ -35,7 +33,7 @@ use crate::VulkanObject;
 /// safe. In other words, you can only use a pool from one thread at a time.
 #[derive(Debug)]
 pub struct UnsafeCommandPool {
-    pool: vk::CommandPool,
+    pool: ash::vk::CommandPool,
     device: Arc<Device>,
 
     // Index of the associated queue family in the physical device.
@@ -74,32 +72,31 @@ impl UnsafeCommandPool {
             "Device doesn't match physical device when creating a command pool"
         );
 
-        let vk = device.pointers();
+        let fns = device.fns();
 
         let flags = {
             let flag1 = if transient {
-                vk::COMMAND_POOL_CREATE_TRANSIENT_BIT
+                ash::vk::CommandPoolCreateFlags::TRANSIENT
             } else {
-                0
+                ash::vk::CommandPoolCreateFlags::empty()
             };
             let flag2 = if reset_cb {
-                vk::COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT
+                ash::vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER
             } else {
-                0
+                ash::vk::CommandPoolCreateFlags::empty()
             };
             flag1 | flag2
         };
 
         let pool = unsafe {
-            let infos = vk::CommandPoolCreateInfo {
-                sType: vk::STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-                pNext: ptr::null(),
+            let infos = ash::vk::CommandPoolCreateInfo {
                 flags: flags,
-                queueFamilyIndex: queue_family.id(),
+                queue_family_index: queue_family.id(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateCommandPool(
+            check_errors(fns.v1_0.create_command_pool(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -127,13 +124,16 @@ impl UnsafeCommandPool {
     ///
     pub unsafe fn reset(&self, release_resources: bool) -> Result<(), OomError> {
         let flags = if release_resources {
-            vk::COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
+            ash::vk::CommandPoolResetFlags::RELEASE_RESOURCES
         } else {
-            0
+            ash::vk::CommandPoolResetFlags::empty()
         };
 
-        let vk = self.device.pointers();
-        check_errors(vk.ResetCommandPool(self.device.internal_object(), self.pool, flags))?;
+        let fns = self.device.fns();
+        check_errors(
+            fns.v1_0
+                .reset_command_pool(self.device.internal_object(), self.pool, flags),
+        )?;
         Ok(())
     }
 
@@ -148,16 +148,28 @@ impl UnsafeCommandPool {
     /// simply ignore any possible error.
     pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
         unsafe {
-            if !self.device.loaded_extensions().khr_maintenance1 {
+            if !(self.device.api_version() >= Version::V1_1
+                || self.device.loaded_extensions().khr_maintenance1)
+            {
                 return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
             }
 
-            let vk = self.device.pointers();
-            vk.TrimCommandPoolKHR(
-                self.device.internal_object(),
-                self.pool,
-                0, /* reserved */
-            );
+            let fns = self.device.fns();
+
+            if self.device.api_version() >= Version::V1_1 {
+                fns.v1_1.trim_command_pool(
+                    self.device.internal_object(),
+                    self.pool,
+                    ash::vk::CommandPoolTrimFlags::empty(),
+                );
+            } else {
+                fns.khr_maintenance1.trim_command_pool_khr(
+                    self.device.internal_object(),
+                    self.pool,
+                    ash::vk::CommandPoolTrimFlagsKHR::empty(),
+                );
+            }
+
             Ok(())
         }
     }
@@ -178,22 +190,21 @@ impl UnsafeCommandPool {
             });
         }
 
-        let infos = vk::CommandBufferAllocateInfo {
-            sType: vk::STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-            pNext: ptr::null(),
-            commandPool: self.pool,
+        let infos = ash::vk::CommandBufferAllocateInfo {
+            command_pool: self.pool,
             level: if secondary {
-                vk::COMMAND_BUFFER_LEVEL_SECONDARY
+                ash::vk::CommandBufferLevel::SECONDARY
             } else {
-                vk::COMMAND_BUFFER_LEVEL_PRIMARY
+                ash::vk::CommandBufferLevel::PRIMARY
             },
-            commandBufferCount: count as u32,
+            command_buffer_count: count as u32,
+            ..Default::default()
         };
 
         unsafe {
-            let vk = self.device.pointers();
+            let fns = self.device.fns();
             let mut out = Vec::with_capacity(count);
-            check_errors(vk.AllocateCommandBuffers(
+            check_errors(fns.v1_0.allocate_command_buffers(
                 self.device.internal_object(),
                 &infos,
                 out.as_mut_ptr(),
@@ -220,8 +231,8 @@ impl UnsafeCommandPool {
     {
         let command_buffers: SmallVec<[_; 4]> =
             command_buffers.map(|cb| cb.command_buffer).collect();
-        let vk = self.device.pointers();
-        vk.FreeCommandBuffers(
+        let fns = self.device.fns();
+        fns.v1_0.free_command_buffers(
             self.device.internal_object(),
             self.pool,
             command_buffers.len() as u32,
@@ -247,12 +258,10 @@ unsafe impl DeviceOwned for UnsafeCommandPool {
 }
 
 unsafe impl VulkanObject for UnsafeCommandPool {
-    type Object = vk::CommandPool;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_POOL;
+    type Object = ash::vk::CommandPool;
 
     #[inline]
-    fn internal_object(&self) -> vk::CommandPool {
+    fn internal_object(&self) -> ash::vk::CommandPool {
         self.pool
     }
 }
@@ -261,15 +270,16 @@ impl Drop for UnsafeCommandPool {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyCommandPool(self.device.internal_object(), self.pool, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_command_pool(self.device.internal_object(), self.pool, ptr::null());
         }
     }
 }
 
 /// Opaque type that represents a command buffer allocated from a pool.
 pub struct UnsafeCommandPoolAlloc {
-    command_buffer: vk::CommandBuffer,
+    command_buffer: ash::vk::CommandBuffer,
     device: Arc<Device>,
 }
 
@@ -281,12 +291,10 @@ unsafe impl DeviceOwned for UnsafeCommandPoolAlloc {
 }
 
 unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
-    type Object = vk::CommandBuffer;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_COMMAND_BUFFER;
+    type Object = ash::vk::CommandBuffer;
 
     #[inline]
-    fn internal_object(&self) -> vk::CommandBuffer {
+    fn internal_object(&self) -> ash::vk::CommandBuffer {
         self.command_buffer
     }
 }
@@ -295,7 +303,7 @@ unsafe impl VulkanObject for UnsafeCommandPoolAlloc {
 #[derive(Debug)]
 pub struct UnsafeCommandPoolAllocIter {
     device: Arc<Device>,
-    list: VecIntoIter<vk::CommandBuffer>,
+    list: VecIntoIter<ash::vk::CommandBuffer>,
 }
 
 impl Iterator for UnsafeCommandPoolAllocIter {
@@ -354,6 +362,7 @@ impl From<Error> for CommandPoolTrimError {
 mod tests {
     use crate::command_buffer::pool::CommandPoolTrimError;
     use crate::command_buffer::pool::UnsafeCommandPool;
+    use crate::Version;
 
     #[test]
     fn basic_create() {
@@ -384,11 +393,18 @@ mod tests {
     #[test]
     fn check_maintenance_when_trim() {
         let (device, queue) = gfx_dev_and_queue!();
-        let pool = UnsafeCommandPool::new(device, queue.family(), false, false).unwrap();
+        let pool = UnsafeCommandPool::new(device.clone(), queue.family(), false, false).unwrap();
 
-        match pool.trim() {
-            Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => (),
-            _ => panic!(),
+        if device.api_version() >= Version::V1_1 {
+            match pool.trim() {
+                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => panic!(),
+                _ => (),
+            }
+        } else {
+            match pool.trim() {
+                Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled) => (),
+                _ => panic!(),
+            }
         }
     }
 

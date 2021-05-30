@@ -40,13 +40,7 @@ use vulkano::Version;
 
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(
-        None,
-        Version::major_minor(1, 1),
-        &InstanceExtensions::none(),
-        None,
-    )
-    .unwrap();
+    let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 
     // Choose which physical device to use.
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();

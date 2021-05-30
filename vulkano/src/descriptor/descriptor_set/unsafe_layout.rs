@@ -7,22 +7,19 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use smallvec::SmallVec;
-use std::fmt;
-use std::mem::MaybeUninit;
-use std::ptr;
-use std::sync::Arc;
-
 use crate::check_errors;
-use crate::vk;
-use crate::OomError;
-use crate::VulkanObject;
-
 use crate::descriptor::descriptor::DescriptorDesc;
 use crate::descriptor::descriptor_set::DescriptorSetDesc;
 use crate::descriptor::descriptor_set::DescriptorsCount;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::OomError;
+use crate::VulkanObject;
+use smallvec::SmallVec;
+use std::fmt;
+use std::mem::MaybeUninit;
+use std::ptr;
+use std::sync::Arc;
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 ///
@@ -31,7 +28,7 @@ use crate::device::DeviceOwned;
 /// confusions.
 pub struct UnsafeDescriptorSetLayout {
     // The layout.
-    layout: vk::DescriptorSetLayout,
+    layout: ash::vk::DescriptorSetLayout,
     // The device this layout belongs to.
     device: Arc<Device>,
     // Descriptors.
@@ -71,12 +68,12 @@ impl UnsafeDescriptorSetLayout {
                 let ty = desc.ty.ty();
                 descriptors_count.add_num(ty, desc.array_count);
 
-                Some(vk::DescriptorSetLayoutBinding {
+                Some(ash::vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
-                    descriptorType: ty as u32,
-                    descriptorCount: desc.array_count,
-                    stageFlags: desc.stages.into(),
-                    pImmutableSamplers: ptr::null(), // FIXME: not yet implemented
+                    descriptor_type: ty.into(),
+                    descriptor_count: desc.array_count,
+                    stage_flags: desc.stages.into(),
+                    p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
                 })
             })
             .collect::<SmallVec<[_; 32]>>();
@@ -84,17 +81,16 @@ impl UnsafeDescriptorSetLayout {
         // Note that it seems legal to have no descriptor at all in the set.
 
         let layout = unsafe {
-            let infos = vk::DescriptorSetLayoutCreateInfo {
-                sType: vk::STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                bindingCount: bindings.len() as u32,
-                pBindings: bindings.as_ptr(),
+            let infos = ash::vk::DescriptorSetLayoutCreateInfo {
+                flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                binding_count: bindings.len() as u32,
+                p_bindings: bindings.as_ptr(),
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            let vk = device.pointers();
-            check_errors(vk.CreateDescriptorSetLayout(
+            let fns = device.fns();
+            check_errors(fns.v1_0.create_descriptor_set_layout(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -146,12 +142,10 @@ impl fmt::Debug for UnsafeDescriptorSetLayout {
 }
 
 unsafe impl VulkanObject for UnsafeDescriptorSetLayout {
-    type Object = vk::DescriptorSetLayout;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT;
+    type Object = ash::vk::DescriptorSetLayout;
 
     #[inline]
-    fn internal_object(&self) -> vk::DescriptorSetLayout {
+    fn internal_object(&self) -> ash::vk::DescriptorSetLayout {
         self.layout
     }
 }
@@ -160,8 +154,12 @@ impl Drop for UnsafeDescriptorSetLayout {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyDescriptorSetLayout(self.device.internal_object(), self.layout, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0.destroy_descriptor_set_layout(
+                self.device.internal_object(),
+                self.layout,
+                ptr::null(),
+            );
         }
     }
 }

@@ -18,7 +18,6 @@ use crate::check_errors;
 use crate::extensions::SupportedExtensionsError;
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
-use crate::vk;
 
 macro_rules! instance_extensions {
     ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
@@ -38,22 +37,22 @@ macro_rules! instance_extensions {
                         -> Result<Self, SupportedExtensionsError>
                 where L: loader::Loader
             {
-                let entry_points = ptrs.entry_points();
+                let fns = ptrs.fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
                     properties
                 };
-                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extensionName.as_ptr()) }.to_owned()).collect()))
+                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) }.to_owned()).collect()))
             }
 
             /// Returns a `RawExtensions` object with extensions supported by the core driver.
@@ -89,16 +88,16 @@ macro_rules! instance_extensions {
                         -> Result<Self, SupportedExtensionsError>
                 where L: loader::Loader
             {
-                let entry_points = ptrs.entry_points();
+                let fns = ptrs.fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(entry_points.EnumerateInstanceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
                         ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
@@ -107,7 +106,7 @@ macro_rules! instance_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
+                    let name = unsafe { CStr::from_ptr(property.extension_name.as_ptr()) };
                     $(
                         // TODO: Check specVersion?
                         if name.to_bytes() == &$s[..] {

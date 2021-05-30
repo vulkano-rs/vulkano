@@ -17,7 +17,6 @@ use std::str;
 use crate::check_errors;
 use crate::extensions::SupportedExtensionsError;
 use crate::instance::PhysicalDevice;
-use crate::vk;
 use crate::VulkanObject;
 
 macro_rules! device_extensions {
@@ -30,22 +29,22 @@ macro_rules! device_extensions {
         impl $rawname {
             /// See the docs of supported_by_device().
             pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
-                let vk = physical_device.instance().pointers();
+                let fns = physical_device.instance().fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
                     properties
                 };
-                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extensionName.as_ptr()) }.to_owned()).collect()))
+                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) }.to_owned()).collect()))
             }
 
             /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
@@ -61,16 +60,16 @@ macro_rules! device_extensions {
         impl $sname {
             /// See the docs of supported_by_device().
             pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
-                let vk = physical_device.instance().pointers();
+                let fns = physical_device.instance().fns();
 
-                let properties: Vec<vk::ExtensionProperties> = unsafe {
+                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
                     let mut num = 0;
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
                     ))?;
 
                     let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(vk.EnumerateDeviceExtensionProperties(
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
                         physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
                     ))?;
                     properties.set_len(num as usize);
@@ -79,7 +78,7 @@ macro_rules! device_extensions {
 
                 let mut extensions = $sname::none();
                 for property in properties {
-                    let name = unsafe { CStr::from_ptr(property.extensionName.as_ptr()) };
+                    let name = unsafe { CStr::from_ptr(property.extension_name.as_ptr()) };
                     $(
                         // TODO: Check specVersion?
                         if name.to_bytes() == &$s[..] {

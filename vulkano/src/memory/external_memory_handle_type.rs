@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
 use std::ops::BitOr;
 
 /// Describes the handle type used for Vulkan external memory apis.  This is **not** just a
@@ -78,65 +77,70 @@ impl ExternalMemoryHandleType {
     }
 }
 
-impl From<ExternalMemoryHandleType> for vk::ExternalMemoryHandleTypeFlags {
+impl From<ExternalMemoryHandleType> for ash::vk::ExternalMemoryHandleTypeFlags {
     #[inline]
     fn from(val: ExternalMemoryHandleType) -> Self {
-        let mut result = 0;
+        let mut result = ash::vk::ExternalMemoryHandleTypeFlags::empty();
         if val.opaque_fd {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD;
         }
         if val.opaque_win32 {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32;
         }
         if val.opaque_win32_kmt {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT;
         }
         if val.d3d11_texture {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE;
         }
         if val.d3d11_texture_kmt {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT;
         }
         if val.d3d12_heap {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP;
         }
         if val.d3d12_resource {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE;
         }
         if val.dma_buf {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
         }
         if val.android_hardware_buffer {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID;
         }
         if val.host_allocation {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT;
         }
         if val.host_mapped_foreign_memory {
-            result |= vk::EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT
+            result |= ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT
         }
         result
     }
 }
 
-impl From<vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleType {
-    fn from(val: vk::ExternalMemoryHandleTypeFlags) -> Self {
+impl From<ash::vk::ExternalMemoryHandleTypeFlags> for ExternalMemoryHandleType {
+    fn from(val: ash::vk::ExternalMemoryHandleTypeFlags) -> Self {
         ExternalMemoryHandleType {
-            opaque_fd: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT) != 0,
-            opaque_win32: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_BIT) != 0,
-            opaque_win32_kmt: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_WIN32_KMT_BIT) != 0,
-            d3d11_texture: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT) != 0,
-            d3d11_texture_kmt: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT) != 0,
-            d3d12_heap: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_HEAP_BIT) != 0,
-            d3d12_resource: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_D3D12_RESOURCE_BIT) != 0,
-            dma_buf: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT) != 0,
-            android_hardware_buffer: (val
-                & vk::EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID)
-                != 0,
-            host_allocation: (val & vk::EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT) != 0,
-            host_mapped_foreign_memory: (val
-                & vk::EXTERNAL_MEMORY_HANDLE_TYPE_HOST_MAPPED_FOREIGN_MEMORY_BIT_EXT)
-                != 0,
+            opaque_fd: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD).is_empty(),
+            opaque_win32: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32).is_empty(),
+            opaque_win32_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_WIN32_KMT)
+                .is_empty(),
+            d3d11_texture: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE)
+                .is_empty(),
+            d3d11_texture_kmt: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D11_TEXTURE_KMT)
+                .is_empty(),
+            d3d12_heap: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D12_HEAP).is_empty(),
+            d3d12_resource: !(val & ash::vk::ExternalMemoryHandleTypeFlags::D3D12_RESOURCE)
+                .is_empty(),
+            dma_buf: !(val & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT).is_empty(),
+            android_hardware_buffer: !(val
+                & ash::vk::ExternalMemoryHandleTypeFlags::ANDROID_HARDWARE_BUFFER_ANDROID)
+                .is_empty(),
+            host_allocation: !(val & ash::vk::ExternalMemoryHandleTypeFlags::HOST_ALLOCATION_EXT)
+                .is_empty(),
+            host_mapped_foreign_memory: !(val
+                & ash::vk::ExternalMemoryHandleTypeFlags::HOST_MAPPED_FOREIGN_MEMORY_EXT)
+                .is_empty(),
         }
     }
 }

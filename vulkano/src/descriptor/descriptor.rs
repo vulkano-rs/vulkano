@@ -45,7 +45,6 @@ use crate::format::Format;
 use crate::image::view::ImageViewType;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
-use crate::vk;
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -535,19 +534,26 @@ pub struct DescriptorBufferDesc {
 ///
 /// This is mostly the same as a `DescriptorDescTy` but with less precise information.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum DescriptorType {
-    Sampler = vk::DESCRIPTOR_TYPE_SAMPLER,
-    CombinedImageSampler = vk::DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-    SampledImage = vk::DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-    StorageImage = vk::DESCRIPTOR_TYPE_STORAGE_IMAGE,
-    UniformTexelBuffer = vk::DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER,
-    StorageTexelBuffer = vk::DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER,
-    UniformBuffer = vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-    StorageBuffer = vk::DESCRIPTOR_TYPE_STORAGE_BUFFER,
-    UniformBufferDynamic = vk::DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-    StorageBufferDynamic = vk::DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC,
-    InputAttachment = vk::DESCRIPTOR_TYPE_INPUT_ATTACHMENT,
+    Sampler = ash::vk::DescriptorType::SAMPLER.as_raw(),
+    CombinedImageSampler = ash::vk::DescriptorType::COMBINED_IMAGE_SAMPLER.as_raw(),
+    SampledImage = ash::vk::DescriptorType::SAMPLED_IMAGE.as_raw(),
+    StorageImage = ash::vk::DescriptorType::STORAGE_IMAGE.as_raw(),
+    UniformTexelBuffer = ash::vk::DescriptorType::UNIFORM_TEXEL_BUFFER.as_raw(),
+    StorageTexelBuffer = ash::vk::DescriptorType::STORAGE_TEXEL_BUFFER.as_raw(),
+    UniformBuffer = ash::vk::DescriptorType::UNIFORM_BUFFER.as_raw(),
+    StorageBuffer = ash::vk::DescriptorType::STORAGE_BUFFER.as_raw(),
+    UniformBufferDynamic = ash::vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC.as_raw(),
+    StorageBufferDynamic = ash::vk::DescriptorType::STORAGE_BUFFER_DYNAMIC.as_raw(),
+    InputAttachment = ash::vk::DescriptorType::INPUT_ATTACHMENT.as_raw(),
+}
+
+impl From<DescriptorType> for ash::vk::DescriptorType {
+    #[inline]
+    fn from(val: DescriptorType) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Error when checking whether a descriptor is a superset of another one.
@@ -746,27 +752,27 @@ impl ShaderStages {
     }
 }
 
-impl From<ShaderStages> for vk::ShaderStageFlags {
+impl From<ShaderStages> for ash::vk::ShaderStageFlags {
     #[inline]
-    fn from(val: ShaderStages) -> vk::ShaderStageFlags {
-        let mut result = 0;
+    fn from(val: ShaderStages) -> ash::vk::ShaderStageFlags {
+        let mut result = ash::vk::ShaderStageFlags::empty();
         if val.vertex {
-            result |= vk::SHADER_STAGE_VERTEX_BIT;
+            result |= ash::vk::ShaderStageFlags::VERTEX;
         }
         if val.tessellation_control {
-            result |= vk::SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            result |= ash::vk::ShaderStageFlags::TESSELLATION_CONTROL;
         }
         if val.tessellation_evaluation {
-            result |= vk::SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            result |= ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION;
         }
         if val.geometry {
-            result |= vk::SHADER_STAGE_GEOMETRY_BIT;
+            result |= ash::vk::ShaderStageFlags::GEOMETRY;
         }
         if val.fragment {
-            result |= vk::SHADER_STAGE_FRAGMENT_BIT;
+            result |= ash::vk::ShaderStageFlags::FRAGMENT;
         }
         if val.compute {
-            result |= vk::SHADER_STAGE_COMPUTE_BIT;
+            result |= ash::vk::ShaderStageFlags::COMPUTE;
         }
         result
     }

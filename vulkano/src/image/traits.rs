@@ -15,6 +15,7 @@ use crate::image::sys::UnsafeImage;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
 use crate::image::ImageLayout;
+use crate::image::SampleCount;
 use crate::sync::AccessError;
 use crate::SafeDeref;
 use std::hash::Hash;
@@ -66,7 +67,7 @@ pub unsafe trait ImageAccess {
 
     /// Returns the number of samples of this image.
     #[inline]
-    fn samples(&self) -> u32 {
+    fn samples(&self) -> SampleCount {
         self.inner().image.samples()
     }
 

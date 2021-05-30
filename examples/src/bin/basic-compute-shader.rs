@@ -39,7 +39,7 @@ fn main() {
     // As with other examples, the first step is to create an instance.
     let instance = Instance::new(
         None,
-        Version::major_minor(1, 1),
+        Version::V1_1,
         &InstanceExtensions::none(),
         None,
     )

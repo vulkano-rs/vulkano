@@ -48,7 +48,6 @@
 //! In all cases the number of viewports and scissor boxes must be the same.
 //!
 
-use crate::vk;
 use std::ops::Range;
 
 /// List of viewports and scissors that are used when creating a graphics pipeline object.
@@ -141,16 +140,16 @@ pub struct Viewport {
     pub depth_range: Range<f32>,
 }
 
-impl From<Viewport> for vk::Viewport {
+impl From<Viewport> for ash::vk::Viewport {
     #[inline]
     fn from(val: Viewport) -> Self {
-        vk::Viewport {
+        ash::vk::Viewport {
             x: val.origin[0],
             y: val.origin[1],
             width: val.dimensions[0],
             height: val.dimensions[1],
-            minDepth: val.depth_range.start,
-            maxDepth: val.depth_range.end,
+            min_depth: val.depth_range.start,
+            max_depth: val.depth_range.end,
         }
     }
 }
@@ -186,15 +185,15 @@ impl Default for Scissor {
     }
 }
 
-impl From<Scissor> for vk::Rect2D {
+impl From<Scissor> for ash::vk::Rect2D {
     #[inline]
     fn from(val: Scissor) -> Self {
-        vk::Rect2D {
-            offset: vk::Offset2D {
+        ash::vk::Rect2D {
+            offset: ash::vk::Offset2D {
                 x: val.origin[0],
                 y: val.origin[1],
             },
-            extent: vk::Extent2D {
+            extent: ash::vk::Extent2D {
                 width: val.dimensions[0],
                 height: val.dimensions[1],
             },

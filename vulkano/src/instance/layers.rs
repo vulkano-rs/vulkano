@@ -16,7 +16,6 @@ use std::vec::IntoIter;
 use crate::check_errors;
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
@@ -56,14 +55,18 @@ where
     L: loader::Loader,
 {
     unsafe {
-        let entry_points = ptrs.entry_points();
+        let fns = ptrs.fns();
 
         let mut num = 0;
-        check_errors(entry_points.EnumerateInstanceLayerProperties(&mut num, ptr::null_mut()))?;
+        check_errors(
+            fns.v1_0
+                .enumerate_instance_layer_properties(&mut num, ptr::null_mut()),
+        )?;
 
-        let mut layers: Vec<vk::LayerProperties> = Vec::with_capacity(num as usize);
+        let mut layers: Vec<ash::vk::LayerProperties> = Vec::with_capacity(num as usize);
         check_errors({
-            entry_points.EnumerateInstanceLayerProperties(&mut num, layers.as_mut_ptr())
+            fns.v1_0
+                .enumerate_instance_layer_properties(&mut num, layers.as_mut_ptr())
         })?;
         layers.set_len(num as usize);
 
@@ -75,7 +78,7 @@ where
 
 /// Properties of a layer.
 pub struct LayerProperties {
-    props: vk::LayerProperties,
+    props: ash::vk::LayerProperties,
 }
 
 impl LayerProperties {
@@ -96,7 +99,7 @@ impl LayerProperties {
     #[inline]
     pub fn name(&self) -> &str {
         unsafe {
-            CStr::from_ptr(self.props.layerName.as_ptr())
+            CStr::from_ptr(self.props.layer_name.as_ptr())
                 .to_str()
                 .unwrap()
         }
@@ -140,7 +143,7 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn vulkan_version(&self) -> Version {
-        Version::from_vulkan_version(self.props.specVersion)
+        Version::from(self.props.spec_version)
     }
 
     /// Returns an implementation-specific version number for this layer.
@@ -158,7 +161,7 @@ impl LayerProperties {
     /// ```
     #[inline]
     pub fn implementation_version(&self) -> u32 {
-        self.props.implementationVersion
+        self.props.implementation_version
     }
 }
 
@@ -223,7 +226,7 @@ impl From<Error> for LayersListError {
 /// Iterator that produces the list of layers that are available.
 // TODO: #[derive(Debug, Clone)]
 pub struct LayersIterator {
-    iter: IntoIter<vk::LayerProperties>,
+    iter: IntoIter<ash::vk::LayerProperties>,
 }
 
 impl Iterator for LayersIterator {

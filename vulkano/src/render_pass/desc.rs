@@ -10,10 +10,10 @@
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::image::ImageLayout;
+use crate::image::SampleCount;
 use crate::pipeline::shader::ShaderInterface;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
-use crate::vk;
 
 /// The description of a render pass.
 #[derive(Clone, Debug)]
@@ -151,7 +151,7 @@ pub struct AttachmentDesc {
     /// Format of the image that is going to be bound.
     pub format: Format,
     /// Number of samples of the image that is going to be bound.
-    pub samples: u32,
+    pub samples: SampleCount,
 
     /// What the implementation should do with that attachment at the start of the render pass.
     pub load: LoadOp,
@@ -271,13 +271,13 @@ pub struct SubpassDependencyDesc {
 /// Describes what the implementation should do with an attachment after all the subpasses have
 /// completed.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum StoreOp {
     /// The attachment will be stored. This is what you usually want.
     ///
     /// While this is the most intuitive option, it is also slower than `DontCare` because it can
     /// take time to write the data back to memory.
-    Store = vk::ATTACHMENT_STORE_OP_STORE,
+    Store = ash::vk::AttachmentStoreOp::STORE.as_raw(),
 
     /// What happens is implementation-specific.
     ///
@@ -287,19 +287,26 @@ pub enum StoreOp {
     /// This doesn't mean that the data won't be copied, as an implementation is also free to not
     /// use a cache and write the output directly in memory. In other words, the content of the
     /// image will be undefined.
-    DontCare = vk::ATTACHMENT_STORE_OP_DONT_CARE,
+    DontCare = ash::vk::AttachmentStoreOp::DONT_CARE.as_raw(),
+}
+
+impl From<StoreOp> for ash::vk::AttachmentStoreOp {
+    #[inline]
+    fn from(val: StoreOp) -> Self {
+        Self::from_raw(val as i32)
+    }
 }
 
 /// Describes what the implementation should do with an attachment at the start of the subpass.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum LoadOp {
     /// The content of the attachment will be loaded from memory. This is what you want if you want
     /// to draw over something existing.
     ///
     /// While this is the most intuitive option, it is also the slowest because it uses a lot of
     /// memory bandwidth.
-    Load = vk::ATTACHMENT_LOAD_OP_LOAD,
+    Load = ash::vk::AttachmentLoadOp::LOAD.as_raw(),
 
     /// The content of the attachment will be filled by the implementation with a uniform value
     /// that you must provide when you start drawing.
@@ -308,7 +315,7 @@ pub enum LoadOp {
     /// the color, depth and/or stencil buffers.
     ///
     /// See the `draw_inline` and `draw_secondary` methods of `PrimaryComputeBufferBuilder`.
-    Clear = vk::ATTACHMENT_LOAD_OP_CLEAR,
+    Clear = ash::vk::AttachmentLoadOp::CLEAR.as_raw(),
 
     /// The attachment will have undefined content.
     ///
@@ -316,5 +323,12 @@ pub enum LoadOp {
     /// commands.
     /// If you are going to fill the attachment with a uniform value, it is better to use `Clear`
     /// instead.
-    DontCare = vk::ATTACHMENT_LOAD_OP_DONT_CARE,
+    DontCare = ash::vk::AttachmentLoadOp::DONT_CARE.as_raw(),
+}
+
+impl From<LoadOp> for ash::vk::AttachmentLoadOp {
+    #[inline]
+    fn from(val: LoadOp) -> Self {
+        Self::from_raw(val as i32)
+    }
 }

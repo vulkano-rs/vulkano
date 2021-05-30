@@ -44,7 +44,6 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::format::Pixel;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SafeDeref;
@@ -61,7 +60,7 @@ pub struct BufferView<B>
 where
     B: BufferAccess,
 {
-    view: vk::BufferView,
+    view: ash::vk::BufferView,
     buffer: B,
     atomic_accesses: bool,
 }
@@ -123,41 +122,40 @@ where
             }
 
             let format_props = {
-                let vk_i = device.instance().pointers();
+                let fns_i = device.instance().fns();
                 let mut output = MaybeUninit::uninit();
-                vk_i.GetPhysicalDeviceFormatProperties(
+                fns_i.v1_0.get_physical_device_format_properties(
                     device.physical_device().internal_object(),
-                    format as u32,
+                    format.into(),
                     output.as_mut_ptr(),
                 );
-                output.assume_init().bufferFeatures
+                output.assume_init().buffer_features
             };
 
             if buffer.usage().uniform_texel_buffer {
-                if (format_props & vk::FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT) == 0 {
+                if (format_props & ash::vk::FormatFeatureFlags::UNIFORM_TEXEL_BUFFER).is_empty() {
                     return Err(BufferViewCreationError::UnsupportedFormat);
                 }
             }
 
             if buffer.usage().storage_texel_buffer {
-                if (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT) == 0 {
+                if (format_props & ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER).is_empty() {
                     return Err(BufferViewCreationError::UnsupportedFormat);
                 }
             }
 
-            let infos = vk::BufferViewCreateInfo {
-                sType: vk::STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved,
+            let infos = ash::vk::BufferViewCreateInfo {
+                flags: ash::vk::BufferViewCreateFlags::empty(),
                 buffer: buffer.internal_object(),
-                format: format as u32,
+                format: format.into(),
                 offset: offset as u64,
                 range: size as u64,
+                ..Default::default()
             };
 
-            let vk = device.pointers();
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateBufferView(
+            check_errors(fns.v1_0.create_buffer_view(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -169,8 +167,9 @@ where
         Ok(BufferView {
             view,
             buffer: org_buffer,
-            atomic_accesses: (format_props & vk::FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT)
-                != 0,
+            atomic_accesses: !(format_props
+                & ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER_ATOMIC)
+                .is_empty(),
         })
     }
 
@@ -203,12 +202,10 @@ unsafe impl<B> VulkanObject for BufferView<B>
 where
     B: BufferAccess,
 {
-    type Object = vk::BufferView;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_BUFFER_VIEW;
+    type Object = ash::vk::BufferView;
 
     #[inline]
-    fn internal_object(&self) -> vk::BufferView {
+    fn internal_object(&self) -> ash::vk::BufferView {
         self.view
     }
 }
@@ -242,8 +239,8 @@ where
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.buffer.inner().buffer.device().pointers();
-            vk.DestroyBufferView(
+            let fns = self.buffer.inner().buffer.device().fns();
+            fns.v1_0.destroy_buffer_view(
                 self.buffer.inner().buffer.device().internal_object(),
                 self.view,
                 ptr::null(),

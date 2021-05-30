@@ -91,7 +91,6 @@ use std::slice;
 
 use crate::buffer::sys::UnsafeBuffer;
 use crate::image::sys::UnsafeImage;
-use crate::vk;
 
 pub use self::device_memory::CpuAccess;
 pub use self::device_memory::DeviceMemory;
@@ -130,13 +129,13 @@ pub struct MemoryRequirements {
     pub prefer_dedicated: bool,
 }
 
-impl From<vk::MemoryRequirements> for MemoryRequirements {
+impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
     #[inline]
-    fn from(val: vk::MemoryRequirements) -> Self {
+    fn from(val: ash::vk::MemoryRequirements) -> Self {
         MemoryRequirements {
             size: val.size as usize,
             alignment: val.alignment as usize,
-            memory_type_bits: val.memoryTypeBits,
+            memory_type_bits: val.memory_type_bits,
             prefer_dedicated: false,
         }
     }

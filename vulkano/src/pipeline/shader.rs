@@ -22,7 +22,6 @@ use crate::device::Device;
 use crate::format::Format;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayoutDesc;
-use crate::vk;
 use crate::OomError;
 use crate::VulkanObject;
 use std::borrow::Cow;
@@ -42,7 +41,7 @@ use std::sync::Arc;
 #[derive(Debug)]
 pub struct ShaderModule {
     // The module.
-    module: vk::ShaderModule,
+    module: ash::vk::ShaderModule,
     // Pointer to the device.
     device: Arc<Device>,
 }
@@ -90,17 +89,16 @@ impl ShaderModule {
         spirv_len: usize,
     ) -> Result<Arc<ShaderModule>, OomError> {
         let module = {
-            let infos = vk::ShaderModuleCreateInfo {
-                sType: vk::STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                codeSize: spirv_len,
-                pCode: spirv,
+            let infos = ash::vk::ShaderModuleCreateInfo {
+                flags: ash::vk::ShaderModuleCreateFlags::empty(),
+                code_size: spirv_len,
+                p_code: spirv,
+                ..Default::default()
             };
 
-            let vk = device.pointers();
+            let fns = device.fns();
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateShaderModule(
+            check_errors(fns.v1_0.create_shader_module(
                 device.internal_object(),
                 &infos,
                 ptr::null(),
@@ -175,12 +173,10 @@ impl ShaderModule {
 }
 
 unsafe impl VulkanObject for ShaderModule {
-    type Object = vk::ShaderModule;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SHADER_MODULE;
+    type Object = ash::vk::ShaderModule;
 
     #[inline]
-    fn internal_object(&self) -> vk::ShaderModule {
+    fn internal_object(&self) -> ash::vk::ShaderModule {
         self.module
     }
 }
@@ -189,8 +185,9 @@ impl Drop for ShaderModule {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyShaderModule(self.device.internal_object(), self.module, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_shader_module(self.device.internal_object(), self.module, ptr::null());
         }
     }
 }

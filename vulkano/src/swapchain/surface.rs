@@ -18,7 +18,6 @@ use crate::swapchain::display::DisplayMode;
 use crate::swapchain::display::DisplayPlane;
 use crate::swapchain::Capabilities;
 use crate::swapchain::SurfaceSwapchainLock;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -37,7 +36,7 @@ use std::sync::Arc;
 pub struct Surface<W> {
     window: W,
     instance: Arc<Instance>,
-    surface: vk::SurfaceKHR,
+    surface: ash::vk::SurfaceKHR,
 
     // If true, a swapchain has been associated to this surface, and that any new swapchain
     // creation should be forbidden.
@@ -51,7 +50,7 @@ impl<W> Surface<W> {
     ///
     pub unsafe fn from_raw_surface(
         instance: Arc<Instance>,
-        surface: vk::SurfaceKHR,
+        surface: ash::vk::SurfaceKHR,
         win: W,
     ) -> Surface<W> {
         Surface {
@@ -92,28 +91,27 @@ impl<W> Surface<W> {
         assert!(plane.supports(display_mode.display()));
 
         let instance = display_mode.display().physical_device().instance();
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         let surface = unsafe {
-            let infos = vk::DisplaySurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_DISPLAY_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                displayMode: display_mode.internal_object(),
-                planeIndex: plane.index(),
-                planeStackIndex: 0, // FIXME: plane.properties.currentStackIndex,
-                transform: vk::SURFACE_TRANSFORM_IDENTITY_BIT_KHR, // TODO: let user choose
-                globalAlpha: 0.0,   // TODO: let user choose
-                alphaMode: vk::DISPLAY_PLANE_ALPHA_OPAQUE_BIT_KHR, // TODO: let user choose
-                imageExtent: vk::Extent2D {
+            let infos = ash::vk::DisplaySurfaceCreateInfoKHR {
+                flags: ash::vk::DisplaySurfaceCreateFlagsKHR::empty(),
+                display_mode: display_mode.internal_object(),
+                plane_index: plane.index(),
+                plane_stack_index: 0, // FIXME: plane.properties.currentStackIndex,
+                transform: ash::vk::SurfaceTransformFlagsKHR::IDENTITY, // TODO: let user choose
+                global_alpha: 0.0,    // TODO: let user choose
+                alpha_mode: ash::vk::DisplayPlaneAlphaFlagsKHR::OPAQUE, // TODO: let user choose
+                image_extent: ash::vk::Extent2D {
                     // TODO: let user choose
                     width: display_mode.visible_region()[0],
                     height: display_mode.visible_region()[1],
                 },
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateDisplayPlaneSurfaceKHR(
+            check_errors(fns.khr_display.create_display_plane_surface_khr(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -145,7 +143,7 @@ impl<W> Surface<W> {
         hwnd: *const U,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().khr_win32_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -154,16 +152,15 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::Win32SurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::Win32SurfaceCreateInfoKHR {
+                flags: ash::vk::Win32SurfaceCreateFlagsKHR::empty(),
                 hinstance: hinstance as *mut _,
                 hwnd: hwnd as *mut _,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateWin32SurfaceKHR(
+            check_errors(fns.khr_win32_surface.create_win32_surface_khr(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -194,7 +191,7 @@ impl<W> Surface<W> {
         window: u32,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().khr_xcb_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -203,16 +200,15 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::XcbSurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_XCB_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::XcbSurfaceCreateInfoKHR {
+                flags: ash::vk::XcbSurfaceCreateFlagsKHR::empty(),
                 connection: connection as *mut _,
                 window,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateXcbSurfaceKHR(
+            check_errors(fns.khr_xcb_surface.create_xcb_surface_khr(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -243,7 +239,7 @@ impl<W> Surface<W> {
         window: c_ulong,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().khr_xlib_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -252,16 +248,15 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::XlibSurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::XlibSurfaceCreateInfoKHR {
+                flags: ash::vk::XlibSurfaceCreateFlagsKHR::empty(),
                 dpy: display as *mut _,
                 window,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateXlibSurfaceKHR(
+            check_errors(fns.khr_xlib_surface.create_xlib_surface_khr(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -292,7 +287,7 @@ impl<W> Surface<W> {
         surface: *const S,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().khr_wayland_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -301,16 +296,15 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::WaylandSurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::WaylandSurfaceCreateInfoKHR {
+                flags: ash::vk::WaylandSurfaceCreateFlagsKHR::empty(),
                 display: display as *mut _,
                 surface: surface as *mut _,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateWaylandSurfaceKHR(
+            check_errors(fns.khr_wayland_surface.create_wayland_surface_khr(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -338,7 +332,7 @@ impl<W> Surface<W> {
         window: *const T,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().khr_android_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -347,15 +341,14 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::AndroidSurfaceCreateInfoKHR {
-                sType: vk::STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::AndroidSurfaceCreateInfoKHR {
+                flags: ash::vk::AndroidSurfaceCreateFlagsKHR::empty(),
                 window: window as *mut _,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateAndroidSurfaceKHR(
+            check_errors(fns.khr_android_surface.create_android_surface_khr(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -384,7 +377,7 @@ impl<W> Surface<W> {
         view: *const T,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().mvk_ios_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -393,15 +386,14 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::IOSSurfaceCreateInfoMVK {
-                sType: vk::STRUCTURE_TYPE_IOS_SURFACE_CREATE_INFO_MVK,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                pView: view as *const _,
+            let infos = ash::vk::IOSSurfaceCreateInfoMVK {
+                flags: ash::vk::IOSSurfaceCreateFlagsMVK::empty(),
+                p_view: view as *const _,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateIOSSurfaceMVK(
+            check_errors(fns.mvk_ios_surface.create_ios_surface_mvk(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -430,7 +422,7 @@ impl<W> Surface<W> {
         view: *const T,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().mvk_macos_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -439,15 +431,14 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::MacOSSurfaceCreateInfoMVK {
-                sType: vk::STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK,
-                pNext: ptr::null(),
-                flags: 0, // reserved
-                pView: view as *const _,
+            let infos = ash::vk::MacOSSurfaceCreateInfoMVK {
+                flags: ash::vk::MacOSSurfaceCreateFlagsMVK::empty(),
+                p_view: view as *const _,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateMacOSSurfaceMVK(
+            check_errors(fns.mvk_macos_surface.create_mac_os_surface_mvk(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -475,7 +466,7 @@ impl<W> Surface<W> {
         window: *const T,
         win: W,
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
-        let vk = instance.pointers();
+        let fns = instance.fns();
 
         if !instance.loaded_extensions().nn_vi_surface {
             return Err(SurfaceCreationError::MissingExtension {
@@ -484,15 +475,14 @@ impl<W> Surface<W> {
         }
 
         let surface = {
-            let infos = vk::ViSurfaceCreateInfoNN {
-                sType: vk::STRUCTURE_TYPE_VI_SURFACE_CREATE_INFO_NN,
-                pNext: ptr::null(),
-                flags: 0, // reserved
+            let infos = ash::vk::ViSurfaceCreateInfoNN {
+                flags: ash::vk::ViSurfaceCreateFlagsNN::empty(),
                 window: window as *mut _,
+                ..Default::default()
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateViSurfaceNN(
+            check_errors(fns.nn_vi_surface.create_vi_surface_nn(
                 instance.internal_object(),
                 &infos,
                 ptr::null(),
@@ -513,10 +503,10 @@ impl<W> Surface<W> {
     // FIXME: vulkano doesn't check this for the moment!
     pub fn is_supported(&self, queue: QueueFamily) -> Result<bool, CapabilitiesError> {
         unsafe {
-            let vk = self.instance.pointers();
+            let fns = self.instance.fns();
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.GetPhysicalDeviceSurfaceSupportKHR(
+            check_errors(fns.khr_surface.get_physical_device_surface_support_khr(
                 queue.physical_device().internal_object(),
                 queue.id(),
                 self.surface,
@@ -544,21 +534,24 @@ impl<W> Surface<W> {
                 "Instance mismatch in Surface::capabilities"
             );
 
-            let vk = self.instance.pointers();
+            let fns = self.instance.fns();
 
             let caps = {
-                let mut out: MaybeUninit<vk::SurfaceCapabilitiesKHR> = MaybeUninit::uninit();
-                check_errors(vk.GetPhysicalDeviceSurfaceCapabilitiesKHR(
-                    device.internal_object(),
-                    self.surface,
-                    out.as_mut_ptr(),
-                ))?;
+                let mut out: MaybeUninit<ash::vk::SurfaceCapabilitiesKHR> = MaybeUninit::uninit();
+                check_errors(
+                    fns.khr_surface
+                        .get_physical_device_surface_capabilities_khr(
+                            device.internal_object(),
+                            self.surface,
+                            out.as_mut_ptr(),
+                        ),
+                )?;
                 out.assume_init()
             };
 
             let formats = {
                 let mut num = 0;
-                check_errors(vk.GetPhysicalDeviceSurfaceFormatsKHR(
+                check_errors(fns.khr_surface.get_physical_device_surface_formats_khr(
                     device.internal_object(),
                     self.surface,
                     &mut num,
@@ -566,7 +559,7 @@ impl<W> Surface<W> {
                 ))?;
 
                 let mut formats = Vec::with_capacity(num as usize);
-                check_errors(vk.GetPhysicalDeviceSurfaceFormatsKHR(
+                check_errors(fns.khr_surface.get_physical_device_surface_formats_khr(
                     device.internal_object(),
                     self.surface,
                     &mut num,
@@ -578,55 +571,61 @@ impl<W> Surface<W> {
 
             let modes = {
                 let mut num = 0;
-                check_errors(vk.GetPhysicalDeviceSurfacePresentModesKHR(
-                    device.internal_object(),
-                    self.surface,
-                    &mut num,
-                    ptr::null_mut(),
-                ))?;
+                check_errors(
+                    fns.khr_surface
+                        .get_physical_device_surface_present_modes_khr(
+                            device.internal_object(),
+                            self.surface,
+                            &mut num,
+                            ptr::null_mut(),
+                        ),
+                )?;
 
                 let mut modes = Vec::with_capacity(num as usize);
-                check_errors(vk.GetPhysicalDeviceSurfacePresentModesKHR(
-                    device.internal_object(),
-                    self.surface,
-                    &mut num,
-                    modes.as_mut_ptr(),
-                ))?;
+                check_errors(
+                    fns.khr_surface
+                        .get_physical_device_surface_present_modes_khr(
+                            device.internal_object(),
+                            self.surface,
+                            &mut num,
+                            modes.as_mut_ptr(),
+                        ),
+                )?;
                 modes.set_len(num as usize);
                 debug_assert!(modes
                     .iter()
-                    .find(|&&m| m == vk::PRESENT_MODE_FIFO_KHR)
+                    .find(|&&m| m == ash::vk::PresentModeKHR::FIFO)
                     .is_some());
                 debug_assert!(modes.iter().count() > 0);
                 modes.into_iter().collect()
             };
 
             Ok(Capabilities {
-                min_image_count: caps.minImageCount,
-                max_image_count: if caps.maxImageCount == 0 {
+                min_image_count: caps.min_image_count,
+                max_image_count: if caps.max_image_count == 0 {
                     None
                 } else {
-                    Some(caps.maxImageCount)
+                    Some(caps.max_image_count)
                 },
-                current_extent: if caps.currentExtent.width == 0xffffffff
-                    && caps.currentExtent.height == 0xffffffff
+                current_extent: if caps.current_extent.width == 0xffffffff
+                    && caps.current_extent.height == 0xffffffff
                 {
                     None
                 } else {
-                    Some([caps.currentExtent.width, caps.currentExtent.height])
+                    Some([caps.current_extent.width, caps.current_extent.height])
                 },
-                min_image_extent: [caps.minImageExtent.width, caps.minImageExtent.height],
-                max_image_extent: [caps.maxImageExtent.width, caps.maxImageExtent.height],
-                max_image_array_layers: caps.maxImageArrayLayers,
-                supported_transforms: caps.supportedTransforms.into(),
+                min_image_extent: [caps.min_image_extent.width, caps.min_image_extent.height],
+                max_image_extent: [caps.max_image_extent.width, caps.max_image_extent.height],
+                max_image_array_layers: caps.max_image_array_layers,
+                supported_transforms: caps.supported_transforms.into(),
 
-                current_transform: SupportedSurfaceTransforms::from(caps.currentTransform)
+                current_transform: SupportedSurfaceTransforms::from(caps.current_transform)
                     .iter()
                     .next()
                     .unwrap(), // TODO:
-                supported_composite_alpha: caps.supportedCompositeAlpha.into(),
+                supported_composite_alpha: caps.supported_composite_alpha.into(),
                 supported_usage_flags: {
-                    let usage = ImageUsage::from(caps.supportedUsageFlags);
+                    let usage = ImageUsage::from(caps.supported_usage_flags);
                     debug_assert!(usage.color_attachment); // specs say that this must be true
                     usage
                 },
@@ -636,7 +635,7 @@ impl<W> Surface<W> {
                         // TODO: Change the way capabilities not supported in vk-sys are handled
                         Format::try_from(f.format)
                             .ok()
-                            .map(|format| (format, f.colorSpace.into()))
+                            .map(|format| (format, f.color_space.into()))
                     })
                     .collect(),
                 present_modes: modes,
@@ -664,12 +663,10 @@ unsafe impl<W> SurfaceSwapchainLock for Surface<W> {
 }
 
 unsafe impl<W> VulkanObject for Surface<W> {
-    type Object = vk::SurfaceKHR;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_SURFACE_KHR;
+    type Object = ash::vk::SurfaceKHR;
 
     #[inline]
-    fn internal_object(&self) -> vk::SurfaceKHR {
+    fn internal_object(&self) -> ash::vk::SurfaceKHR {
         self.surface
     }
 }
@@ -685,8 +682,12 @@ impl<W> Drop for Surface<W> {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.instance.pointers();
-            vk.DestroySurfaceKHR(self.instance.internal_object(), self.surface, ptr::null());
+            let fns = self.instance.fns();
+            fns.khr_surface.destroy_surface_khr(
+                self.instance.internal_object(),
+                self.surface,
+                ptr::null(),
+            );
         }
     }
 }

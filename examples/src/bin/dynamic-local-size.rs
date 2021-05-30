@@ -34,7 +34,7 @@ use vulkano::Version;
 fn main() {
     let instance = Instance::new(
         None,
-        Version::major_minor(1, 1),
+        Version::V1_1,
         &InstanceExtensions {
             // This extension is required to obtain physical device metadata
             // about the device workgroup size limits

@@ -16,7 +16,6 @@ use crate::pipeline::layout::PipelineLayoutCreationError;
 use crate::pipeline::layout::PipelineLayoutNotSupersetError;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
-use crate::vk;
 use crate::Error;
 use crate::OomError;
 use crate::SafeDeref;
@@ -46,7 +45,7 @@ pub struct ComputePipeline {
 }
 
 struct Inner {
-    pipeline: vk::Pipeline,
+    pipeline: ash::vk::Pipeline,
     device: Arc<Device>,
 }
 
@@ -123,48 +122,46 @@ impl ComputePipeline {
         Cs: EntryPointAbstract,
         Css: SpecializationConstants,
     {
-        let vk = device.pointers();
+        let fns = device.fns();
 
         let pipeline = {
             let spec_descriptors = Css::descriptors();
-            let specialization = vk::SpecializationInfo {
-                mapEntryCount: spec_descriptors.len() as u32,
-                pMapEntries: spec_descriptors.as_ptr() as *const _,
-                dataSize: mem::size_of_val(spec_constants),
-                pData: spec_constants as *const Css as *const _,
+            let specialization = ash::vk::SpecializationInfo {
+                map_entry_count: spec_descriptors.len() as u32,
+                p_map_entries: spec_descriptors.as_ptr() as *const _,
+                data_size: mem::size_of_val(spec_constants),
+                p_data: spec_constants as *const Css as *const _,
             };
 
-            let stage = vk::PipelineShaderStageCreateInfo {
-                sType: vk::STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,
-                stage: vk::SHADER_STAGE_COMPUTE_BIT,
+            let stage = ash::vk::PipelineShaderStageCreateInfo {
+                flags: ash::vk::PipelineShaderStageCreateFlags::empty(),
+                stage: ash::vk::ShaderStageFlags::COMPUTE,
                 module: shader.module().internal_object(),
-                pName: shader.name().as_ptr(),
-                pSpecializationInfo: if specialization.dataSize == 0 {
+                p_name: shader.name().as_ptr(),
+                p_specialization_info: if specialization.data_size == 0 {
                     ptr::null()
                 } else {
                     &specialization
                 },
+                ..Default::default()
             };
 
-            let infos = vk::ComputePipelineCreateInfo {
-                sType: vk::STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
-                pNext: ptr::null(),
-                flags: 0,
+            let infos = ash::vk::ComputePipelineCreateInfo {
+                flags: ash::vk::PipelineCreateFlags::empty(),
                 stage,
                 layout: pipeline_layout.internal_object(),
-                basePipelineHandle: 0,
-                basePipelineIndex: 0,
+                base_pipeline_handle: ash::vk::Pipeline::null(),
+                base_pipeline_index: 0,
+                ..Default::default()
             };
 
             let cache_handle = match cache {
                 Some(ref cache) => cache.internal_object(),
-                None => vk::NULL_HANDLE,
+                None => ash::vk::PipelineCache::null(),
             };
 
             let mut output = MaybeUninit::uninit();
-            check_errors(vk.CreateComputePipelines(
+            check_errors(fns.v1_0.create_compute_pipelines(
                 device.internal_object(),
                 cache_handle,
                 1,
@@ -240,15 +237,13 @@ where
 /// Opaque object that represents the inside of the compute pipeline. Can be made into a trait
 /// object.
 #[derive(Debug, Copy, Clone)]
-pub struct ComputePipelineSys<'a>(vk::Pipeline, PhantomData<&'a ()>);
+pub struct ComputePipelineSys<'a>(ash::vk::Pipeline, PhantomData<&'a ()>);
 
 unsafe impl<'a> VulkanObject for ComputePipelineSys<'a> {
-    type Object = vk::Pipeline;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
+    type Object = ash::vk::Pipeline;
 
     #[inline]
-    fn internal_object(&self) -> vk::Pipeline {
+    fn internal_object(&self) -> ash::vk::Pipeline {
         self.0
     }
 }
@@ -261,12 +256,10 @@ unsafe impl DeviceOwned for ComputePipeline {
 }
 
 unsafe impl VulkanObject for ComputePipeline {
-    type Object = vk::Pipeline;
-
-    const TYPE: vk::ObjectType = vk::OBJECT_TYPE_PIPELINE;
+    type Object = ash::vk::Pipeline;
 
     #[inline]
-    fn internal_object(&self) -> vk::Pipeline {
+    fn internal_object(&self) -> ash::vk::Pipeline {
         self.inner.pipeline
     }
 }
@@ -275,8 +268,9 @@ impl Drop for Inner {
     #[inline]
     fn drop(&mut self) {
         unsafe {
-            let vk = self.device.pointers();
-            vk.DestroyPipeline(self.device.internal_object(), self.pipeline, ptr::null());
+            let fns = self.device.fns();
+            fns.v1_0
+                .destroy_pipeline(self.device.internal_object(), self.pipeline, ptr::null());
         }
     }
 }

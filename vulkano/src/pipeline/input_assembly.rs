@@ -12,7 +12,6 @@
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 //!
 
-use crate::vk;
 
 /// How the input assembly stage should behave.
 #[derive(Copy, Clone, Debug)]
@@ -59,29 +58,29 @@ pub enum PrimitiveTopology {
     PatchList { vertices_per_patch: u32 },
 }
 
-impl From<PrimitiveTopology> for vk::PrimitiveTopology {
+impl From<PrimitiveTopology> for ash::vk::PrimitiveTopology {
     #[inline]
-    fn from(val: PrimitiveTopology) -> vk::PrimitiveTopology {
+    fn from(val: PrimitiveTopology) -> ash::vk::PrimitiveTopology {
         match val {
-            PrimitiveTopology::PointList => vk::PRIMITIVE_TOPOLOGY_POINT_LIST,
-            PrimitiveTopology::LineList => vk::PRIMITIVE_TOPOLOGY_LINE_LIST,
-            PrimitiveTopology::LineStrip => vk::PRIMITIVE_TOPOLOGY_LINE_STRIP,
-            PrimitiveTopology::TriangleList => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-            PrimitiveTopology::TriangleStrip => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
-            PrimitiveTopology::TriangleFan => vk::PRIMITIVE_TOPOLOGY_TRIANGLE_FAN,
+            PrimitiveTopology::PointList => ash::vk::PrimitiveTopology::POINT_LIST,
+            PrimitiveTopology::LineList => ash::vk::PrimitiveTopology::LINE_LIST,
+            PrimitiveTopology::LineStrip => ash::vk::PrimitiveTopology::LINE_STRIP,
+            PrimitiveTopology::TriangleList => ash::vk::PrimitiveTopology::TRIANGLE_LIST,
+            PrimitiveTopology::TriangleStrip => ash::vk::PrimitiveTopology::TRIANGLE_STRIP,
+            PrimitiveTopology::TriangleFan => ash::vk::PrimitiveTopology::TRIANGLE_FAN,
             PrimitiveTopology::LineListWithAdjacency => {
-                vk::PRIMITIVE_TOPOLOGY_LINE_LIST_WITH_ADJACENCY
+                ash::vk::PrimitiveTopology::LINE_LIST_WITH_ADJACENCY
             }
             PrimitiveTopology::LineStripWithAdjacency => {
-                vk::PRIMITIVE_TOPOLOGY_LINE_STRIP_WITH_ADJACENCY
+                ash::vk::PrimitiveTopology::LINE_STRIP_WITH_ADJACENCY
             }
             PrimitiveTopology::TriangleListWithAdjacency => {
-                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST_WITH_ADJACENCY
+                ash::vk::PrimitiveTopology::TRIANGLE_LIST_WITH_ADJACENCY
             }
             PrimitiveTopology::TriangleStripWithAdjacency => {
-                vk::PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP_WITH_ADJACENCY
+                ash::vk::PrimitiveTopology::TRIANGLE_STRIP_WITH_ADJACENCY
             }
-            PrimitiveTopology::PatchList { .. } => vk::PRIMITIVE_TOPOLOGY_PATCH_LIST,
+            PrimitiveTopology::PatchList { .. } => ash::vk::PrimitiveTopology::PATCH_LIST,
         }
     }
 }
@@ -124,8 +123,15 @@ unsafe impl Index for u32 {
 /// An enumeration of all valid index types.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 #[allow(missing_docs)]
-#[repr(u32)]
+#[repr(i32)]
 pub enum IndexType {
-    U16 = vk::INDEX_TYPE_UINT16,
-    U32 = vk::INDEX_TYPE_UINT32,
+    U16 = ash::vk::IndexType::UINT16.as_raw(),
+    U32 = ash::vk::IndexType::UINT32.as_raw(),
+}
+
+impl From<IndexType> for ash::vk::IndexType {
+    #[inline]
+    fn from(val: IndexType) -> Self {
+        Self::from_raw(val as i32)
+    }
 }

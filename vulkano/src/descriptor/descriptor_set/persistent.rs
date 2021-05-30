@@ -7,12 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
-
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
 use crate::descriptor::descriptor::DescriptorDesc;
@@ -33,9 +27,15 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::image::view::ImageViewAbstract;
+use crate::image::SampleCount;
 use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
 
 /// An immutable descriptor set that is expected to be long-lived.
 ///
@@ -674,9 +674,9 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                     return Err(PersistentDescriptorSetError::NotIdentitySwizzled);
                 }
 
-                if multisampled && image_view.image().samples() == 1 {
+                if multisampled && image_view.image().samples() == SampleCount::Sample1 {
                     return Err(PersistentDescriptorSetError::ExpectedMultisampled);
-                } else if !multisampled && image_view.image().samples() != 1 {
+                } else if !multisampled && image_view.image().samples() != SampleCount::Sample1 {
                     return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
                 }
 
@@ -906,9 +906,9 @@ where
         }
     }
 
-    if desc.multisampled && image_view.image().samples() == 1 {
+    if desc.multisampled && image_view.image().samples() == SampleCount::Sample1 {
         return Err(PersistentDescriptorSetError::ExpectedMultisampled);
-    } else if !desc.multisampled && image_view.image().samples() != 1 {
+    } else if !desc.multisampled && image_view.image().samples() != SampleCount::Sample1 {
         return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
     }
 

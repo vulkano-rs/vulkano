@@ -7,9 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -17,7 +14,10 @@ use crate::format::Format;
 use crate::format::IncompatiblePixelsType;
 use crate::format::Pixel;
 use crate::image::ImageAccess;
+use crate::image::SampleCount;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
 
 /// Type of operation to check.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -80,7 +80,7 @@ where
         }
     }
 
-    if image.samples() != 1 {
+    if image.samples() != SampleCount::Sample1 {
         return Err(CheckCopyBufferImageError::UnexpectedMultisampled);
     }
 

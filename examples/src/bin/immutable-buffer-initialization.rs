@@ -27,7 +27,7 @@ fn main() {
 
     let instance = Instance::new(
         None,
-        Version::major_minor(1, 1),
+        Version::V1_1,
         &InstanceExtensions::none(),
         None,
     )

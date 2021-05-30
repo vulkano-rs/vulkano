@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
 use std::ops::BitOr;
 
 /// An individual data type within an image.
@@ -16,22 +15,22 @@ use std::ops::BitOr;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(u32)]
 pub enum ImageAspect {
-    Color = vk::IMAGE_ASPECT_COLOR_BIT,
-    Depth = vk::IMAGE_ASPECT_DEPTH_BIT,
-    Stencil = vk::IMAGE_ASPECT_STENCIL_BIT,
-    Metadata = vk::IMAGE_ASPECT_METADATA_BIT,
-    Plane0 = vk::IMAGE_ASPECT_PLANE_0_BIT,
-    Plane1 = vk::IMAGE_ASPECT_PLANE_1_BIT,
-    Plane2 = vk::IMAGE_ASPECT_PLANE_2_BIT,
-    MemoryPlane0 = vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT,
-    MemoryPlane1 = vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT,
-    MemoryPlane2 = vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT,
+    Color = ash::vk::ImageAspectFlags::COLOR.as_raw(),
+    Depth = ash::vk::ImageAspectFlags::DEPTH.as_raw(),
+    Stencil = ash::vk::ImageAspectFlags::STENCIL.as_raw(),
+    Metadata = ash::vk::ImageAspectFlags::METADATA.as_raw(),
+    Plane0 = ash::vk::ImageAspectFlags::PLANE_0.as_raw(),
+    Plane1 = ash::vk::ImageAspectFlags::PLANE_1.as_raw(),
+    Plane2 = ash::vk::ImageAspectFlags::PLANE_2.as_raw(),
+    MemoryPlane0 = ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT.as_raw(),
+    MemoryPlane1 = ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT.as_raw(),
+    MemoryPlane2 = ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT.as_raw(),
 }
 
-impl From<ImageAspect> for vk::ImageAspectFlags {
+impl From<ImageAspect> for ash::vk::ImageAspectFlags {
     #[inline]
-    fn from(value: ImageAspect) -> vk::ImageAspectFlags {
-        value as u32
+    fn from(val: ImageAspect) -> Self {
+        Self::from_raw(val as u32)
     }
 }
 
@@ -89,58 +88,58 @@ impl BitOr for ImageAspects {
     }
 }
 
-impl From<ImageAspects> for vk::ImageAspectFlags {
+impl From<ImageAspects> for ash::vk::ImageAspectFlags {
     #[inline]
-    fn from(value: ImageAspects) -> vk::ImageAspectFlags {
-        let mut result = 0;
+    fn from(value: ImageAspects) -> ash::vk::ImageAspectFlags {
+        let mut result = ash::vk::ImageAspectFlags::empty();
         if value.color {
-            result |= vk::IMAGE_ASPECT_COLOR_BIT;
+            result |= ash::vk::ImageAspectFlags::COLOR;
         }
         if value.depth {
-            result |= vk::IMAGE_ASPECT_DEPTH_BIT;
+            result |= ash::vk::ImageAspectFlags::DEPTH;
         }
         if value.stencil {
-            result |= vk::IMAGE_ASPECT_STENCIL_BIT;
+            result |= ash::vk::ImageAspectFlags::STENCIL;
         }
         if value.metadata {
-            result |= vk::IMAGE_ASPECT_METADATA_BIT;
+            result |= ash::vk::ImageAspectFlags::METADATA;
         }
         if value.plane0 {
-            result |= vk::IMAGE_ASPECT_PLANE_0_BIT;
+            result |= ash::vk::ImageAspectFlags::PLANE_0;
         }
         if value.plane1 {
-            result |= vk::IMAGE_ASPECT_PLANE_1_BIT;
+            result |= ash::vk::ImageAspectFlags::PLANE_1;
         }
         if value.plane2 {
-            result |= vk::IMAGE_ASPECT_PLANE_2_BIT;
+            result |= ash::vk::ImageAspectFlags::PLANE_2;
         }
         if value.memory_plane0 {
-            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT;
+            result |= ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT;
         }
         if value.memory_plane1 {
-            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT;
+            result |= ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT;
         }
         if value.memory_plane2 {
-            result |= vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT
+            result |= ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT
         }
         result
     }
 }
 
-impl From<vk::ImageAspectFlags> for ImageAspects {
+impl From<ash::vk::ImageAspectFlags> for ImageAspects {
     #[inline]
-    fn from(val: vk::ImageAspectFlags) -> ImageAspects {
+    fn from(val: ash::vk::ImageAspectFlags) -> ImageAspects {
         ImageAspects {
-            color: (val & vk::IMAGE_ASPECT_COLOR_BIT) != 0,
-            depth: (val & vk::IMAGE_ASPECT_DEPTH_BIT) != 0,
-            stencil: (val & vk::IMAGE_ASPECT_STENCIL_BIT) != 0,
-            metadata: (val & vk::IMAGE_ASPECT_METADATA_BIT) != 0,
-            plane0: (val & vk::IMAGE_ASPECT_PLANE_0_BIT) != 0,
-            plane1: (val & vk::IMAGE_ASPECT_PLANE_1_BIT) != 0,
-            plane2: (val & vk::IMAGE_ASPECT_PLANE_2_BIT) != 0,
-            memory_plane0: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT) != 0,
-            memory_plane1: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT) != 0,
-            memory_plane2: (val & vk::IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT) != 0,
+            color: !(val & ash::vk::ImageAspectFlags::COLOR).is_empty(),
+            depth: !(val & ash::vk::ImageAspectFlags::DEPTH).is_empty(),
+            stencil: !(val & ash::vk::ImageAspectFlags::STENCIL).is_empty(),
+            metadata: !(val & ash::vk::ImageAspectFlags::METADATA).is_empty(),
+            plane0: !(val & ash::vk::ImageAspectFlags::PLANE_0).is_empty(),
+            plane1: !(val & ash::vk::ImageAspectFlags::PLANE_1).is_empty(),
+            plane2: !(val & ash::vk::ImageAspectFlags::PLANE_2).is_empty(),
+            memory_plane0: !(val & ash::vk::ImageAspectFlags::MEMORY_PLANE_0_EXT).is_empty(),
+            memory_plane1: !(val & ash::vk::ImageAspectFlags::MEMORY_PLANE_1_EXT).is_empty(),
+            memory_plane2: !(val & ash::vk::ImageAspectFlags::MEMORY_PLANE_2_EXT).is_empty(),
         }
     }
 }

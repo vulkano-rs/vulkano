@@ -23,6 +23,7 @@ use crate::image::ImageDimensions;
 use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
+use crate::image::SampleCount;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -104,7 +105,13 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), 1)
+        AttachmentImage::new_impl(
+            device,
+            dimensions,
+            format,
+            ImageUsage::none(),
+            SampleCount::Sample1,
+        )
     }
 
     /// Same as `new`, but creates an image that can be used as an input attachment.
@@ -121,7 +128,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
     }
 
     /// Same as `new`, but creates a multisampled image.
@@ -132,7 +139,7 @@ impl AttachmentImage {
     pub fn multisampled(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), samples)
@@ -145,7 +152,7 @@ impl AttachmentImage {
     pub fn multisampled_input_attachment(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
@@ -168,7 +175,7 @@ impl AttachmentImage {
         format: Format,
         usage: ImageUsage,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, usage, 1)
+        AttachmentImage::new_impl(device, dimensions, format, usage, SampleCount::Sample1)
     }
 
     /// Same as `with_usage`, but creates a multisampled image.
@@ -181,7 +188,7 @@ impl AttachmentImage {
     pub fn multisampled_with_usage(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
         usage: ImageUsage,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
@@ -202,7 +209,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
     }
 
     /// Same as `sampled`, except that the image can be used as an input attachment.
@@ -220,7 +227,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
     }
 
     /// Same as `sampled`, but creates a multisampled image.
@@ -233,7 +240,7 @@ impl AttachmentImage {
     pub fn sampled_multisampled(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
@@ -252,7 +259,7 @@ impl AttachmentImage {
     pub fn sampled_multisampled_input_attachment(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
@@ -281,7 +288,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
     }
 
     /// Same as `transient`, except that the image can be used as an input attachment.
@@ -299,7 +306,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
     }
 
     /// Same as `transient`, but creates a multisampled image.
@@ -312,7 +319,7 @@ impl AttachmentImage {
     pub fn transient_multisampled(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
@@ -331,7 +338,7 @@ impl AttachmentImage {
     pub fn transient_multisampled_input_attachment(
         device: Arc<Device>,
         dimensions: [u32; 2],
-        samples: u32,
+        samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         let base_usage = ImageUsage {
@@ -349,7 +356,7 @@ impl AttachmentImage {
         dimensions: [u32; 2],
         format: Format,
         base_usage: ImageUsage,
-        samples: u32,
+        samples: SampleCount,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
 

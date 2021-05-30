@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::vk;
 use std::ops::BitOr;
 
 /// Describes how an image is going to be used. This is **not** just an optimization.
@@ -154,50 +153,52 @@ impl ImageUsage {
     }
 }
 
-impl From<ImageUsage> for vk::ImageUsageFlags {
+impl From<ImageUsage> for ash::vk::ImageUsageFlags {
     #[inline]
     fn from(val: ImageUsage) -> Self {
-        let mut result = 0;
+        let mut result = ash::vk::ImageUsageFlags::empty();
         if val.transfer_source {
-            result |= vk::IMAGE_USAGE_TRANSFER_SRC_BIT;
+            result |= ash::vk::ImageUsageFlags::TRANSFER_SRC;
         }
         if val.transfer_destination {
-            result |= vk::IMAGE_USAGE_TRANSFER_DST_BIT;
+            result |= ash::vk::ImageUsageFlags::TRANSFER_DST;
         }
         if val.sampled {
-            result |= vk::IMAGE_USAGE_SAMPLED_BIT;
+            result |= ash::vk::ImageUsageFlags::SAMPLED;
         }
         if val.storage {
-            result |= vk::IMAGE_USAGE_STORAGE_BIT;
+            result |= ash::vk::ImageUsageFlags::STORAGE;
         }
         if val.color_attachment {
-            result |= vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            result |= ash::vk::ImageUsageFlags::COLOR_ATTACHMENT;
         }
         if val.depth_stencil_attachment {
-            result |= vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+            result |= ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
         }
         if val.transient_attachment {
-            result |= vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
+            result |= ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT;
         }
         if val.input_attachment {
-            result |= vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
+            result |= ash::vk::ImageUsageFlags::INPUT_ATTACHMENT;
         }
         result
     }
 }
 
-impl From<vk::ImageUsageFlags> for ImageUsage {
+impl From<ash::vk::ImageUsageFlags> for ImageUsage {
     #[inline]
-    fn from(val: vk::ImageUsageFlags) -> ImageUsage {
+    fn from(val: ash::vk::ImageUsageFlags) -> ImageUsage {
         ImageUsage {
-            transfer_source: (val & vk::IMAGE_USAGE_TRANSFER_SRC_BIT) != 0,
-            transfer_destination: (val & vk::IMAGE_USAGE_TRANSFER_DST_BIT) != 0,
-            sampled: (val & vk::IMAGE_USAGE_SAMPLED_BIT) != 0,
-            storage: (val & vk::IMAGE_USAGE_STORAGE_BIT) != 0,
-            color_attachment: (val & vk::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) != 0,
-            depth_stencil_attachment: (val & vk::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0,
-            transient_attachment: (val & vk::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) != 0,
-            input_attachment: (val & vk::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) != 0,
+            transfer_source: !(val & ash::vk::ImageUsageFlags::TRANSFER_SRC).is_empty(),
+            transfer_destination: !(val & ash::vk::ImageUsageFlags::TRANSFER_DST).is_empty(),
+            sampled: !(val & ash::vk::ImageUsageFlags::SAMPLED).is_empty(),
+            storage: !(val & ash::vk::ImageUsageFlags::STORAGE).is_empty(),
+            color_attachment: !(val & ash::vk::ImageUsageFlags::COLOR_ATTACHMENT).is_empty(),
+            depth_stencil_attachment: !(val & ash::vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+                .is_empty(),
+            transient_attachment: !(val & ash::vk::ImageUsageFlags::TRANSIENT_ATTACHMENT)
+                .is_empty(),
+            input_attachment: !(val & ash::vk::ImageUsageFlags::INPUT_ATTACHMENT).is_empty(),
         }
     }
 }
