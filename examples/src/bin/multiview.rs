@@ -23,7 +23,8 @@ use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{
-    ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, StorageImage,
+    ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, SampleCount,
+    StorageImage,
 };
 use vulkano::instance::PhysicalDevice;
 use vulkano::instance::{Instance, InstanceExtensions};
@@ -33,12 +34,13 @@ use vulkano::render_pass::{
     AttachmentDesc, Framebuffer, LoadOp, MultiviewDesc, RenderPass, RenderPassDesc, StoreOp,
     Subpass, SubpassDesc,
 };
-use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::{sync, Version};
 
 fn main() {
     let instance = Instance::new(
         None,
+        Version::V1_1,
         &InstanceExtensions {
             khr_get_physical_device_properties2: true, // required to get multiview limits
 
@@ -180,7 +182,7 @@ fn main() {
     let render_pass_description = RenderPassDesc::with_multiview(
         vec![AttachmentDesc {
             format: image.format(),
-            samples: 1,
+            samples: SampleCount::Sample1,
             load: LoadOp::Clear,
             store: StoreOp::Store,
             stencil_load: LoadOp::Clear,

@@ -268,7 +268,7 @@ where
         }
 
         // Compute the dimensions.
-        let mut dimensions = match self.dimensions {
+        let dimensions = match self.dimensions {
             FramebufferBuilderDimensions::Specific(dims)
             | FramebufferBuilderDimensions::AutoIdentical(Some(dims))
             | FramebufferBuilderDimensions::AutoSmaller(Some(dims)) => dims,
@@ -291,6 +291,8 @@ where
             }
         }
 
+        let mut layers = 1;
+
         if let Some(multiview) = self.render_pass.desc().multiview() {
             // There needs to be at least as many layers in the framebuffer
             // as the highest layer that gets referenced by the multiview masking.
@@ -306,7 +308,7 @@ where
             // the underlying images generally have more layers
             // but these layers get used by the multiview functionality.
             if multiview.view_masks.iter().any(|&mask| mask != 0) {
-                dimensions[2] = 1;
+                layers = 1;
             }
         }
 
@@ -320,7 +322,7 @@ where
                 p_attachments: self.raw_ids.as_ptr(),
                 width: dimensions[0],
                 height: dimensions[1],
-                layers: dimensions[2],
+                layers,
                 ..Default::default()
             };
 

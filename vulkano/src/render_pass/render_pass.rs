@@ -425,27 +425,17 @@ impl RenderPass {
                         .iter()
                         .all(|&other_mask| other_mask & mask == 0)));
 
-                vk::RenderPassMultiviewCreateInfo {
-                    sType: vk::STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR,
-                    pNext: ptr::null(),
-                    subpassCount: passes.len() as u32,
-                    pViewMasks: multiview.view_masks.as_ptr(),
-                    dependencyCount: dependencies.len() as u32,
-                    pViewOffsets: multiview.view_offsets.as_ptr(),
-                    correlationMaskCount: multiview.correlation_masks.len() as u32,
-                    pCorrelationMasks: multiview.correlation_masks.as_ptr(),
+                ash::vk::RenderPassMultiviewCreateInfo {
+                    subpass_count: passes.len() as u32,
+                    p_view_masks: multiview.view_masks.as_ptr(),
+                    dependency_count: dependencies.len() as u32,
+                    p_view_offsets: multiview.view_offsets.as_ptr(),
+                    correlation_mask_count: multiview.correlation_masks.len() as u32,
+                    p_correlation_masks: multiview.correlation_masks.as_ptr(),
+                    ..Default::default()
                 }
             }
-            None => vk::RenderPassMultiviewCreateInfo {
-                sType: vk::STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO_KHR,
-                pNext: ptr::null(),
-                subpassCount: 0u32,
-                pViewMasks: ptr::null(),
-                dependencyCount: 0u32,
-                pViewOffsets: ptr::null(),
-                correlationMaskCount: 0u32,
-                pCorrelationMasks: ptr::null(),
-            },
+            None => ash::vk::RenderPassMultiviewCreateInfo::default(),
         };
 
         let render_pass = unsafe {
@@ -453,7 +443,7 @@ impl RenderPass {
                 p_next: if description.multiview().is_none() {
                     ptr::null()
                 } else {
-                    &multiview_create_info as *const vk::RenderPassMultiviewCreateInfo as _
+                    &multiview_create_info as *const _ as _
                 },
                 flags: ash::vk::RenderPassCreateFlags::empty(),
                 attachment_count: attachments.len() as u32,
