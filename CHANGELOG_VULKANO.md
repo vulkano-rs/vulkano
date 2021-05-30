@@ -36,6 +36,7 @@
 - Added support for all core Vulkan 1.1 and 1.2 device features.
 - Updated winit to 0.25.
 - Fixed the teapot example on ArchLinux (GTX 1650).
+- Added support for the SPIR-V draw parameters capability.
 
 # Version 0.23.0 (2021-04-10)
 
