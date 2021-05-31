@@ -91,7 +91,6 @@
 //! TODO: write
 
 pub use self::extensions::DeviceExtensions;
-pub use self::extensions::RawDeviceExtensions;
 pub use self::features::Features;
 pub(crate) use self::features::FeaturesFfi;
 use crate::check_errors;
@@ -121,6 +120,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error;
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::fmt;
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
@@ -187,15 +187,14 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I, Ext>(
+    pub fn new<'a, I>(
         phys: PhysicalDevice,
         requested_features: &Features,
-        extensions: Ext,
+        extensions: &DeviceExtensions,
         queue_families: I,
     ) -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
     where
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
-        Ext: Into<RawDeviceExtensions>,
     {
         let instance = phys.instance();
         let fns_i = instance.fns();
@@ -203,19 +202,10 @@ impl Device {
         let max_api_version = instance.max_api_version();
         let api_version = std::cmp::min(max_api_version, phys.api_version());
 
-        let extensions = extensions.into();
-        let extensions_list = extensions
-            .iter()
-            .map(|extension| extension.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
-
         // Check if the extensions are correct
-        let extensions_struct = DeviceExtensions::from(&extensions);
-        extensions_struct.check_requirements(api_version, instance.loaded_extensions())?;
+        extensions.check_requirements(api_version, instance.loaded_extensions())?;
 
-        if extensions_struct.khr_buffer_device_address
-            && extensions_struct.ext_buffer_device_address
-        {
+        if extensions.khr_buffer_device_address && extensions.ext_buffer_device_address {
             panic!("khr_buffer_device_address and ext_buffer_device_address cannot be enabled together");
         }
 
@@ -244,27 +234,27 @@ impl Device {
         // silently enable them here.
         // TODO: Maybe just not allow enabling promoted extensions?
         if api_version >= Version::V1_2 {
-            if extensions_struct.khr_shader_draw_parameters {
+            if extensions.khr_shader_draw_parameters {
                 requested_features.shader_draw_parameters = true;
             }
 
-            if extensions_struct.khr_draw_indirect_count {
+            if extensions.khr_draw_indirect_count {
                 requested_features.draw_indirect_count = true;
             }
 
-            if extensions_struct.khr_sampler_mirror_clamp_to_edge {
+            if extensions.khr_sampler_mirror_clamp_to_edge {
                 requested_features.sampler_mirror_clamp_to_edge = true;
             }
 
-            if extensions_struct.ext_descriptor_indexing {
+            if extensions.ext_descriptor_indexing {
                 requested_features.descriptor_indexing = true;
             }
 
-            if extensions_struct.ext_sampler_filter_minmax {
+            if extensions.ext_sampler_filter_minmax {
                 requested_features.sampler_filter_minmax = true;
             }
 
-            if extensions_struct.ext_shader_viewport_index_layer {
+            if extensions.ext_shader_viewport_index_layer {
                 requested_features.shader_output_viewport_index = true;
                 requested_features.shader_output_layer = true;
             }
@@ -343,9 +333,15 @@ impl Device {
             // Because there's no way to query the list of layers enabled for an instance, we need
             // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
             // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-            let layers_ptr = instance
+            let layers_ptrs = instance
                 .loaded_layers()
                 .map(|layer| layer.as_ptr())
+                .collect::<SmallVec<[_; 16]>>();
+
+            let extensions_strings: Vec<CString> = extensions.into();
+            let extensions_ptrs = extensions_strings
+                .iter()
+                .map(|extension| extension.as_ptr())
                 .collect::<SmallVec<[_; 16]>>();
 
             let has_khr_get_physical_device_properties2 = instance
@@ -361,10 +357,10 @@ impl Device {
                 flags: ash::vk::DeviceCreateFlags::empty(),
                 queue_create_info_count: queues.len() as u32,
                 p_queue_create_infos: queues.as_ptr(),
-                enabled_layer_count: layers_ptr.len() as u32,
-                pp_enabled_layer_names: layers_ptr.as_ptr(),
-                enabled_extension_count: extensions_list.len() as u32,
-                pp_enabled_extension_names: extensions_list.as_ptr(),
+                enabled_layer_count: layers_ptrs.len() as u32,
+                pp_enabled_layer_names: layers_ptrs.as_ptr(),
+                enabled_extension_count: extensions_ptrs.len() as u32,
+                pp_enabled_extension_names: extensions_ptrs.as_ptr(),
                 p_enabled_features: if has_khr_get_physical_device_properties2 {
                     ptr::null()
                 } else {
@@ -413,7 +409,7 @@ impl Device {
                 robust_buffer_access: true,
                 ..requested_features.clone()
             },
-            extensions: (&extensions).into(),
+            extensions: extensions.clone(),
             active_queue_families,
             allocation_count: Mutex::new(0),
             fence_pool: Mutex::new(Vec::new()),
@@ -431,7 +427,7 @@ impl Device {
         Ok((device, queues))
     }
 
-    /// Returns the Vulkan version supported by this `Device`.
+    /// Returns the Vulkan version supported by the device.
     ///
     /// This is the lower of the
     /// [physical device's supported version](crate::instance::PhysicalDevice::api_version) and
@@ -491,13 +487,13 @@ impl Device {
         )
     }
 
-    /// Returns the features that are enabled in the device.
+    /// Returns the features that have been enabled on the device.
     #[inline]
     pub fn enabled_features(&self) -> &Features {
         &self.features
     }
 
-    /// Returns the list of extensions that have been loaded.
+    /// Returns the extensions that have been enabled on the device.
     #[inline]
     pub fn loaded_extensions(&self) -> &DeviceExtensions {
         &self.extensions

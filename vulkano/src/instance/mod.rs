@@ -52,7 +52,6 @@
 //! `device` module for more info.
 
 pub use self::extensions::InstanceExtensions;
-pub use self::extensions::RawInstanceExtensions;
 pub use self::instance::ApplicationInfo;
 pub use self::instance::Instance;
 pub use self::instance::InstanceCreationError;

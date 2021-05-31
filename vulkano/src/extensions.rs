@@ -17,7 +17,6 @@ use std::fmt;
 macro_rules! extensions {
     (
         $sname:ident,
-        $rawname:ident,
         $($member:ident => {
             doc: $doc:expr,
             raw: $raw:expr,
@@ -108,6 +107,30 @@ macro_rules! extensions {
             }
         }
 
+        impl<'a, I> From<I> for $sname where I: IntoIterator<Item = &'a CStr> {
+            fn from(names: I) -> Self {
+                let mut extensions = Self::none();
+                for name in names {
+                    match name.to_bytes() {
+                        $(
+                            $raw => { extensions.$member = true; }
+                        )*
+                        _ => (),
+                    }
+                }
+                extensions
+            }
+        }
+
+        impl<'a> From<&'a $sname> for Vec<CString> {
+            fn from(x: &'a $sname) -> Self {
+                let mut data = Self::new();
+                $(if x.$member { data.push(CString::new(&$raw[..]).unwrap()); })*
+                data
+            }
+        }
+
+        /*
         /// Set of extensions, not restricted to those vulkano knows about.
         ///
         /// This is useful when interacting with external code that has statically-unknown extension
@@ -182,7 +205,7 @@ macro_rules! extensions {
                 )*
                 extensions
             }
-        }
+        }*/
     );
 }
 
