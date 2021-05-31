@@ -955,6 +955,38 @@ where
             None
         };
 
+        if let Some(multiview) = self
+            .subpass
+            .as_ref()
+            .unwrap()
+            .render_pass()
+            .desc()
+            .multiview()
+            .as_ref()
+        {
+            if multiview.used_layer_count() > 0 {
+                if self.geometry_shader.is_some()
+                    && !device
+                        .physical_device()
+                        .supported_features()
+                        .multiview_geometry_shader
+                {
+                    return Err(GraphicsPipelineCreationError::MultiviewGeometryShaderNotSupported);
+                }
+
+                if self.tessellation.is_some()
+                    && !device
+                        .physical_device()
+                        .supported_features()
+                        .multiview_tessellation_shader
+                {
+                    return Err(
+                        GraphicsPipelineCreationError::MultiviewTessellationShaderNotSupported,
+                    );
+                }
+            }
+        }
+
         let pipeline = unsafe {
             let infos = ash::vk::GraphicsPipelineCreateInfo {
                 flags: ash::vk::PipelineCreateFlags::empty(), // TODO: some flags are available but none are critical

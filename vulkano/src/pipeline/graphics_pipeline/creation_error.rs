@@ -164,6 +164,12 @@ pub enum GraphicsPipelineCreationError {
 
     /// The `alpha_to_one` feature must be enabled in order to use alpha-to-one.
     AlphaToOneFeatureNotEnabled,
+
+    /// The device doesn't support using the `multiview´ feature with geometry shaders.
+    MultiviewGeometryShaderNotSupported,
+
+    /// The device doesn't support using the `multiview´ feature with tessellation shaders.
+    MultiviewTessellationShaderNotSupported,
 }
 
 impl error::Error for GraphicsPipelineCreationError {
@@ -299,6 +305,12 @@ impl fmt::Display for GraphicsPipelineCreationError {
                 }
                 GraphicsPipelineCreationError::AlphaToOneFeatureNotEnabled => {
                     "the `alpha_to_one` feature must be enabled in order to use alpha-to-one"
+                }
+                GraphicsPipelineCreationError::MultiviewGeometryShaderNotSupported => {
+                    "the device doesn't support using the `multiview´ feature with geometry shaders"
+                }
+                GraphicsPipelineCreationError::MultiviewTessellationShaderNotSupported => {
+                    "the device doesn't support using the `multiview´ feature with tessellation shaders"
                 }
             }
         )

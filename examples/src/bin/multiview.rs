@@ -247,20 +247,18 @@ fn main() {
 
     let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
-    let buffer1 = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
-    )
-    .unwrap();
-    let buffer2 = CpuAccessibleBuffer::from_iter(
-        device.clone(),
-        BufferUsage::all(),
-        false,
-        (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
-    )
-    .unwrap();
+    let create_buffer = || {
+        CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage::all(),
+            false,
+            (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
+        )
+            .unwrap()
+    };
+    
+    let buffer1 = create_buffer();
+    let buffer2 = create_buffer();
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),

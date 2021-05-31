@@ -379,16 +379,8 @@ impl RenderPass {
 
         let multiview_create_info = match description.multiview() {
             Some(multiview) => {
-                // TODO don't panic
-
-                assert!(device.loaded_extensions().khr_multiview);
-                assert!(
-                    device
-                        .instance()
-                        .loaded_extensions()
-                        .khr_get_physical_device_properties2
-                );
-                assert!(
+                debug_assert!(device.loaded_extensions().khr_multiview);
+                debug_assert!(
                     device
                         .physical_device()
                         .extended_properties()
@@ -396,28 +388,31 @@ impl RenderPass {
                         .unwrap_or(0)
                         >= multiview.used_layer_count()
                 );
-                // TODO check geometry and tesselation shader compatibility
 
                 // each subpass must have a corresponding view mask
-                assert_eq!(multiview.view_masks.len(), passes.len());
+                // or there are no view masks at all (which is probably a bug because
+                // nothing will get drawn)
+                debug_assert!(
+                    multiview.view_masks.len() == passes.len() || multiview.view_masks.is_empty()
+                );
 
                 // either all subpasses must have a non-zero view mask or all must be zero
                 // (multiview is considered to be disabled when all view masks are zero)
-                assert!(
+                debug_assert!(
                     multiview.view_masks.iter().all(|&mask| mask != 0)
                         || multiview.view_masks.iter().all(|&mask| mask == 0)
                 );
 
                 // one view offset for each dependency
-                assert_eq!(dependencies.len(), multiview.view_offsets.len());
-                // TODO should be checked: each view offset controls which views in the source subpass the views in the destination subpass depend on
-
-                // TODO VK_DEPENDENCY_VIEW_LOCAL_BIT stuff
-                // TODO deal with "When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined"
+                // or no view offsets at all
+                debug_assert!(
+                    dependencies.len() == multiview.view_offsets.len()
+                        || multiview.view_offsets.is_empty()
+                );
 
                 // ensure that each view index is contained in at most one correlation mask
                 // by checking for any overlap in all pairs of correlation masks
-                assert!(multiview
+                debug_assert!(multiview
                     .correlation_masks
                     .iter()
                     .enumerate()
