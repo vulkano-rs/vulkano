@@ -96,7 +96,7 @@ pub(crate) use self::features::FeaturesFfi;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
-use crate::extensions::ExtensionRequirementError;
+use crate::extensions::ExtensionRestrictionError;
 use crate::fns::DeviceFunctions;
 use crate::format::Format;
 use crate::image::ImageCreateFlags;
@@ -204,10 +204,6 @@ impl Device {
 
         // Check if the extensions are correct
         extensions.check_requirements(api_version, instance.loaded_extensions())?;
-
-        if extensions.khr_buffer_device_address && extensions.ext_buffer_device_address {
-            panic!("khr_buffer_device_address and ext_buffer_device_address cannot be enabled together");
-        }
 
         let mut requested_features = requested_features.clone();
 
@@ -808,8 +804,8 @@ pub enum DeviceCreationError {
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
-    /// A requirement for an extension was not met.
-    ExtensionRequirementNotMet(ExtensionRequirementError),
+    /// A restriction for an extension was not met.
+    ExtensionRestrictionNotMet(ExtensionRestrictionError),
 }
 
 impl error::Error for DeviceCreationError {}
@@ -850,7 +846,7 @@ impl fmt::Display for DeviceCreationError {
             DeviceCreationError::TooManyObjects => {
                 write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
             }
-            DeviceCreationError::ExtensionRequirementNotMet(err) => err.fmt(fmt),
+            DeviceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
         }
     }
 }
@@ -871,10 +867,10 @@ impl From<Error> for DeviceCreationError {
     }
 }
 
-impl From<ExtensionRequirementError> for DeviceCreationError {
+impl From<ExtensionRestrictionError> for DeviceCreationError {
     #[inline]
-    fn from(err: ExtensionRequirementError) -> Self {
-        Self::ExtensionRequirementNotMet(err)
+    fn from(err: ExtensionRestrictionError) -> Self {
+        Self::ExtensionRestrictionNotMet(err)
     }
 }
 

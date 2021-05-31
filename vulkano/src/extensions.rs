@@ -272,50 +272,57 @@ impl From<Error> for SupportedExtensionsError {
 
 /// An error that can happen when enabling an extension on an instance or device.
 #[derive(Clone, Copy, Debug)]
-pub struct ExtensionRequirementError {
+pub struct ExtensionRestrictionError {
     /// The extension in question.
     pub extension: &'static str,
-    /// The requirement that was not met.
-    pub requirement: ExtensionRequirement,
+    /// The restriction that was not met.
+    pub restriction: ExtensionRestriction,
 }
 
-impl error::Error for ExtensionRequirementError {}
+impl error::Error for ExtensionRestrictionError {}
 
-impl fmt::Display for ExtensionRequirementError {
+impl fmt::Display for ExtensionRestrictionError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
             fmt,
-            "a requirement for the extension {} was not met: {}",
-            self.extension, self.requirement,
+            "a restriction for the extension {} was not met: {}",
+            self.extension, self.restriction,
         )
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum ExtensionRequirement {
+pub enum ExtensionRestriction {
     /// Requires a minimum Vulkan API version.
-    Core(Version),
-    /// Requires a device extension to be also enabled.
-    DeviceExtension(&'static str),
-    /// Requires an instance extension to be also enabled.
-    InstanceExtension(&'static str),
+    RequiresCore(Version),
+    /// Requires a device extension to be enabled.
+    RequiresDeviceExtension(&'static str),
+    /// Requires an instance extension to be enabled.
+    RequiresInstanceExtension(&'static str),
+    /// Requires a device extension to be disabled.
+    ConflictsDeviceExtension(&'static str),
 }
 
-impl fmt::Display for ExtensionRequirement {
+impl fmt::Display for ExtensionRestriction {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
-            ExtensionRequirement::Core(version) => {
+            ExtensionRestriction::RequiresCore(version) => {
                 write!(
                     fmt,
-                    "Vulkan API version {}.{}",
+                    "requires Vulkan API version {}.{}",
                     version.major, version.minor
                 )
             }
-            ExtensionRequirement::DeviceExtension(ext) => write!(fmt, "device extension {}", ext),
-            ExtensionRequirement::InstanceExtension(ext) => {
-                write!(fmt, "instance extension {}", ext)
+            ExtensionRestriction::RequiresDeviceExtension(ext) => {
+                write!(fmt, "requires device extension {} to be enabled", ext)
+            }
+            ExtensionRestriction::RequiresInstanceExtension(ext) => {
+                write!(fmt, "requires instance extension {} to be enabled", ext)
+            }
+            ExtensionRestriction::ConflictsDeviceExtension(ext) => {
+                write!(fmt, "requires device extension {} to be disabled", ext)
             }
         }
     }

@@ -9,7 +9,7 @@
 
 use crate::check_errors;
 use crate::extensions::{
-    ExtensionRequirement, ExtensionRequirementError, SupportedExtensionsError,
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
@@ -41,20 +41,20 @@ macro_rules! instance_extensions {
 
         impl InstanceExtensions {
             /// Checks enabled extensions against the instance version and each other.
-            pub(super) fn check_requirements(&self, api_version: Version) -> Result<(), ExtensionRequirementError> {
+            pub(super) fn check_requirements(&self, api_version: Version) -> Result<(), ExtensionRestrictionError> {
                 $(
                     if self.$member {
                         if api_version < $requires_core {
-                            return Err(ExtensionRequirementError {
+                            return Err(ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                requirement: ExtensionRequirement::Core($requires_core),
+                                restriction: ExtensionRestriction::RequiresCore($requires_core),
                             });
                         } else {
                             $(
                                 if !self.$requires_extension {
-                                    return Err(ExtensionRequirementError {
+                                    return Err(ExtensionRestrictionError {
                                         extension: stringify!($member),
-                                        requirement: ExtensionRequirement::InstanceExtension(stringify!($requires_extension)),
+                                        restriction: ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_extension)),
                                     });
                                 }
                             )*

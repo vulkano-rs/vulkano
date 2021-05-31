@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::extensions::ExtensionRequirementError;
+use crate::extensions::ExtensionRestrictionError;
 use crate::fns::InstanceFunctions;
 use crate::instance::loader;
 use crate::instance::loader::FunctionPointers;
@@ -607,8 +607,8 @@ pub enum InstanceCreationError {
     ExtensionNotPresent,
     /// The version requested is not supported by the implementation.
     IncompatibleDriver,
-    /// A requirement for an extension was not met.
-    ExtensionRequirementNotMet(ExtensionRequirementError),
+    /// A restriction for an extension was not met.
+    ExtensionRestrictionNotMet(ExtensionRestrictionError),
 }
 
 impl error::Error for InstanceCreationError {
@@ -634,7 +634,7 @@ impl fmt::Display for InstanceCreationError {
             InstanceCreationError::LayerNotPresent => write!(fmt, "layer not present"),
             InstanceCreationError::ExtensionNotPresent => write!(fmt, "extension not present"),
             InstanceCreationError::IncompatibleDriver => write!(fmt, "incompatible driver"),
-            InstanceCreationError::ExtensionRequirementNotMet(err) => err.fmt(fmt),
+            InstanceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
         }
     }
 }
@@ -653,10 +653,10 @@ impl From<LoadingError> for InstanceCreationError {
     }
 }
 
-impl From<ExtensionRequirementError> for InstanceCreationError {
+impl From<ExtensionRestrictionError> for InstanceCreationError {
     #[inline]
-    fn from(err: ExtensionRequirementError) -> Self {
-        Self::ExtensionRequirementNotMet(err)
+    fn from(err: ExtensionRestrictionError) -> Self {
+        Self::ExtensionRestrictionNotMet(err)
     }
 }
 

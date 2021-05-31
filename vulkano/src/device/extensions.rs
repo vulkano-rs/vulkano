@@ -9,7 +9,7 @@
 
 use crate::check_errors;
 use crate::extensions::SupportedExtensionsError;
-use crate::extensions::{ExtensionRequirement, ExtensionRequirementError};
+use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError};
 use crate::instance::{InstanceExtensions, PhysicalDevice};
 use crate::Version;
 use crate::VulkanObject;
@@ -26,6 +26,7 @@ macro_rules! device_extensions {
             requires_core: $requires_core:expr,
             requires_device_extensions: [$($requires_device_extension:ident),*],
             requires_instance_extensions: [$($requires_instance_extension:ident),*],
+            conflicts_device_extensions: [$($conflicts_device_extension:ident),*],
         },)*
     ) => (
         extensions! {
@@ -41,33 +42,42 @@ macro_rules! device_extensions {
 
         impl DeviceExtensions {
             /// Checks enabled extensions against the device version, instance extensions and each other.
-            pub(super) fn check_requirements(&self, api_version: Version, instance_extensions: &InstanceExtensions) -> Result<(), ExtensionRequirementError> {
+            pub(super) fn check_requirements(&self, api_version: Version, instance_extensions: &InstanceExtensions) -> Result<(), ExtensionRestrictionError> {
                 $(
                     if self.$member {
                         if api_version < $requires_core {
-                            return Err(ExtensionRequirementError {
+                            return Err(ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                requirement: ExtensionRequirement::Core($requires_core),
+                                restriction: ExtensionRestriction::RequiresCore($requires_core),
                             });
-                        } else {
-                            $(
-                                if !self.$requires_device_extension {
-                                    return Err(ExtensionRequirementError {
-                                        extension: stringify!($member),
-                                        requirement: ExtensionRequirement::DeviceExtension(stringify!($requires_device_extension)),
-                                    });
-                                }
-                            )*
-
-                            $(
-                                if !instance_extensions.$requires_instance_extension {
-                                    return Err(ExtensionRequirementError {
-                                        extension: stringify!($member),
-                                        requirement: ExtensionRequirement::InstanceExtension(stringify!($requires_instance_extension)),
-                                    });
-                                }
-                            )*
                         }
+
+                        $(
+                            if !self.$requires_device_extension {
+                                return Err(ExtensionRestrictionError {
+                                    extension: stringify!($member),
+                                    restriction: ExtensionRestriction::RequiresDeviceExtension(stringify!($requires_device_extension)),
+                                });
+                            }
+                        )*
+
+                        $(
+                            if !instance_extensions.$requires_instance_extension {
+                                return Err(ExtensionRestrictionError {
+                                    extension: stringify!($member),
+                                    restriction: ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_instance_extension)),
+                                });
+                            }
+                        )*
+
+                        $(
+                            if self.$conflicts_device_extension {
+                                return Err(ExtensionRestrictionError {
+                                    extension: stringify!($member),
+                                    restriction: ExtensionRestriction::ConflictsDeviceExtension(stringify!($conflicts_device_extension)),
+                                });
+                            }
+                        )*
                     }
                 )*
                 Ok(())
@@ -170,26 +180,28 @@ device_extensions! {
     khr_16bit_storage => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_16bit_storage.html)
-			- Requires device extensions: [`khr_storage_buffer_storage_class`](crate::device::DeviceExtensions::khr_storage_buffer_storage_class)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_storage_buffer_storage_class`](crate::device::DeviceExtensions::khr_storage_buffer_storage_class)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_16bit_storage",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_storage_buffer_storage_class],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_8bit_storage => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_8bit_storage.html)
-			- Requires device extensions: [`khr_storage_buffer_storage_class`](crate::device::DeviceExtensions::khr_storage_buffer_storage_class)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_storage_buffer_storage_class`](crate::device::DeviceExtensions::khr_storage_buffer_storage_class)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_8bit_storage",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_storage_buffer_storage_class],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_acceleration_structure => {
         doc: "
@@ -201,6 +213,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [ext_descriptor_indexing, khr_buffer_device_address, khr_deferred_host_operations],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_bind_memory2 => {
         doc: "
@@ -211,17 +224,20 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_buffer_device_address => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_buffer_device_address.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Conflicts with device extension: [`ext_buffer_device_address`](crate::device::DeviceExtensions::ext_buffer_device_address)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_buffer_device_address",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [ext_buffer_device_address],
     },
     khr_copy_commands2 => {
         doc: "
@@ -231,6 +247,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_create_renderpass2 => {
         doc: "
@@ -242,17 +259,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_multiview, khr_maintenance2],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_dedicated_allocation => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_dedicated_allocation.html)
-			- Requires device extensions: [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
+			- Requires device extension: [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_dedicated_allocation",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_get_memory_requirements2],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_deferred_host_operations => {
         doc: "
@@ -262,17 +281,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_depth_stencil_resolve => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_depth_stencil_resolve.html)
-			- Requires device extensions: [`khr_create_renderpass2`](crate::device::DeviceExtensions::khr_create_renderpass2)
+			- Requires device extension: [`khr_create_renderpass2`](crate::device::DeviceExtensions::khr_create_renderpass2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_depth_stencil_resolve",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_create_renderpass2],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_descriptor_update_template => {
         doc: "
@@ -283,28 +304,31 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_device_group => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_device_group.html)
-			- Requires instance extensions: [`khr_device_group_creation`](crate::instance::InstanceExtensions::khr_device_group_creation)
+			- Requires instance extension: [`khr_device_group_creation`](crate::instance::InstanceExtensions::khr_device_group_creation)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_device_group",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_device_group_creation],
+        conflicts_device_extensions: [],
     },
     khr_display_swapchain => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_display_swapchain.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
-			- Requires instance extensions: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires instance extension: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
 		",
         raw: b"VK_KHR_display_swapchain",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_display],
+        conflicts_device_extensions: [],
     },
     khr_draw_indirect_count => {
         doc: "
@@ -315,121 +339,133 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_driver_properties => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_driver_properties.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_driver_properties",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_external_fence => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_fence.html)
-			- Requires instance extensions: [`khr_external_fence_capabilities`](crate::instance::InstanceExtensions::khr_external_fence_capabilities)
+			- Requires instance extension: [`khr_external_fence_capabilities`](crate::instance::InstanceExtensions::khr_external_fence_capabilities)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_external_fence",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_external_fence_capabilities],
+        conflicts_device_extensions: [],
     },
     khr_external_fence_fd => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_fence_fd.html)
-			- Requires device extensions: [`khr_external_fence`](crate::device::DeviceExtensions::khr_external_fence)
+			- Requires device extension: [`khr_external_fence`](crate::device::DeviceExtensions::khr_external_fence)
 		",
         raw: b"VK_KHR_external_fence_fd",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_fence],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_external_fence_win32 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_fence_win32.html)
-			- Requires device extensions: [`khr_external_fence`](crate::device::DeviceExtensions::khr_external_fence)
+			- Requires device extension: [`khr_external_fence`](crate::device::DeviceExtensions::khr_external_fence)
 		",
         raw: b"VK_KHR_external_fence_win32",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_fence],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_external_memory => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_memory.html)
-			- Requires instance extensions: [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
+			- Requires instance extension: [`khr_external_memory_capabilities`](crate::instance::InstanceExtensions::khr_external_memory_capabilities)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_external_memory",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_external_memory_capabilities],
+        conflicts_device_extensions: [],
     },
     khr_external_memory_fd => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_memory_fd.html)
-			- Requires device extensions: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+			- Requires device extension: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
 		",
         raw: b"VK_KHR_external_memory_fd",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_external_memory_win32 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_memory_win32.html)
-			- Requires device extensions: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+			- Requires device extension: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
 		",
         raw: b"VK_KHR_external_memory_win32",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_external_semaphore => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_semaphore.html)
-			- Requires instance extensions: [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
+			- Requires instance extension: [`khr_external_semaphore_capabilities`](crate::instance::InstanceExtensions::khr_external_semaphore_capabilities)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_external_semaphore",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_external_semaphore_capabilities],
+        conflicts_device_extensions: [],
     },
     khr_external_semaphore_fd => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_semaphore_fd.html)
-			- Requires device extensions: [`khr_external_semaphore`](crate::device::DeviceExtensions::khr_external_semaphore)
+			- Requires device extension: [`khr_external_semaphore`](crate::device::DeviceExtensions::khr_external_semaphore)
 		",
         raw: b"VK_KHR_external_semaphore_fd",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_semaphore],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_external_semaphore_win32 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_semaphore_win32.html)
-			- Requires device extensions: [`khr_external_semaphore`](crate::device::DeviceExtensions::khr_external_semaphore)
+			- Requires device extension: [`khr_external_semaphore`](crate::device::DeviceExtensions::khr_external_semaphore)
 		",
         raw: b"VK_KHR_external_semaphore_win32",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_semaphore],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_fragment_shading_rate => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_fragment_shading_rate.html)
-			- Requires device extensions: [`khr_create_renderpass2`](crate::device::DeviceExtensions::khr_create_renderpass2)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_create_renderpass2`](crate::device::DeviceExtensions::khr_create_renderpass2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_fragment_shading_rate",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_create_renderpass2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_get_memory_requirements2 => {
         doc: "
@@ -440,6 +476,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_image_format_list => {
         doc: "
@@ -450,6 +487,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_imageless_framebuffer => {
         doc: "
@@ -461,16 +499,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance2, khr_image_format_list],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_incremental_present => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_incremental_present.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
 		",
         raw: b"VK_KHR_incremental_present",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_maintenance1 => {
         doc: "
@@ -481,6 +521,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_maintenance2 => {
         doc: "
@@ -491,48 +532,53 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_maintenance3 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_maintenance3.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_maintenance3",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_multiview => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_multiview.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_multiview",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_performance_query => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_performance_query.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_performance_query",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_pipeline_executable_properties => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_pipeline_executable_properties.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_pipeline_executable_properties",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_pipeline_library => {
         doc: "
@@ -542,26 +588,29 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_portability_subset => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_portability_subset.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_portability_subset",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_push_descriptor => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_push_descriptor.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_push_descriptor",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_ray_query => {
         doc: "
@@ -573,6 +622,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [khr_spirv_1_4, khr_acceleration_structure],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_ray_tracing_pipeline => {
         doc: "
@@ -584,6 +634,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [khr_spirv_1_4, khr_acceleration_structure],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_relaxed_block_layout => {
         doc: "
@@ -594,6 +645,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_sampler_mirror_clamp_to_edge => {
         doc: "
@@ -604,51 +656,56 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_sampler_ycbcr_conversion => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_sampler_ycbcr_conversion.html)
 			- Requires device extensions: [`khr_maintenance1`](crate::device::DeviceExtensions::khr_maintenance1), [`khr_bind_memory2`](crate::device::DeviceExtensions::khr_bind_memory2), [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_sampler_ycbcr_conversion",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance1, khr_bind_memory2, khr_get_memory_requirements2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_separate_depth_stencil_layouts => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_separate_depth_stencil_layouts.html)
-			- Requires device extensions: [`khr_create_renderpass2`](crate::device::DeviceExtensions::khr_create_renderpass2)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_create_renderpass2`](crate::device::DeviceExtensions::khr_create_renderpass2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_separate_depth_stencil_layouts",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_create_renderpass2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_shader_atomic_int64 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shader_atomic_int64.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_shader_atomic_int64",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_shader_clock => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shader_clock.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_shader_clock",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_shader_draw_parameters => {
         doc: "
@@ -659,28 +716,31 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_shader_float16_int8 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shader_float16_int8.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_shader_float16_int8",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_shader_float_controls => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shader_float_controls.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_shader_float_controls",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_shader_non_semantic_info => {
         doc: "
@@ -690,6 +750,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_shader_subgroup_extended_types => {
         doc: "
@@ -701,39 +762,43 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_shader_terminate_invocation => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shader_terminate_invocation.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_shader_terminate_invocation",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_shared_presentable_image => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_shared_presentable_image.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
 			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2), [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)
 		",
         raw: b"VK_KHR_shared_presentable_image",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_get_physical_device_properties2, khr_get_surface_capabilities2],
+        conflicts_device_extensions: [],
     },
     khr_spirv_1_4 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_spirv_1_4.html)
 			- Requires Vulkan 1.1
-			- Requires device extensions: [`khr_shader_float_controls`](crate::device::DeviceExtensions::khr_shader_float_controls)
+			- Requires device extension: [`khr_shader_float_controls`](crate::device::DeviceExtensions::khr_shader_float_controls)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_spirv_1_4",
         requires_core: Version::V1_1,
         requires_device_extensions: [khr_shader_float_controls],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_storage_buffer_storage_class => {
         doc: "
@@ -744,16 +809,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_swapchain => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_swapchain.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_swapchain",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_surface],
+        conflicts_device_extensions: [],
     },
     khr_swapchain_mutable_format => {
         doc: "
@@ -764,40 +831,44 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain, khr_maintenance2, khr_image_format_list],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_timeline_semaphore => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_timeline_semaphore.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_timeline_semaphore",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_uniform_buffer_standard_layout => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_uniform_buffer_standard_layout.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_KHR_uniform_buffer_standard_layout",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_variable_pointers => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_variable_pointers.html)
-			- Requires device extensions: [`khr_storage_buffer_storage_class`](crate::device::DeviceExtensions::khr_storage_buffer_storage_class)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_storage_buffer_storage_class`](crate::device::DeviceExtensions::khr_storage_buffer_storage_class)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_variable_pointers",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_storage_buffer_storage_class],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_vulkan_memory_model => {
         doc: "
@@ -808,56 +879,62 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_win32_keyed_mutex => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_win32_keyed_mutex.html)
-			- Requires device extensions: [`khr_external_memory_win32`](crate::device::DeviceExtensions::khr_external_memory_win32)
+			- Requires device extension: [`khr_external_memory_win32`](crate::device::DeviceExtensions::khr_external_memory_win32)
 		",
         raw: b"VK_KHR_win32_keyed_mutex",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory_win32],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     khr_workgroup_memory_explicit_layout => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_workgroup_memory_explicit_layout.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_workgroup_memory_explicit_layout",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     khr_zero_initialize_workgroup_memory => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_zero_initialize_workgroup_memory.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_KHR_zero_initialize_workgroup_memory",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_4444_formats => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_4444_formats.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_4444_formats",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_astc_decode_mode => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_astc_decode_mode.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_astc_decode_mode",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_blend_operation_advanced => {
         doc: "
@@ -867,17 +944,20 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_buffer_device_address => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_buffer_device_address.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Conflicts with device extension: [`khr_buffer_device_address`](crate::device::DeviceExtensions::khr_buffer_device_address)
 			- Deprecated by [`khr_buffer_device_address`](crate::device::DeviceExtensions::khr_buffer_device_address)
 		",
         raw: b"VK_EXT_buffer_device_address",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [khr_buffer_device_address],
     },
     ext_calibrated_timestamps => {
         doc: "
@@ -887,6 +967,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_conditional_rendering => {
         doc: "
@@ -896,16 +977,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_conservative_rasterization => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_conservative_rasterization.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_conservative_rasterization",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_custom_border_color => {
         doc: "
@@ -915,17 +998,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_debug_marker => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_debug_marker.html)
-			- Requires instance extensions: [`ext_debug_report`](crate::instance::InstanceExtensions::ext_debug_report)
+			- Requires instance extension: [`ext_debug_report`](crate::instance::InstanceExtensions::ext_debug_report)
 			- Promoted to [`ext_debug_utils`](crate::instance::InstanceExtensions::ext_debug_utils)
 		",
         raw: b"VK_EXT_debug_marker",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [ext_debug_report],
+        conflicts_device_extensions: [],
     },
     ext_depth_clip_enable => {
         doc: "
@@ -935,6 +1020,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_depth_range_unrestricted => {
         doc: "
@@ -944,79 +1030,87 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_descriptor_indexing => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_descriptor_indexing.html)
-			- Requires device extensions: [`khr_maintenance3`](crate::device::DeviceExtensions::khr_maintenance3)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_maintenance3`](crate::device::DeviceExtensions::khr_maintenance3)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_EXT_descriptor_indexing",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance3],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_device_memory_report => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_device_memory_report.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_device_memory_report",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_discard_rectangles => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_discard_rectangles.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_discard_rectangles",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_display_control => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_display_control.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
-			- Requires instance extensions: [`ext_display_surface_counter`](crate::instance::InstanceExtensions::ext_display_surface_counter)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires instance extension: [`ext_display_surface_counter`](crate::instance::InstanceExtensions::ext_display_surface_counter)
 		",
         raw: b"VK_EXT_display_control",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [ext_display_surface_counter],
+        conflicts_device_extensions: [],
     },
     ext_extended_dynamic_state => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_extended_dynamic_state.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_extended_dynamic_state",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_external_memory_dma_buf => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_external_memory_dma_buf.html)
-			- Requires device extensions: [`khr_external_memory_fd`](crate::device::DeviceExtensions::khr_external_memory_fd)
+			- Requires device extension: [`khr_external_memory_fd`](crate::device::DeviceExtensions::khr_external_memory_fd)
 		",
         raw: b"VK_EXT_external_memory_dma_buf",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory_fd],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_external_memory_host => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_external_memory_host.html)
-			- Requires device extensions: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+			- Requires device extension: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
 		",
         raw: b"VK_EXT_external_memory_host",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_filter_cubic => {
         doc: "
@@ -1026,47 +1120,52 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_fragment_density_map => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_fragment_density_map.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_fragment_density_map",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_fragment_density_map2 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_fragment_density_map2.html)
-			- Requires device extensions: [`ext_fragment_density_map`](crate::device::DeviceExtensions::ext_fragment_density_map)
+			- Requires device extension: [`ext_fragment_density_map`](crate::device::DeviceExtensions::ext_fragment_density_map)
 		",
         raw: b"VK_EXT_fragment_density_map2",
         requires_core: Version::V1_0,
         requires_device_extensions: [ext_fragment_density_map],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_fragment_shader_interlock => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_fragment_shader_interlock.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_fragment_shader_interlock",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_full_screen_exclusive => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_full_screen_exclusive.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
 			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2), [`khr_surface`](crate::instance::InstanceExtensions::khr_surface), [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)
 		",
         raw: b"VK_EXT_full_screen_exclusive",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_get_physical_device_properties2, khr_surface, khr_get_surface_capabilities2],
+        conflicts_device_extensions: [],
     },
     ext_global_priority => {
         doc: "
@@ -1076,48 +1175,53 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_hdr_metadata => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_hdr_metadata.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
 		",
         raw: b"VK_EXT_hdr_metadata",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_host_query_reset => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_host_query_reset.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_EXT_host_query_reset",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_image_drm_format_modifier => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_image_drm_format_modifier.html)
 			- Requires device extensions: [`khr_bind_memory2`](crate::device::DeviceExtensions::khr_bind_memory2), [`khr_image_format_list`](crate::device::DeviceExtensions::khr_image_format_list), [`khr_sampler_ycbcr_conversion`](crate::device::DeviceExtensions::khr_sampler_ycbcr_conversion)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_image_drm_format_modifier",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_bind_memory2, khr_image_format_list, khr_sampler_ycbcr_conversion],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_image_robustness => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_image_robustness.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_image_robustness",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_index_type_uint8 => {
         doc: "
@@ -1127,57 +1231,63 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_inline_uniform_block => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_inline_uniform_block.html)
-			- Requires device extensions: [`khr_maintenance1`](crate::device::DeviceExtensions::khr_maintenance1)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_maintenance1`](crate::device::DeviceExtensions::khr_maintenance1)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_inline_uniform_block",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance1],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_line_rasterization => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_line_rasterization.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_line_rasterization",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_memory_budget => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_memory_budget.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_memory_budget",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_memory_priority => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_memory_priority.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_memory_priority",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_pci_bus_info => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_pci_bus_info.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_pci_bus_info",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_pipeline_creation_cache_control => {
         doc: "
@@ -1187,6 +1297,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_pipeline_creation_feedback => {
         doc: "
@@ -1196,6 +1307,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_post_depth_coverage => {
         doc: "
@@ -1205,6 +1317,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_private_data => {
         doc: "
@@ -1214,16 +1327,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_queue_family_foreign => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_queue_family_foreign.html)
-			- Requires device extensions: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
+			- Requires device extension: [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
 		",
         raw: b"VK_EXT_queue_family_foreign",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_robustness2 => {
         doc: "
@@ -1233,38 +1348,42 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_sample_locations => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_sample_locations.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_sample_locations",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_sampler_filter_minmax => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_sampler_filter_minmax.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_EXT_sampler_filter_minmax",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_scalar_block_layout => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_scalar_block_layout.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.2
 		",
         raw: b"VK_EXT_scalar_block_layout",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_separate_stencil_usage => {
         doc: "
@@ -1275,36 +1394,40 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_shader_atomic_float => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_shader_atomic_float.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_shader_atomic_float",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_shader_demote_to_helper_invocation => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_shader_demote_to_helper_invocation.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_shader_demote_to_helper_invocation",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_shader_image_atomic_int64 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_shader_image_atomic_int64.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_shader_image_atomic_int64",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_shader_stencil_export => {
         doc: "
@@ -1314,6 +1437,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_shader_subgroup_ballot => {
         doc: "
@@ -1324,6 +1448,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_shader_subgroup_vote => {
         doc: "
@@ -1334,6 +1459,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_shader_viewport_index_layer => {
         doc: "
@@ -1344,6 +1470,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_subgroup_size_control => {
         doc: "
@@ -1354,26 +1481,29 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_texel_buffer_alignment => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_texel_buffer_alignment.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_texel_buffer_alignment",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_texture_compression_astc_hdr => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_texture_compression_astc_hdr.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_texture_compression_astc_hdr",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_tooling_info => {
         doc: "
@@ -1383,16 +1513,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_transform_feedback => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_transform_feedback.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_transform_feedback",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_validation_cache => {
         doc: "
@@ -1402,26 +1534,29 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ext_vertex_attribute_divisor => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_vertex_attribute_divisor.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_EXT_vertex_attribute_divisor",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     ext_ycbcr_image_arrays => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_ycbcr_image_arrays.html)
-			- Requires device extensions: [`khr_sampler_ycbcr_conversion`](crate::device::DeviceExtensions::khr_sampler_ycbcr_conversion)
+			- Requires device extension: [`khr_sampler_ycbcr_conversion`](crate::device::DeviceExtensions::khr_sampler_ycbcr_conversion)
 		",
         raw: b"VK_EXT_ycbcr_image_arrays",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_sampler_ycbcr_conversion],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_buffer_marker => {
         doc: "
@@ -1431,6 +1566,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_device_coherent_memory => {
         doc: "
@@ -1440,17 +1576,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_display_native_hdr => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_AMD_display_native_hdr.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
 			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2), [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)
 		",
         raw: b"VK_AMD_display_native_hdr",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_get_physical_device_properties2, khr_get_surface_capabilities2],
+        conflicts_device_extensions: [],
     },
     amd_draw_indirect_count => {
         doc: "
@@ -1461,6 +1599,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_gcn_shader => {
         doc: "
@@ -1470,6 +1609,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_gpu_shader_half_float => {
         doc: "
@@ -1480,6 +1620,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_gpu_shader_int16 => {
         doc: "
@@ -1490,6 +1631,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_memory_overallocation_behavior => {
         doc: "
@@ -1499,6 +1641,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_mixed_attachment_samples => {
         doc: "
@@ -1508,6 +1651,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_pipeline_compiler_control => {
         doc: "
@@ -1517,6 +1661,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_rasterization_order => {
         doc: "
@@ -1526,6 +1671,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_ballot => {
         doc: "
@@ -1535,26 +1681,29 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_core_properties => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_AMD_shader_core_properties.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_AMD_shader_core_properties",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     amd_shader_core_properties2 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_AMD_shader_core_properties2.html)
-			- Requires device extensions: [`amd_shader_core_properties`](crate::device::DeviceExtensions::amd_shader_core_properties)
+			- Requires device extension: [`amd_shader_core_properties`](crate::device::DeviceExtensions::amd_shader_core_properties)
 		",
         raw: b"VK_AMD_shader_core_properties2",
         requires_core: Version::V1_0,
         requires_device_extensions: [amd_shader_core_properties],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_explicit_vertex_parameter => {
         doc: "
@@ -1564,6 +1713,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_fragment_mask => {
         doc: "
@@ -1573,6 +1723,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_image_load_store_lod => {
         doc: "
@@ -1582,6 +1733,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_info => {
         doc: "
@@ -1591,6 +1743,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_shader_trinary_minmax => {
         doc: "
@@ -1600,16 +1753,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     amd_texture_gather_bias_lod => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_AMD_texture_gather_bias_lod.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_AMD_texture_gather_bias_lod",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     android_external_memory_android_hardware_buffer => {
         doc: "
@@ -1620,17 +1775,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_sampler_ycbcr_conversion, khr_external_memory, ext_queue_family_foreign, khr_dedicated_allocation],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     ggp_frame_token => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_GGP_frame_token.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
-			- Requires instance extensions: [`ggp_stream_descriptor_surface`](crate::instance::InstanceExtensions::ggp_stream_descriptor_surface)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires instance extension: [`ggp_stream_descriptor_surface`](crate::instance::InstanceExtensions::ggp_stream_descriptor_surface)
 		",
         raw: b"VK_GGP_frame_token",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [ggp_stream_descriptor_surface],
+        conflicts_device_extensions: [],
     },
     google_decorate_string => {
         doc: "
@@ -1640,16 +1797,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     google_display_timing => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_GOOGLE_display_timing.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
 		",
         raw: b"VK_GOOGLE_display_timing",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     google_hlsl_functionality1 => {
         doc: "
@@ -1659,6 +1818,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     google_user_type => {
         doc: "
@@ -1668,6 +1828,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     img_filter_cubic => {
         doc: "
@@ -1677,6 +1838,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     img_format_pvrtc => {
         doc: "
@@ -1686,6 +1848,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     intel_performance_query => {
         doc: "
@@ -1695,16 +1858,18 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     intel_shader_integer_functions2 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_INTEL_shader_integer_functions2.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_INTEL_shader_integer_functions2",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nvx_image_view_handle => {
         doc: "
@@ -1714,26 +1879,29 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nvx_multiview_per_view_attributes => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NVX_multiview_per_view_attributes.html)
-			- Requires device extensions: [`khr_multiview`](crate::device::DeviceExtensions::khr_multiview)
+			- Requires device extension: [`khr_multiview`](crate::device::DeviceExtensions::khr_multiview)
 		",
         raw: b"VK_NVX_multiview_per_view_attributes",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_multiview],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_acquire_winrt_display => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_acquire_winrt_display.html)
-			- Requires instance extensions: [`ext_direct_mode_display`](crate::instance::InstanceExtensions::ext_direct_mode_display)
+			- Requires instance extension: [`ext_direct_mode_display`](crate::instance::InstanceExtensions::ext_direct_mode_display)
 		",
         raw: b"VK_NV_acquire_winrt_display",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [ext_direct_mode_display],
+        conflicts_device_extensions: [],
     },
     nv_clip_space_w_scaling => {
         doc: "
@@ -1743,46 +1911,51 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_compute_shader_derivatives => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_compute_shader_derivatives.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_compute_shader_derivatives",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_cooperative_matrix => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_cooperative_matrix.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_cooperative_matrix",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_corner_sampled_image => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_corner_sampled_image.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_corner_sampled_image",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_coverage_reduction_mode => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_coverage_reduction_mode.html)
-			- Requires device extensions: [`nv_framebuffer_mixed_samples`](crate::device::DeviceExtensions::nv_framebuffer_mixed_samples)
+			- Requires device extension: [`nv_framebuffer_mixed_samples`](crate::device::DeviceExtensions::nv_framebuffer_mixed_samples)
 		",
         raw: b"VK_NV_coverage_reduction_mode",
         requires_core: Version::V1_0,
         requires_device_extensions: [nv_framebuffer_mixed_samples],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_dedicated_allocation => {
         doc: "
@@ -1793,36 +1966,40 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_dedicated_allocation_image_aliasing => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_dedicated_allocation_image_aliasing.html)
-			- Requires device extensions: [`khr_dedicated_allocation`](crate::device::DeviceExtensions::khr_dedicated_allocation)
+			- Requires device extension: [`khr_dedicated_allocation`](crate::device::DeviceExtensions::khr_dedicated_allocation)
 		",
         raw: b"VK_NV_dedicated_allocation_image_aliasing",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_dedicated_allocation],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_device_diagnostic_checkpoints => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_device_diagnostic_checkpoints.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_device_diagnostic_checkpoints",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_device_diagnostics_config => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_device_diagnostics_config.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_device_diagnostics_config",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_device_generated_commands => {
         doc: "
@@ -1833,28 +2010,31 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_external_memory => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_external_memory.html)
-			- Requires instance extensions: [`nv_external_memory_capabilities`](crate::instance::InstanceExtensions::nv_external_memory_capabilities)
+			- Requires instance extension: [`nv_external_memory_capabilities`](crate::instance::InstanceExtensions::nv_external_memory_capabilities)
 			- Deprecated by [`khr_external_memory`](crate::device::DeviceExtensions::khr_external_memory)
 		",
         raw: b"VK_NV_external_memory",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [nv_external_memory_capabilities],
+        conflicts_device_extensions: [],
     },
     nv_external_memory_win32 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_external_memory_win32.html)
-			- Requires device extensions: [`nv_external_memory`](crate::device::DeviceExtensions::nv_external_memory)
+			- Requires device extension: [`nv_external_memory`](crate::device::DeviceExtensions::nv_external_memory)
 			- Deprecated by [`khr_external_memory_win32`](crate::device::DeviceExtensions::khr_external_memory_win32)
 		",
         raw: b"VK_NV_external_memory_win32",
         requires_core: Version::V1_0,
         requires_device_extensions: [nv_external_memory],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_fill_rectangle => {
         doc: "
@@ -1864,6 +2044,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_fragment_coverage_to_color => {
         doc: "
@@ -1873,26 +2054,29 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_fragment_shader_barycentric => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_fragment_shader_barycentric.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_fragment_shader_barycentric",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_fragment_shading_rate_enums => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_fragment_shading_rate_enums.html)
-			- Requires device extensions: [`khr_fragment_shading_rate`](crate::device::DeviceExtensions::khr_fragment_shading_rate)
+			- Requires device extension: [`khr_fragment_shading_rate`](crate::device::DeviceExtensions::khr_fragment_shading_rate)
 		",
         raw: b"VK_NV_fragment_shading_rate_enums",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_fragment_shading_rate],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_framebuffer_mixed_samples => {
         doc: "
@@ -1902,6 +2086,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_geometry_shader_passthrough => {
         doc: "
@@ -1911,6 +2096,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_glsl_shader => {
         doc: "
@@ -1921,27 +2107,30 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_mesh_shader => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_mesh_shader.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_mesh_shader",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_ray_tracing => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_ray_tracing.html)
-			- Requires device extensions: [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires device extension: [`khr_get_memory_requirements2`](crate::device::DeviceExtensions::khr_get_memory_requirements2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_ray_tracing",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_get_memory_requirements2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_representative_fragment_test => {
         doc: "
@@ -1951,6 +2140,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_sample_mask_override_coverage => {
         doc: "
@@ -1960,26 +2150,29 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_scissor_exclusive => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_scissor_exclusive.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_scissor_exclusive",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_shader_image_footprint => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_shader_image_footprint.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_shader_image_footprint",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_shader_sm_builtins => {
         doc: "
@@ -1990,6 +2183,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_shader_subgroup_partitioned => {
         doc: "
@@ -2000,16 +2194,18 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_shading_rate_image => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_shading_rate_image.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 		",
         raw: b"VK_NV_shading_rate_image",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        conflicts_device_extensions: [],
     },
     nv_viewport_array2 => {
         doc: "
@@ -2019,6 +2215,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_viewport_swizzle => {
         doc: "
@@ -2028,17 +2225,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     nv_win32_keyed_mutex => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NV_win32_keyed_mutex.html)
-			- Requires device extensions: [`nv_external_memory_win32`](crate::device::DeviceExtensions::nv_external_memory_win32)
+			- Requires device extension: [`nv_external_memory_win32`](crate::device::DeviceExtensions::nv_external_memory_win32)
 			- Promoted to [`khr_win32_keyed_mutex`](crate::device::DeviceExtensions::khr_win32_keyed_mutex)
 		",
         raw: b"VK_NV_win32_keyed_mutex",
         requires_core: Version::V1_0,
         requires_device_extensions: [nv_external_memory_win32],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     qcom_render_pass_shader_resolve => {
         doc: "
@@ -2048,6 +2247,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     qcom_render_pass_store_ops => {
         doc: "
@@ -2057,17 +2257,19 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     qcom_render_pass_transform => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_QCOM_render_pass_transform.html)
-			- Requires device extensions: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires device extension: [`khr_swapchain`](crate::device::DeviceExtensions::khr_swapchain)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_QCOM_render_pass_transform",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_surface],
+        conflicts_device_extensions: [],
     },
     qcom_rotated_copy_commands => {
         doc: "
@@ -2078,15 +2280,17 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain, khr_copy_commands2],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
     valve_mutable_descriptor_type => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_VALVE_mutable_descriptor_type.html)
-			- Requires device extensions: [`khr_maintenance3`](crate::device::DeviceExtensions::khr_maintenance3)
+			- Requires device extension: [`khr_maintenance3`](crate::device::DeviceExtensions::khr_maintenance3)
 		",
         raw: b"VK_VALVE_mutable_descriptor_type",
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance3],
         requires_instance_extensions: [],
+        conflicts_device_extensions: [],
     },
 }
