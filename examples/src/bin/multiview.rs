@@ -7,7 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! TODO multiview explanation
+//! This example demonstrates using the `VK_KHR_multiview` extension to render to multiple
+//! layers of the framebuffer in one render pass. This can significantly improve performance
+//! in cases where multiple perspectives or cameras are very similar like in virtual reality
+//! or other types of stereoscopic rendering where the left and right eye only differ
+//! in a small position offset.
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -199,8 +203,13 @@ fn main() {
         }],
         vec![],
         MultiviewDesc {
+            // the view masks indicate which layers of the framebuffer
+            // should be rendered for each subpass
             view_masks: vec![0b11],
+            // the correlation masks indicate sets of views that may be more efficient to render concurrently
             correlation_masks: vec![0b11],
+            // for each dependency the view offset controls which views in the source subpass
+            // the views in the destination subpass depend on
             view_offsets: vec![],
         },
     );

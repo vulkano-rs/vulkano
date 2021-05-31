@@ -40,7 +40,7 @@ impl RenderPassDesc {
     }
 
     /// Creates a description of a render pass that uses the multiview feature.
-    /// TODO multiview explanation
+    /// See [`MultiviewDesc`] for an explanation of possible configuration options.
     pub fn with_multiview(
         attachments: Vec<AttachmentDesc>,
         subpasses: Vec<SubpassDesc>,
@@ -358,11 +358,23 @@ impl From<LoadOp> for ash::vk::AttachmentLoadOp {
     }
 }
 
-/// TODO comments
+/// Describes the `multiview` configuration for the render pass which is used to draw
+/// to multiple layers of a framebuffer inside of a single render pass.
 #[derive(Debug, Clone)]
 pub struct MultiviewDesc {
+    /// The view masks indicate which layers of the framebuffer should be rendered for each subpass.
+    /// Values are bit masks which means that for example `0b11` will draw to the first two layers
+    /// and `0b101` will draw to the first and third layer.
     pub view_masks: Vec<u32>,
+
+    /// The correlation masks indicate sets of views that may be more efficient to render
+    /// concurrently (usually because they show the same geometry from almost the same perspective).
+    /// Values are bit masks which means that for example `0b11` means the first two layers are
+    /// highly correlated and `0b101` means the first and third layer are highly correlated.
     pub correlation_masks: Vec<u32>,
+
+    /// The view offsets contain additional information for each subpass dependency that indicate
+    /// which views in the source subpass the views of the destination subpass depend on.
     pub view_offsets: Vec<i32>,
 }
 
