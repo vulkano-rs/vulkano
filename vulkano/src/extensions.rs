@@ -256,3 +256,8 @@ impl fmt::Display for ExtensionRestriction {
         }
     }
 }
+
+/// This helper type can only be instantiated inside this module.
+#[doc(hidden)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Unbuildable(pub(crate) ());

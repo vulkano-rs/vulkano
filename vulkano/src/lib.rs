@@ -83,6 +83,7 @@ pub mod format;
 mod version;
 #[macro_use]
 pub mod render_pass;
+mod autogen;
 mod fns;
 pub mod image;
 pub mod instance;

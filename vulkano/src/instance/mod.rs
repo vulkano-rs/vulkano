@@ -76,7 +76,7 @@ pub use crate::extensions::{
 pub use crate::version::Version;
 
 pub mod debug;
-mod extensions;
+pub(crate) mod extensions;
 mod instance;
 mod layers;
 mod limits;

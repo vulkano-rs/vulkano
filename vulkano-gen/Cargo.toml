@@ -1,0 +1,14 @@
+[package]
+name = "vulkano-gen"
+version = "0.1.0"
+authors = ["Rua <ruawhitepaw@gmail.com>", "The Vulkano contributors"]
+repository = "https://github.com/vulkano-rs/vulkano"
+edition = "2018"
+publish = false
+license = "MIT/Apache-2.0"
+
+[dependencies]
+heck = "0.3"
+indexmap = "1.6"
+regex = "1.5"
+vk-parse = "0.6"

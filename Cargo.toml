@@ -3,10 +3,9 @@ members = [
     "examples",
     "vk-sys",
     "vulkano",
+    "vulkano-gen",
     "vulkano-shaders",
-    "vulkano-win"
+    "vulkano-win",
 ]
 
-exclude = [
-    "www"
-]
+exclude = ["www"]

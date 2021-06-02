@@ -90,9 +90,9 @@
 //!
 //! TODO: write
 
-pub use self::extensions::DeviceExtensions;
 pub(crate) use self::features::FeaturesFfi;
 pub use self::features::{FeatureRestriction, FeatureRestrictionError, Features};
+pub use crate::autogen::DeviceExtensions;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
@@ -136,8 +136,8 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
 
-mod extensions;
-mod features;
+pub(crate) mod extensions;
+pub(crate) mod features;
 
 /// Represents a Vulkan context.
 pub struct Device {
