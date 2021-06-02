@@ -29,10 +29,6 @@ macro_rules! extensions {
         #[derive(Copy, Clone, PartialEq, Eq)]
         pub struct $sname {
             $(
-                // TODO: Rust 1.54 will allow generating documentation from macro arguments with the
-                // #[doc = ..] attribute using concat! and stringify!. Once this is available,
-                // generate documentation here with requirements and a link to the Vulkan
-                // documentation page?
                 #[doc = $doc]
                 pub $member: bool,
             )*
