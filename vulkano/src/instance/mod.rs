@@ -70,6 +70,9 @@ pub use self::physical_device::PhysicalDeviceType;
 pub use self::physical_device::PhysicalDevicesIter;
 pub use self::physical_device::QueueFamiliesIter;
 pub use self::physical_device::QueueFamily;
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 pub use crate::version::Version;
 
 pub mod debug;

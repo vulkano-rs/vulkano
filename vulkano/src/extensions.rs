@@ -217,12 +217,16 @@ impl fmt::Display for ExtensionRestrictionError {
 
 #[derive(Clone, Copy, Debug)]
 pub enum ExtensionRestriction {
+    /// Not supported by the loader or physical device.
+    NotSupported,
     /// Requires a minimum Vulkan API version.
     RequiresCore(Version),
     /// Requires a device extension to be enabled.
     RequiresDeviceExtension(&'static str),
     /// Requires an instance extension to be enabled.
     RequiresInstanceExtension(&'static str),
+    /// Required to be enabled by the physical device.
+    RequiredIfSupported,
     /// Requires a device extension to be disabled.
     ConflictsDeviceExtension(&'static str),
 }
@@ -231,6 +235,9 @@ impl fmt::Display for ExtensionRestriction {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
+            ExtensionRestriction::NotSupported => {
+                write!(fmt, "not supported by the loader or physical device")
+            }
             ExtensionRestriction::RequiresCore(version) => {
                 write!(
                     fmt,
@@ -243,6 +250,9 @@ impl fmt::Display for ExtensionRestriction {
             }
             ExtensionRestriction::RequiresInstanceExtension(ext) => {
                 write!(fmt, "requires instance extension {} to be enabled", ext)
+            }
+            ExtensionRestriction::RequiredIfSupported => {
+                write!(fmt, "required to be enabled by the physical device")
             }
             ExtensionRestriction::ConflictsDeviceExtension(ext) => {
                 write!(fmt, "requires device extension {} to be disabled", ext)

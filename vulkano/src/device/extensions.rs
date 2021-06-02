@@ -8,8 +8,9 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::extensions::SupportedExtensionsError;
-use crate::extensions::{ExtensionRestriction, ExtensionRestrictionError};
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 use crate::instance::{InstanceExtensions, PhysicalDevice};
 use crate::Version;
 use crate::VulkanObject;
@@ -26,6 +27,7 @@ macro_rules! device_extensions {
             requires_core: $requires_core:expr,
             requires_device_extensions: [$($requires_device_extension:ident),*],
             requires_instance_extensions: [$($requires_instance_extension:ident),*],
+            required_if_supported: $required_if_supported:expr,
             conflicts_device_extensions: [$($conflicts_device_extension:ident),*],
         },)*
     ) => (
@@ -42,9 +44,21 @@ macro_rules! device_extensions {
 
         impl DeviceExtensions {
             /// Checks enabled extensions against the device version, instance extensions and each other.
-            pub(super) fn check_requirements(&self, api_version: Version, instance_extensions: &InstanceExtensions) -> Result<(), ExtensionRestrictionError> {
+            pub(super) fn check_requirements(
+                &self,
+                supported: &DeviceExtensions,
+                api_version:Version,
+                instance_extensions: &InstanceExtensions,
+            ) -> Result<(), ExtensionRestrictionError> {
                 $(
                     if self.$member {
+                        if !supported.$member {
+                            return Err(ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: ExtensionRestriction::NotSupported,
+                            });
+                        }
+
                         if api_version < $requires_core {
                             return Err(ExtensionRestrictionError {
                                 extension: stringify!($member),
@@ -78,6 +92,13 @@ macro_rules! device_extensions {
                                 });
                             }
                         )*
+                    } else {
+                        if $required_if_supported && supported.$member {
+                            return Err(ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: ExtensionRestriction::RequiredIfSupported,
+                            });
+                        }
                     }
                 )*
                 Ok(())
@@ -188,6 +209,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_storage_buffer_storage_class],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_8bit_storage => {
@@ -201,6 +223,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_storage_buffer_storage_class],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_acceleration_structure => {
@@ -213,6 +236,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [ext_descriptor_indexing, khr_buffer_device_address, khr_deferred_host_operations],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_bind_memory2 => {
@@ -224,6 +248,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_buffer_device_address => {
@@ -237,6 +262,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [ext_buffer_device_address],
     },
     khr_copy_commands2 => {
@@ -247,6 +273,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_create_renderpass2 => {
@@ -259,6 +286,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_multiview, khr_maintenance2],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_dedicated_allocation => {
@@ -271,6 +299,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_get_memory_requirements2],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_deferred_host_operations => {
@@ -281,6 +310,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_depth_stencil_resolve => {
@@ -293,6 +323,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_create_renderpass2],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_descriptor_update_template => {
@@ -304,6 +335,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_device_group => {
@@ -316,6 +348,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_device_group_creation],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_display_swapchain => {
@@ -328,6 +361,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_display],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_draw_indirect_count => {
@@ -339,6 +373,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_driver_properties => {
@@ -351,6 +386,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_fence => {
@@ -363,6 +399,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_external_fence_capabilities],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_fence_fd => {
@@ -374,6 +411,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_fence],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_fence_win32 => {
@@ -385,6 +423,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_fence],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_memory => {
@@ -397,6 +436,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_external_memory_capabilities],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_memory_fd => {
@@ -408,6 +448,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_memory_win32 => {
@@ -419,6 +460,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_semaphore => {
@@ -431,6 +473,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_external_semaphore_capabilities],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_semaphore_fd => {
@@ -442,6 +485,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_semaphore],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_external_semaphore_win32 => {
@@ -453,6 +497,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_semaphore],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_fragment_shading_rate => {
@@ -465,6 +510,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_create_renderpass2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_get_memory_requirements2 => {
@@ -476,6 +522,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_image_format_list => {
@@ -487,6 +534,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_imageless_framebuffer => {
@@ -499,6 +547,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance2, khr_image_format_list],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_incremental_present => {
@@ -510,6 +559,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_maintenance1 => {
@@ -521,6 +571,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_maintenance2 => {
@@ -532,6 +583,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_maintenance3 => {
@@ -544,6 +596,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_multiview => {
@@ -556,6 +609,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_performance_query => {
@@ -567,6 +621,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_pipeline_executable_properties => {
@@ -578,6 +633,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_pipeline_library => {
@@ -588,17 +644,20 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_portability_subset => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_portability_subset.html)
 			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Must be enabled if it is supported by the physical device
 		",
         raw: b"VK_KHR_portability_subset",
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: true,
         conflicts_device_extensions: [],
     },
     khr_push_descriptor => {
@@ -610,6 +669,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_ray_query => {
@@ -622,6 +682,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [khr_spirv_1_4, khr_acceleration_structure],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_ray_tracing_pipeline => {
@@ -634,6 +695,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [khr_spirv_1_4, khr_acceleration_structure],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_relaxed_block_layout => {
@@ -645,6 +707,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_sampler_mirror_clamp_to_edge => {
@@ -656,6 +719,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_sampler_ycbcr_conversion => {
@@ -669,6 +733,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance1, khr_bind_memory2, khr_get_memory_requirements2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_separate_depth_stencil_layouts => {
@@ -682,6 +747,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_create_renderpass2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_atomic_int64 => {
@@ -694,6 +760,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_clock => {
@@ -705,6 +772,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_draw_parameters => {
@@ -716,6 +784,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_float16_int8 => {
@@ -728,6 +797,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_float_controls => {
@@ -740,6 +810,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_non_semantic_info => {
@@ -750,6 +821,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_subgroup_extended_types => {
@@ -762,6 +834,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shader_terminate_invocation => {
@@ -773,6 +846,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_shared_presentable_image => {
@@ -785,6 +859,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_get_physical_device_properties2, khr_get_surface_capabilities2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_spirv_1_4 => {
@@ -798,6 +873,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [khr_shader_float_controls],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_storage_buffer_storage_class => {
@@ -809,6 +885,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_swapchain => {
@@ -820,6 +897,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_surface],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_swapchain_mutable_format => {
@@ -831,6 +909,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain, khr_maintenance2, khr_image_format_list],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_timeline_semaphore => {
@@ -843,6 +922,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_uniform_buffer_standard_layout => {
@@ -855,6 +935,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_variable_pointers => {
@@ -868,6 +949,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_storage_buffer_storage_class],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_vulkan_memory_model => {
@@ -879,6 +961,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_win32_keyed_mutex => {
@@ -890,6 +973,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory_win32],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_workgroup_memory_explicit_layout => {
@@ -901,6 +985,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     khr_zero_initialize_workgroup_memory => {
@@ -912,6 +997,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_4444_formats => {
@@ -923,6 +1009,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_astc_decode_mode => {
@@ -934,6 +1021,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_blend_operation_advanced => {
@@ -944,6 +1032,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_buffer_device_address => {
@@ -957,6 +1046,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [khr_buffer_device_address],
     },
     ext_calibrated_timestamps => {
@@ -967,6 +1057,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_conditional_rendering => {
@@ -977,6 +1068,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_conservative_rasterization => {
@@ -988,6 +1080,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_custom_border_color => {
@@ -998,6 +1091,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_debug_marker => {
@@ -1010,6 +1104,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [ext_debug_report],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_depth_clip_enable => {
@@ -1020,6 +1115,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_depth_range_unrestricted => {
@@ -1030,6 +1126,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_descriptor_indexing => {
@@ -1043,6 +1140,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance3],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_device_memory_report => {
@@ -1054,6 +1152,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_discard_rectangles => {
@@ -1065,6 +1164,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_display_control => {
@@ -1077,6 +1177,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [ext_display_surface_counter],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_extended_dynamic_state => {
@@ -1088,6 +1189,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_external_memory_dma_buf => {
@@ -1099,6 +1201,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory_fd],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_external_memory_host => {
@@ -1110,6 +1213,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_filter_cubic => {
@@ -1120,6 +1224,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_fragment_density_map => {
@@ -1131,6 +1236,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_fragment_density_map2 => {
@@ -1142,6 +1248,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [ext_fragment_density_map],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_fragment_shader_interlock => {
@@ -1153,6 +1260,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_full_screen_exclusive => {
@@ -1165,6 +1273,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_get_physical_device_properties2, khr_surface, khr_get_surface_capabilities2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_global_priority => {
@@ -1175,6 +1284,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_hdr_metadata => {
@@ -1186,6 +1296,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_host_query_reset => {
@@ -1198,6 +1309,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_image_drm_format_modifier => {
@@ -1210,6 +1322,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_bind_memory2, khr_image_format_list, khr_sampler_ycbcr_conversion],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_image_robustness => {
@@ -1221,6 +1334,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_index_type_uint8 => {
@@ -1231,6 +1345,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_inline_uniform_block => {
@@ -1243,6 +1358,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance1],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_line_rasterization => {
@@ -1254,6 +1370,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_memory_budget => {
@@ -1265,6 +1382,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_memory_priority => {
@@ -1276,6 +1394,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_pci_bus_info => {
@@ -1287,6 +1406,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_pipeline_creation_cache_control => {
@@ -1297,6 +1417,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_pipeline_creation_feedback => {
@@ -1307,6 +1428,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_post_depth_coverage => {
@@ -1317,6 +1439,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_private_data => {
@@ -1327,6 +1450,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_queue_family_foreign => {
@@ -1338,6 +1462,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_external_memory],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_robustness2 => {
@@ -1348,6 +1473,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_sample_locations => {
@@ -1359,6 +1485,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_sampler_filter_minmax => {
@@ -1371,6 +1498,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_scalar_block_layout => {
@@ -1383,6 +1511,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_separate_stencil_usage => {
@@ -1394,6 +1523,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_atomic_float => {
@@ -1405,6 +1535,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_demote_to_helper_invocation => {
@@ -1416,6 +1547,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_image_atomic_int64 => {
@@ -1427,6 +1559,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_stencil_export => {
@@ -1437,6 +1570,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_subgroup_ballot => {
@@ -1448,6 +1582,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_subgroup_vote => {
@@ -1459,6 +1594,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_shader_viewport_index_layer => {
@@ -1470,6 +1606,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_subgroup_size_control => {
@@ -1481,6 +1618,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_texel_buffer_alignment => {
@@ -1492,6 +1630,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_texture_compression_astc_hdr => {
@@ -1503,6 +1642,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_tooling_info => {
@@ -1513,6 +1653,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_transform_feedback => {
@@ -1524,6 +1665,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_validation_cache => {
@@ -1534,6 +1676,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_vertex_attribute_divisor => {
@@ -1545,6 +1688,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ext_ycbcr_image_arrays => {
@@ -1556,6 +1700,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_sampler_ycbcr_conversion],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_buffer_marker => {
@@ -1566,6 +1711,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_device_coherent_memory => {
@@ -1576,6 +1722,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_display_native_hdr => {
@@ -1588,6 +1735,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_get_physical_device_properties2, khr_get_surface_capabilities2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_draw_indirect_count => {
@@ -1599,6 +1747,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_gcn_shader => {
@@ -1609,6 +1758,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_gpu_shader_half_float => {
@@ -1620,6 +1770,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_gpu_shader_int16 => {
@@ -1631,6 +1782,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_memory_overallocation_behavior => {
@@ -1641,6 +1793,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_mixed_attachment_samples => {
@@ -1651,6 +1804,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_pipeline_compiler_control => {
@@ -1661,6 +1815,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_rasterization_order => {
@@ -1671,6 +1826,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_ballot => {
@@ -1681,6 +1837,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_core_properties => {
@@ -1692,6 +1849,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_core_properties2 => {
@@ -1703,6 +1861,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [amd_shader_core_properties],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_explicit_vertex_parameter => {
@@ -1713,6 +1872,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_fragment_mask => {
@@ -1723,6 +1883,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_image_load_store_lod => {
@@ -1733,6 +1894,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_info => {
@@ -1743,6 +1905,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_shader_trinary_minmax => {
@@ -1753,6 +1916,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     amd_texture_gather_bias_lod => {
@@ -1764,6 +1928,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     android_external_memory_android_hardware_buffer => {
@@ -1775,6 +1940,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_sampler_ycbcr_conversion, khr_external_memory, ext_queue_family_foreign, khr_dedicated_allocation],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     ggp_frame_token => {
@@ -1787,6 +1953,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [ggp_stream_descriptor_surface],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     google_decorate_string => {
@@ -1797,6 +1964,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     google_display_timing => {
@@ -1808,6 +1976,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     google_hlsl_functionality1 => {
@@ -1818,6 +1987,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     google_user_type => {
@@ -1828,6 +1998,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     img_filter_cubic => {
@@ -1838,6 +2009,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     img_format_pvrtc => {
@@ -1848,6 +2020,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     intel_performance_query => {
@@ -1858,6 +2031,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     intel_shader_integer_functions2 => {
@@ -1869,6 +2043,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nvx_image_view_handle => {
@@ -1879,6 +2054,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nvx_multiview_per_view_attributes => {
@@ -1890,6 +2066,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_multiview],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_acquire_winrt_display => {
@@ -1901,6 +2078,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [ext_direct_mode_display],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_clip_space_w_scaling => {
@@ -1911,6 +2089,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_compute_shader_derivatives => {
@@ -1922,6 +2101,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_cooperative_matrix => {
@@ -1933,6 +2113,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_corner_sampled_image => {
@@ -1944,6 +2125,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_coverage_reduction_mode => {
@@ -1955,6 +2137,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [nv_framebuffer_mixed_samples],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_dedicated_allocation => {
@@ -1966,6 +2149,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_dedicated_allocation_image_aliasing => {
@@ -1977,6 +2161,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_dedicated_allocation],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_device_diagnostic_checkpoints => {
@@ -1988,6 +2173,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_device_diagnostics_config => {
@@ -1999,6 +2185,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_device_generated_commands => {
@@ -2010,6 +2197,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_external_memory => {
@@ -2022,6 +2210,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [nv_external_memory_capabilities],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_external_memory_win32 => {
@@ -2034,6 +2223,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [nv_external_memory],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_fill_rectangle => {
@@ -2044,6 +2234,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_fragment_coverage_to_color => {
@@ -2054,6 +2245,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_fragment_shader_barycentric => {
@@ -2065,6 +2257,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_fragment_shading_rate_enums => {
@@ -2076,6 +2269,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_fragment_shading_rate],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_framebuffer_mixed_samples => {
@@ -2086,6 +2280,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_geometry_shader_passthrough => {
@@ -2096,6 +2291,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_glsl_shader => {
@@ -2107,6 +2303,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_mesh_shader => {
@@ -2118,6 +2315,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_ray_tracing => {
@@ -2130,6 +2328,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_get_memory_requirements2],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_representative_fragment_test => {
@@ -2140,6 +2339,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_sample_mask_override_coverage => {
@@ -2150,6 +2350,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_scissor_exclusive => {
@@ -2161,6 +2362,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_shader_image_footprint => {
@@ -2172,6 +2374,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_shader_sm_builtins => {
@@ -2183,6 +2386,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_shader_subgroup_partitioned => {
@@ -2194,6 +2398,7 @@ device_extensions! {
         requires_core: Version::V1_1,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_shading_rate_image => {
@@ -2205,6 +2410,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [khr_get_physical_device_properties2],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_viewport_array2 => {
@@ -2215,6 +2421,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_viewport_swizzle => {
@@ -2225,6 +2432,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     nv_win32_keyed_mutex => {
@@ -2237,6 +2445,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [nv_external_memory_win32],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     qcom_render_pass_shader_resolve => {
@@ -2247,6 +2456,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     qcom_render_pass_store_ops => {
@@ -2257,6 +2467,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     qcom_render_pass_transform => {
@@ -2269,6 +2480,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain],
         requires_instance_extensions: [khr_surface],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     qcom_rotated_copy_commands => {
@@ -2280,6 +2492,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_swapchain, khr_copy_commands2],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
     valve_mutable_descriptor_type => {
@@ -2291,6 +2504,7 @@ device_extensions! {
         requires_core: Version::V1_0,
         requires_device_extensions: [khr_maintenance3],
         requires_instance_extensions: [],
+        required_if_supported: false,
         conflicts_device_extensions: [],
     },
 }

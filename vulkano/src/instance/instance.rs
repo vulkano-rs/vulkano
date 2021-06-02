@@ -276,7 +276,10 @@ impl Instance {
         let api_version = std::cmp::min(max_api_version, function_pointers.api_version()?);
 
         // Check if the extensions are correct
-        extensions.check_requirements(api_version)?;
+        extensions.check_requirements(
+            &InstanceExtensions::supported_by_core_with_loader(&function_pointers)?,
+            api_version,
+        )?;
 
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.

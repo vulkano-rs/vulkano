@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::extensions::{
+pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
 use crate::instance::loader;
@@ -41,9 +41,16 @@ macro_rules! instance_extensions {
 
         impl InstanceExtensions {
             /// Checks enabled extensions against the instance version and each other.
-            pub(super) fn check_requirements(&self, api_version: Version) -> Result<(), ExtensionRestrictionError> {
+            pub(super) fn check_requirements(&self, supported: &InstanceExtensions, api_version: Version) -> Result<(), ExtensionRestrictionError> {
                 $(
                     if self.$member {
+                        if !supported.$member {
+                            return Err(ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: ExtensionRestriction::NotSupported,
+                            });
+                        }
+
                         if api_version < $requires_core {
                             return Err(ExtensionRestrictionError {
                                 extension: stringify!($member),
@@ -152,7 +159,7 @@ instance_extensions! {
     khr_android_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_android_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_android_surface",
         requires_core: Version::V1_0,
@@ -170,7 +177,7 @@ instance_extensions! {
     khr_display => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_display.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_display",
         requires_core: Version::V1_0,
@@ -179,7 +186,7 @@ instance_extensions! {
     khr_external_fence_capabilities => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_fence_capabilities.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_external_fence_capabilities",
@@ -189,7 +196,7 @@ instance_extensions! {
     khr_external_memory_capabilities => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_memory_capabilities.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_external_memory_capabilities",
@@ -199,7 +206,7 @@ instance_extensions! {
     khr_external_semaphore_capabilities => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_external_semaphore_capabilities.html)
-			- Requires instance extensions: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
+			- Requires instance extension: [`khr_get_physical_device_properties2`](crate::instance::InstanceExtensions::khr_get_physical_device_properties2)
 			- Promoted to Vulkan 1.1
 		",
         raw: b"VK_KHR_external_semaphore_capabilities",
@@ -209,7 +216,7 @@ instance_extensions! {
     khr_get_display_properties2 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_get_display_properties2.html)
-			- Requires instance extensions: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
+			- Requires instance extension: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
 		",
         raw: b"VK_KHR_get_display_properties2",
         requires_core: Version::V1_0,
@@ -227,7 +234,7 @@ instance_extensions! {
     khr_get_surface_capabilities2 => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_get_surface_capabilities2.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_get_surface_capabilities2",
         requires_core: Version::V1_0,
@@ -245,7 +252,7 @@ instance_extensions! {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_surface_protected_capabilities.html)
 			- Requires Vulkan 1.1
-			- Requires instance extensions: [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)
+			- Requires instance extension: [`khr_get_surface_capabilities2`](crate::instance::InstanceExtensions::khr_get_surface_capabilities2)
 		",
         raw: b"VK_KHR_surface_protected_capabilities",
         requires_core: Version::V1_1,
@@ -254,7 +261,7 @@ instance_extensions! {
     khr_wayland_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_wayland_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_wayland_surface",
         requires_core: Version::V1_0,
@@ -263,7 +270,7 @@ instance_extensions! {
     khr_win32_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_win32_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_win32_surface",
         requires_core: Version::V1_0,
@@ -272,7 +279,7 @@ instance_extensions! {
     khr_xcb_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_xcb_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_xcb_surface",
         requires_core: Version::V1_0,
@@ -281,7 +288,7 @@ instance_extensions! {
     khr_xlib_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_KHR_xlib_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_KHR_xlib_surface",
         requires_core: Version::V1_0,
@@ -290,7 +297,7 @@ instance_extensions! {
     ext_acquire_xlib_display => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_acquire_xlib_display.html)
-			- Requires instance extensions: [`ext_direct_mode_display`](crate::instance::InstanceExtensions::ext_direct_mode_display)
+			- Requires instance extension: [`ext_direct_mode_display`](crate::instance::InstanceExtensions::ext_direct_mode_display)
 		",
         raw: b"VK_EXT_acquire_xlib_display",
         requires_core: Version::V1_0,
@@ -316,7 +323,7 @@ instance_extensions! {
     ext_direct_mode_display => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_direct_mode_display.html)
-			- Requires instance extensions: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
+			- Requires instance extension: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
 		",
         raw: b"VK_EXT_direct_mode_display",
         requires_core: Version::V1_0,
@@ -325,7 +332,7 @@ instance_extensions! {
     ext_directfb_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_directfb_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_EXT_directfb_surface",
         requires_core: Version::V1_0,
@@ -334,7 +341,7 @@ instance_extensions! {
     ext_display_surface_counter => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_display_surface_counter.html)
-			- Requires instance extensions: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
+			- Requires instance extension: [`khr_display`](crate::instance::InstanceExtensions::khr_display)
 		",
         raw: b"VK_EXT_display_surface_counter",
         requires_core: Version::V1_0,
@@ -343,7 +350,7 @@ instance_extensions! {
     ext_headless_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_headless_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_EXT_headless_surface",
         requires_core: Version::V1_0,
@@ -352,7 +359,7 @@ instance_extensions! {
     ext_metal_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_metal_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_EXT_metal_surface",
         requires_core: Version::V1_0,
@@ -361,7 +368,7 @@ instance_extensions! {
     ext_swapchain_colorspace => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_EXT_swapchain_colorspace.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_EXT_swapchain_colorspace",
         requires_core: Version::V1_0,
@@ -387,7 +394,7 @@ instance_extensions! {
     fuchsia_imagepipe_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_FUCHSIA_imagepipe_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_FUCHSIA_imagepipe_surface",
         requires_core: Version::V1_0,
@@ -396,7 +403,7 @@ instance_extensions! {
     ggp_stream_descriptor_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_GGP_stream_descriptor_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_GGP_stream_descriptor_surface",
         requires_core: Version::V1_0,
@@ -405,7 +412,7 @@ instance_extensions! {
     mvk_ios_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_MVK_ios_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 			- Deprecated by [`ext_metal_surface`](crate::instance::InstanceExtensions::ext_metal_surface)
 		",
         raw: b"VK_MVK_ios_surface",
@@ -415,7 +422,7 @@ instance_extensions! {
     mvk_macos_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_MVK_macos_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 			- Deprecated by [`ext_metal_surface`](crate::instance::InstanceExtensions::ext_metal_surface)
 		",
         raw: b"VK_MVK_macos_surface",
@@ -425,7 +432,7 @@ instance_extensions! {
     nn_vi_surface => {
         doc: "
 			- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VK_NN_vi_surface.html)
-			- Requires instance extensions: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
+			- Requires instance extension: [`khr_surface`](crate::instance::InstanceExtensions::khr_surface)
 		",
         raw: b"VK_NN_vi_surface",
         requires_core: Version::V1_0,

@@ -91,12 +91,14 @@
 //! TODO: write
 
 pub use self::extensions::DeviceExtensions;
-pub use self::features::Features;
 pub(crate) use self::features::FeaturesFfi;
+pub use self::features::{FeatureRestriction, FeatureRestrictionError, Features};
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
-use crate::extensions::ExtensionRestrictionError;
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 use crate::fns::DeviceFunctions;
 use crate::format::Format;
 use crate::image::ImageCreateFlags;
@@ -188,22 +190,26 @@ impl Device {
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
     pub fn new<'a, I>(
-        phys: PhysicalDevice,
+        physical_device: PhysicalDevice,
         requested_features: &Features,
-        extensions: &DeviceExtensions,
+        requested_extensions: &DeviceExtensions,
         queue_families: I,
     ) -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
     where
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
     {
-        let instance = phys.instance();
+        let instance = physical_device.instance();
         let fns_i = instance.fns();
 
         let max_api_version = instance.max_api_version();
-        let api_version = std::cmp::min(max_api_version, phys.api_version());
+        let api_version = std::cmp::min(max_api_version, physical_device.api_version());
 
         // Check if the extensions are correct
-        extensions.check_requirements(api_version, instance.loaded_extensions())?;
+        requested_extensions.check_requirements(
+            &DeviceExtensions::supported_by_device(physical_device),
+            api_version,
+            instance.loaded_extensions(),
+        )?;
 
         let mut requested_features = requested_features.clone();
 
@@ -225,57 +231,19 @@ impl Device {
         //       `Device`'s construction below.
         requested_features.robust_buffer_access = true;
 
-        // Certain extensions that were promoted to a core feature, require that this feature is
-        // enabled if the extension is enabled. Rather than being fussy with the user, just
-        // silently enable them here.
-        // TODO: Maybe just not allow enabling promoted extensions?
-        if api_version >= Version::V1_2 {
-            if extensions.khr_shader_draw_parameters {
-                requested_features.shader_draw_parameters = true;
-            }
-
-            if extensions.khr_draw_indirect_count {
-                requested_features.draw_indirect_count = true;
-            }
-
-            if extensions.khr_sampler_mirror_clamp_to_edge {
-                requested_features.sampler_mirror_clamp_to_edge = true;
-            }
-
-            if extensions.ext_descriptor_indexing {
-                requested_features.descriptor_indexing = true;
-            }
-
-            if extensions.ext_sampler_filter_minmax {
-                requested_features.sampler_filter_minmax = true;
-            }
-
-            if extensions.ext_shader_viewport_index_layer {
-                requested_features.shader_output_viewport_index = true;
-                requested_features.shader_output_layer = true;
-            }
-        }
-
-        /*
-        TODO: When these features are added, check that they aren't enabled together.
-        if requested_features.shading_rate_image || requested_features.fragment_density_map {
-            if requested_features.pipeline_fragment_shading_rate {}
-
-            if requested_features.primitive_fragment_shading_rate {}
-
-            if requested_features.attachment_fragment_shading_rate {}
-        }*/
-
-        // Check if the requested features are supported by the physical device.
-        if !phys.supported_features().superset_of(&requested_features) {
-            return Err(DeviceCreationError::FeatureNotPresent);
-        }
+        // Check if the features are correct
+        requested_features.check_requirements(
+            physical_device.supported_features(),
+            api_version,
+            requested_extensions,
+        )?;
 
         // device creation
         let (device, queues) = unsafe {
             // each element of `queues` is a `(queue_family, priorities)`
             // each queue family must only have one entry in `queues`
-            let mut queues: Vec<(u32, Vec<f32>)> = Vec::with_capacity(phys.queue_families().len());
+            let mut queues: Vec<(u32, Vec<f32>)> =
+                Vec::with_capacity(physical_device.queue_families().len());
 
             // this variable will contain the queue family ID and queue ID of each requested queue
             let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
@@ -284,7 +252,7 @@ impl Device {
                 // checking the parameters
                 assert_eq!(
                     queue_family.physical_device().internal_object(),
-                    phys.internal_object()
+                    physical_device.internal_object()
                 );
                 if priority < 0.0 || priority > 1.0 {
                     return Err(DeviceCreationError::PriorityOutOfRange);
@@ -317,8 +285,9 @@ impl Device {
                 )
                 .collect::<SmallVec<[_; 16]>>();
 
-            let mut features_ffi = <FeaturesFfi>::from(&requested_features);
-            features_ffi.make_chain(api_version);
+            let mut features_ffi = FeaturesFfi::default();
+            features_ffi.make_chain(api_version, requested_extensions);
+            features_ffi.write(&requested_features);
 
             // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
             // ignored by the driver. For backwards compatibility, the spec recommends passing the
@@ -334,7 +303,7 @@ impl Device {
                 .map(|layer| layer.as_ptr())
                 .collect::<SmallVec<[_; 16]>>();
 
-            let extensions_strings: Vec<CString> = extensions.into();
+            let extensions_strings: Vec<CString> = requested_extensions.into();
             let extensions_ptrs = extensions_strings
                 .iter()
                 .map(|extension| extension.as_ptr())
@@ -367,7 +336,7 @@ impl Device {
 
             let mut output = MaybeUninit::uninit();
             check_errors(fns_i.v1_0.create_device(
-                phys.internal_object(),
+                physical_device.internal_object(),
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
@@ -392,8 +361,8 @@ impl Device {
         }
 
         let device = Arc::new(Device {
-            instance: phys.instance().clone(),
-            physical_device: phys.index(),
+            instance: physical_device.instance().clone(),
+            physical_device: physical_device.index(),
             device: device,
             api_version,
             fns,
@@ -405,7 +374,7 @@ impl Device {
                 robust_buffer_access: true,
                 ..requested_features.clone()
             },
-            extensions: extensions.clone(),
+            extensions: requested_extensions.clone(),
             active_queue_families,
             allocation_count: Mutex::new(0),
             fence_pool: Mutex::new(Vec::new()),
@@ -806,6 +775,8 @@ pub enum DeviceCreationError {
     OutOfDeviceMemory,
     /// A restriction for an extension was not met.
     ExtensionRestrictionNotMet(ExtensionRestrictionError),
+    /// A restriction for a feature was not met.
+    FeatureRestrictionNotMet(FeatureRestrictionError),
 }
 
 impl error::Error for DeviceCreationError {}
@@ -847,6 +818,7 @@ impl fmt::Display for DeviceCreationError {
                 write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
             }
             DeviceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
+            DeviceCreationError::FeatureRestrictionNotMet(err) => err.fmt(fmt),
         }
     }
 }
@@ -871,6 +843,13 @@ impl From<ExtensionRestrictionError> for DeviceCreationError {
     #[inline]
     fn from(err: ExtensionRestrictionError) -> Self {
         Self::ExtensionRestrictionNotMet(err)
+    }
+}
+
+impl From<FeatureRestrictionError> for DeviceCreationError {
+    #[inline]
+    fn from(err: FeatureRestrictionError) -> Self {
+        Self::FeatureRestrictionNotMet(err)
     }
 }
 
@@ -956,7 +935,7 @@ mod tests {
     use crate::device::Device;
     use crate::device::DeviceCreationError;
     use crate::device::DeviceExtensions;
-    use crate::device::Features;
+    use crate::device::{FeatureRestriction, FeatureRestrictionError, Features};
     use crate::instance;
     use std::sync::Arc;
 
@@ -1010,7 +989,10 @@ mod tests {
             &DeviceExtensions::none(),
             Some((family, 1.0)),
         ) {
-            Err(DeviceCreationError::FeatureNotPresent) => return, // Success
+            Err(DeviceCreationError::FeatureRestrictionNotMet(FeatureRestrictionError {
+                restriction: FeatureRestriction::NotSupported,
+                ..
+            })) => return, // Success
             _ => panic!(),
         };
     }
