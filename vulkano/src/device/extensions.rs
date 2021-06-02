@@ -103,6 +103,15 @@ macro_rules! device_extensions {
                 )*
                 Ok(())
             }
+
+            fn required_if_supported_extensions() -> Self {
+                Self {
+                    $(
+                        $member: $required_if_supported,
+                    )*
+                    _unbuildable: Unbuildable(())
+                }
+            }
         }
    );
 }
@@ -155,15 +164,6 @@ impl DeviceExtensions {
         let required_if_supported = Self::required_if_supported_extensions();
 
         required_if_supported.intersection(&supported)
-    }
-
-    // required if supported extensions
-    fn required_if_supported_extensions() -> Self {
-        Self {
-            // https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451
-            khr_portability_subset: true,
-            ..Self::none()
-        }
     }
 }
 
