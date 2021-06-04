@@ -410,6 +410,29 @@ impl RenderPass {
                         || multiview.view_offsets.is_empty()
                 );
 
+                // VUID-VkRenderPassCreateInfo-pNext-02512
+                debug_assert!(dependencies.iter().zip(&multiview.view_offsets).all(
+                    |(dependency, &view_offset)| dependency
+                        .dependency_flags
+                        .contains(ash::vk::DependencyFlags::VIEW_LOCAL)
+                        || view_offset == 0
+                ));
+
+                // VUID-VkRenderPassCreateInfo-pNext-02514
+                debug_assert!(
+                    multiview.view_masks.iter().any(|&view_mask| view_mask != 0)
+                        || dependencies.iter().all(|dependency| !dependency
+                            .dependency_flags
+                            .contains(ash::vk::DependencyFlags::VIEW_LOCAL))
+                );
+
+                // VUID-VkRenderPassCreateInfo-pNext-02515
+                debug_assert!(
+                    multiview.view_masks.iter().any(|&view_mask| view_mask != 0)
+                        || multiview.correlation_masks.is_empty()
+                );
+
+                // VUID-VkRenderPassMultiviewCreateInfo-pCorrelationMasks-00841
                 // ensure that each view index is contained in at most one correlation mask
                 // by checking for any overlap in all pairs of correlation masks
                 debug_assert!(multiview
