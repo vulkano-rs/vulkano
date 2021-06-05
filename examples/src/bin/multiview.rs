@@ -23,7 +23,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{
@@ -80,15 +80,15 @@ fn main() {
         .find(|&q| q.supports_graphics())
         .unwrap();
 
-    let device_ext = DeviceExtensions {
-        khr_multiview: true,
-
-        ..DeviceExtensions::none()
-    };
     let (device, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
-        &device_ext,
+        &Features {
+            // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on
+            // Vulkan 1.0 and the device feature on Vulkan 1.1+
+            multiview: true,
+            ..Features::none()
+        },
+        &DeviceExtensions::none(),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
@@ -254,9 +254,9 @@ fn main() {
             false,
             (0..image.dimensions().width() * image.dimensions().height() * 4).map(|_| 0u8),
         )
-            .unwrap()
+        .unwrap()
     };
-    
+
     let buffer1 = create_buffer();
     let buffer2 = create_buffer();
 

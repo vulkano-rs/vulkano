@@ -379,7 +379,7 @@ impl RenderPass {
 
         let multiview_create_info = match description.multiview() {
             Some(multiview) => {
-                debug_assert!(device.loaded_extensions().khr_multiview);
+                debug_assert!(device.enabled_features().multiview);
                 debug_assert!(
                     device
                         .physical_device()
