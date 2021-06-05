@@ -37,7 +37,7 @@ macro_rules! extensions {
             /// can only be created through Vulkano functions and the update
             /// syntax. This way, extensions can be added to Vulkano without
             /// breaking existing code.
-            pub _unbuildable: Unbuildable,
+            pub _unbuildable: crate::extensions::Unbuildable,
         }
 
         impl $sname {
@@ -46,7 +46,7 @@ macro_rules! extensions {
             pub const fn none() -> $sname {
                 $sname {
                     $($member: false,)*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
 
@@ -57,7 +57,7 @@ macro_rules! extensions {
                     $(
                         $member: self.$member || other.$member,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
 
@@ -68,7 +68,7 @@ macro_rules! extensions {
                     $(
                         $member: self.$member && other.$member,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
 
@@ -79,14 +79,14 @@ macro_rules! extensions {
                     $(
                         $member: self.$member && !other.$member,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
         }
 
-        impl fmt::Debug for $sname {
+        impl std::fmt::Debug for $sname {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "[")?;
 
                 let mut first = true;
@@ -95,7 +95,7 @@ macro_rules! extensions {
                     if self.$member {
                         if !first { write!(f, ", ")? }
                         else { first = false; }
-                        f.write_str(str::from_utf8($raw).unwrap())?;
+                        f.write_str(std::str::from_utf8($raw).unwrap())?;
                     }
                 )*
 
@@ -103,7 +103,7 @@ macro_rules! extensions {
             }
         }
 
-        impl<'a, I> From<I> for $sname where I: IntoIterator<Item = &'a CStr> {
+        impl<'a, I> From<I> for $sname where I: IntoIterator<Item = &'a std::ffi::CStr> {
             fn from(names: I) -> Self {
                 let mut extensions = Self::none();
                 for name in names {
@@ -118,10 +118,10 @@ macro_rules! extensions {
             }
         }
 
-        impl<'a> From<&'a $sname> for Vec<CString> {
+        impl<'a> From<&'a $sname> for Vec<std::ffi::CString> {
             fn from(x: &'a $sname) -> Self {
                 let mut data = Self::new();
-                $(if x.$member { data.push(CString::new(&$raw[..]).unwrap()); })*
+                $(if x.$member { data.push(std::ffi::CString::new(&$raw[..]).unwrap()); })*
                 data
             }
         }

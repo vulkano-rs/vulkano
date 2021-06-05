@@ -17,7 +17,7 @@ macro_rules! fns {
 
         impl $struct_name {
             pub fn load<F>(mut load_fn: F) -> $struct_name
-                where F: FnMut(&CStr) -> *const c_void
+                where F: FnMut(&std::ffi::CStr) -> *const std::ffi::c_void
             {
                 $struct_name {
                     $(

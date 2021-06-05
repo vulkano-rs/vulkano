@@ -44,56 +44,56 @@ macro_rules! device_extensions {
             pub(super) fn check_requirements(
                 &self,
                 supported: &DeviceExtensions,
-                api_version:Version,
+                api_version: crate::Version,
                 instance_extensions: &InstanceExtensions,
-            ) -> Result<(), ExtensionRestrictionError> {
+            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
                 $(
                     if self.$member {
                         if !supported.$member {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::extensions::ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                restriction: ExtensionRestriction::NotSupported,
+                                restriction: crate::extensions::ExtensionRestriction::NotSupported,
                             });
                         }
 
                         if api_version < $requires_core {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::extensions::ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                restriction: ExtensionRestriction::RequiresCore($requires_core),
+                                restriction: crate::extensions::ExtensionRestriction::RequiresCore($requires_core),
                             });
                         }
 
                         $(
                             if !self.$requires_device_extension {
-                                return Err(ExtensionRestrictionError {
+                                return Err(crate::extensions::ExtensionRestrictionError {
                                     extension: stringify!($member),
-                                    restriction: ExtensionRestriction::RequiresDeviceExtension(stringify!($requires_device_extension)),
+                                    restriction: crate::extensions::ExtensionRestriction::RequiresDeviceExtension(stringify!($requires_device_extension)),
                                 });
                             }
                         )*
 
                         $(
                             if !instance_extensions.$requires_instance_extension {
-                                return Err(ExtensionRestrictionError {
+                                return Err(crate::extensions::ExtensionRestrictionError {
                                     extension: stringify!($member),
-                                    restriction: ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_instance_extension)),
+                                    restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_instance_extension)),
                                 });
                             }
                         )*
 
                         $(
                             if self.$conflicts_device_extension {
-                                return Err(ExtensionRestrictionError {
+                                return Err(crate::extensions::ExtensionRestrictionError {
                                     extension: stringify!($member),
-                                    restriction: ExtensionRestriction::ConflictsDeviceExtension(stringify!($conflicts_device_extension)),
+                                    restriction: crate::extensions::ExtensionRestriction::ConflictsDeviceExtension(stringify!($conflicts_device_extension)),
                                 });
                             }
                         )*
                     } else {
                         if $required_if_supported && supported.$member {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::extensions::ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                restriction: ExtensionRestriction::RequiredIfSupported,
+                                restriction: crate::extensions::ExtensionRestriction::RequiredIfSupported,
                             });
                         }
                     }
@@ -106,7 +106,7 @@ macro_rules! device_extensions {
                     $(
                         $member: $required_if_supported,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
         }

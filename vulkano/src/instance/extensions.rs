@@ -38,27 +38,31 @@ macro_rules! instance_extensions {
 
         impl InstanceExtensions {
             /// Checks enabled extensions against the instance version and each other.
-            pub(super) fn check_requirements(&self, supported: &InstanceExtensions, api_version: Version) -> Result<(), ExtensionRestrictionError> {
+            pub(super) fn check_requirements(
+                &self,
+                supported: &InstanceExtensions,
+                api_version: crate::Version,
+            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
                 $(
                     if self.$member {
                         if !supported.$member {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::extensions::ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                restriction: ExtensionRestriction::NotSupported,
+                                restriction: crate::extensions::ExtensionRestriction::NotSupported,
                             });
                         }
 
                         if api_version < $requires_core {
-                            return Err(ExtensionRestrictionError {
+                            return Err(crate::extensions::ExtensionRestrictionError {
                                 extension: stringify!($member),
-                                restriction: ExtensionRestriction::RequiresCore($requires_core),
+                                restriction: crate::extensions::ExtensionRestriction::RequiresCore($requires_core),
                             });
                         } else {
                             $(
                                 if !self.$requires_extension {
-                                    return Err(ExtensionRestrictionError {
+                                    return Err(crate::extensions::ExtensionRestrictionError {
                                         extension: stringify!($member),
-                                        restriction: ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_extension)),
+                                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_extension)),
                                     });
                                 }
                             )*

@@ -62,39 +62,45 @@ macro_rules! features {
 
         impl Features {
             /// Checks enabled features against the device version, device extensions and each other.
-            pub(super) fn check_requirements(&self, supported: &Features, api_version: Version, extensions: &DeviceExtensions) -> Result<(), FeatureRestrictionError> {
+            pub(super) fn check_requirements(
+                &self,
+                supported: &Features,
+                api_version:
+                crate::Version,
+                extensions: &crate::device::DeviceExtensions,
+            ) -> Result<(), crate::device::features::FeatureRestrictionError> {
                 $(
                     if self.$member {
                         if !supported.$member {
-                            return Err(FeatureRestrictionError {
+                            return Err(crate::device::features::FeatureRestrictionError {
                                 feature: stringify!($member),
-                                restriction: FeatureRestriction::NotSupported,
+                                restriction: crate::device::features::FeatureRestriction::NotSupported,
                             });
                         }
 
                         $(
                             if !self.$requires_feature {
-                                return Err(FeatureRestrictionError {
+                                return Err(crate::device::features::FeatureRestrictionError {
                                     feature: stringify!($member),
-                                    restriction: FeatureRestriction::RequiresFeature(stringify!($requires_feature)),
+                                    restriction: crate::device::features::FeatureRestriction::RequiresFeature(stringify!($requires_feature)),
                                 });
                             }
                         )*
 
                         $(
                             if self.$conflicts_feature {
-                                return Err(FeatureRestrictionError {
+                                return Err(crate::device::features::FeatureRestrictionError {
                                     feature: stringify!($member),
-                                    restriction: FeatureRestriction::ConflictsFeature(stringify!($conflicts_feature)),
+                                    restriction: crate::device::features::FeatureRestriction::ConflictsFeature(stringify!($conflicts_feature)),
                                 });
                             }
                         )*
                     } else {
                         $(
                             if extensions.$required_by_extension {
-                                return Err(FeatureRestrictionError {
+                                return Err(crate::device::features::FeatureRestrictionError {
                                     feature: stringify!($member),
-                                    restriction: FeatureRestriction::RequiredByExtension(stringify!($required_by_extension)),
+                                    restriction: crate::device::features::FeatureRestriction::RequiredByExtension(stringify!($required_by_extension)),
                                 });
                             }
                         )*
@@ -249,7 +255,7 @@ macro_rules! features_ffi {
         }
 
         impl FeaturesFfi {
-            pub(crate) fn make_chain(&mut self, $api_version: Version, $extensions: &DeviceExtensions) {
+            pub(crate) fn make_chain(&mut self, $api_version: crate::Version, $extensions: &DeviceExtensions) {
                 self.features_vulkan10 = Some(Default::default());
                 $(
                     if std::array::IntoIter::new([$($provided_by),+]).any(|x| x) &&

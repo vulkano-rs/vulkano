@@ -166,14 +166,14 @@ where
     W: Write,
     I: IntoIterator<Item = VulkanoExtension>,
 {
-    write!(writer, "device_extensions! {{").unwrap();
+    write!(writer, "crate::device::extensions::device_extensions! {{").unwrap();
     for ext in extensions {
         write!(writer, "\n\t{} => {{", ext.member).unwrap();
         write_doc(writer, &ext);
         write!(writer, "\n\t\traw: b\"{}\",", ext.raw).unwrap();
         write!(
             writer,
-            "\n\t\trequires_core: Version::V{}_{},",
+            "\n\t\trequires_core: crate::Version::V{}_{},",
             ext.requires_core.0, ext.requires_core.1
         )
         .unwrap();
@@ -223,14 +223,18 @@ where
     W: Write,
     I: IntoIterator<Item = VulkanoExtension>,
 {
-    write!(writer, "instance_extensions! {{").unwrap();
+    write!(
+        writer,
+        "crate::instance::extensions::instance_extensions! {{"
+    )
+    .unwrap();
     for ext in extensions {
         write!(writer, "\n\t{} => {{", ext.member).unwrap();
         write_doc(writer, &ext);
         write!(writer, "\n\t\traw: b\"{}\",", ext.raw).unwrap();
         write!(
             writer,
-            "\n\t\trequires_core: Version::V{}_{},",
+            "\n\t\trequires_core: crate::Version::V{}_{},",
             ext.requires_core.0, ext.requires_core.1
         )
         .unwrap();
@@ -244,7 +248,7 @@ where
         /*if let Some(promoted_to_core) = ext.promoted_to_core {
             write!(
                 writer,
-                "\n\t\tpromoted_to_core: Some(Version::V{}_{}),",
+                "\n\t\tpromoted_to_core: Some(crate::Version::V{}_{}),",
                 promoted_to_core.0, promoted_to_core.1
             )
             .unwrap();

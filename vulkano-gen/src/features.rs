@@ -58,7 +58,7 @@ fn required_by_extensions(name: &str) -> &'static [&'static str] {
 }
 
 pub fn write<W: Write>(writer: &mut W, types: &HashMap<&str, (&Type, Vec<&str>)>) {
-    write!(writer, "features! {{").unwrap();
+    write!(writer, "crate::device::features::features! {{").unwrap();
 
     for feat in make_vulkano_features(&types) {
         write!(writer, "\n\t{} => {{", feat.member).unwrap();
@@ -93,7 +93,7 @@ pub fn write<W: Write>(writer: &mut W, types: &HashMap<&str, (&Type, Vec<&str>)>
 
     write!(
         writer,
-        "\n}}\n\nfeatures_ffi! {{\n\tapi_version,\n\textensions,"
+        "\n}}\n\ncrate::device::features::features_ffi! {{\n\tapi_version,\n\textensions,"
     )
     .unwrap();
 
@@ -268,7 +268,7 @@ fn make_vulkano_features_ffi(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<V
                 .iter()
                 .map(|provided_by| {
                     if let Some(version) = provided_by.strip_prefix("VK_VERSION_") {
-                        format!("api_version >= Version::V{}", version)
+                        format!("api_version >= crate::Version::V{}", version)
                     } else {
                         format!(
                             "extensions.{}",

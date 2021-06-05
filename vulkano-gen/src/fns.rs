@@ -66,7 +66,7 @@ where
     W: Write,
     I: IntoIterator<Item = VulkanoFns>,
 {
-    write!(writer, "fns!({}Functions, {{", ty).unwrap();
+    write!(writer, "crate::fns::fns!({}Functions, {{", ty).unwrap();
 
     for version in std::array::IntoIter::new(["1_0", "1_1", "1_2"]) {
         write!(writer, "\n\tv{} => {}FnV{0},", version, ty).unwrap();
