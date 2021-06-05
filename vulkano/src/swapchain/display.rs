@@ -35,9 +35,10 @@ use crate::swapchain::SupportedSurfaceTransforms;
 use crate::OomError;
 use crate::VulkanObject;
 use std::ffi::CStr;
-use std::ptr;
+use std::fmt::Formatter;
 use std::sync::Arc;
 use std::vec::IntoIter;
+use std::{fmt, ptr};
 
 // TODO: extract this to a `display` module and solve the visibility problems
 
@@ -341,6 +342,8 @@ unsafe impl VulkanObject for Display {
 }
 
 /// Represents a mode on a specific display.
+///
+/// A display mode describes a supported display resolution and refresh rate.
 pub struct DisplayMode {
     display: Display,
     display_mode: ash::vk::DisplayModeKHR,
@@ -392,9 +395,28 @@ impl DisplayMode {
     }
 
     /// Returns the refresh rate of this mode.
+    ///
+    /// The returned value is multiplied by 1000. As such the value is in terms of millihertz (mHz).
+    /// For example, a 60Hz display mode would have a refresh rate of 60,000 mHz.
     #[inline]
     pub fn refresh_rate(&self) -> u32 {
         self.parameters.refresh_rate
+    }
+}
+
+impl fmt::Display for DisplayMode {
+    #[inline]
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let visible_region = self.visible_region();
+
+        write!(
+            f,
+            // Returned value is in millihertz
+            "{}×{}px @ {}mHz",
+            visible_region[0],
+            visible_region[1],
+            self.refresh_rate()
+        )
     }
 }
 
