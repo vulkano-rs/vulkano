@@ -8,13 +8,14 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::extensions::ExtensionRestrictionError;
 use crate::fns::InstanceFunctions;
 use crate::instance::loader;
 use crate::instance::loader::FunctionPointers;
 use crate::instance::loader::Loader;
 use crate::instance::loader::LoadingError;
 use crate::instance::physical_device::{init_physical_devices, PhysicalDeviceInfos};
-use crate::instance::{InstanceExtensions, RawInstanceExtensions};
+use crate::instance::InstanceExtensions;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
@@ -181,7 +182,7 @@ pub struct Instance {
 
     pub(super) physical_devices: Vec<PhysicalDeviceInfos>,
     fns: InstanceFunctions,
-    extensions: RawInstanceExtensions,
+    extensions: InstanceExtensions,
     layers: SmallVec<[CString; 16]>,
     function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
 }
@@ -217,15 +218,14 @@ impl Instance {
     // TODO: add a test for these ^
     // TODO: if no allocator is specified by the user, use Rust's allocator instead of leaving
     //       the choice to Vulkan
-    pub fn new<'a, L, Ext>(
+    pub fn new<'a, L>(
         app_infos: Option<&ApplicationInfo>,
         max_api_version: Version,
-        extensions: Ext,
+        extensions: &InstanceExtensions,
         layers: L,
     ) -> Result<Arc<Instance>, InstanceCreationError>
     where
         L: IntoIterator<Item = &'a str>,
-        Ext: Into<RawInstanceExtensions>,
     {
         let layers = layers
             .into_iter()
@@ -235,23 +235,22 @@ impl Instance {
         Instance::new_inner(
             app_infos,
             max_api_version,
-            extensions.into(),
+            extensions,
             layers,
             OwnedOrRef::Ref(loader::auto_loader()?),
         )
     }
 
     /// Same as `new`, but allows specifying a loader where to load Vulkan from.
-    pub fn with_loader<'a, L, Ext>(
+    pub fn with_loader<'a, L>(
         loader: FunctionPointers<Box<dyn Loader + Send + Sync>>,
         app_infos: Option<&ApplicationInfo>,
         max_api_version: Version,
-        extensions: Ext,
+        extensions: &InstanceExtensions,
         layers: L,
     ) -> Result<Arc<Instance>, InstanceCreationError>
     where
         L: IntoIterator<Item = &'a str>,
-        Ext: Into<RawInstanceExtensions>,
     {
         let layers = layers
             .into_iter()
@@ -261,7 +260,7 @@ impl Instance {
         Instance::new_inner(
             app_infos,
             max_api_version,
-            extensions.into(),
+            extensions,
             layers,
             OwnedOrRef::Owned(loader),
         )
@@ -270,10 +269,18 @@ impl Instance {
     fn new_inner(
         app_infos: Option<&ApplicationInfo>,
         max_api_version: Version,
-        extensions: RawInstanceExtensions,
+        extensions: &InstanceExtensions,
         layers: SmallVec<[CString; 16]>,
         function_pointers: OwnedOrRef<FunctionPointers<Box<dyn Loader + Send + Sync>>>,
     ) -> Result<Arc<Instance>, InstanceCreationError> {
+        let api_version = std::cmp::min(max_api_version, function_pointers.api_version()?);
+
+        // Check if the extensions are correct
+        extensions.check_requirements(
+            &InstanceExtensions::supported_by_core_with_loader(&function_pointers)?,
+            api_version,
+        )?;
+
         // TODO: For now there are still buggy drivers that will segfault if you don't pass any
         //       appinfos. Therefore for now we ensure that it can't be `None`.
         let def = Default::default();
@@ -298,8 +305,6 @@ impl Instance {
         } else {
             None
         };
-
-        let api_version = std::cmp::min(max_api_version, function_pointers.api_version()?);
 
         // Building the `vk::ApplicationInfo` if required.
         let app_infos = if let Some(app_infos) = app_infos {
@@ -334,12 +339,13 @@ impl Instance {
         };
 
         // FIXME: check whether each layer is supported
-        let layers_ptr = layers
+        let layers_ptrs = layers
             .iter()
             .map(|layer| layer.as_ptr())
             .collect::<SmallVec<[_; 16]>>();
 
-        let extensions_list = extensions
+        let extensions_list: Vec<CString> = extensions.into();
+        let extensions_ptrs = extensions_list
             .iter()
             .map(|extension| extension.as_ptr())
             .collect::<SmallVec<[_; 32]>>();
@@ -354,10 +360,10 @@ impl Instance {
                 } else {
                     ptr::null()
                 },
-                enabled_layer_count: layers_ptr.len() as u32,
-                pp_enabled_layer_names: layers_ptr.as_ptr(),
-                enabled_extension_count: extensions_list.len() as u32,
-                pp_enabled_extension_names: extensions_list.as_ptr(),
+                enabled_layer_count: layers_ptrs.len() as u32,
+                pp_enabled_layer_names: layers_ptrs.as_ptr(),
+                enabled_extension_count: extensions_ptrs.len() as u32,
+                pp_enabled_extension_names: extensions_ptrs.as_ptr(),
                 ..Default::default()
             };
 
@@ -383,7 +389,7 @@ impl Instance {
             //alloc: None,
             physical_devices: Vec::new(),
             fns,
-            extensions,
+            extensions: extensions.clone(),
             layers,
             function_pointers,
         };
@@ -402,7 +408,7 @@ impl Instance {
         unimplemented!()
     }*/
 
-    /// Returns the Vulkan version supported by this `Instance`.
+    /// Returns the Vulkan version supported by the instance.
     ///
     /// This is the lower of the
     /// [driver's supported version](crate::instance::loader::FunctionPointers::api_version) and
@@ -412,7 +418,7 @@ impl Instance {
         self.api_version
     }
 
-    /// Returns the maximum Vulkan version that was specified when creating this `Instance`.
+    /// Returns the maximum Vulkan version that was specified when creating the instance.
     #[inline]
     pub fn max_api_version(&self) -> Version {
         self.max_api_version
@@ -424,7 +430,7 @@ impl Instance {
         &self.fns
     }
 
-    /// Returns the list of extensions that have been loaded.
+    /// Returns the extensions that have been enabled on the instance.
     ///
     /// This list is equal to what was passed to `Instance::new()`.
     ///
@@ -437,19 +443,14 @@ impl Instance {
     ///
     /// let extensions = InstanceExtensions::supported_by_core().unwrap();
     /// let instance = Instance::new(None, Version::V1_1, &extensions, None).unwrap();
-    /// assert_eq!(instance.loaded_extensions(), extensions);
+    /// assert_eq!(instance.loaded_extensions(), &extensions);
     /// ```
     #[inline]
-    pub fn loaded_extensions(&self) -> InstanceExtensions {
-        InstanceExtensions::from(&self.extensions)
-    }
-
-    #[inline]
-    pub fn raw_loaded_extensions(&self) -> &RawInstanceExtensions {
+    pub fn loaded_extensions(&self) -> &InstanceExtensions {
         &self.extensions
     }
 
-    /// Returns the list of layers requested when creating this instance.
+    /// Returns the layers that have been enabled on the instance.
     #[doc(hidden)]
     #[inline]
     pub fn loaded_layers(&self) -> slice::Iter<CString> {
@@ -605,11 +606,12 @@ pub enum InstanceCreationError {
     InitializationFailed,
     /// One of the requested layers is missing.
     LayerNotPresent,
-    /// One of the requested extensions is missing.
+    /// One of the requested extensions is not supported by the implementation.
     ExtensionNotPresent,
     /// The version requested is not supported by the implementation.
-    // TODO: more info about this once the question of the version has been resolved
     IncompatibleDriver,
+    /// A restriction for an extension was not met.
+    ExtensionRestrictionNotMet(ExtensionRestrictionError),
 }
 
 impl error::Error for InstanceCreationError {
@@ -626,19 +628,17 @@ impl error::Error for InstanceCreationError {
 impl fmt::Display for InstanceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                InstanceCreationError::LoadingError(_) =>
-                    "failed to load the Vulkan shared library",
-                InstanceCreationError::OomError(_) => "not enough memory available",
-                InstanceCreationError::InitializationFailed => "initialization failed",
-                InstanceCreationError::LayerNotPresent => "layer not present",
-                InstanceCreationError::ExtensionNotPresent => "extension not present",
-                InstanceCreationError::IncompatibleDriver => "incompatible driver",
+        match *self {
+            InstanceCreationError::LoadingError(_) => {
+                write!(fmt, "failed to load the Vulkan shared library")
             }
-        )
+            InstanceCreationError::OomError(_) => write!(fmt, "not enough memory available"),
+            InstanceCreationError::InitializationFailed => write!(fmt, "initialization failed"),
+            InstanceCreationError::LayerNotPresent => write!(fmt, "layer not present"),
+            InstanceCreationError::ExtensionNotPresent => write!(fmt, "extension not present"),
+            InstanceCreationError::IncompatibleDriver => write!(fmt, "incompatible driver"),
+            InstanceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
+        }
     }
 }
 
@@ -653,6 +653,13 @@ impl From<LoadingError> for InstanceCreationError {
     #[inline]
     fn from(err: LoadingError) -> InstanceCreationError {
         InstanceCreationError::LoadingError(err)
+    }
+}
+
+impl From<ExtensionRestrictionError> for InstanceCreationError {
+    #[inline]
+    fn from(err: ExtensionRestrictionError) -> Self {
+        Self::ExtensionRestrictionNotMet(err)
     }
 }
 

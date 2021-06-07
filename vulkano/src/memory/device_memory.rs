@@ -291,7 +291,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             if !(export_handle_bits & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
                 .is_empty()
             {
-                if !self.device.loaded_extensions().ext_external_memory_dmabuf {
+                if !self.device.loaded_extensions().ext_external_memory_dma_buf {
                     return Err(DeviceMemoryAllocError::MissingExtension(
                         "ext_external_memory_dmabuf",
                     ));
@@ -310,7 +310,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             if !(import_handle_bits & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
                 .is_empty()
             {
-                if !self.device.loaded_extensions().ext_external_memory_dmabuf {
+                if !self.device.loaded_extensions().ext_external_memory_dma_buf {
                     return Err(DeviceMemoryAllocError::MissingExtension(
                         "ext_external_memory_dmabuf",
                     ));

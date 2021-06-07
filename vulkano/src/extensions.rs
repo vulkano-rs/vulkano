@@ -7,28 +7,37 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::instance::loader::LoadingError;
 use crate::Error;
 use crate::OomError;
+use crate::Version;
+use std::error;
+use std::fmt;
 
 macro_rules! extensions {
-    ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
+    (
+        $sname:ident,
+        $($member:ident => {
+            doc: $doc:expr,
+            raw: $raw:expr,
+            requires_core: $requires_core:expr,
+            requires_device_extensions: [$($requires_device_extension:ident),*],
+            requires_instance_extensions: [$($requires_instance_extension:ident),*]$(,)?
+        },)*
+    ) => (
         /// List of extensions that are enabled or available.
         #[derive(Copy, Clone, PartialEq, Eq)]
-        #[allow(missing_docs)]
         pub struct $sname {
             $(
-                pub $ext: bool,
+                #[doc = $doc]
+                pub $member: bool,
             )*
 
             /// This field ensures that an instance of this `Extensions` struct
             /// can only be created through Vulkano functions and the update
             /// syntax. This way, extensions can be added to Vulkano without
             /// breaking existing code.
-            pub _unbuildable: Unbuildable,
+            pub _unbuildable: crate::extensions::Unbuildable,
         }
 
         impl $sname {
@@ -36,8 +45,8 @@ macro_rules! extensions {
             #[inline]
             pub const fn none() -> $sname {
                 $sname {
-                    $($ext: false,)*
-                    _unbuildable: Unbuildable(())
+                    $($member: false,)*
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
 
@@ -46,9 +55,9 @@ macro_rules! extensions {
             pub const fn union(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
-                        $ext: self.$ext || other.$ext,
+                        $member: self.$member || other.$member,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
 
@@ -57,9 +66,9 @@ macro_rules! extensions {
             pub const fn intersection(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
-                        $ext: self.$ext && other.$ext,
+                        $member: self.$member && other.$member,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
 
@@ -68,25 +77,25 @@ macro_rules! extensions {
             pub const fn difference(&self, other: &$sname) -> $sname {
                 $sname {
                     $(
-                        $ext: self.$ext && !other.$ext,
+                        $member: self.$member && !other.$member,
                     )*
-                    _unbuildable: Unbuildable(())
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
         }
 
-        impl fmt::Debug for $sname {
+        impl std::fmt::Debug for $sname {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
                 write!(f, "[")?;
 
                 let mut first = true;
 
                 $(
-                    if self.$ext {
+                    if self.$member {
                         if !first { write!(f, ", ")? }
                         else { first = false; }
-                        f.write_str(str::from_utf8($s).unwrap())?;
+                        f.write_str(std::str::from_utf8($raw).unwrap())?;
                     }
                 )*
 
@@ -94,80 +103,26 @@ macro_rules! extensions {
             }
         }
 
-        /// Set of extensions, not restricted to those vulkano knows about.
-        ///
-        /// This is useful when interacting with external code that has statically-unknown extension
-        /// requirements.
-        #[derive(Clone, Eq, PartialEq)]
-        pub struct $rawname(HashSet<CString>);
-
-        impl $rawname {
-            /// Constructs an extension set containing the supplied extensions.
-            pub fn new<I>(extensions: I) -> Self
-                where I: IntoIterator<Item=CString>
-            {
-                $rawname(extensions.into_iter().collect())
-            }
-
-            /// Constructs an empty extension set.
-            pub fn none() -> Self { $rawname(HashSet::new()) }
-
-            /// Adds an extension to the set if it is not already present.
-            pub fn insert(&mut self, extension: CString) {
-                self.0.insert(extension);
-            }
-
-            /// Returns the intersection of this set and another.
-            pub fn intersection(&self, other: &Self) -> Self {
-                $rawname(self.0.intersection(&other.0).cloned().collect())
-            }
-
-            /// Returns the difference of another set from this one.
-            pub fn difference(&self, other: &Self) -> Self {
-                $rawname(self.0.difference(&other.0).cloned().collect())
-            }
-
-            /// Returns the union of both extension sets
-            pub fn union(&self, other: &Self) -> Self {
-                $rawname(self.0.union(&other.0).cloned().collect())
-            }
-
-            // TODO: impl Iterator
-            pub fn iter(&self) -> ::std::collections::hash_set::Iter<CString> { self.0.iter() }
-        }
-
-        impl fmt::Debug for $rawname {
-            #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                self.0.fmt(f)
-            }
-        }
-
-        impl FromIterator<CString> for $rawname {
-            fn from_iter<T>(iter: T) -> Self
-                where T: IntoIterator<Item = CString>
-            {
-                $rawname(iter.into_iter().collect())
-            }
-        }
-
-        impl<'a> From<&'a $sname> for $rawname {
-            fn from(x: &'a $sname) -> Self {
-                let mut data = HashSet::new();
-                $(if x.$ext { data.insert(CString::new(&$s[..]).unwrap()); })*
-                $rawname(data)
-            }
-        }
-
-        impl<'a> From<&'a $rawname> for $sname {
-            fn from(x: &'a $rawname) -> Self {
-                let mut extensions = $sname::none();
-                $(
-                    if x.0.iter().any(|x| x.as_bytes() == &$s[..]) {
-                        extensions.$ext = true;
+        impl<'a, I> From<I> for $sname where I: IntoIterator<Item = &'a std::ffi::CStr> {
+            fn from(names: I) -> Self {
+                let mut extensions = Self::none();
+                for name in names {
+                    match name.to_bytes() {
+                        $(
+                            $raw => { extensions.$member = true; }
+                        )*
+                        _ => (),
                     }
-                )*
+                }
                 extensions
+            }
+        }
+
+        impl<'a> From<&'a $sname> for Vec<std::ffi::CString> {
+            fn from(x: &'a $sname) -> Self {
+                let mut data = Self::new();
+                $(if x.$member { data.push(std::ffi::CString::new(&$raw[..]).unwrap()); })*
+                data
             }
         }
     );
@@ -233,3 +188,76 @@ impl From<Error> for SupportedExtensionsError {
         }
     }
 }
+
+/// An error that can happen when enabling an extension on an instance or device.
+#[derive(Clone, Copy, Debug)]
+pub struct ExtensionRestrictionError {
+    /// The extension in question.
+    pub extension: &'static str,
+    /// The restriction that was not met.
+    pub restriction: ExtensionRestriction,
+}
+
+impl error::Error for ExtensionRestrictionError {}
+
+impl fmt::Display for ExtensionRestrictionError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "a restriction for the extension {} was not met: {}",
+            self.extension, self.restriction,
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ExtensionRestriction {
+    /// Not supported by the loader or physical device.
+    NotSupported,
+    /// Requires a minimum Vulkan API version.
+    RequiresCore(Version),
+    /// Requires a device extension to be enabled.
+    RequiresDeviceExtension(&'static str),
+    /// Requires an instance extension to be enabled.
+    RequiresInstanceExtension(&'static str),
+    /// Required to be enabled by the physical device.
+    RequiredIfSupported,
+    /// Requires a device extension to be disabled.
+    ConflictsDeviceExtension(&'static str),
+}
+
+impl fmt::Display for ExtensionRestriction {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match *self {
+            ExtensionRestriction::NotSupported => {
+                write!(fmt, "not supported by the loader or physical device")
+            }
+            ExtensionRestriction::RequiresCore(version) => {
+                write!(
+                    fmt,
+                    "requires Vulkan API version {}.{}",
+                    version.major, version.minor
+                )
+            }
+            ExtensionRestriction::RequiresDeviceExtension(ext) => {
+                write!(fmt, "requires device extension {} to be enabled", ext)
+            }
+            ExtensionRestriction::RequiresInstanceExtension(ext) => {
+                write!(fmt, "requires instance extension {} to be enabled", ext)
+            }
+            ExtensionRestriction::RequiredIfSupported => {
+                write!(fmt, "required to be enabled by the physical device")
+            }
+            ExtensionRestriction::ConflictsDeviceExtension(ext) => {
+                write!(fmt, "requires device extension {} to be disabled", ext)
+            }
+        }
+    }
+}
+
+/// This helper type can only be instantiated inside this module.
+#[doc(hidden)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Unbuildable(pub(crate) ());

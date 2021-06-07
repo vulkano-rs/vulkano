@@ -90,13 +90,15 @@
 //!
 //! TODO: write
 
-pub use self::extensions::DeviceExtensions;
-pub use self::extensions::RawDeviceExtensions;
-pub use self::features::Features;
 pub(crate) use self::features::FeaturesFfi;
+pub use self::features::{FeatureRestriction, FeatureRestrictionError, Features};
+pub use crate::autogen::DeviceExtensions;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor::descriptor_set::StdDescriptorPool;
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 use crate::fns::DeviceFunctions;
 use crate::format::Format;
 use crate::image::ImageCreateFlags;
@@ -120,6 +122,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error;
 use std::ffi::CStr;
+use std::ffi::CString;
 use std::fmt;
 use std::hash::BuildHasherDefault;
 use std::hash::Hash;
@@ -133,8 +136,8 @@ use std::sync::Mutex;
 use std::sync::MutexGuard;
 use std::sync::Weak;
 
-mod extensions;
-mod features;
+pub(crate) mod extensions;
+pub(crate) mod features;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -186,68 +189,70 @@ impl Device {
     ///
     // TODO: return Arc<Queue> and handle synchronization in the Queue
     // TODO: should take the PhysicalDevice by value
-    pub fn new<'a, I, Ext>(
-        phys: PhysicalDevice,
+    pub fn new<'a, I>(
+        physical_device: PhysicalDevice,
         requested_features: &Features,
-        extensions: Ext,
+        requested_extensions: &DeviceExtensions,
         queue_families: I,
     ) -> Result<(Arc<Device>, QueuesIter), DeviceCreationError>
     where
         I: IntoIterator<Item = (QueueFamily<'a>, f32)>,
-        Ext: Into<RawDeviceExtensions>,
     {
-        let instance = phys.instance();
+        let instance = physical_device.instance();
         let fns_i = instance.fns();
 
         let max_api_version = instance.max_api_version();
-        let api_version = std::cmp::min(max_api_version, phys.api_version());
+        let api_version = std::cmp::min(max_api_version, physical_device.api_version());
 
-        let queue_families = queue_families.into_iter();
+        // Check if the extensions are correct
+        requested_extensions.check_requirements(
+            &DeviceExtensions::supported_by_device(physical_device),
+            api_version,
+            instance.loaded_extensions(),
+        )?;
 
-        if !phys.supported_features().superset_of(&requested_features) {
-            return Err(DeviceCreationError::FeatureNotPresent);
-        }
+        let mut requested_features = requested_features.clone();
 
-        // this variable will contain the queue family ID and queue ID of each requested queue
-        let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
-
-        // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
-        // ignored by the driver. For backwards compatibility, the spec recommends passing the
-        // exact instance layers to the device as well. There's no need to support separate
-        // requests at device creation time for legacy drivers: the spec claims that "[at] the
-        // time of deprecation there were no known device-only layers."
+        // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
+        //       if they can possibly perform out-of-bounds reads and writes. If the user tries
+        //       to use a shader that can perform out-of-bounds operations without having
+        //       `robust_buffer_access` enabled, an error is returned.
         //
-        // Because there's no way to query the list of layers enabled for an instance, we need
-        // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
-        // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
-        let layers_ptr = instance
-            .loaded_layers()
-            .map(|layer| layer.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
+        //       However for the moment this verification isn't performed. In order to be safe,
+        //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
+        //       supported everywhere.
+        //
+        //       The only alternative (while waiting for shaders introspection to work) is to
+        //       make all shaders depend on `robust_buffer_access`. But since usually the
+        //       majority of shaders don't need this feature, it would be very annoying to have
+        //       to enable it manually when you don't need it.
+        //
+        //       Note that if we ever remove this, don't forget to adjust the change in
+        //       `Device`'s construction below.
+        requested_features.robust_buffer_access = true;
 
-        let extensions = extensions.into();
-        let extensions_list = extensions
-            .iter()
-            .map(|extension| extension.as_ptr())
-            .collect::<SmallVec<[_; 16]>>();
-
-        let requested_features = Features {
-            // Always enabled; see below.
-            robust_buffer_access: true,
-            ..*requested_features
-        };
+        // Check if the features are correct
+        requested_features.check_requirements(
+            physical_device.supported_features(),
+            api_version,
+            requested_extensions,
+        )?;
 
         // device creation
-        let device = unsafe {
+        let (device, queues) = unsafe {
             // each element of `queues` is a `(queue_family, priorities)`
             // each queue family must only have one entry in `queues`
-            let mut queues: Vec<(u32, Vec<f32>)> = Vec::with_capacity(phys.queue_families().len());
+            let mut queues: Vec<(u32, Vec<f32>)> =
+                Vec::with_capacity(physical_device.queue_families().len());
+
+            // this variable will contain the queue family ID and queue ID of each requested queue
+            let mut output_queues: SmallVec<[(u32, u32); 8]> = SmallVec::new();
 
             for (queue_family, priority) in queue_families {
                 // checking the parameters
                 assert_eq!(
                     queue_family.physical_device().internal_object(),
-                    phys.internal_object()
+                    physical_device.internal_object()
                 );
                 if priority < 0.0 || priority > 1.0 {
                     return Err(DeviceCreationError::PriorityOutOfRange);
@@ -280,25 +285,29 @@ impl Device {
                 )
                 .collect::<SmallVec<[_; 16]>>();
 
-            // TODO: The plan regarding `robust_buffer_access` is to check the shaders' code to see
-            //       if they can possibly perform out-of-bounds reads and writes. If the user tries
-            //       to use a shader that can perform out-of-bounds operations without having
-            //       `robust_buffer_access` enabled, an error is returned.
-            //
-            //       However for the moment this verification isn't performed. In order to be safe,
-            //       we always enable the `robust_buffer_access` feature as it is guaranteed to be
-            //       supported everywhere.
-            //
-            //       The only alternative (while waiting for shaders introspection to work) is to
-            //       make all shaders depend on `robust_buffer_access`. But since usually the
-            //       majority of shaders don't need this feature, it would be very annoying to have
-            //       to enable it manually when you don't need it.
-            //
-            //       Note that if we ever remove this, don't forget to adjust the change in
-            //       `Device`'s construction below.
+            let mut features_ffi = FeaturesFfi::default();
+            features_ffi.make_chain(api_version, requested_extensions);
+            features_ffi.write(&requested_features);
 
-            let mut features_ffi = <FeaturesFfi>::from(&requested_features);
-            features_ffi.make_chain(api_version);
+            // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be
+            // ignored by the driver. For backwards compatibility, the spec recommends passing the
+            // exact instance layers to the device as well. There's no need to support separate
+            // requests at device creation time for legacy drivers: the spec claims that "[at] the
+            // time of deprecation there were no known device-only layers."
+            //
+            // Because there's no way to query the list of layers enabled for an instance, we need
+            // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
+            // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
+            let layers_ptrs = instance
+                .loaded_layers()
+                .map(|layer| layer.as_ptr())
+                .collect::<SmallVec<[_; 16]>>();
+
+            let extensions_strings: Vec<CString> = requested_extensions.into();
+            let extensions_ptrs = extensions_strings
+                .iter()
+                .map(|extension| extension.as_ptr())
+                .collect::<SmallVec<[_; 16]>>();
 
             let has_khr_get_physical_device_properties2 = instance
                 .loaded_extensions()
@@ -313,10 +322,10 @@ impl Device {
                 flags: ash::vk::DeviceCreateFlags::empty(),
                 queue_create_info_count: queues.len() as u32,
                 p_queue_create_infos: queues.as_ptr(),
-                enabled_layer_count: layers_ptr.len() as u32,
-                pp_enabled_layer_names: layers_ptr.as_ptr(),
-                enabled_extension_count: extensions_list.len() as u32,
-                pp_enabled_extension_names: extensions_list.as_ptr(),
+                enabled_layer_count: layers_ptrs.len() as u32,
+                pp_enabled_layer_names: layers_ptrs.as_ptr(),
+                enabled_extension_count: extensions_ptrs.len() as u32,
+                pp_enabled_extension_names: extensions_ptrs.as_ptr(),
                 p_enabled_features: if has_khr_get_physical_device_properties2 {
                     ptr::null()
                 } else {
@@ -327,12 +336,13 @@ impl Device {
 
             let mut output = MaybeUninit::uninit();
             check_errors(fns_i.v1_0.create_device(
-                phys.internal_object(),
+                physical_device.internal_object(),
                 &infos,
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
-            output.assume_init()
+
+            (output.assume_init(), output_queues)
         };
 
         // loading the function pointers of the newly-created device
@@ -341,7 +351,7 @@ impl Device {
         });
 
         let mut active_queue_families: SmallVec<[u32; 8]> = SmallVec::new();
-        for (queue_family, _) in output_queues.iter() {
+        for (queue_family, _) in queues.iter() {
             if let None = active_queue_families
                 .iter()
                 .find(|&&qf| qf == *queue_family)
@@ -351,8 +361,8 @@ impl Device {
         }
 
         let device = Arc::new(Device {
-            instance: phys.instance().clone(),
-            physical_device: phys.index(),
+            instance: physical_device.instance().clone(),
+            physical_device: physical_device.index(),
             device: device,
             api_version,
             fns,
@@ -364,7 +374,7 @@ impl Device {
                 robust_buffer_access: true,
                 ..requested_features.clone()
             },
-            extensions: (&extensions).into(),
+            extensions: requested_extensions.clone(),
             active_queue_families,
             allocation_count: Mutex::new(0),
             fence_pool: Mutex::new(Vec::new()),
@@ -373,16 +383,16 @@ impl Device {
         });
 
         // Iterator for the produced queues.
-        let output_queues = QueuesIter {
+        let queues = QueuesIter {
             next_queue: 0,
             device: device.clone(),
-            families_and_ids: output_queues,
+            families_and_ids: queues,
         };
 
-        Ok((device, output_queues))
+        Ok((device, queues))
     }
 
-    /// Returns the Vulkan version supported by this `Device`.
+    /// Returns the Vulkan version supported by the device.
     ///
     /// This is the lower of the
     /// [physical device's supported version](crate::instance::PhysicalDevice::api_version) and
@@ -442,13 +452,13 @@ impl Device {
         )
     }
 
-    /// Returns the features that are enabled in the device.
+    /// Returns the features that have been enabled on the device.
     #[inline]
     pub fn enabled_features(&self) -> &Features {
         &self.features
     }
 
-    /// Returns the list of extensions that have been loaded.
+    /// Returns the extensions that have been enabled on the device.
     #[inline]
     pub fn loaded_extensions(&self) -> &DeviceExtensions {
         &self.extensions
@@ -742,7 +752,7 @@ impl Iterator for QueuesIter {
 impl ExactSizeIterator for QueuesIter {}
 
 /// Error that can be returned when creating a device.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug)]
 pub enum DeviceCreationError {
     /// Failed to create the device for an implementation-specific reason.
     InitializationFailed,
@@ -763,6 +773,10 @@ pub enum DeviceCreationError {
     OutOfHostMemory,
     /// There is no memory available on the device (ie. video memory).
     OutOfDeviceMemory,
+    /// A restriction for an extension was not met.
+    ExtensionRestrictionNotMet(ExtensionRestrictionError),
+    /// A restriction for a feature was not met.
+    FeatureRestrictionNotMet(FeatureRestrictionError),
 }
 
 impl error::Error for DeviceCreationError {}
@@ -770,35 +784,42 @@ impl error::Error for DeviceCreationError {}
 impl fmt::Display for DeviceCreationError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                DeviceCreationError::InitializationFailed => {
+        match *self {
+            DeviceCreationError::InitializationFailed => {
+                write!(
+                    fmt,
                     "failed to create the device for an implementation-specific reason"
-                }
-                DeviceCreationError::OutOfHostMemory => "no memory available on the host",
-                DeviceCreationError::OutOfDeviceMemory =>
-                    "no memory available on the graphical device",
-                DeviceCreationError::DeviceLost => "failed to connect to the device",
-                DeviceCreationError::TooManyQueuesForFamily => {
-                    "tried to create too many queues for a given family"
-                }
-                DeviceCreationError::FeatureNotPresent => {
-                    "some of the requested features are unsupported by the physical device"
-                }
-                DeviceCreationError::PriorityOutOfRange => {
-                    "the priority of one of the queues is out of the [0.0; 1.0] range"
-                }
-                DeviceCreationError::ExtensionNotPresent => {
-                    "some of the requested device extensions are not supported by the physical device"
-                }
-                DeviceCreationError::TooManyObjects => {
-                    "you have reached the limit to the number of devices that can be created from the
-                 same physical device"
-                }
+                )
             }
-        )
+            DeviceCreationError::OutOfHostMemory => write!(fmt, "no memory available on the host"),
+            DeviceCreationError::OutOfDeviceMemory => {
+                write!(fmt, "no memory available on the graphical device")
+            }
+            DeviceCreationError::DeviceLost => write!(fmt, "failed to connect to the device"),
+            DeviceCreationError::TooManyQueuesForFamily => {
+                write!(fmt, "tried to create too many queues for a given family")
+            }
+            DeviceCreationError::FeatureNotPresent => {
+                write!(
+                    fmt,
+                    "some of the requested features are unsupported by the physical device"
+                )
+            }
+            DeviceCreationError::PriorityOutOfRange => {
+                write!(
+                    fmt,
+                    "the priority of one of the queues is out of the [0.0; 1.0] range"
+                )
+            }
+            DeviceCreationError::ExtensionNotPresent => {
+                write!(fmt,"some of the requested device extensions are not supported by the physical device")
+            }
+            DeviceCreationError::TooManyObjects => {
+                write!(fmt,"you have reached the limit to the number of devices that can be created from the same physical device")
+            }
+            DeviceCreationError::ExtensionRestrictionNotMet(err) => err.fmt(fmt),
+            DeviceCreationError::FeatureRestrictionNotMet(err) => err.fmt(fmt),
+        }
     }
 }
 
@@ -815,6 +836,20 @@ impl From<Error> for DeviceCreationError {
             Error::TooManyObjects => DeviceCreationError::TooManyObjects,
             _ => panic!("Unexpected error value: {}", err as i32),
         }
+    }
+}
+
+impl From<ExtensionRestrictionError> for DeviceCreationError {
+    #[inline]
+    fn from(err: ExtensionRestrictionError) -> Self {
+        Self::ExtensionRestrictionNotMet(err)
+    }
+}
+
+impl From<FeatureRestrictionError> for DeviceCreationError {
+    #[inline]
+    fn from(err: FeatureRestrictionError) -> Self {
+        Self::FeatureRestrictionNotMet(err)
     }
 }
 
@@ -900,7 +935,7 @@ mod tests {
     use crate::device::Device;
     use crate::device::DeviceCreationError;
     use crate::device::DeviceExtensions;
-    use crate::device::Features;
+    use crate::device::{FeatureRestriction, FeatureRestrictionError, Features};
     use crate::instance;
     use std::sync::Arc;
 
@@ -954,7 +989,10 @@ mod tests {
             &DeviceExtensions::none(),
             Some((family, 1.0)),
         ) {
-            Err(DeviceCreationError::FeatureNotPresent) => return, // Success
+            Err(DeviceCreationError::FeatureRestrictionNotMet(FeatureRestrictionError {
+                restriction: FeatureRestriction::NotSupported,
+                ..
+            })) => return, // Success
             _ => panic!(),
         };
     }

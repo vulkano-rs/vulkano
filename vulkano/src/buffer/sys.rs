@@ -102,10 +102,7 @@ impl UnsafeBuffer {
             ash::vk::BufferCreateFlags::empty()
         };
 
-        if usage.device_address
-            && !(device.enabled_features().buffer_device_address
-                || device.enabled_features().ext_buffer_device_address)
-        {
+        if usage.device_address && !device.enabled_features().buffer_device_address {
             usage.device_address = false;
             if ash::vk::BufferUsageFlags::from(usage).is_empty() {
                 // return an error iff device_address was the only requested usage and the

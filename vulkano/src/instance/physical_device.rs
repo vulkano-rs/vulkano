@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::device::{Features, FeaturesFfi};
+use crate::device::{DeviceExtensions, Features, FeaturesFfi};
 use crate::instance::limits::Limits;
 use crate::instance::{Instance, InstanceCreationError};
 use crate::sync::PipelineStage;
@@ -24,7 +24,7 @@ pub(super) fn init_physical_devices(
     instance: &Instance,
 ) -> Result<Vec<PhysicalDeviceInfos>, InstanceCreationError> {
     let fns = instance.fns();
-    let extensions = instance.loaded_extensions();
+    let instance_extensions = instance.loaded_extensions();
 
     let physical_devices: Vec<ash::vk::PhysicalDevice> = unsafe {
         let mut num = 0;
@@ -44,213 +44,254 @@ pub(super) fn init_physical_devices(
         devices
     };
 
+    let supported_extensions: Vec<DeviceExtensions> = physical_devices
+        .iter()
+        .map(
+            |&physical_device| -> Result<DeviceExtensions, InstanceCreationError> {
+                let extension_properties: Vec<ash::vk::ExtensionProperties> = unsafe {
+                    let mut num = 0;
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
+                        physical_device,
+                        ptr::null(),
+                        &mut num,
+                        ptr::null_mut(),
+                    ))?;
+
+                    let mut properties = Vec::with_capacity(num as usize);
+                    check_errors(fns.v1_0.enumerate_device_extension_properties(
+                        physical_device,
+                        ptr::null(),
+                        &mut num,
+                        properties.as_mut_ptr(),
+                    ))?;
+                    properties.set_len(num as usize);
+                    properties
+                };
+
+                Ok(DeviceExtensions::from(extension_properties.iter().map(
+                    |property| unsafe { CStr::from_ptr(property.extension_name.as_ptr()) },
+                )))
+            },
+        )
+        .collect::<Result<_, _>>()?;
+
+    let iter = physical_devices
+        .into_iter()
+        .zip(supported_extensions.into_iter());
+
     // Getting the properties of all physical devices.
     // If possible, we use VK_KHR_get_physical_device_properties2.
     let physical_devices = if instance.api_version() >= Version::V1_1
-        || extensions.khr_get_physical_device_properties2
+        || instance_extensions.khr_get_physical_device_properties2
     {
-        init_physical_devices_inner2(instance, physical_devices)
+        init_physical_devices_inner2(instance, iter)
     } else {
-        init_physical_devices_inner(instance, physical_devices)
+        init_physical_devices_inner(instance, iter)
     };
 
     Ok(physical_devices)
 }
 
 /// Initialize all physical devices
-fn init_physical_devices_inner(
-    instance: &Instance,
-    physical_devices: Vec<ash::vk::PhysicalDevice>,
-) -> Vec<PhysicalDeviceInfos> {
+fn init_physical_devices_inner<I>(instance: &Instance, info: I) -> Vec<PhysicalDeviceInfos>
+where
+    I: IntoIterator<Item = (ash::vk::PhysicalDevice, DeviceExtensions)>,
+{
     let fns = instance.fns();
-    let mut output = Vec::with_capacity(physical_devices.len());
 
-    for device in physical_devices.into_iter() {
-        let properties: ash::vk::PhysicalDeviceProperties = unsafe {
-            let mut output = MaybeUninit::uninit();
-            fns.v1_0
-                .get_physical_device_properties(device, output.as_mut_ptr());
-            output.assume_init()
-        };
+    info.into_iter()
+        .map(|(physical_device, supported_extensions)| {
+            let properties: ash::vk::PhysicalDeviceProperties = unsafe {
+                let mut output = MaybeUninit::uninit();
+                fns.v1_0
+                    .get_physical_device_properties(physical_device, output.as_mut_ptr());
+                output.assume_init()
+            };
 
-        let queue_families = unsafe {
-            let mut num = 0;
-            fns.v1_0
-                .get_physical_device_queue_family_properties(device, &mut num, ptr::null_mut());
+            let queue_families = unsafe {
+                let mut num = 0;
+                fns.v1_0.get_physical_device_queue_family_properties(
+                    physical_device,
+                    &mut num,
+                    ptr::null_mut(),
+                );
 
-            let mut families = Vec::with_capacity(num as usize);
-            fns.v1_0.get_physical_device_queue_family_properties(
-                device,
-                &mut num,
-                families.as_mut_ptr(),
-            );
-            families.set_len(num as usize);
-            families
-        };
+                let mut families = Vec::with_capacity(num as usize);
+                fns.v1_0.get_physical_device_queue_family_properties(
+                    physical_device,
+                    &mut num,
+                    families.as_mut_ptr(),
+                );
+                families.set_len(num as usize);
+                families
+            };
 
-        let memory: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
-            let mut output = MaybeUninit::uninit();
-            fns.v1_0
-                .get_physical_device_memory_properties(device, output.as_mut_ptr());
-            output.assume_init()
-        };
+            let memory: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
+                let mut output = MaybeUninit::uninit();
+                fns.v1_0
+                    .get_physical_device_memory_properties(physical_device, output.as_mut_ptr());
+                output.assume_init()
+            };
 
-        let available_features: Features = unsafe {
-            let mut output = FeaturesFfi::default();
-            fns.v1_0
-                .get_physical_device_features(device, &mut output.head_as_mut().features);
-            Features::from(&output)
-        };
+            let available_features: Features = unsafe {
+                let mut output = FeaturesFfi::default();
+                fns.v1_0.get_physical_device_features(
+                    physical_device,
+                    &mut output.head_as_mut().features,
+                );
+                Features::from(&output)
+            };
 
-        output.push(PhysicalDeviceInfos {
-            device,
-            properties,
-            extended_properties: PhysicalDeviceExtendedProperties::empty(),
-            memory,
-            queue_families,
-            available_features: Features::from(available_features),
-        });
-    }
-    output
+            PhysicalDeviceInfos {
+                physical_device,
+                properties,
+                extended_properties: PhysicalDeviceExtendedProperties::empty(),
+                memory,
+                queue_families,
+                available_features,
+            }
+        })
+        .collect()
 }
 
 /// Initialize all physical devices, but use VK_KHR_get_physical_device_properties2
 /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
-fn init_physical_devices_inner2(
-    instance: &Instance,
-    physical_devices: Vec<ash::vk::PhysicalDevice>,
-) -> Vec<PhysicalDeviceInfos> {
+fn init_physical_devices_inner2<I>(instance: &Instance, info: I) -> Vec<PhysicalDeviceInfos>
+where
+    I: IntoIterator<Item = (ash::vk::PhysicalDevice, DeviceExtensions)>,
+{
     let fns = instance.fns();
-    let mut output = Vec::with_capacity(physical_devices.len());
 
-    for device in physical_devices.into_iter() {
-        let mut extended_properties = PhysicalDeviceExtendedProperties::empty();
+    info.into_iter()
+        .map(|(physical_device, supported_extensions)| {
+            let mut extended_properties = PhysicalDeviceExtendedProperties::empty();
 
-        let properties: ash::vk::PhysicalDeviceProperties = unsafe {
-            let mut subgroup_properties = ash::vk::PhysicalDeviceSubgroupProperties::default();
+            let properties: ash::vk::PhysicalDeviceProperties = unsafe {
+                let mut subgroup_properties = ash::vk::PhysicalDeviceSubgroupProperties::default();
 
-            let mut multiview_properties = ash::vk::PhysicalDeviceMultiviewProperties {
-                p_next: &mut subgroup_properties as *mut _ as *mut c_void,
-                ..Default::default()
-            };
+                let mut multiview_properties = ash::vk::PhysicalDeviceMultiviewProperties {
+                    p_next: &mut subgroup_properties as *mut _ as *mut c_void,
+                    ..Default::default()
+                };
 
-            let mut output = ash::vk::PhysicalDeviceProperties2 {
-                p_next: if instance.api_version() >= Version::V1_1 {
-                    &mut multiview_properties as *mut _ as *mut c_void
+                let mut output = ash::vk::PhysicalDeviceProperties2 {
+                    p_next: if instance.api_version() >= Version::V1_1 {
+                        &mut multiview_properties as *mut _ as *mut c_void
+                    } else {
+                        ptr::null_mut()
+                    },
+                    ..Default::default()
+                };
+
+                if instance.api_version() >= Version::V1_1 {
+                    fns.v1_1
+                        .get_physical_device_properties2(physical_device, &mut output);
                 } else {
-                    ptr::null_mut()
-                },
-                ..Default::default()
+                    fns.khr_get_physical_device_properties2
+                        .get_physical_device_properties2_khr(physical_device, &mut output);
+                }
+
+                extended_properties = PhysicalDeviceExtendedProperties {
+                    subgroup_size: Some(subgroup_properties.subgroup_size),
+                    max_multiview_view_count: Some(multiview_properties.max_multiview_view_count),
+                    max_multiview_instance_index: Some(
+                        multiview_properties.max_multiview_instance_index,
+                    ),
+
+                    ..extended_properties
+                };
+
+                output.properties
             };
 
-            if instance.api_version() >= Version::V1_1 {
-                fns.v1_1
-                    .get_physical_device_properties2(device, &mut output);
-            } else {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_properties2_khr(device, &mut output);
-            }
+            let queue_families = unsafe {
+                let mut num = 0;
 
-            extended_properties = PhysicalDeviceExtendedProperties {
-                subgroup_size: Some(subgroup_properties.subgroup_size),
-                max_multiview_view_count: Some(multiview_properties.max_multiview_view_count),
-                max_multiview_instance_index: Some(
-                    multiview_properties.max_multiview_instance_index,
-                ),
-
-                ..extended_properties
-            };
-
-            output.properties
-        };
-
-        let queue_families = unsafe {
-            let mut num = 0;
-
-            if instance.api_version() >= Version::V1_1 {
-                fns.v1_1.get_physical_device_queue_family_properties2(
-                    device,
-                    &mut num,
-                    ptr::null_mut(),
-                );
-            } else {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_queue_family_properties2_khr(
-                        device,
+                if instance.api_version() >= Version::V1_1 {
+                    fns.v1_1.get_physical_device_queue_family_properties2(
+                        physical_device,
                         &mut num,
                         ptr::null_mut(),
                     );
-            }
+                } else {
+                    fns.khr_get_physical_device_properties2
+                        .get_physical_device_queue_family_properties2_khr(
+                            physical_device,
+                            &mut num,
+                            ptr::null_mut(),
+                        );
+                }
 
-            let mut families = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
+                let mut families = vec![ash::vk::QueueFamilyProperties2::default(); num as usize];
 
-            if instance.api_version() >= Version::V1_1 {
-                fns.v1_1.get_physical_device_queue_family_properties2(
-                    device,
-                    &mut num,
-                    families.as_mut_ptr(),
-                );
-            } else {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_queue_family_properties2_khr(
-                        device,
+                if instance.api_version() >= Version::V1_1 {
+                    fns.v1_1.get_physical_device_queue_family_properties2(
+                        physical_device,
                         &mut num,
                         families.as_mut_ptr(),
                     );
+                } else {
+                    fns.khr_get_physical_device_properties2
+                        .get_physical_device_queue_family_properties2_khr(
+                            physical_device,
+                            &mut num,
+                            families.as_mut_ptr(),
+                        );
+                }
+
+                families
+                    .into_iter()
+                    .map(|family| family.queue_family_properties)
+                    .collect()
+            };
+
+            let memory: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
+                let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
+
+                if instance.api_version() >= Version::V1_1 {
+                    fns.v1_1
+                        .get_physical_device_memory_properties2(physical_device, &mut output);
+                } else {
+                    fns.khr_get_physical_device_properties2
+                        .get_physical_device_memory_properties2_khr(physical_device, &mut output);
+                }
+
+                output.memory_properties
+            };
+
+            let available_features: Features = unsafe {
+                let max_api_version = instance.max_api_version();
+                let api_version =
+                    std::cmp::min(max_api_version, Version::from(properties.api_version));
+
+                let mut output = FeaturesFfi::default();
+                output.make_chain(api_version, &supported_extensions);
+
+                if instance.api_version() >= Version::V1_1 {
+                    fns.v1_1
+                        .get_physical_device_features2(physical_device, output.head_as_mut());
+                } else {
+                    fns.khr_get_physical_device_properties2
+                        .get_physical_device_features2_khr(physical_device, output.head_as_mut());
+                }
+
+                Features::from(&output)
+            };
+
+            PhysicalDeviceInfos {
+                physical_device,
+                properties,
+                extended_properties,
+                memory,
+                queue_families,
+                available_features,
             }
-
-            families
-                .into_iter()
-                .map(|family| family.queue_family_properties)
-                .collect()
-        };
-
-        let memory: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
-            let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
-
-            if instance.api_version() >= Version::V1_1 {
-                fns.v1_1
-                    .get_physical_device_memory_properties2(device, &mut output);
-            } else {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_memory_properties2_khr(device, &mut output);
-            }
-
-            output.memory_properties
-        };
-
-        let available_features: Features = unsafe {
-            let max_api_version = instance.max_api_version();
-            let api_version = std::cmp::min(max_api_version, Version::from(properties.api_version));
-
-            let mut output = FeaturesFfi::default();
-            output.make_chain(api_version);
-
-            if instance.api_version() >= Version::V1_1 {
-                fns.v1_1
-                    .get_physical_device_features2(device, output.head_as_mut());
-            } else {
-                fns.khr_get_physical_device_properties2
-                    .get_physical_device_features2_khr(device, output.head_as_mut());
-            }
-
-            Features::from(&output)
-        };
-
-        output.push(PhysicalDeviceInfos {
-            device,
-            properties,
-            extended_properties,
-            memory,
-            queue_families,
-            available_features,
-        });
-    }
-    output
+        })
+        .collect()
 }
 
 pub(super) struct PhysicalDeviceInfos {
-    device: ash::vk::PhysicalDevice,
+    physical_device: ash::vk::PhysicalDevice,
     properties: ash::vk::PhysicalDeviceProperties,
     extended_properties: PhysicalDeviceExtendedProperties,
     queue_families: Vec<ash::vk::QueueFamilyProperties>,
@@ -588,7 +629,7 @@ unsafe impl<'a> VulkanObject for PhysicalDevice<'a> {
 
     #[inline]
     fn internal_object(&self) -> ash::vk::PhysicalDevice {
-        self.infos().device
+        self.infos().physical_device
     }
 }
 
