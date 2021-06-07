@@ -411,11 +411,11 @@ impl fmt::Display for DisplayMode {
 
         write!(
             f,
-            // Returned value is in millihertz
-            "{}×{}px @ {}mHz",
+            "{}×{}px @ {}.{:03} Hz",
             visible_region[0],
             visible_region[1],
-            self.refresh_rate()
+            self.refresh_rate() / 1000,
+            self.refresh_rate() % 1000
         )
     }
 }
@@ -426,5 +426,56 @@ unsafe impl VulkanObject for DisplayMode {
     #[inline]
     fn internal_object(&self) -> ash::vk::DisplayModeKHR {
         self.display_mode
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::instance::{Instance, InstanceExtensions, PhysicalDevice};
+    use crate::swapchain::display::Display;
+    use crate::Version;
+
+    #[test]
+    fn test_display_mode_display() {
+        // This test may print nothing actually.
+        //
+        // Because of drivers is the simple answer. Internally enumeration calls
+        // `VkGetPhysicalDeviceDisplayPropertiesKHR` which returns all "available" displays.
+        // The Vulkan documentation says: `Various functions are provided for enumerating the
+        // available display devices present on a Vulkan physical device.`
+        //
+        // The aspect driver developers have diverged in their implementations is the interpretation
+        // of "available". When running in a window manager with mesa, per their own interpretation,
+        // mesa does not have permission to take over the display, so it returns none. I was told
+        // that in this issue: https://gitlab.freedesktop.org/mesa/mesa/-/issues/4885
+        //
+        // Meanwhile the proprietary NVIDIA drivers will return the display, even thought it is not
+        // considered "available" in the way mesa has interpreted the specification. Since NVIDIA's
+        // drivers do return the display you could try to present to the display, but that will fail
+        // with an unknown error like expected.
+        //
+        // If your drivers do not return a display when it is in use, such as with mesa, running
+        // this test in another tty will enumerate over all displays.
+        let instance = Instance::new(
+            None,
+            Version::V1_1,
+            &InstanceExtensions {
+                khr_display: true,
+                khr_surface: true,
+                ..InstanceExtensions::none()
+            },
+            None,
+        )
+        .unwrap();
+
+        let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+
+        for display in Display::enumerate(physical) {
+            println!("Display modes for {}", display.name());
+
+            for mode in display.display_modes() {
+                println!("\t{}", mode);
+            }
+        }
     }
 }
