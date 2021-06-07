@@ -108,6 +108,7 @@ fn main() {
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+    let mut initialized = false;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -187,6 +188,14 @@ fn main() {
 
             match future {
                 Ok(future) => {
+                    if !initialized {
+                        // the first submitted command buffer will transition the images to the
+                        // correct layout which needs to be completed before trying to record
+                        // the next command buffer
+                        future.wait(None).unwrap();
+                        initialized = true;
+                    }
+
                     previous_frame_end = Some(future.boxed());
                 }
                 Err(FlushError::OutOfDate) => {

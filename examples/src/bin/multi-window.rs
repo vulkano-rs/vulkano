@@ -48,6 +48,7 @@ struct WindowSurface {
     framebuffers: Vec<Arc<(dyn FramebufferAbstract + Send + Sync + 'static)>>,
     recreate_swapchain: bool,
     previous_frame_end: Option<Box<dyn GpuFuture>>,
+    initialized: bool,
 }
 
 fn main() {
@@ -227,6 +228,7 @@ fn main() {
                 &mut dynamic_state,
             ),
             previous_frame_end: Some(sync::now(device.clone()).boxed()),
+            initialized: false,
         },
     );
 
@@ -295,6 +297,7 @@ fn main() {
                         &mut dynamic_state,
                     ),
                     previous_frame_end: Some(sync::now(device.clone()).boxed()),
+                    initialized: false,
                 },
             );
         }
@@ -310,6 +313,7 @@ fn main() {
                 ref mut recreate_swapchain,
                 ref mut framebuffers,
                 ref mut previous_frame_end,
+                ref mut initialized,
             } = window_surfaces.get_mut(&window_id).unwrap();
 
             previous_frame_end.as_mut().unwrap().cleanup_finished();
@@ -386,6 +390,14 @@ fn main() {
 
             match future {
                 Ok(future) => {
+                    if !*initialized {
+                        // the first submitted command buffer will transition the images to the
+                        // correct layout which needs to be completed before trying to record
+                        // the next command buffer
+                        future.wait(None).unwrap();
+                        *initialized = true;
+                    }
+
                     *previous_frame_end = Some(future.boxed());
                 }
                 Err(FlushError::OutOfDate) => {
