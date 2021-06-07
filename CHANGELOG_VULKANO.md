@@ -37,6 +37,9 @@
 - Updated winit to 0.25.
 - Fixed the teapot example on ArchLinux (GTX 1650).
 - Added support for the SPIR-V draw parameters capability.
+- Added support for the VK_KHR_multiview extension. 
+- Vulkano-shaders: Added support for MultiView SPIR-V capability.
+- Multiview example added showing how to utilize the VK_KHR_multiview extension to render to multiple layers of a framebuffer at once.
 
 # Version 0.23.0 (2021-04-10)
 

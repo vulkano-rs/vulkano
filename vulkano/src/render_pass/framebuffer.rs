@@ -291,6 +291,27 @@ where
             }
         }
 
+        let mut layers = 1;
+
+        if let Some(multiview) = self.render_pass.desc().multiview() {
+            // There needs to be at least as many layers in the framebuffer
+            // as the highest layer that gets referenced by the multiview masking.
+            if multiview.highest_used_layer() > dimensions[2] {
+                return Err(FramebufferCreationError::InsufficientLayerCount {
+                    minimum: multiview.highest_used_layer(),
+                    current: dimensions[2],
+                });
+            }
+
+            // VUID-VkFramebufferCreateInfo-renderPass-02531
+            // The framebuffer has to be created with one layer if multiview is enabled even though
+            // the underlying images generally have more layers
+            // but these layers get used by the multiview functionality.
+            if multiview.view_masks.iter().any(|&mask| mask != 0) {
+                layers = 1;
+            }
+        }
+
         let framebuffer = unsafe {
             let fns = device.fns();
 
@@ -301,7 +322,7 @@ where
                 p_attachments: self.raw_ids.as_ptr(),
                 width: dimensions[0],
                 height: dimensions[1],
-                layers: dimensions[2],
+                layers,
                 ..Default::default()
             };
 
@@ -493,6 +514,15 @@ pub enum FramebufferCreationError {
     OomError(OomError),
     /// The requested dimensions exceed the device's limits.
     DimensionsTooLarge,
+    /// The number of minimum layers expected by the render pass exceed the framebuffer layers.
+    /// This can happen when the multiview feature is enabled and the specified view or correlation
+    /// masks refer to more layers than the framebuffer has.
+    InsufficientLayerCount {
+        /// Minimum number of layers.
+        minimum: u32,
+        /// Number of framebuffer layers.
+        current: u32,
+    },
     /// The attachment has a size that isn't compatible with the requested framebuffer dimensions.
     AttachmentDimensionsIncompatible {
         /// Expected dimensions.
@@ -541,6 +571,9 @@ impl fmt::Display for FramebufferCreationError {
                 FramebufferCreationError::OomError(_) => "no memory available",
                 FramebufferCreationError::DimensionsTooLarge => {
                     "the dimensions of the framebuffer are too large"
+                }
+                FramebufferCreationError::InsufficientLayerCount { .. } => {
+                    "the number of minimum layers expected by the render pass exceed the framebuffer layers"
                 }
                 FramebufferCreationError::AttachmentDimensionsIncompatible { .. } => {
                     "the attachment has a size that isn't compatible with the framebuffer dimensions"

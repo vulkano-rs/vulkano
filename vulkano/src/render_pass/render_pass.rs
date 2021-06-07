@@ -377,8 +377,92 @@ impl RenderPass {
             })
             .collect::<SmallVec<[_; 16]>>();
 
+        let multiview_create_info = match description.multiview() {
+            Some(multiview) => {
+                debug_assert!(device.enabled_features().multiview);
+                debug_assert!(
+                    device
+                        .physical_device()
+                        .extended_properties()
+                        .max_multiview_view_count()
+                        .unwrap_or(0)
+                        >= multiview.used_layer_count()
+                );
+
+                // each subpass must have a corresponding view mask
+                // or there are no view masks at all (which is probably a bug because
+                // nothing will get drawn)
+                debug_assert!(
+                    multiview.view_masks.len() == passes.len() || multiview.view_masks.is_empty()
+                );
+
+                // either all subpasses must have a non-zero view mask or all must be zero
+                // (multiview is considered to be disabled when all view masks are zero)
+                debug_assert!(
+                    multiview.view_masks.iter().all(|&mask| mask != 0)
+                        || multiview.view_masks.iter().all(|&mask| mask == 0)
+                );
+
+                // one view offset for each dependency
+                // or no view offsets at all
+                debug_assert!(
+                    dependencies.len() == multiview.view_offsets.len()
+                        || multiview.view_offsets.is_empty()
+                );
+
+                // VUID-VkRenderPassCreateInfo-pNext-02512
+                debug_assert!(dependencies.iter().zip(&multiview.view_offsets).all(
+                    |(dependency, &view_offset)| dependency
+                        .dependency_flags
+                        .contains(ash::vk::DependencyFlags::VIEW_LOCAL)
+                        || view_offset == 0
+                ));
+
+                // VUID-VkRenderPassCreateInfo-pNext-02514
+                debug_assert!(
+                    multiview.view_masks.iter().any(|&view_mask| view_mask != 0)
+                        || dependencies.iter().all(|dependency| !dependency
+                            .dependency_flags
+                            .contains(ash::vk::DependencyFlags::VIEW_LOCAL))
+                );
+
+                // VUID-VkRenderPassCreateInfo-pNext-02515
+                debug_assert!(
+                    multiview.view_masks.iter().any(|&view_mask| view_mask != 0)
+                        || multiview.correlation_masks.is_empty()
+                );
+
+                // VUID-VkRenderPassMultiviewCreateInfo-pCorrelationMasks-00841
+                // ensure that each view index is contained in at most one correlation mask
+                // by checking for any overlap in all pairs of correlation masks
+                debug_assert!(multiview
+                    .correlation_masks
+                    .iter()
+                    .enumerate()
+                    .all(|(i, &mask)| multiview.correlation_masks[i + 1..]
+                        .iter()
+                        .all(|&other_mask| other_mask & mask == 0)));
+
+                ash::vk::RenderPassMultiviewCreateInfo {
+                    subpass_count: passes.len() as u32,
+                    p_view_masks: multiview.view_masks.as_ptr(),
+                    dependency_count: dependencies.len() as u32,
+                    p_view_offsets: multiview.view_offsets.as_ptr(),
+                    correlation_mask_count: multiview.correlation_masks.len() as u32,
+                    p_correlation_masks: multiview.correlation_masks.as_ptr(),
+                    ..Default::default()
+                }
+            }
+            None => ash::vk::RenderPassMultiviewCreateInfo::default(),
+        };
+
         let render_pass = unsafe {
             let infos = ash::vk::RenderPassCreateInfo {
+                p_next: if description.multiview().is_none() {
+                    ptr::null()
+                } else {
+                    &multiview_create_info as *const _ as _
+                },
                 flags: ash::vk::RenderPassCreateFlags::empty(),
                 attachment_count: attachments.len() as u32,
                 p_attachments: if attachments.is_empty() {

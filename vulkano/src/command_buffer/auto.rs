@@ -1828,6 +1828,22 @@ where
                 panic!("Too many clear values")
             }
 
+            if let Some(multiview_desc) = framebuffer.render_pass().desc().multiview() {
+                // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
+                self.state_cacher.invalidate();
+
+                // ensure that the framebuffer is compatible with the render pass multiview configuration
+                if multiview_desc
+                    .view_masks
+                    .iter()
+                    .chain(multiview_desc.correlation_masks.iter())
+                    .map(|&mask| 32 - mask.leading_zeros()) // calculates the highest used layer index of the mask
+                    .any(|highest_used_layer| highest_used_layer > framebuffer.layers())
+                {
+                    panic!("A multiview mask references more layers than exist in the framebuffer");
+                }
+            }
+
             let framebuffer_object = FramebufferAbstract::inner(&framebuffer).internal_object();
             self.inner
                 .begin_render_pass(framebuffer.clone(), contents, clear_values)?;
@@ -2042,6 +2058,11 @@ where
                 } else {
                     *index += 1;
                     render_pass_state.contents = contents;
+                }
+
+                if let Some(multiview) = rp.desc().multiview() {
+                    // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
+                    self.state_cacher.invalidate();
                 }
             } else {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
