@@ -8,12 +8,7 @@
 // according to those terms.
 
 use indexmap::IndexMap;
-use std::{
-    collections::HashMap,
-    fs::File,
-    io::{BufWriter, Write},
-    path::Path,
-};
+use std::{collections::HashMap, io::Write, path::Path};
 use vk_parse::{
     Extension, ExtensionChild, Feature, InterfaceItem, Registry, RegistryChild, Type,
     TypeCodeMarkup, TypeSpec, TypesChild,
@@ -23,15 +18,13 @@ mod extensions;
 mod features;
 mod fns;
 
-fn main() {
+pub fn write<W: Write>(writer: &mut W) {
     let registry = get_registry("vk.xml");
     let aliases = get_aliases(&registry);
     let extensions = get_extensions(&registry);
     let features = get_features(&registry);
     let types = get_types(&registry, &aliases, &features, &extensions);
     let header_version = get_header_version(&registry);
-
-    let mut writer = BufWriter::new(File::create("vulkano/src/autogen.rs").unwrap());
 
     write!(
         writer,
@@ -43,12 +36,12 @@ fn main() {
     )
     .unwrap();
 
-    extensions::write(&mut writer, &extensions);
-    write!(&mut writer, "\n\n").unwrap();
-    fns::write(&mut writer, &extensions);
-    write!(&mut writer, "\n\n").unwrap();
-    features::write(&mut writer, &types);
-    write!(&mut writer, "\n").unwrap();
+    extensions::write(writer, &extensions);
+    write!(writer, "\n\n").unwrap();
+    fns::write(writer, &extensions);
+    write!(writer, "\n\n").unwrap();
+    features::write(writer, &types);
+    write!(writer, "\n").unwrap();
 }
 
 fn get_registry<P: AsRef<Path> + ?Sized>(path: &P) -> Registry {

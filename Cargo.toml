@@ -1,11 +1,3 @@
 [workspace]
-members = [
-    "examples",
-    "vk-sys",
-    "vulkano",
-    "vulkano-gen",
-    "vulkano-shaders",
-    "vulkano-win",
-]
-
+members = ["examples", "vk-sys", "vulkano", "vulkano-shaders", "vulkano-win"]
 exclude = ["www"]

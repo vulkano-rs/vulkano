@@ -7,7 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::env;
+use std::{env, fs::File, io::BufWriter, path::Path};
+
+mod autogen;
 
 fn main() {
     let target = env::var("TARGET").unwrap();
@@ -21,4 +23,9 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=UIKit");
         println!("cargo:rustc-link-lib=framework=Foundation");
     }
+
+    // Write autogen.rs
+    let path = Path::new(&env::var_os("OUT_DIR").unwrap()).join("autogen.rs");
+    let mut writer = BufWriter::new(File::create(path).unwrap());
+    autogen::write(&mut writer);
 }
