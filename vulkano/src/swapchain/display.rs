@@ -449,7 +449,7 @@ mod tests {
         // mesa does not have permission to take over the display, so it returns none. I was told
         // that in this issue: https://gitlab.freedesktop.org/mesa/mesa/-/issues/4885
         //
-        // Meanwhile the proprietary NVIDIA drivers will return the display, even thought it is not
+        // Meanwhile the proprietary NVIDIA drivers will return the display, even though it is not
         // considered "available" in the way mesa has interpreted the specification. Since NVIDIA's
         // drivers do return the display you could try to present to the display, but that will fail
         // with an unknown error like expected.
