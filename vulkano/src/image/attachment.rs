@@ -108,6 +108,7 @@ impl AttachmentImage {
         AttachmentImage::new_impl(
             device,
             dimensions,
+            1,
             format,
             ImageUsage::none(),
             SampleCount::Sample1,
@@ -128,7 +129,14 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
+        AttachmentImage::new_impl(
+            device,
+            dimensions,
+            1,
+            format,
+            base_usage,
+            SampleCount::Sample1,
+        )
     }
 
     /// Same as `new`, but creates a multisampled image.
@@ -142,7 +150,7 @@ impl AttachmentImage {
         samples: SampleCount,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, ImageUsage::none(), samples)
     }
 
     /// Same as `multisampled`, but creates an image that can be used as an input attachment.
@@ -160,7 +168,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
     }
 
     /// Same as `new`, but lets you specify additional usages.
@@ -175,15 +183,13 @@ impl AttachmentImage {
         format: Format,
         usage: ImageUsage,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, usage, SampleCount::Sample1)
+        AttachmentImage::new_impl(device, dimensions, 1, format, usage, SampleCount::Sample1)
     }
 
     /// Same as `with_usage`, but creates a multisampled image.
     ///
     /// > **Note**: You can also use this function and pass `1` for the number of samples if you
     /// > want a regular image.
-    ///
-    /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn multisampled_with_usage(
         device: Arc<Device>,
@@ -192,7 +198,23 @@ impl AttachmentImage {
         format: Format,
         usage: ImageUsage,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, usage, samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, usage, samples)
+    }
+
+    /// Same as `multisampled_with_usage`, but creates an image with multiple layers.
+    ///
+    /// > **Note**: You can also use this function and pass `1` for the number of layers if you
+    /// > want a regular image.
+    #[inline]
+    pub fn multisampled_with_usage_with_layers(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        array_layers: u32,
+        samples: SampleCount,
+        format: Format,
+        usage: ImageUsage,
+    ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
+        AttachmentImage::new_impl(device, dimensions, array_layers, format, usage, samples)
     }
 
     /// Same as `new`, except that the image can later be sampled.
@@ -209,7 +231,14 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
+        AttachmentImage::new_impl(
+            device,
+            dimensions,
+            1,
+            format,
+            base_usage,
+            SampleCount::Sample1,
+        )
     }
 
     /// Same as `sampled`, except that the image can be used as an input attachment.
@@ -227,7 +256,14 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
+        AttachmentImage::new_impl(
+            device,
+            dimensions,
+            1,
+            format,
+            base_usage,
+            SampleCount::Sample1,
+        )
     }
 
     /// Same as `sampled`, but creates a multisampled image.
@@ -248,7 +284,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
     }
 
     /// Same as `sampled_multisampled`, but creates an image that can be used as an input
@@ -268,7 +304,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
     }
 
     /// Same as `new`, except that the image will be transient.
@@ -288,7 +324,14 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
+        AttachmentImage::new_impl(
+            device,
+            dimensions,
+            1,
+            format,
+            base_usage,
+            SampleCount::Sample1,
+        )
     }
 
     /// Same as `transient`, except that the image can be used as an input attachment.
@@ -306,7 +349,14 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, SampleCount::Sample1)
+        AttachmentImage::new_impl(
+            device,
+            dimensions,
+            1,
+            format,
+            base_usage,
+            SampleCount::Sample1,
+        )
     }
 
     /// Same as `transient`, but creates a multisampled image.
@@ -327,7 +377,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
     }
 
     /// Same as `transient_multisampled`, but creates an image that can be used as an input
@@ -347,13 +397,14 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(device, dimensions, 1, format, base_usage, samples)
     }
 
     // All constructors dispatch to this one.
     fn new_impl(
         device: Arc<Device>,
         dimensions: [u32; 2],
+        array_layers: u32,
         format: Format,
         base_usage: ImageUsage,
         samples: SampleCount,
@@ -378,7 +429,7 @@ impl AttachmentImage {
             let dims = ImageDimensions::Dim2d {
                 width: dimensions[0],
                 height: dimensions[1],
-                array_layers: 1,
+                array_layers,
             };
 
             UnsafeImage::new(

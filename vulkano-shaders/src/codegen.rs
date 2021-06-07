@@ -537,6 +537,7 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::CapabilityStorageInputOutput16 => {
             DeviceRequirement::Extensions(&["khr_16bit_storage"])
         }
+        Capability::CapabilityMultiView => DeviceRequirement::Features(&["multiview"]),
         Capability::CapabilityStorageInputOutput8 => {
             DeviceRequirement::Extensions(&["khr_8bit_storage"])
         }

@@ -21,6 +21,7 @@ pub struct RenderPassDesc {
     attachments: Vec<AttachmentDesc>,
     subpasses: Vec<SubpassDesc>,
     dependencies: Vec<SubpassDependencyDesc>,
+    multiview: Option<MultiviewDesc>,
 }
 
 impl RenderPassDesc {
@@ -34,6 +35,23 @@ impl RenderPassDesc {
             attachments,
             subpasses,
             dependencies,
+            multiview: None,
+        }
+    }
+
+    /// Creates a description of a render pass that uses the multiview feature.
+    /// See [`MultiviewDesc`] for an explanation of possible configuration options.
+    pub fn with_multiview(
+        attachments: Vec<AttachmentDesc>,
+        subpasses: Vec<SubpassDesc>,
+        dependencies: Vec<SubpassDependencyDesc>,
+        multiview: MultiviewDesc,
+    ) -> RenderPassDesc {
+        RenderPassDesc {
+            attachments,
+            subpasses,
+            dependencies,
+            multiview: Some(multiview),
         }
     }
 
@@ -49,6 +67,7 @@ impl RenderPassDesc {
                 preserve_attachments: vec![],
             }],
             dependencies: vec![],
+            multiview: None,
         }
     }
 
@@ -68,6 +87,12 @@ impl RenderPassDesc {
     #[inline]
     pub fn dependencies(&self) -> &[SubpassDependencyDesc] {
         &self.dependencies
+    }
+
+    // Returns the multiview configuration of the description.
+    #[inline]
+    pub fn multiview(&self) -> &Option<MultiviewDesc> {
+        &self.multiview
     }
 
     /// Decodes `I` into a list of clear values where each element corresponds
@@ -330,5 +355,47 @@ impl From<LoadOp> for ash::vk::AttachmentLoadOp {
     #[inline]
     fn from(val: LoadOp) -> Self {
         Self::from_raw(val as i32)
+    }
+}
+
+/// Describes the `multiview` configuration for the render pass which is used to draw
+/// to multiple layers of a framebuffer inside of a single render pass.
+#[derive(Debug, Clone)]
+pub struct MultiviewDesc {
+    /// The view masks indicate which layers of the framebuffer should be rendered for each subpass.
+    /// Values are bit masks which means that for example `0b11` will draw to the first two layers
+    /// and `0b101` will draw to the first and third layer.
+    pub view_masks: Vec<u32>,
+
+    /// The correlation masks indicate sets of views that may be more efficient to render
+    /// concurrently (usually because they show the same geometry from almost the same perspective).
+    /// Values are bit masks which means that for example `0b11` means the first two layers are
+    /// highly correlated and `0b101` means the first and third layer are highly correlated.
+    pub correlation_masks: Vec<u32>,
+
+    /// The view offsets contain additional information for each subpass dependency that indicate
+    /// which views in the source subpass the views of the destination subpass depend on.
+    pub view_offsets: Vec<i32>,
+}
+
+impl MultiviewDesc {
+    /// Returns the index of the layer with the biggest index that is
+    /// referred to by a mask in the multiview description.
+    pub fn highest_used_layer(&self) -> u32 {
+        self.view_masks
+            .iter()
+            .chain(self.correlation_masks.iter())
+            .map(|&mask| 32 - mask.leading_zeros()) // the highest set bit corresponds to the highest used layer
+            .max()
+            .unwrap_or(0)
+    }
+
+    /// Returns the amount of layers that are used in the multiview description.
+    pub fn used_layer_count(&self) -> u32 {
+        self.view_masks
+            .iter()
+            .chain(self.correlation_masks.iter())
+            .fold(0, |acc, &mask| acc | mask)
+            .count_ones()
     }
 }

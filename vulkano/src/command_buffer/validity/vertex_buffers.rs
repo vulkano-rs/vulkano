@@ -13,6 +13,7 @@ use std::fmt;
 use crate::buffer::BufferAccess;
 use crate::device::DeviceOwned;
 use crate::pipeline::vertex::VertexSource;
+use crate::pipeline::GraphicsPipelineAbstract;
 use crate::VulkanObject;
 
 /// Checks whether vertex buffers can be bound.
@@ -21,12 +22,12 @@ use crate::VulkanObject;
 ///
 /// - Panics if one of the vertex buffers was not created with the same device as `pipeline`.
 ///
-pub fn check_vertex_buffers<P, V>(
-    pipeline: &P,
+pub fn check_vertex_buffers<GP, V>(
+    pipeline: &GP,
     vertex_buffers: V,
 ) -> Result<CheckVertexBuffer, CheckVertexBufferError>
 where
-    P: DeviceOwned + VertexSource<V>,
+    GP: GraphicsPipelineAbstract + DeviceOwned + VertexSource<V>,
 {
     let (vertex_buffers, vertex_count, instance_count) = pipeline.decode(vertex_buffers);
 
@@ -38,6 +39,24 @@ where
 
         if !buf.inner().buffer.usage().vertex_buffer {
             return Err(CheckVertexBufferError::BufferMissingUsage { num_buffer: num });
+        }
+    }
+
+    if let Some(multiview) = pipeline.subpass().render_pass().desc().multiview() {
+        let max_instance_index = pipeline
+            .device()
+            .physical_device()
+            .extended_properties()
+            .max_multiview_instance_index()
+            .unwrap_or(0) as usize;
+
+        // vulkano currently always uses `0` as the first instance which means the highest
+        // used index will just be `instance_count - 1`
+        if instance_count > max_instance_index + 1 {
+            return Err(CheckVertexBufferError::TooManyInstances {
+                instance_count,
+                max_instance_count: max_instance_index + 1,
+            });
         }
     }
 
@@ -66,6 +85,16 @@ pub enum CheckVertexBufferError {
         /// Index of the buffer that is missing usage.
         num_buffer: usize,
     },
+
+    /// The vertex buffer has too many instances.
+    /// When the `multiview` feature is used the maximum amount of instances may be reduced
+    /// because the implementation may use instancing internally to implement `multiview`.
+    TooManyInstances {
+        /// The used amount of instances.
+        instance_count: usize,
+        /// The allowed amount of instances.
+        max_instance_count: usize,
+    },
 }
 
 impl error::Error for CheckVertexBufferError {}
@@ -79,6 +108,9 @@ impl fmt::Display for CheckVertexBufferError {
             match *self {
                 CheckVertexBufferError::BufferMissingUsage { .. } => {
                     "the vertex buffer usage is missing on a vertex buffer"
+                }
+                CheckVertexBufferError::TooManyInstances { .. } => {
+                    "the vertex buffer has too many instances"
                 }
             }
         )
