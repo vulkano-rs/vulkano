@@ -184,8 +184,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::Semaphore;
+
+    use crate::device::{Device, DeviceExtensions};
+    use crate::instance::{Instance, InstanceExtensions, PhysicalDevice};
     use crate::VulkanObject;
+    use crate::{sync::Semaphore, Version};
 
     #[test]
     fn semaphore_create() {
@@ -213,7 +216,36 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn semaphore_export() {
-        let (device, _) = gfx_dev_and_queue!();
+        let instance = Instance::new(
+            None,
+            Version::V1_1,
+            &InstanceExtensions {
+                khr_external_semaphore_capabilities: true,
+                ..InstanceExtensions::none()
+            },
+            None,
+        )
+        .unwrap();
+
+        let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+
+        let queue_family = physical.queue_families().next().unwrap();
+
+        let device_ext = DeviceExtensions {
+            khr_external_memory: true,
+            khr_external_memory_fd: true,
+            khr_external_semaphore: true,
+            khr_external_semaphore_fd: true,
+            ..DeviceExtensions::none()
+        };
+        let (device, _) = Device::new(
+            physical,
+            physical.supported_features(),
+            &device_ext,
+            [(queue_family, 0.5)].iter().cloned(),
+        )
+        .unwrap();
+
         let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
         let fd = sem.export_opaque_fd().unwrap();
     }
