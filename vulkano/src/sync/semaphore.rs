@@ -13,7 +13,11 @@ use crate::device::DeviceOwned;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
+#[cfg(target_os = "linux")]
+use std::fs::File;
 use std::mem::MaybeUninit;
+#[cfg(target_os = "linux")]
+use std::os::unix::io::FromRawFd;
 use std::ptr;
 use std::sync::Arc;
 
@@ -51,7 +55,7 @@ where
             }),
             None => {
                 // Pool is empty, alloc new semaphore
-                Semaphore::alloc_impl(device, true)
+                Semaphore::alloc_impl(device, true, false)
             }
         }
     }
@@ -59,16 +63,38 @@ where
     /// Builds a new semaphore.
     #[inline]
     pub fn alloc(device: D) -> Result<Semaphore<D>, OomError> {
-        Semaphore::alloc_impl(device, false)
+        Semaphore::alloc_impl(device, false, false)
     }
 
-    fn alloc_impl(device: D, must_put_in_pool: bool) -> Result<Semaphore<D>, OomError> {
+    /// Same as `alloc`, but allows exportable opaque file descriptor on Linux
+    #[inline]
+    #[cfg(target_os = "linux")]
+    pub fn alloc_with_exportable_fd(device: D) -> Result<Semaphore<D>, OomError> {
+        Semaphore::alloc_impl(device, false, true)
+    }
+
+    fn alloc_impl(
+        device: D,
+        must_put_in_pool: bool,
+        exportable_fd: bool,
+    ) -> Result<Semaphore<D>, OomError> {
         let semaphore = unsafe {
             // since the creation is constant, we use a `static` instead of a struct on the stack
-            let infos = ash::vk::SemaphoreCreateInfo {
+
+            let export_semaphore_info = ash::vk::ExportSemaphoreCreateInfoKHR {
+                handle_types: ash::vk::ExternalSemaphoreHandleTypeFlagsKHR::OPAQUE_FD,
+                ..Default::default()
+            };
+
+            let mut infos = ash::vk::SemaphoreCreateInfo {
                 flags: ash::vk::SemaphoreCreateFlags::empty(),
                 ..Default::default()
             };
+
+            #[cfg(target_os = "linux")]
+            {
+                infos.p_next = std::mem::transmute(&export_semaphore_info);
+            }
 
             let fns = device.fns();
             let mut output = MaybeUninit::uninit();
@@ -86,6 +112,32 @@ where
             semaphore: semaphore,
             must_put_in_pool: must_put_in_pool,
         })
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn export_opaque_fd(&self) -> Result<File, OomError> {
+        let fns = self.device.fns();
+
+        assert!(self.device.loaded_extensions().khr_external_semaphore);
+        assert!(self.device.loaded_extensions().khr_external_semaphore_fd);
+
+        let fd = unsafe {
+            let info = ash::vk::SemaphoreGetFdInfoKHR {
+                semaphore: self.semaphore,
+                handle_type: ash::vk::ExternalSemaphoreHandleTypeFlagsKHR::OPAQUE_FD,
+                ..Default::default()
+            };
+
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.khr_external_semaphore_fd.get_semaphore_fd_khr(
+                self.device.internal_object(),
+                &info,
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+        let file = unsafe { File::from_raw_fd(fd) };
+        Ok(file)
     }
 }
 
@@ -156,5 +208,13 @@ mod tests {
         let sem2 = Semaphore::from_pool(device.clone()).unwrap();
         assert_eq!(device.semaphore_pool().lock().unwrap().len(), 0);
         assert_eq!(sem2.internal_object(), sem1_internal_obj);
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn semaphore_export() {
+        let (device, _) = gfx_dev_and_queue!();
+        let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
+        let fd = sem.export_opaque_fd().unwrap();
     }
 }
