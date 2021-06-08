@@ -3,5 +3,7 @@ target
 .cargo
 examples/**/triangle.png
 examples/**/mandelbrot.png
+examples/**/multiview1.png
+examples/**/multiview2.png
 .idea
 *.swp

@@ -220,6 +220,7 @@ mod tests {
             None,
             Version::V1_1,
             &InstanceExtensions {
+                khr_get_physical_device_properties2: true,
                 khr_external_semaphore_capabilities: true,
                 ..InstanceExtensions::none()
             },
@@ -232,8 +233,6 @@ mod tests {
         let queue_family = physical.queue_families().next().unwrap();
 
         let device_ext = DeviceExtensions {
-            khr_external_memory: true,
-            khr_external_memory_fd: true,
             khr_external_semaphore: true,
             khr_external_semaphore_fd: true,
             ..DeviceExtensions::none()

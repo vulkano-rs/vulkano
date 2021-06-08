@@ -52,7 +52,6 @@
 //! `device` module for more info.
 
 pub use self::extensions::InstanceExtensions;
-pub use self::extensions::RawInstanceExtensions;
 pub use self::instance::ApplicationInfo;
 pub use self::instance::Instance;
 pub use self::instance::InstanceCreationError;
@@ -71,10 +70,13 @@ pub use self::physical_device::PhysicalDeviceType;
 pub use self::physical_device::PhysicalDevicesIter;
 pub use self::physical_device::QueueFamiliesIter;
 pub use self::physical_device::QueueFamily;
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 pub use crate::version::Version;
 
 pub mod debug;
-mod extensions;
+pub(crate) mod extensions;
 mod instance;
 mod layers;
 mod limits;

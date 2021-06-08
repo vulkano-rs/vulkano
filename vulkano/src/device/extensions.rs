@@ -7,148 +7,164 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashSet;
-use std::ffi::{CStr, CString};
-use std::fmt;
-use std::iter::FromIterator;
-use std::ptr;
-use std::str;
-
 use crate::check_errors;
-use crate::extensions::SupportedExtensionsError;
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 use crate::instance::PhysicalDevice;
 use crate::VulkanObject;
+use std::ffi::CStr;
+use std::ptr;
 
 macro_rules! device_extensions {
-    ($sname:ident, $rawname:ident, [$($ext_req_if_supported:ident,)*], $($ext:ident => $s:expr,)*) => (
+    (
+        $($member:ident => {
+            doc: $doc:expr,
+            raw: $raw:expr,
+            requires_core: $requires_core:expr,
+            requires_device_extensions: [$($requires_device_extension:ident),*],
+            requires_instance_extensions: [$($requires_instance_extension:ident),*],
+            required_if_supported: $required_if_supported:expr,
+            conflicts_device_extensions: [$($conflicts_device_extension:ident),*],
+        },)*
+    ) => (
         extensions! {
-            $sname, $rawname,
-            $( $ext => $s,)*
+            DeviceExtensions,
+            $( $member => {
+                doc: $doc,
+                raw: $raw,
+                requires_core: $requires_core,
+                requires_device_extensions: [$($requires_device_extension),*],
+                requires_instance_extensions: [$($requires_instance_extension),*],
+            },)*
         }
 
-        impl $rawname {
-            /// See the docs of supported_by_device().
-            pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
-                let fns = physical_device.instance().fns();
-
-                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-                    let mut num = 0;
-                    check_errors(fns.v1_0.enumerate_device_extension_properties(
-                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
-                    ))?;
-
-                    let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(fns.v1_0.enumerate_device_extension_properties(
-                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
-                    ))?;
-                    properties.set_len(num as usize);
-                    properties
-                };
-                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) }.to_owned()).collect()))
-            }
-
-            /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
-            pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
-                match $rawname::supported_by_device_raw(physical_device) {
-                    Ok(l) => l,
-                    Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
-                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-                }
-            }
-        }
-
-        impl $sname {
-            /// See the docs of supported_by_device().
-            pub fn supported_by_device_raw(physical_device: PhysicalDevice) -> Result<Self, SupportedExtensionsError> {
-                let fns = physical_device.instance().fns();
-
-                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-                    let mut num = 0;
-                    check_errors(fns.v1_0.enumerate_device_extension_properties(
-                        physical_device.internal_object(), ptr::null(), &mut num, ptr::null_mut()
-                    ))?;
-
-                    let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(fns.v1_0.enumerate_device_extension_properties(
-                        physical_device.internal_object(), ptr::null(), &mut num, properties.as_mut_ptr()
-                    ))?;
-                    properties.set_len(num as usize);
-                    properties
-                };
-
-                let mut extensions = $sname::none();
-                for property in properties {
-                    let name = unsafe { CStr::from_ptr(property.extension_name.as_ptr()) };
-                    $(
-                        // TODO: Check specVersion?
-                        if name.to_bytes() == &$s[..] {
-                            extensions.$ext = true;
+        impl DeviceExtensions {
+            /// Checks enabled extensions against the device version, instance extensions and each other.
+            pub(super) fn check_requirements(
+                &self,
+                supported: &DeviceExtensions,
+                api_version: crate::Version,
+                instance_extensions: &InstanceExtensions,
+            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
+                $(
+                    if self.$member {
+                        if !supported.$member {
+                            return Err(crate::extensions::ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: crate::extensions::ExtensionRestriction::NotSupported,
+                            });
                         }
-                    )*
-                }
 
-                Ok(extensions)
+                        if api_version < $requires_core {
+                            return Err(crate::extensions::ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: crate::extensions::ExtensionRestriction::RequiresCore($requires_core),
+                            });
+                        }
+
+                        $(
+                            if !self.$requires_device_extension {
+                                return Err(crate::extensions::ExtensionRestrictionError {
+                                    extension: stringify!($member),
+                                    restriction: crate::extensions::ExtensionRestriction::RequiresDeviceExtension(stringify!($requires_device_extension)),
+                                });
+                            }
+                        )*
+
+                        $(
+                            if !instance_extensions.$requires_instance_extension {
+                                return Err(crate::extensions::ExtensionRestrictionError {
+                                    extension: stringify!($member),
+                                    restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_instance_extension)),
+                                });
+                            }
+                        )*
+
+                        $(
+                            if self.$conflicts_device_extension {
+                                return Err(crate::extensions::ExtensionRestrictionError {
+                                    extension: stringify!($member),
+                                    restriction: crate::extensions::ExtensionRestriction::ConflictsDeviceExtension(stringify!($conflicts_device_extension)),
+                                });
+                            }
+                        )*
+                    } else {
+                        if $required_if_supported && supported.$member {
+                            return Err(crate::extensions::ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: crate::extensions::ExtensionRestriction::RequiredIfSupported,
+                            });
+                        }
+                    }
+                )*
+                Ok(())
             }
 
-            /// Returns an `Extensions` object with extensions supported by the `PhysicalDevice`.
-            pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
-                match $sname::supported_by_device_raw(physical_device) {
-                    Ok(l) => l,
-                    Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
-                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-                }
-            }
-
-            /// Returns an `Extensions` object with extensions required as well as supported by the `PhysicalDevice`.
-            /// They are needed to be passed to `Device::new(...)`.
-            pub fn required_extensions(physical_device: PhysicalDevice) -> Self {
-                let supported = Self::supported_by_device(physical_device);
-                let required_if_supported = Self::required_if_supported_extensions();
-
-                required_if_supported.intersection(&supported)
-            }
-
-            fn required_if_supported_extensions() -> Self {
+            pub(crate) fn required_if_supported_extensions() -> Self {
                 Self {
                     $(
-                        $ext_req_if_supported: true,
+                        $member: $required_if_supported,
                     )*
-                    ..Self::none()
+                    _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
         }
-    );
+   );
 }
 
-device_extensions! {
-    DeviceExtensions,
-    RawDeviceExtensions,
-    [ // required if supported extensions
-        // https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451
-        khr_portability_subset,
-    ],
+pub use crate::autogen::DeviceExtensions;
+pub(crate) use device_extensions;
 
-    // List in order: khr, ext, then alphabetical
-    khr_16bit_storage => b"VK_KHR_16bit_storage",
-    khr_8bit_storage => b"VK_KHR_8bit_storage",
-    khr_dedicated_allocation => b"VK_KHR_dedicated_allocation",
-    khr_display_swapchain => b"VK_KHR_display_swapchain",
-    khr_external_memory => b"VK_KHR_external_memory",
-    khr_external_memory_fd => b"VK_KHR_external_memory_fd",
-    khr_external_semaphore => b"VK_KHR_external_semaphore",
-    khr_external_semaphore_fd => b"VK_KHR_external_semaphore_fd",
-    khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
-    khr_incremental_present => b"VK_KHR_incremental_present",
-    khr_maintenance1 => b"VK_KHR_maintenance1",
-    khr_multiview => b"VK_KHR_multiview",
-    khr_portability_subset => b"VK_KHR_portability_subset",
-    khr_sampler_mirror_clamp_to_edge => b"VK_KHR_sampler_mirror_clamp_to_edge",
-    khr_spirv_1_4 => b"VK_KHR_spirv_1_4",
-    khr_storage_buffer_storage_class => b"VK_KHR_storage_buffer_storage_class",
-    khr_swapchain => b"VK_KHR_swapchain",
-    ext_debug_utils => b"VK_EXT_debug_utils",
-    ext_external_memory_dmabuf => b"VK_EXT_external_memory_dma_buf",
-    ext_full_screen_exclusive => b"VK_EXT_full_screen_exclusive",
+impl DeviceExtensions {
+    /// See the docs of supported_by_device().
+    pub fn supported_by_device_raw(
+        physical_device: PhysicalDevice,
+    ) -> Result<Self, SupportedExtensionsError> {
+        let fns = physical_device.instance().fns();
+
+        let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
+            let mut num = 0;
+            check_errors(fns.v1_0.enumerate_device_extension_properties(
+                physical_device.internal_object(),
+                ptr::null(),
+                &mut num,
+                ptr::null_mut(),
+            ))?;
+
+            let mut properties = Vec::with_capacity(num as usize);
+            check_errors(fns.v1_0.enumerate_device_extension_properties(
+                physical_device.internal_object(),
+                ptr::null(),
+                &mut num,
+                properties.as_mut_ptr(),
+            ))?;
+            properties.set_len(num as usize);
+            properties
+        };
+
+        Ok(Self::from(properties.iter().map(|property| unsafe {
+            CStr::from_ptr(property.extension_name.as_ptr())
+        })))
+    }
+
+    /// Returns a `DeviceExtensions` object with extensions supported by the `PhysicalDevice`.
+    pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
+        match DeviceExtensions::supported_by_device_raw(physical_device) {
+            Ok(l) => l,
+            Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
+            Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+        }
+    }
+
+    /// Returns a `DeviceExtensions` object with extensions required as well as supported by the `PhysicalDevice`.
+    /// They are needed to be passed to `Device::new(...)`.
+    pub fn required_extensions(physical_device: PhysicalDevice) -> Self {
+        let supported = Self::supported_by_device(physical_device);
+        let required_if_supported = Self::required_if_supported_extensions();
+
+        required_if_supported.intersection(&supported)
+    }
 }
 
 /// This helper type can only be instantiated inside this module.
@@ -159,11 +175,12 @@ pub struct Unbuildable(());
 
 #[cfg(test)]
 mod tests {
-    use crate::device::{DeviceExtensions, RawDeviceExtensions};
+    use crate::device::DeviceExtensions;
+    use std::ffi::CString;
 
     #[test]
     fn empty_extensions() {
-        let d: RawDeviceExtensions = (&DeviceExtensions::none()).into();
+        let d: Vec<CString> = (&DeviceExtensions::none()).into();
         assert!(d.iter().next().is_none());
     }
 

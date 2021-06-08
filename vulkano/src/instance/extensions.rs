@@ -7,184 +7,147 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::collections::HashSet;
-use std::ffi::{CStr, CString};
-use std::fmt;
-use std::iter::FromIterator;
-use std::ptr;
-use std::str;
-
 use crate::check_errors;
-use crate::extensions::SupportedExtensionsError;
+pub use crate::extensions::{
+    ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
+};
 use crate::instance::loader;
 use crate::instance::loader::LoadingError;
+use std::ffi::CStr;
+use std::ptr;
 
 macro_rules! instance_extensions {
-    ($sname:ident, $rawname:ident, $($ext:ident => $s:expr,)*) => (
+    (
+        $($member:ident => {
+            doc: $doc:expr,
+            raw: $raw:expr,
+            requires_core: $requires_core:expr,
+            requires_extensions: [$($requires_extension:ident),*]$(,)?
+        },)*
+    ) => (
         extensions! {
-            $sname, $rawname,
-            $( $ext => $s,)*
+            InstanceExtensions,
+            $($member => {
+                doc: $doc,
+                raw: $raw,
+                requires_core: $requires_core,
+                requires_device_extensions: [],
+                requires_instance_extensions: [$($requires_extension),*],
+            },)*
         }
 
-        impl $rawname {
-            /// See the docs of supported_by_core().
-            pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
-                $rawname::supported_by_core_raw_with_loader(loader::auto_loader()?)
-            }
-
-            /// Same as `supported_by_core_raw()`, but allows specifying a loader.
-            pub fn supported_by_core_raw_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
-                        -> Result<Self, SupportedExtensionsError>
-                where L: loader::Loader
-            {
-                let fns = ptrs.fns();
-
-                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-                    let mut num = 0;
-                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
-                        ptr::null(), &mut num, ptr::null_mut()
-                    ))?;
-
-                    let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
-                        ptr::null(), &mut num, properties.as_mut_ptr()
-                    ))?;
-                    properties.set_len(num as usize);
-                    properties
-                };
-                Ok($rawname(properties.iter().map(|x| unsafe { CStr::from_ptr(x.extension_name.as_ptr()) }.to_owned()).collect()))
-            }
-
-            /// Returns a `RawExtensions` object with extensions supported by the core driver.
-            pub fn supported_by_core() -> Result<Self, LoadingError> {
-                match $rawname::supported_by_core_raw() {
-                    Ok(l) => Ok(l),
-                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
-                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-                }
-            }
-
-            /// Same as `supported_by_core`, but allows specifying a loader.
-            pub fn supported_by_core_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
-                        -> Result<Self, LoadingError>
-                where L: loader::Loader
-            {
-                match $rawname::supported_by_core_raw_with_loader(ptrs) {
-                    Ok(l) => Ok(l),
-                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
-                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-                }
-            }
-        }
-
-        impl $sname {
-            /// See the docs of supported_by_core().
-            pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
-                $sname::supported_by_core_raw_with_loader(loader::auto_loader()?)
-            }
-
-            /// See the docs of supported_by_core().
-            pub fn supported_by_core_raw_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
-                        -> Result<Self, SupportedExtensionsError>
-                where L: loader::Loader
-            {
-                let fns = ptrs.fns();
-
-                let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-                    let mut num = 0;
-                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
-                        ptr::null(), &mut num, ptr::null_mut()
-                    ))?;
-
-                    let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(fns.v1_0.enumerate_instance_extension_properties(
-                        ptr::null(), &mut num, properties.as_mut_ptr()
-                    ))?;
-                    properties.set_len(num as usize);
-                    properties
-                };
-
-                let mut extensions = $sname::none();
-                for property in properties {
-                    let name = unsafe { CStr::from_ptr(property.extension_name.as_ptr()) };
-                    $(
-                        // TODO: Check specVersion?
-                        if name.to_bytes() == &$s[..] {
-                            extensions.$ext = true;
+        impl InstanceExtensions {
+            /// Checks enabled extensions against the instance version and each other.
+            pub(super) fn check_requirements(
+                &self,
+                supported: &InstanceExtensions,
+                api_version: crate::Version,
+            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
+                $(
+                    if self.$member {
+                        if !supported.$member {
+                            return Err(crate::extensions::ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: crate::extensions::ExtensionRestriction::NotSupported,
+                            });
                         }
-                    )*
-                }
-                Ok(extensions)
-            }
 
-            /// Returns a `RawExtensions` object with extensions supported by the core driver.
-            pub fn supported_by_core() -> Result<Self, LoadingError> {
-                match $sname::supported_by_core_raw() {
-                    Ok(l) => Ok(l),
-                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
-                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-                }
-            }
-
-            /// Same as `supported_by_core`, but allows specifying a loader.
-            pub fn supported_by_core_with_loader<L>(ptrs: &loader::FunctionPointers<L>)
-                        -> Result<Self, LoadingError>
-                where L: loader::Loader
-            {
-                match $sname::supported_by_core_raw_with_loader(ptrs) {
-                    Ok(l) => Ok(l),
-                    Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
-                    Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-                }
+                        if api_version < $requires_core {
+                            return Err(crate::extensions::ExtensionRestrictionError {
+                                extension: stringify!($member),
+                                restriction: crate::extensions::ExtensionRestriction::RequiresCore($requires_core),
+                            });
+                        } else {
+                            $(
+                                if !self.$requires_extension {
+                                    return Err(crate::extensions::ExtensionRestrictionError {
+                                        extension: stringify!($member),
+                                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_extension)),
+                                    });
+                                }
+                            )*
+                        }
+                    }
+                )*
+                Ok(())
             }
         }
     );
 }
 
-instance_extensions! {
-    InstanceExtensions,
-    RawInstanceExtensions,
+pub use crate::autogen::InstanceExtensions;
+pub(crate) use instance_extensions;
 
-    // List in order: khr, ext, then alphabetical
-    khr_android_surface => b"VK_KHR_android_surface",
-    khr_device_group_creation => b"VK_KHR_device_group_creation",
-    khr_display => b"VK_KHR_display",
-    khr_external_fence_capabilities => b"VK_KHR_external_fence_capabilities",
-    khr_external_memory_capabilities => b"VK_KHR_external_memory_capabilities",
-    khr_external_semaphore_capabilities => b"VK_KHR_external_semaphore_capabilities",
-    khr_get_display_properties2 => b"VK_KHR_get_display_properties2",
-    khr_get_physical_device_properties2 => b"VK_KHR_get_physical_device_properties2",
-    khr_get_surface_capabilities2 => b"VK_KHR_get_surface_capabilities2",
-    khr_surface => b"VK_KHR_surface",
-    khr_wayland_surface => b"VK_KHR_wayland_surface",
-    khr_win32_surface => b"VK_KHR_win32_surface",
-    khr_xcb_surface => b"VK_KHR_xcb_surface",
-    khr_xlib_surface => b"VK_KHR_xlib_surface",
-    ext_acquire_xlib_display => b"VK_EXT_acquire_xlib_display",
-    ext_debug_report => b"VK_EXT_debug_report",
-    ext_debug_utils => b"VK_EXT_debug_utils",
-    ext_direct_mode_display => b"VK_EXT_direct_mode_display",
-    ext_display_surface_counter => b"VK_EXT_display_surface_counter",
-    ext_swapchain_colorspace => b"VK_EXT_swapchain_colorspace",
-    mvk_ios_surface => b"VK_MVK_ios_surface",
-    mvk_macos_surface => b"VK_MVK_macos_surface",
-    mvk_moltenvk => b"VK_MVK_moltenvk",     // TODO: confirm that it's an instance extension
-    nn_vi_surface => b"VK_NN_vi_surface",
+impl InstanceExtensions {
+    /// See the docs of supported_by_core().
+    pub fn supported_by_core_raw() -> Result<Self, SupportedExtensionsError> {
+        InstanceExtensions::supported_by_core_raw_with_loader(loader::auto_loader()?)
+    }
+
+    /// Returns an `InstanceExtensions` object with extensions supported by the core driver.
+    pub fn supported_by_core() -> Result<Self, LoadingError> {
+        match InstanceExtensions::supported_by_core_raw() {
+            Ok(l) => Ok(l),
+            Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
+            Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+        }
+    }
+
+    /// Same as `supported_by_core`, but allows specifying a loader.
+    pub fn supported_by_core_with_loader<L>(
+        ptrs: &loader::FunctionPointers<L>,
+    ) -> Result<Self, LoadingError>
+    where
+        L: loader::Loader,
+    {
+        match InstanceExtensions::supported_by_core_raw_with_loader(ptrs) {
+            Ok(l) => Ok(l),
+            Err(SupportedExtensionsError::LoadingError(e)) => Err(e),
+            Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
+        }
+    }
+
+    /// See the docs of supported_by_core().
+    pub fn supported_by_core_raw_with_loader<L>(
+        ptrs: &loader::FunctionPointers<L>,
+    ) -> Result<Self, SupportedExtensionsError>
+    where
+        L: loader::Loader,
+    {
+        let fns = ptrs.fns();
+
+        let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
+            let mut num = 0;
+            check_errors(fns.v1_0.enumerate_instance_extension_properties(
+                ptr::null(),
+                &mut num,
+                ptr::null_mut(),
+            ))?;
+
+            let mut properties = Vec::with_capacity(num as usize);
+            check_errors(fns.v1_0.enumerate_instance_extension_properties(
+                ptr::null(),
+                &mut num,
+                properties.as_mut_ptr(),
+            ))?;
+            properties.set_len(num as usize);
+            properties
+        };
+
+        Ok(Self::from(properties.iter().map(|property| unsafe {
+            CStr::from_ptr(property.extension_name.as_ptr())
+        })))
+    }
 }
-
-/// This helper type can only be instantiated inside this module.
-/// See `*Extensions::_unbuildable`.
-#[doc(hidden)]
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub struct Unbuildable(());
 
 #[cfg(test)]
 mod tests {
-    use crate::instance::{InstanceExtensions, RawInstanceExtensions};
+    use crate::instance::InstanceExtensions;
+    use std::ffi::CString;
 
     #[test]
     fn empty_extensions() {
-        let i: RawInstanceExtensions = (&InstanceExtensions::none()).into();
+        let i: Vec<CString> = (&InstanceExtensions::none()).into();
         assert!(i.iter().next().is_none());
     }
 }

@@ -34,6 +34,7 @@ pub use self::desc::RenderPassDesc;
 pub use self::desc::StoreOp;
 pub use self::desc::SubpassDependencyDesc;
 pub use self::desc::SubpassDesc;
+pub use self::desc::MultiviewDesc;
 pub use self::framebuffer::Framebuffer;
 pub use self::framebuffer::FramebufferAbstract;
 pub use self::framebuffer::FramebufferBuilder;
