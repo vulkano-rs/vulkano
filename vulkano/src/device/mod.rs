@@ -203,7 +203,6 @@ impl Device {
     {
         let instance = physical_device.instance();
         let fns_i = instance.fns();
-
         let api_version = physical_device.api_version();
 
         // Check if the extensions are correct
