@@ -440,17 +440,18 @@ where
                 if stride
                     > device
                         .physical_device()
-                        .limits()
-                        .max_vertex_input_binding_stride() as usize
+                        .properties()
+                        .max_vertex_input_binding_stride
+                        .unwrap() as usize
                 {
                     return Err(
                         GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
                             binding: num as usize,
                             max: device
                                 .physical_device()
-                                .limits()
-                                .max_vertex_input_binding_stride()
-                                as usize,
+                                .properties()
+                                .max_vertex_input_binding_stride
+                                .unwrap() as usize,
                             obtained: stride,
                         },
                     );
@@ -470,16 +471,17 @@ where
                 if info.offset
                     > device
                         .physical_device()
-                        .limits()
-                        .max_vertex_input_attribute_offset() as usize
+                        .properties()
+                        .max_vertex_input_attribute_offset
+                        .unwrap() as usize
                 {
                     return Err(
                         GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
                             max: device
                                 .physical_device()
-                                .limits()
-                                .max_vertex_input_attribute_offset()
-                                as usize,
+                                .properties()
+                                .max_vertex_input_attribute_offset
+                                .unwrap() as usize,
                             obtained: info.offset,
                         },
                     );
@@ -504,15 +506,17 @@ where
         if binding_descriptions.len()
             > device
                 .physical_device()
-                .limits()
-                .max_vertex_input_bindings() as usize
+                .properties()
+                .max_vertex_input_bindings
+                .unwrap() as usize
         {
             return Err(
                 GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
                     max: device
                         .physical_device()
-                        .limits()
-                        .max_vertex_input_bindings() as usize,
+                        .properties()
+                        .max_vertex_input_bindings
+                        .unwrap() as usize,
                     obtained: binding_descriptions.len(),
                 },
             );
@@ -521,15 +525,17 @@ where
         if attribute_descriptions.len()
             > device
                 .physical_device()
-                .limits()
-                .max_vertex_input_attributes() as usize
+                .properties()
+                .max_vertex_input_attributes
+                .unwrap() as usize
         {
             return Err(
                 GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
                     max: device
                         .physical_device()
-                        .limits()
-                        .max_vertex_input_attributes() as usize,
+                        .properties()
+                        .max_vertex_input_attributes
+                        .unwrap() as usize,
                     obtained: attribute_descriptions.len(),
                 },
             );
@@ -576,8 +582,9 @@ where
                 if vertices_per_patch
                     > device
                         .physical_device()
-                        .limits()
-                        .max_tessellation_patch_size()
+                        .properties()
+                        .max_tessellation_patch_size
+                        .unwrap()
                 {
                     return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
                 }
@@ -636,24 +643,54 @@ where
             return Err(GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled);
         }
 
-        if vp_num > device.physical_device().limits().max_viewports() {
+        if vp_num > device.physical_device().properties().max_viewports.unwrap() {
             return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
                 obtained: vp_num,
-                max: device.physical_device().limits().max_viewports(),
+                max: device.physical_device().properties().max_viewports.unwrap(),
             });
         }
 
         for vp in vp_vp.iter() {
-            if vp.width > device.physical_device().limits().max_viewport_dimensions()[0] as f32
-                || vp.height > device.physical_device().limits().max_viewport_dimensions()[1] as f32
+            if vp.width
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_viewport_dimensions
+                    .unwrap()[0] as f32
+                || vp.height
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_viewport_dimensions
+                        .unwrap()[1] as f32
             {
                 return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
             }
 
-            if vp.x < device.physical_device().limits().viewport_bounds_range()[0]
-                || vp.x + vp.width > device.physical_device().limits().viewport_bounds_range()[1]
-                || vp.y < device.physical_device().limits().viewport_bounds_range()[0]
-                || vp.y + vp.height > device.physical_device().limits().viewport_bounds_range()[1]
+            if vp.x
+                < device
+                    .physical_device()
+                    .properties()
+                    .viewport_bounds_range
+                    .unwrap()[0]
+                || vp.x + vp.width
+                    > device
+                        .physical_device()
+                        .properties()
+                        .viewport_bounds_range
+                        .unwrap()[1]
+                || vp.y
+                    < device
+                        .physical_device()
+                        .properties()
+                        .viewport_bounds_range
+                        .unwrap()[0]
+                || vp.y + vp.height
+                    > device
+                        .physical_device()
+                        .properties()
+                        .viewport_bounds_range
+                        .unwrap()[1]
             {
                 return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
             }

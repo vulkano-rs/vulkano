@@ -46,8 +46,8 @@ where
         let max_instance_index = pipeline
             .device()
             .physical_device()
-            .extended_properties()
-            .max_multiview_instance_index()
+            .properties()
+            .max_multiview_instance_index
             .unwrap_or(0) as usize;
 
         // vulkano currently always uses `0` as the first instance which means the highest

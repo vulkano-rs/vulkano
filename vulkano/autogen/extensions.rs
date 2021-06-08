@@ -240,7 +240,7 @@ where
         .unwrap();
         write!(
             writer,
-            "\n\t\trequires_extensions: [{}],",
+            "\n\t\trequires_instance_extensions: [{}],",
             ext.requires_instance_extensions.join(", ")
         )
         .unwrap();

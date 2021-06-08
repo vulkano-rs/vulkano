@@ -17,6 +17,7 @@ use vk_parse::{
 mod extensions;
 mod features;
 mod fns;
+mod properties;
 
 pub fn write<W: Write>(writer: &mut W) {
     let registry = get_registry("vk.xml");
@@ -40,7 +41,9 @@ pub fn write<W: Write>(writer: &mut W) {
     write!(writer, "\n\n").unwrap();
     fns::write(writer, &extensions);
     write!(writer, "\n\n").unwrap();
-    features::write(writer, &types);
+    features::write(writer, &types, &extensions);
+    write!(writer, "\n\n").unwrap();
+    properties::write(writer, &types, &extensions);
     write!(writer, "\n").unwrap();
 }
 

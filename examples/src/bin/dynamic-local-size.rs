@@ -125,11 +125,11 @@ fn main() {
     // In this case we can find appropriate value in this table: https://vulkan.gpuinfo.org/
     // or just use fallback constant for simplicity, but failure to set proper
     // local size can lead to significant performance penalty.
-    let (local_size_x, local_size_y) = match physical.extended_properties().subgroup_size() {
+    let (local_size_x, local_size_y) = match physical.properties().subgroup_size {
         Some(subgroup_size) => {
             println!(
                 "Subgroup size for '{}' device is {}",
-                physical.name(),
+                physical.properties().device_name.as_ref().unwrap(),
                 subgroup_size
             );
 

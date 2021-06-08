@@ -8,12 +8,13 @@
 // according to those terms.
 
 use heck::SnakeCase;
+use indexmap::IndexMap;
 use regex::Regex;
 use std::{
     collections::{hash_map::Entry, HashMap},
     io::Write,
 };
-use vk_parse::{Type, TypeMember, TypeMemberMarkup, TypeSpec};
+use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
 // This is not included in vk.xml, so it's added here manually
 fn requires_features(name: &str) -> &'static [&'static str] {
@@ -57,10 +58,14 @@ fn required_by_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write<W: Write>(writer: &mut W, types: &HashMap<&str, (&Type, Vec<&str>)>) {
+pub fn write<W: Write>(
+    writer: &mut W,
+    types: &HashMap<&str, (&Type, Vec<&str>)>,
+    extensions: &IndexMap<&str, &Extension>,
+) {
     write!(writer, "crate::device::features::features! {{").unwrap();
 
-    for feat in make_vulkano_features(&types) {
+    for feat in make_vulkano_features(types) {
         write!(writer, "\n\t{} => {{", feat.member).unwrap();
         write_doc(writer, &feat);
         write!(writer, "\n\t\tffi_name: {},", feat.ffi_name).unwrap();
@@ -93,11 +98,11 @@ pub fn write<W: Write>(writer: &mut W, types: &HashMap<&str, (&Type, Vec<&str>)>
 
     write!(
         writer,
-        "\n}}\n\ncrate::device::features::features_ffi! {{\n\tapi_version,\n\textensions,"
+        "\n}}\n\ncrate::device::features::features_ffi! {{\n\tapi_version,\n\tdevice_extensions,\n\tinstance_extensions,"
     )
     .unwrap();
 
-    for ffi in make_vulkano_features_ffi(&types) {
+    for ffi in make_vulkano_features_ffi(types, extensions) {
         write!(writer, "\n\t{} => {{", ffi.member).unwrap();
         write!(writer, "\n\t\tty: {},", ffi.ty).unwrap();
         write!(
@@ -258,7 +263,10 @@ struct VulkanoFeatureFfi {
     conflicts: Vec<String>,
 }
 
-fn make_vulkano_features_ffi(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<VulkanoFeatureFfi> {
+fn make_vulkano_features_ffi<'a>(
+    types: &'a HashMap<&str, (&Type, Vec<&str>)>,
+    extensions: &IndexMap<&'a str, &Extension>,
+) -> Vec<VulkanoFeatureFfi> {
     let mut feature_included_in: HashMap<&str, Vec<&str>> = HashMap::new();
     sorted_structs(types)
         .into_iter()
@@ -271,7 +279,8 @@ fn make_vulkano_features_ffi(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<V
                         format!("api_version >= crate::Version::V{}", version)
                     } else {
                         format!(
-                            "extensions.{}",
+                            "{}_extensions.{}",
+                            extensions[provided_by].ext_type.as_ref().unwrap().as_str(),
                             provided_by
                                 .strip_prefix("VK_")
                                 .unwrap()

@@ -335,7 +335,12 @@ impl<'a> DeviceMemoryBuilder<'a> {
                 .lock()
                 .expect("Poisoned mutex");
 
-            if *allocation_count >= physical_device.limits().max_memory_allocation_count() {
+            if *allocation_count
+                >= physical_device
+                    .properties()
+                    .max_memory_allocation_count
+                    .unwrap()
+            {
                 return Err(DeviceMemoryAllocError::TooManyObjects);
             }
             let fns = self.device.fns();

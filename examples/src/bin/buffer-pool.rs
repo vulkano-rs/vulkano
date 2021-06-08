@@ -50,14 +50,13 @@ vulkano::impl_vertex!(Vertex, position);
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     println!(
         "Using device: {} (type: {:?})",
-        physical.name(),
-        physical.ty()
+        physical.properties().device_name.as_ref().unwrap(),
+        physical.properties().device_type.unwrap()
     );
 
     let event_loop = EventLoop::new();

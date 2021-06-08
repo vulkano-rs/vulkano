@@ -754,7 +754,7 @@ impl ShaderStages {
 
 impl From<ShaderStages> for ash::vk::ShaderStageFlags {
     #[inline]
-    fn from(val: ShaderStages) -> ash::vk::ShaderStageFlags {
+    fn from(val: ShaderStages) -> Self {
         let mut result = ash::vk::ShaderStageFlags::empty();
         if val.vertex {
             result |= ash::vk::ShaderStageFlags::VERTEX;
@@ -775,6 +775,21 @@ impl From<ShaderStages> for ash::vk::ShaderStageFlags {
             result |= ash::vk::ShaderStageFlags::COMPUTE;
         }
         result
+    }
+}
+
+impl From<ash::vk::ShaderStageFlags> for ShaderStages {
+    #[inline]
+    fn from(val: ash::vk::ShaderStageFlags) -> Self {
+        Self {
+            vertex: val.intersects(ash::vk::ShaderStageFlags::VERTEX),
+            tessellation_control: val.intersects(ash::vk::ShaderStageFlags::TESSELLATION_CONTROL),
+            tessellation_evaluation: val
+                .intersects(ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION),
+            geometry: val.intersects(ash::vk::ShaderStageFlags::GEOMETRY),
+            fragment: val.intersects(ash::vk::ShaderStageFlags::FRAGMENT),
+            compute: val.intersects(ash::vk::ShaderStageFlags::COMPUTE),
+        }
     }
 }
 

@@ -35,7 +35,7 @@
 //!
 //! # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
-//!     println!("Available device: {}", physical_device.name());
+//!     println!("Available device: {}", physical_device.properties().device_name.as_ref().unwrap());
 //! }
 //! ```
 //!
@@ -59,8 +59,9 @@ pub use self::layers::layers_list;
 pub use self::layers::LayerProperties;
 pub use self::layers::LayersIterator;
 pub use self::layers::LayersListError;
-pub use self::limits::Limits;
 pub use self::loader::LoadingError;
+pub use self::physical_device::ConformanceVersion;
+pub use self::physical_device::DriverId;
 pub use self::physical_device::MemoryHeap;
 pub use self::physical_device::MemoryHeapsIter;
 pub use self::physical_device::MemoryType;
@@ -68,8 +69,12 @@ pub use self::physical_device::MemoryTypesIter;
 pub use self::physical_device::PhysicalDevice;
 pub use self::physical_device::PhysicalDeviceType;
 pub use self::physical_device::PhysicalDevicesIter;
+pub use self::physical_device::PointClippingBehavior;
 pub use self::physical_device::QueueFamiliesIter;
 pub use self::physical_device::QueueFamily;
+pub use self::physical_device::ShaderCoreProperties;
+pub use self::physical_device::ShaderFloatControlsIndependence;
+pub use self::physical_device::SubgroupFeatures;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
@@ -79,6 +84,5 @@ pub mod debug;
 pub(crate) mod extensions;
 mod instance;
 mod layers;
-mod limits;
 pub mod loader;
 mod physical_device;

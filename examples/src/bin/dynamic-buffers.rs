@@ -105,8 +105,9 @@ fn main() {
     let data: Vec<u8> = vec![3, 11, 7];
     let min_dynamic_align = device
         .physical_device()
-        .limits()
-        .min_uniform_buffer_offset_alignment() as usize;
+        .properties()
+        .min_uniform_buffer_offset_alignment
+        .unwrap() as usize;
     println!(
         "Minimum uniform buffer offset alignment: {}",
         min_dynamic_align
