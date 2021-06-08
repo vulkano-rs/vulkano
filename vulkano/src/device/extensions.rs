@@ -135,6 +135,8 @@ device_extensions! {
     khr_display_swapchain => b"VK_KHR_display_swapchain",
     khr_external_memory => b"VK_KHR_external_memory",
     khr_external_memory_fd => b"VK_KHR_external_memory_fd",
+    khr_external_semaphore => b"VK_KHR_external_semaphore",
+    khr_external_semaphore_fd => b"VK_KHR_external_semaphore_fd",
     khr_get_memory_requirements2 => b"VK_KHR_get_memory_requirements2",
     khr_incremental_present => b"VK_KHR_incremental_present",
     khr_maintenance1 => b"VK_KHR_maintenance1",

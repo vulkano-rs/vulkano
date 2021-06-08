@@ -72,6 +72,7 @@ fns!(DeviceFunctions, {
     v1_1 => DeviceFnV1_1,
     v1_2 => DeviceFnV1_2,
 
+    khr_external_semaphore_fd => KhrExternalSemaphoreFdFn,
     khr_external_memory_fd => KhrExternalMemoryFdFn,
     khr_get_memory_requirements2 => KhrGetMemoryRequirements2Fn, // Promoted
     khr_maintenance1 => KhrMaintenance1Fn, // Promoted
