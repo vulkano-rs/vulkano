@@ -261,8 +261,8 @@ macro_rules! features_ffi {
                     if std::array::IntoIter::new([$($provided_by),+]).any(|x| x) &&
                         std::array::IntoIter::new([$(self.$conflicts.is_none()),*]).all(|x| x) {
                         self.$member = Some(Default::default());
-                        self.$member.unwrap().p_next = self.features_vulkan10.unwrap().p_next;
-                        self.features_vulkan10.unwrap().p_next = self.$member.as_mut().unwrap() as *mut _ as _;
+                        self.$member.as_mut().unwrap().p_next = self.features_vulkan10.unwrap().p_next;
+                        self.features_vulkan10.as_mut().unwrap().p_next = self.$member.as_mut().unwrap() as *mut _ as _;
                     }
                 )+
             }
