@@ -263,12 +263,15 @@ macro_rules! features_ffi {
                 $instance_extensions: &InstanceExtensions,
             ) {
                 self.features_vulkan10 = Some(Default::default());
+                let head = self.features_vulkan10.as_mut().unwrap();
+
                 $(
                     if std::array::IntoIter::new([$($provided_by),+]).any(|x| x) &&
                         std::array::IntoIter::new([$(self.$conflicts.is_none()),*]).all(|x| x) {
                         self.$member = Some(Default::default());
-                        self.$member.unwrap().p_next = self.features_vulkan10.unwrap().p_next;
-                        self.features_vulkan10.unwrap().p_next = self.$member.as_mut().unwrap() as *mut _ as _;
+                        let member = self.$member.as_mut().unwrap();
+                        member.p_next = head.p_next;
+                        head.p_next = member as *mut _ as _;
                     }
                 )+
             }
