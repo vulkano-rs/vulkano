@@ -428,8 +428,9 @@ impl UnsafeCommandBufferBuilder {
             let max_bindings = self
                 .device()
                 .physical_device()
-                .limits()
-                .max_vertex_input_bindings();
+                .properties()
+                .max_vertex_input_bindings
+                .unwrap();
             first_binding + num_bindings <= max_bindings
         });
 
@@ -1018,8 +1019,9 @@ impl UnsafeCommandBufferBuilder {
             let max_group_counts = self
                 .device()
                 .physical_device()
-                .limits()
-                .max_compute_work_group_count();
+                .properties()
+                .max_compute_work_group_count
+                .unwrap();
             group_counts[0] <= max_group_counts[0]
                 && group_counts[1] <= max_group_counts[1]
                 && group_counts[2] <= max_group_counts[2]
@@ -1412,7 +1414,12 @@ impl UnsafeCommandBufferBuilder {
                 || self.device().enabled_features().multi_viewport
         );
         debug_assert!({
-            let max = self.device().physical_device().limits().max_viewports();
+            let max = self
+                .device()
+                .physical_device()
+                .properties()
+                .max_viewports
+                .unwrap();
             first_scissor + scissors.len() as u32 <= max
         });
 
@@ -1442,7 +1449,12 @@ impl UnsafeCommandBufferBuilder {
                 || self.device().enabled_features().multi_viewport
         );
         debug_assert!({
-            let max = self.device().physical_device().limits().max_viewports();
+            let max = self
+                .device()
+                .physical_device()
+                .properties()
+                .max_viewports
+                .unwrap();
             first_viewport + viewports.len() as u32 <= max
         });
 

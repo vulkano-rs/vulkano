@@ -62,12 +62,7 @@ fn main() {
     // will lead to a runtime error when creating the `RenderPass`.
     // The `max_multiview_view_count` function will return `None`
     // when the `VK_KHR_get_physical_device_properties2` instance extension has not been enabled.
-    if physical
-        .extended_properties()
-        .max_multiview_view_count()
-        .unwrap_or(0)
-        < 2
-    {
+    if physical.properties().max_multiview_view_count.unwrap_or(0) < 2 {
         println!("The device doesn't support two multiview views or the VK_KHR_get_physical_device_properties2 instance extension has not been loaded");
 
         // A real application should probably fall back to rendering the framebuffer layers

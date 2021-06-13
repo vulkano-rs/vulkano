@@ -286,7 +286,11 @@ impl RenderPass {
 
             for pass in description.subpasses() {
                 if pass.color_attachments.len() as u32
-                    > device.physical_device().limits().max_color_attachments()
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_color_attachments
+                        .unwrap()
                 {
                     return Err(RenderPassCreationError::ColorAttachmentsLimitExceeded);
                 }
@@ -383,8 +387,8 @@ impl RenderPass {
                 debug_assert!(
                     device
                         .physical_device()
-                        .extended_properties()
-                        .max_multiview_view_count()
+                        .properties()
+                        .max_multiview_view_count
                         .unwrap_or(0)
                         >= multiview.used_layer_count()
                 );
@@ -850,7 +854,13 @@ mod tests {
     fn too_many_color_atch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        if device.physical_device().limits().max_color_attachments() >= 10 {
+        if device
+            .physical_device()
+            .properties()
+            .max_color_attachments
+            .unwrap()
+            >= 10
+        {
             return; // test ignored
         }
 

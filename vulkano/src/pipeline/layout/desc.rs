@@ -227,7 +227,7 @@ impl PipelineLayoutDesc {
         &self,
         device: &Device,
     ) -> Result<(), limits_check::PipelineLayoutLimitsError> {
-        limits_check::check_desc_against_limits(self, device.physical_device().limits())
+        limits_check::check_desc_against_limits(self, device.physical_device().properties())
     }
 
     /// Makes sure that `self` is a superset of `other`. Returns an `Err` if this is not the case.

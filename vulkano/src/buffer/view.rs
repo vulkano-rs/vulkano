@@ -96,8 +96,9 @@ where
             if (offset
                 % device
                     .physical_device()
-                    .limits()
-                    .min_texel_buffer_offset_alignment() as usize)
+                    .properties()
+                    .min_texel_buffer_offset_alignment
+                    .unwrap() as usize)
                 != 0
             {
                 return Err(BufferViewCreationError::WrongBufferAlignment);
@@ -114,8 +115,9 @@ where
                         .expect("Can't use a compressed format for buffer views");
                 let l = device
                     .physical_device()
-                    .limits()
-                    .max_texel_buffer_elements();
+                    .properties()
+                    .max_texel_buffer_elements
+                    .unwrap();
                 if nb > l as usize {
                     return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
                 }

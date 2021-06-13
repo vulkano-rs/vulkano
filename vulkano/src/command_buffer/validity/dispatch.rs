@@ -16,8 +16,9 @@ use crate::device::Device;
 pub fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), CheckDispatchError> {
     let max = device
         .physical_device()
-        .limits()
-        .max_compute_work_group_count();
+        .properties()
+        .max_compute_work_group_count
+        .unwrap();
 
     if dimensions[0] > max[0] || dimensions[1] > max[1] || dimensions[2] > max[2] {
         return Err(CheckDispatchError::UnsupportedDimensions {
@@ -71,8 +72,9 @@ mod tests {
         // Just in case the device is some kind of software implementation.
         if device
             .physical_device()
-            .limits()
-            .max_compute_work_group_count()
+            .properties()
+            .max_compute_work_group_count
+            .unwrap()
             == attempted
         {
             return;

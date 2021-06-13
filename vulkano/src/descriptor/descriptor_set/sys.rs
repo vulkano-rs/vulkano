@@ -950,16 +950,18 @@ impl DescriptorWrite {
                 % buffer
                     .device()
                     .physical_device()
-                    .limits()
-                    .min_uniform_buffer_offset_alignment() as usize,
+                    .properties()
+                    .min_uniform_buffer_offset_alignment
+                    .unwrap() as usize,
             0
         );
         debug_assert!(
             size <= buffer
                 .device()
                 .physical_device()
-                .limits()
-                .max_uniform_buffer_range() as usize
+                .properties()
+                .max_uniform_buffer_range
+                .unwrap() as usize
         );
 
         DescriptorWrite {
@@ -984,16 +986,18 @@ impl DescriptorWrite {
                 % buffer
                     .device()
                     .physical_device()
-                    .limits()
-                    .min_storage_buffer_offset_alignment() as usize,
+                    .properties()
+                    .min_storage_buffer_offset_alignment
+                    .unwrap() as usize,
             0
         );
         debug_assert!(
             size <= buffer
                 .device()
                 .physical_device()
-                .limits()
-                .max_storage_buffer_range() as usize
+                .properties()
+                .max_storage_buffer_range
+                .unwrap() as usize
         );
 
         DescriptorWrite {
@@ -1022,16 +1026,18 @@ impl DescriptorWrite {
                 % buffer
                     .device()
                     .physical_device()
-                    .limits()
-                    .min_uniform_buffer_offset_alignment() as usize,
+                    .properties()
+                    .min_uniform_buffer_offset_alignment
+                    .unwrap() as usize,
             0
         );
         debug_assert!(
             size <= buffer
                 .device()
                 .physical_device()
-                .limits()
-                .max_uniform_buffer_range() as usize
+                .properties()
+                .max_uniform_buffer_range
+                .unwrap() as usize
         );
 
         DescriptorWrite {
@@ -1062,16 +1068,18 @@ impl DescriptorWrite {
                 % buffer
                     .device()
                     .physical_device()
-                    .limits()
-                    .min_storage_buffer_offset_alignment() as usize,
+                    .properties()
+                    .min_storage_buffer_offset_alignment
+                    .unwrap() as usize,
             0
         );
         debug_assert!(
             size <= buffer
                 .device()
                 .physical_device()
-                .limits()
-                .max_storage_buffer_range() as usize
+                .properties()
+                .max_storage_buffer_range
+                .unwrap() as usize
         );
 
         DescriptorWrite {

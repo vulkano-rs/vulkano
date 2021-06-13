@@ -903,7 +903,8 @@ impl<W> SwapchainBuilder<W> {
 
     /// Sets the dimensions of the images.
     ///
-    /// The default is `None`, which means the value of [`Capabilities::current_extent`] will be
+    /// The default is `None`, which means the value of
+    /// [`Capabilities::current_extent`](crate::swapchain::Capabilities::current_extent) will be
     /// used. Setting this will override it with a custom `Some` value.
     #[inline]
     pub fn dimensions(mut self, dimensions: [u32; 2]) -> Self {

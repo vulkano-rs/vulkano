@@ -13,7 +13,7 @@ use std::convert::TryFrom;
 use std::fmt;
 
 /// Represents an API version of Vulkan.
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Version {
     /// Major version number.
     pub major: u32,

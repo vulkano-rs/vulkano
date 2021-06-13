@@ -8,13 +8,14 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::device::{DeviceExtensions, Features, FeaturesFfi};
-use crate::instance::limits::Limits;
+use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
 use crate::instance::{Instance, InstanceCreationError};
 use crate::sync::PipelineStage;
 use crate::Version;
 use crate::VulkanObject;
-use std::ffi::{c_void, CStr};
+use std::convert::TryFrom;
+use std::ffi::CStr;
+use std::fmt;
 use std::hash::Hash;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -44,49 +45,55 @@ pub(super) fn init_physical_devices(
         devices
     };
 
-    let supported_extensions: Vec<DeviceExtensions> = physical_devices
-        .iter()
-        .map(
-            |&physical_device| -> Result<DeviceExtensions, InstanceCreationError> {
-                let extension_properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-                    let mut num = 0;
-                    check_errors(fns.v1_0.enumerate_device_extension_properties(
-                        physical_device,
-                        ptr::null(),
-                        &mut num,
-                        ptr::null_mut(),
-                    ))?;
-
-                    let mut properties = Vec::with_capacity(num as usize);
-                    check_errors(fns.v1_0.enumerate_device_extension_properties(
-                        physical_device,
-                        ptr::null(),
-                        &mut num,
-                        properties.as_mut_ptr(),
-                    ))?;
-                    properties.set_len(num as usize);
-                    properties
-                };
-
-                Ok(DeviceExtensions::from(extension_properties.iter().map(
-                    |property| unsafe { CStr::from_ptr(property.extension_name.as_ptr()) },
-                )))
-            },
-        )
-        .collect::<Result<_, _>>()?;
-
-    let iter = physical_devices
+    let info: Vec<_> = physical_devices
         .into_iter()
-        .zip(supported_extensions.into_iter());
+        .map(|physical_device| -> Result<_, InstanceCreationError> {
+            let api_version = unsafe {
+                let mut output = MaybeUninit::uninit();
+                fns.v1_0
+                    .get_physical_device_properties(physical_device, output.as_mut_ptr());
+                let api_version = Version::try_from(output.assume_init().api_version).unwrap();
+                std::cmp::min(instance.max_api_version(), api_version)
+            };
+
+            let extension_properties: Vec<ash::vk::ExtensionProperties> = unsafe {
+                let mut num = 0;
+                check_errors(fns.v1_0.enumerate_device_extension_properties(
+                    physical_device,
+                    ptr::null(),
+                    &mut num,
+                    ptr::null_mut(),
+                ))?;
+
+                let mut properties = Vec::with_capacity(num as usize);
+                check_errors(fns.v1_0.enumerate_device_extension_properties(
+                    physical_device,
+                    ptr::null(),
+                    &mut num,
+                    properties.as_mut_ptr(),
+                ))?;
+                properties.set_len(num as usize);
+                properties
+            };
+
+            let extensions = DeviceExtensions::from(
+                extension_properties
+                    .iter()
+                    .map(|property| unsafe { CStr::from_ptr(property.extension_name.as_ptr()) }),
+            );
+
+            Ok((physical_device, api_version, extensions))
+        })
+        .collect::<Result<_, _>>()?;
 
     // Getting the properties of all physical devices.
     // If possible, we use VK_KHR_get_physical_device_properties2.
     let physical_devices = if instance.api_version() >= Version::V1_1
         || instance_extensions.khr_get_physical_device_properties2
     {
-        init_physical_devices_inner2(instance, iter)
+        init_physical_devices_inner2(instance, info)
     } else {
-        init_physical_devices_inner(instance, iter)
+        init_physical_devices_inner(instance, info)
     };
 
     Ok(physical_devices)
@@ -95,17 +102,24 @@ pub(super) fn init_physical_devices(
 /// Initialize all physical devices
 fn init_physical_devices_inner<I>(instance: &Instance, info: I) -> Vec<PhysicalDeviceInfos>
 where
-    I: IntoIterator<Item = (ash::vk::PhysicalDevice, DeviceExtensions)>,
+    I: IntoIterator<Item = (ash::vk::PhysicalDevice, Version, DeviceExtensions)>,
 {
     let fns = instance.fns();
 
     info.into_iter()
-        .map(|(physical_device, supported_extensions)| {
-            let properties: ash::vk::PhysicalDeviceProperties = unsafe {
-                let mut output = MaybeUninit::uninit();
-                fns.v1_0
-                    .get_physical_device_properties(physical_device, output.as_mut_ptr());
-                output.assume_init()
+        .map(|(physical_device, api_version, supported_extensions)| {
+            let properties: Properties = unsafe {
+                let mut output = PropertiesFfi::default();
+                output.make_chain(
+                    api_version,
+                    &supported_extensions,
+                    instance.loaded_extensions(),
+                );
+                fns.v1_0.get_physical_device_properties(
+                    physical_device,
+                    &mut output.head_as_mut().properties,
+                );
+                Properties::from(&output)
             };
 
             let queue_families = unsafe {
@@ -126,7 +140,7 @@ where
                 families
             };
 
-            let memory: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
+            let memory_properties: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
                 let mut output = MaybeUninit::uninit();
                 fns.v1_0
                     .get_physical_device_memory_properties(physical_device, output.as_mut_ptr());
@@ -144,9 +158,9 @@ where
 
             PhysicalDeviceInfos {
                 physical_device,
+                api_version,
                 properties,
-                extended_properties: PhysicalDeviceExtendedProperties::empty(),
-                memory,
+                memory_properties,
                 queue_families,
                 available_features,
             }
@@ -158,50 +172,29 @@ where
 /// TODO: Query extension-specific physical device properties, once a new instance extension is supported.
 fn init_physical_devices_inner2<I>(instance: &Instance, info: I) -> Vec<PhysicalDeviceInfos>
 where
-    I: IntoIterator<Item = (ash::vk::PhysicalDevice, DeviceExtensions)>,
+    I: IntoIterator<Item = (ash::vk::PhysicalDevice, Version, DeviceExtensions)>,
 {
     let fns = instance.fns();
 
     info.into_iter()
-        .map(|(physical_device, supported_extensions)| {
-            let mut extended_properties = PhysicalDeviceExtendedProperties::empty();
-
-            let properties: ash::vk::PhysicalDeviceProperties = unsafe {
-                let mut subgroup_properties = ash::vk::PhysicalDeviceSubgroupProperties::default();
-
-                let mut multiview_properties = ash::vk::PhysicalDeviceMultiviewProperties {
-                    p_next: &mut subgroup_properties as *mut _ as *mut c_void,
-                    ..Default::default()
-                };
-
-                let mut output = ash::vk::PhysicalDeviceProperties2 {
-                    p_next: if instance.api_version() >= Version::V1_1 {
-                        &mut multiview_properties as *mut _ as *mut c_void
-                    } else {
-                        ptr::null_mut()
-                    },
-                    ..Default::default()
-                };
+        .map(|(physical_device, api_version, supported_extensions)| {
+            let properties: Properties = unsafe {
+                let mut output = PropertiesFfi::default();
+                output.make_chain(
+                    api_version,
+                    &supported_extensions,
+                    instance.loaded_extensions(),
+                );
 
                 if instance.api_version() >= Version::V1_1 {
                     fns.v1_1
-                        .get_physical_device_properties2(physical_device, &mut output);
+                        .get_physical_device_properties2(physical_device, output.head_as_mut());
                 } else {
                     fns.khr_get_physical_device_properties2
-                        .get_physical_device_properties2_khr(physical_device, &mut output);
+                        .get_physical_device_properties2_khr(physical_device, output.head_as_mut());
                 }
 
-                extended_properties = PhysicalDeviceExtendedProperties {
-                    subgroup_size: Some(subgroup_properties.subgroup_size),
-                    max_multiview_view_count: Some(multiview_properties.max_multiview_view_count),
-                    max_multiview_instance_index: Some(
-                        multiview_properties.max_multiview_instance_index,
-                    ),
-
-                    ..extended_properties
-                };
-
-                output.properties
+                Properties::from(&output)
             };
 
             let queue_families = unsafe {
@@ -245,7 +238,7 @@ where
                     .collect()
             };
 
-            let memory: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
+            let memory_properties: ash::vk::PhysicalDeviceMemoryProperties = unsafe {
                 let mut output = ash::vk::PhysicalDeviceMemoryProperties2KHR::default();
 
                 if instance.api_version() >= Version::V1_1 {
@@ -260,12 +253,12 @@ where
             };
 
             let available_features: Features = unsafe {
-                let max_api_version = instance.max_api_version();
-                let api_version =
-                    std::cmp::min(max_api_version, Version::from(properties.api_version));
-
                 let mut output = FeaturesFfi::default();
-                output.make_chain(api_version, &supported_extensions);
+                output.make_chain(
+                    api_version,
+                    &supported_extensions,
+                    instance.loaded_extensions(),
+                );
 
                 if instance.api_version() >= Version::V1_1 {
                     fns.v1_1
@@ -280,9 +273,9 @@ where
 
             PhysicalDeviceInfos {
                 physical_device,
+                api_version,
                 properties,
-                extended_properties,
-                memory,
+                memory_properties,
                 queue_families,
                 available_features,
             }
@@ -292,58 +285,11 @@ where
 
 pub(super) struct PhysicalDeviceInfos {
     physical_device: ash::vk::PhysicalDevice,
-    properties: ash::vk::PhysicalDeviceProperties,
-    extended_properties: PhysicalDeviceExtendedProperties,
+    api_version: Version,
+    properties: Properties,
     queue_families: Vec<ash::vk::QueueFamilyProperties>,
-    memory: ash::vk::PhysicalDeviceMemoryProperties,
+    memory_properties: ash::vk::PhysicalDeviceMemoryProperties,
     available_features: Features,
-}
-
-/// Represents additional information related to Physical Devices fetched from
-/// `vkGetPhysicalDeviceProperties` call. Certain features available only when
-/// appropriate `Instance` extensions enabled. The core extension required
-/// for this features is `InstanceExtensions::khr_get_physical_device_properties2`
-///
-/// TODO: Only a small subset of available properties(https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDeviceProperties2.html) is implemented at this moment.
-pub struct PhysicalDeviceExtendedProperties {
-    subgroup_size: Option<u32>,
-    max_multiview_view_count: Option<u32>,
-    max_multiview_instance_index: Option<u32>,
-}
-
-impl PhysicalDeviceExtendedProperties {
-    fn empty() -> Self {
-        Self {
-            subgroup_size: None,
-            max_multiview_view_count: None,
-            max_multiview_instance_index: None,
-        }
-    }
-
-    /// The default number of invocations in each subgroup
-    ///
-    /// See https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDeviceSubgroupProperties.html for details
-    #[inline]
-    pub fn subgroup_size(&self) -> &Option<u32> {
-        &self.subgroup_size
-    }
-
-    /// The maximum number of views that can be used in a subpass using the multiview feature.
-    ///
-    /// See https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDeviceMultiviewProperties.html for details
-    #[inline]
-    pub fn max_multiview_view_count(&self) -> &Option<u32> {
-        &self.max_multiview_view_count
-    }
-
-    /// The maximum number valid value of instance index (for instanced rendering)
-    /// allowed to be generated by a drawing command using this multiview description.
-    ///
-    /// See https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/VkPhysicalDeviceMultiviewProperties.html for details
-    #[inline]
-    pub fn max_multiview_instance_index(&self) -> &Option<u32> {
-        &self.max_multiview_instance_index
-    }
 }
 
 /// Represents one of the available devices on this machine.
@@ -365,7 +311,7 @@ impl PhysicalDeviceExtendedProperties {
 /// }
 ///
 /// fn print_infos(dev: PhysicalDevice) {
-///     println!("Name: {}", dev.name());
+///     println!("Name: {}", dev.properties().device_name.as_ref().unwrap());
 /// }
 /// ```
 #[derive(Debug, Copy, Clone)]
@@ -387,7 +333,7 @@ impl<'a> PhysicalDevice<'a> {
     ///
     /// # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
-    ///     println!("Available device: {}", physical_device.name());
+    ///     println!("Available device: {}", physical_device.properties().device_name.as_ref().unwrap());
     /// }
     /// ```
     #[inline]
@@ -451,53 +397,20 @@ impl<'a> PhysicalDevice<'a> {
         self.device
     }
 
-    /// Returns the human-readable name of the device.
-    #[inline]
-    pub fn name(&self) -> &str {
-        unsafe {
-            let val = &self.infos().properties.device_name;
-            let val = CStr::from_ptr(val.as_ptr());
-            val.to_str()
-                .expect("physical device name contained non-UTF8 characters")
-        }
-    }
-
-    /// Returns the type of the device.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # use vulkano::instance::Instance;
-    /// # use vulkano::instance::InstanceExtensions;
-    /// # use vulkano::Version;
-    /// use vulkano::instance::PhysicalDevice;
-    ///
-    /// # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
-    /// for physical_device in PhysicalDevice::enumerate(&instance) {
-    ///     println!("Available device: {} (type: {:?})",
-    ///               physical_device.name(), physical_device.ty());
-    /// }
-    /// ```
-    #[inline]
-    pub fn ty(&self) -> PhysicalDeviceType {
-        match self.instance.physical_devices[self.device]
-            .properties
-            .device_type
-        {
-            ash::vk::PhysicalDeviceType::OTHER => PhysicalDeviceType::Other,
-            ash::vk::PhysicalDeviceType::INTEGRATED_GPU => PhysicalDeviceType::IntegratedGpu,
-            ash::vk::PhysicalDeviceType::DISCRETE_GPU => PhysicalDeviceType::DiscreteGpu,
-            ash::vk::PhysicalDeviceType::VIRTUAL_GPU => PhysicalDeviceType::VirtualGpu,
-            ash::vk::PhysicalDeviceType::CPU => PhysicalDeviceType::Cpu,
-            _ => panic!("Unrecognized Vulkan device type"),
-        }
-    }
-
     /// Returns the version of Vulkan supported by this device.
+    ///
+    /// Unlike the `api_version` property, which is the version reported by the device directly,
+    /// this function returns the version the device can actually support, based on the instance's,
+    /// `max_api_version`.
     #[inline]
     pub fn api_version(&self) -> Version {
-        let val = self.infos().properties.api_version;
-        Version::from(val)
+        self.infos().api_version
+    }
+
+    /// Returns the Vulkan properties reported by the device.
+    #[inline]
+    pub fn properties(&self) -> &'a Properties {
+        &self.infos().properties
     }
 
     /// Returns the Vulkan features that are supported by this physical device.
@@ -540,7 +453,7 @@ impl<'a> PhysicalDevice<'a> {
     /// Returns the memory type with the given index, or `None` if out of range.
     #[inline]
     pub fn memory_type_by_id(&self, id: u32) -> Option<MemoryType<'a>> {
-        if id < self.infos().memory.memory_type_count {
+        if id < self.infos().memory_properties.memory_type_count {
             Some(MemoryType {
                 physical_device: *self,
                 id,
@@ -562,7 +475,7 @@ impl<'a> PhysicalDevice<'a> {
     /// Returns the memory heap with the given index, or `None` if out of range.
     #[inline]
     pub fn memory_heap_by_id(&self, id: u32) -> Option<MemoryHeap<'a>> {
-        if id < self.infos().memory.memory_heap_count {
+        if id < self.infos().memory_properties.memory_heap_count {
             Some(MemoryHeap {
                 physical_device: *self,
                 id,
@@ -570,51 +483,6 @@ impl<'a> PhysicalDevice<'a> {
         } else {
             None
         }
-    }
-
-    /// Gives access to the limits of the physical device.
-    ///
-    /// This function should be zero-cost in release mode. It only exists to not pollute the
-    /// namespace of `PhysicalDevice` with all the limits-related getters.
-    #[inline]
-    pub fn limits(&self) -> Limits<'a> {
-        Limits::from_vk_limits(&self.infos().properties.limits)
-    }
-
-    /// Returns an opaque number representing the version of the driver of this device.
-    ///
-    /// The meaning of this number is implementation-specific. It can be used in bug reports, for
-    /// example.
-    #[inline]
-    pub fn driver_version(&self) -> u32 {
-        self.infos().properties.driver_version
-    }
-
-    /// Returns the PCI ID of the device.
-    #[inline]
-    pub fn pci_device_id(&self) -> u32 {
-        self.infos().properties.device_id
-    }
-
-    /// Returns the PCI ID of the vendor.
-    #[inline]
-    pub fn pci_vendor_id(&self) -> u32 {
-        self.infos().properties.vendor_id
-    }
-
-    /// Returns a unique identifier for the device.
-    ///
-    /// Can be stored in a configuration file, so that you can retrieve the device again the next
-    /// time the program is run.
-    #[inline]
-    pub fn uuid(&self) -> &[u8; 16] {
-        // must be equal to ash::vk::UUID_SIZE
-        &self.infos().properties.pipeline_cache_uuid
-    }
-
-    #[inline]
-    pub fn extended_properties(&self) -> &PhysicalDeviceExtendedProperties {
-        &self.infos().extended_properties
     }
 
     // Internal function to make it easier to get the infos of this device.
@@ -668,19 +536,35 @@ impl<'a> Iterator for PhysicalDevicesIter<'a> {
 impl<'a> ExactSizeIterator for PhysicalDevicesIter<'a> {}
 
 /// Type of a physical device.
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
-#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd)]
+#[repr(i32)]
 pub enum PhysicalDeviceType {
     /// The device is an integrated GPU.
-    IntegratedGpu = 1,
+    IntegratedGpu = ash::vk::PhysicalDeviceType::INTEGRATED_GPU.as_raw(),
     /// The device is a discrete GPU.
-    DiscreteGpu = 2,
+    DiscreteGpu = ash::vk::PhysicalDeviceType::DISCRETE_GPU.as_raw(),
     /// The device is a virtual GPU.
-    VirtualGpu = 3,
+    VirtualGpu = ash::vk::PhysicalDeviceType::VIRTUAL_GPU.as_raw(),
     /// The device is a CPU.
-    Cpu = 4,
+    Cpu = ash::vk::PhysicalDeviceType::CPU.as_raw(),
     /// The device is something else.
-    Other = 0,
+    Other = ash::vk::PhysicalDeviceType::OTHER.as_raw(),
+}
+
+impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: ash::vk::PhysicalDeviceType) -> Result<Self, Self::Error> {
+        match val {
+            ash::vk::PhysicalDeviceType::INTEGRATED_GPU => Ok(Self::IntegratedGpu),
+            ash::vk::PhysicalDeviceType::DISCRETE_GPU => Ok(Self::DiscreteGpu),
+            ash::vk::PhysicalDeviceType::VIRTUAL_GPU => Ok(Self::VirtualGpu),
+            ash::vk::PhysicalDeviceType::CPU => Ok(Self::Cpu),
+            ash::vk::PhysicalDeviceType::OTHER => Ok(Self::Other),
+            _ => Err(()),
+        }
+    }
 }
 
 /// Represents a queue family in a physical device.
@@ -845,7 +729,8 @@ impl<'a> MemoryType<'a> {
     /// Returns the heap that corresponds to this memory type.
     #[inline]
     pub fn heap(&self) -> MemoryHeap<'a> {
-        let heap_id = self.physical_device.infos().memory.memory_types[self.id as usize].heap_index;
+        let heap_id = self.physical_device.infos().memory_properties.memory_types[self.id as usize]
+            .heap_index;
         MemoryHeap {
             physical_device: self.physical_device,
             id: heap_id,
@@ -897,7 +782,7 @@ impl<'a> MemoryType<'a> {
     /// Internal utility function that returns the flags of this queue family.
     #[inline]
     fn flags(&self) -> ash::vk::MemoryPropertyFlags {
-        self.physical_device.infos().memory.memory_types[self.id as usize].property_flags
+        self.physical_device.infos().memory_properties.memory_types[self.id as usize].property_flags
     }
 }
 
@@ -913,7 +798,13 @@ impl<'a> Iterator for MemoryTypesIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<MemoryType<'a>> {
-        if self.current_id >= self.physical_device.infos().memory.memory_type_count {
+        if self.current_id
+            >= self
+                .physical_device
+                .infos()
+                .memory_properties
+                .memory_type_count
+        {
             return None;
         }
 
@@ -928,7 +819,11 @@ impl<'a> Iterator for MemoryTypesIter<'a> {
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.physical_device.infos().memory.memory_type_count;
+        let len = self
+            .physical_device
+            .infos()
+            .memory_properties
+            .memory_type_count;
         let remain = (len - self.current_id) as usize;
         (remain, Some(remain))
     }
@@ -959,13 +854,14 @@ impl<'a> MemoryHeap<'a> {
     /// Returns the size in bytes on this heap.
     #[inline]
     pub fn size(&self) -> usize {
-        self.physical_device.infos().memory.memory_heaps[self.id as usize].size as usize
+        self.physical_device.infos().memory_properties.memory_heaps[self.id as usize].size as usize
     }
 
     /// Returns true if the heap is local to the GPU.
     #[inline]
     pub fn is_device_local(&self) -> bool {
-        let flags = self.physical_device.infos().memory.memory_heaps[self.id as usize].flags;
+        let flags =
+            self.physical_device.infos().memory_properties.memory_heaps[self.id as usize].flags;
         !(flags & ash::vk::MemoryHeapFlags::DEVICE_LOCAL).is_empty()
     }
 
@@ -973,7 +869,8 @@ impl<'a> MemoryHeap<'a> {
     /// heap will replicate to each physical-device's instance of heap.
     #[inline]
     pub fn is_multi_instance(&self) -> bool {
-        let flags = self.physical_device.infos().memory.memory_heaps[self.id as usize].flags;
+        let flags =
+            self.physical_device.infos().memory_properties.memory_heaps[self.id as usize].flags;
         !(flags & ash::vk::MemoryHeapFlags::MULTI_INSTANCE).is_empty()
     }
 }
@@ -990,7 +887,13 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
 
     #[inline]
     fn next(&mut self) -> Option<MemoryHeap<'a>> {
-        if self.current_id >= self.physical_device.infos().memory.memory_heap_count {
+        if self.current_id
+            >= self
+                .physical_device
+                .infos()
+                .memory_properties
+                .memory_heap_count
+        {
             return None;
         }
 
@@ -1005,10 +908,179 @@ impl<'a> Iterator for MemoryHeapsIter<'a> {
 
     #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let len = self.physical_device.infos().memory.memory_heap_count;
+        let len = self
+            .physical_device
+            .infos()
+            .memory_properties
+            .memory_heap_count;
         let remain = (len - self.current_id) as usize;
         (remain, Some(remain))
     }
 }
 
 impl<'a> ExactSizeIterator for MemoryHeapsIter<'a> {}
+
+/// The version of the Vulkan conformance test that a driver is conformant against.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ConformanceVersion {
+    pub major: u8,
+    pub minor: u8,
+    pub subminor: u8,
+    pub patch: u8,
+}
+
+impl From<ash::vk::ConformanceVersion> for ConformanceVersion {
+    #[inline]
+    fn from(val: ash::vk::ConformanceVersion) -> Self {
+        ConformanceVersion {
+            major: val.major,
+            minor: val.minor,
+            subminor: val.subminor,
+            patch: val.patch,
+        }
+    }
+}
+
+impl fmt::Debug for ConformanceVersion {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        write!(formatter, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+impl fmt::Display for ConformanceVersion {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(self, formatter)
+    }
+}
+
+/// An identifier for the driver of a physical device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum DriverId {
+    AMDProprietary = ash::vk::DriverId::AMD_PROPRIETARY.as_raw(),
+    AMDOpenSource = ash::vk::DriverId::AMD_OPEN_SOURCE.as_raw(),
+    MesaRADV = ash::vk::DriverId::MESA_RADV.as_raw(),
+    NvidiaProprietary = ash::vk::DriverId::NVIDIA_PROPRIETARY.as_raw(),
+    IntelProprietaryWindows = ash::vk::DriverId::INTEL_PROPRIETARY_WINDOWS.as_raw(),
+    IntelOpenSourceMesa = ash::vk::DriverId::INTEL_OPEN_SOURCE_MESA.as_raw(),
+    ImaginationProprietary = ash::vk::DriverId::IMAGINATION_PROPRIETARY.as_raw(),
+    QualcommProprietary = ash::vk::DriverId::QUALCOMM_PROPRIETARY.as_raw(),
+    ARMProprietary = ash::vk::DriverId::ARM_PROPRIETARY.as_raw(),
+    GoogleSwiftshader = ash::vk::DriverId::GOOGLE_SWIFTSHADER.as_raw(),
+    GGPProprietary = ash::vk::DriverId::GGP_PROPRIETARY.as_raw(),
+    BroadcomProprietary = ash::vk::DriverId::BROADCOM_PROPRIETARY.as_raw(),
+    MesaLLVMpipe = ash::vk::DriverId::MESA_LLVMPIPE.as_raw(),
+    MoltenVK = ash::vk::DriverId::MOLTENVK.as_raw(),
+}
+
+impl TryFrom<ash::vk::DriverId> for DriverId {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: ash::vk::DriverId) -> Result<Self, Self::Error> {
+        match val {
+            ash::vk::DriverId::AMD_PROPRIETARY => Ok(Self::AMDProprietary),
+            ash::vk::DriverId::AMD_OPEN_SOURCE => Ok(Self::AMDOpenSource),
+            ash::vk::DriverId::MESA_RADV => Ok(Self::MesaRADV),
+            ash::vk::DriverId::NVIDIA_PROPRIETARY => Ok(Self::NvidiaProprietary),
+            ash::vk::DriverId::INTEL_PROPRIETARY_WINDOWS => Ok(Self::IntelProprietaryWindows),
+            ash::vk::DriverId::INTEL_OPEN_SOURCE_MESA => Ok(Self::IntelOpenSourceMesa),
+            ash::vk::DriverId::IMAGINATION_PROPRIETARY => Ok(Self::ImaginationProprietary),
+            ash::vk::DriverId::QUALCOMM_PROPRIETARY => Ok(Self::QualcommProprietary),
+            ash::vk::DriverId::ARM_PROPRIETARY => Ok(Self::ARMProprietary),
+            ash::vk::DriverId::GOOGLE_SWIFTSHADER => Ok(Self::GoogleSwiftshader),
+            ash::vk::DriverId::GGP_PROPRIETARY => Ok(Self::GGPProprietary),
+            ash::vk::DriverId::BROADCOM_PROPRIETARY => Ok(Self::BroadcomProprietary),
+            ash::vk::DriverId::MESA_LLVMPIPE => Ok(Self::MesaLLVMpipe),
+            ash::vk::DriverId::MOLTENVK => Ok(Self::MoltenVK),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Specifies which subgroup operations are supported.
+#[derive(Clone, Copy, Debug)]
+pub struct SubgroupFeatures {
+    pub basic: bool,
+    pub vote: bool,
+    pub arithmetic: bool,
+    pub ballot: bool,
+    pub shuffle: bool,
+    pub shuffle_relative: bool,
+    pub clustered: bool,
+    pub quad: bool,
+}
+
+impl From<ash::vk::SubgroupFeatureFlags> for SubgroupFeatures {
+    #[inline]
+    fn from(val: ash::vk::SubgroupFeatureFlags) -> Self {
+        Self {
+            basic: val.intersects(ash::vk::SubgroupFeatureFlags::BASIC),
+            vote: val.intersects(ash::vk::SubgroupFeatureFlags::VOTE),
+            arithmetic: val.intersects(ash::vk::SubgroupFeatureFlags::ARITHMETIC),
+            ballot: val.intersects(ash::vk::SubgroupFeatureFlags::BALLOT),
+            shuffle: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE),
+            shuffle_relative: val.intersects(ash::vk::SubgroupFeatureFlags::SHUFFLE_RELATIVE),
+            clustered: val.intersects(ash::vk::SubgroupFeatureFlags::CLUSTERED),
+            quad: val.intersects(ash::vk::SubgroupFeatureFlags::QUAD),
+        }
+    }
+}
+
+/// Specifies how the device clips single point primitives.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum PointClippingBehavior {
+    /// Points are clipped if they lie outside any clip plane, both those bounding the view volume
+    /// and user-defined clip planes.
+    AllClipPlanes = ash::vk::PointClippingBehavior::ALL_CLIP_PLANES.as_raw(),
+    /// Points are clipped only if they lie outside a user-defined clip plane.
+    UserClipPlanesOnly = ash::vk::PointClippingBehavior::USER_CLIP_PLANES_ONLY.as_raw(),
+}
+
+impl TryFrom<ash::vk::PointClippingBehavior> for PointClippingBehavior {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: ash::vk::PointClippingBehavior) -> Result<Self, Self::Error> {
+        match val {
+            ash::vk::PointClippingBehavior::ALL_CLIP_PLANES => Ok(Self::AllClipPlanes),
+            ash::vk::PointClippingBehavior::USER_CLIP_PLANES_ONLY => Ok(Self::UserClipPlanesOnly),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Specifies whether, and how, shader float controls can be set independently.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum ShaderFloatControlsIndependence {
+    Float32Only = ash::vk::ShaderFloatControlsIndependence::TYPE_32_ONLY.as_raw(),
+    All = ash::vk::ShaderFloatControlsIndependence::ALL.as_raw(),
+    None = ash::vk::ShaderFloatControlsIndependence::NONE.as_raw(),
+}
+
+impl TryFrom<ash::vk::ShaderFloatControlsIndependence> for ShaderFloatControlsIndependence {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: ash::vk::ShaderFloatControlsIndependence) -> Result<Self, Self::Error> {
+        match val {
+            ash::vk::ShaderFloatControlsIndependence::TYPE_32_ONLY => Ok(Self::Float32Only),
+            ash::vk::ShaderFloatControlsIndependence::ALL => Ok(Self::All),
+            ash::vk::ShaderFloatControlsIndependence::NONE => Ok(Self::None),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Specifies shader core properties.
+#[derive(Clone, Copy, Debug)]
+pub struct ShaderCoreProperties {}
+
+impl From<ash::vk::ShaderCorePropertiesFlagsAMD> for ShaderCoreProperties {
+    #[inline]
+    fn from(val: ash::vk::ShaderCorePropertiesFlagsAMD) -> Self {
+        Self {}
+    }
+}

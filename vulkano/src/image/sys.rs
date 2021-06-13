@@ -249,41 +249,47 @@ impl UnsafeImage {
                 FormatTy::Float | FormatTy::Compressed => {
                     supported_samples &= device
                         .physical_device()
-                        .limits()
-                        .sampled_image_color_sample_counts()
+                        .properties()
+                        .sampled_image_color_sample_counts
+                        .unwrap()
                         .into();
                 }
                 FormatTy::Uint | FormatTy::Sint => {
                     supported_samples &= device
                         .physical_device()
-                        .limits()
-                        .sampled_image_integer_sample_counts()
+                        .properties()
+                        .sampled_image_integer_sample_counts
+                        .unwrap()
                         .into();
                 }
                 FormatTy::Depth => {
                     supported_samples &= device
                         .physical_device()
-                        .limits()
-                        .sampled_image_depth_sample_counts()
+                        .properties()
+                        .sampled_image_depth_sample_counts
+                        .unwrap()
                         .into();
                 }
                 FormatTy::Stencil => {
                     supported_samples &= device
                         .physical_device()
-                        .limits()
-                        .sampled_image_stencil_sample_counts()
+                        .properties()
+                        .sampled_image_stencil_sample_counts
+                        .unwrap()
                         .into();
                 }
                 FormatTy::DepthStencil => {
                     supported_samples &= device
                         .physical_device()
-                        .limits()
-                        .sampled_image_depth_sample_counts()
+                        .properties()
+                        .sampled_image_depth_sample_counts
+                        .unwrap()
                         .into();
                     supported_samples &= device
                         .physical_device()
-                        .limits()
-                        .sampled_image_stencil_sample_counts()
+                        .properties()
+                        .sampled_image_stencil_sample_counts
+                        .unwrap()
                         .into();
                 }
                 FormatTy::Ycbcr => {
@@ -299,8 +305,9 @@ impl UnsafeImage {
             if usage.storage {
                 supported_samples &= device
                     .physical_device()
-                    .limits()
-                    .storage_image_sample_counts()
+                    .properties()
+                    .storage_image_sample_counts
+                    .unwrap()
                     .into();
             }
 
@@ -313,34 +320,39 @@ impl UnsafeImage {
                     FormatTy::Float | FormatTy::Compressed | FormatTy::Uint | FormatTy::Sint => {
                         supported_samples &= device
                             .physical_device()
-                            .limits()
-                            .framebuffer_color_sample_counts()
+                            .properties()
+                            .framebuffer_color_sample_counts
+                            .unwrap()
                             .into();
                     }
                     FormatTy::Depth => {
                         supported_samples &= device
                             .physical_device()
-                            .limits()
-                            .framebuffer_depth_sample_counts()
+                            .properties()
+                            .framebuffer_depth_sample_counts
+                            .unwrap()
                             .into();
                     }
                     FormatTy::Stencil => {
                         supported_samples &= device
                             .physical_device()
-                            .limits()
-                            .framebuffer_stencil_sample_counts()
+                            .properties()
+                            .framebuffer_stencil_sample_counts
+                            .unwrap()
                             .into();
                     }
                     FormatTy::DepthStencil => {
                         supported_samples &= device
                             .physical_device()
-                            .limits()
-                            .framebuffer_depth_sample_counts()
+                            .properties()
+                            .framebuffer_depth_sample_counts
+                            .unwrap()
                             .into();
                         supported_samples &= device
                             .physical_device()
-                            .limits()
-                            .framebuffer_stencil_sample_counts()
+                            .properties()
+                            .framebuffer_stencil_sample_counts
+                            .unwrap()
                             .into();
                     }
                     FormatTy::Ycbcr => {
@@ -434,26 +446,46 @@ impl UnsafeImage {
         }
 
         // Checking the dimensions against the limits.
-        if array_layers > device.physical_device().limits().max_image_array_layers() {
+        if array_layers
+            > device
+                .physical_device()
+                .properties()
+                .max_image_array_layers
+                .unwrap()
+        {
             let err = ImageCreationError::UnsupportedDimensions { dimensions };
             capabilities_error = Some(err);
         }
         match ty {
             ash::vk::ImageType::TYPE_1D => {
-                if extent.width > device.physical_device().limits().max_image_dimension_1d() {
+                if extent.width
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_image_dimension1_d
+                        .unwrap()
+                {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
             }
             ash::vk::ImageType::TYPE_2D => {
-                let limit = device.physical_device().limits().max_image_dimension_2d();
+                let limit = device
+                    .physical_device()
+                    .properties()
+                    .max_image_dimension2_d
+                    .unwrap();
                 if extent.width > limit || extent.height > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
 
                 if flags.cube_compatible {
-                    let limit = device.physical_device().limits().max_image_dimension_cube();
+                    let limit = device
+                        .physical_device()
+                        .properties()
+                        .max_image_dimension_cube
+                        .unwrap();
                     if extent.width > limit {
                         let err = ImageCreationError::UnsupportedDimensions { dimensions };
                         capabilities_error = Some(err);
@@ -461,7 +493,11 @@ impl UnsafeImage {
                 }
             }
             ash::vk::ImageType::TYPE_3D => {
-                let limit = device.physical_device().limits().max_image_dimension_3d();
+                let limit = device
+                    .physical_device()
+                    .properties()
+                    .max_image_dimension3_d
+                    .unwrap();
                 if extent.width > limit || extent.height > limit || extent.depth > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);

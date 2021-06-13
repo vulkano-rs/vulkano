@@ -266,7 +266,11 @@ impl Sampler {
                 return Err(SamplerCreationError::SamplerAnisotropyFeatureNotEnabled);
             }
 
-            let limit = device.physical_device().limits().max_sampler_anisotropy();
+            let limit = device
+                .physical_device()
+                .properties()
+                .max_sampler_anisotropy
+                .unwrap();
             if max_anisotropy > limit {
                 return Err(SamplerCreationError::AnisotropyLimitExceeded {
                     requested: max_anisotropy,
@@ -277,7 +281,11 @@ impl Sampler {
 
         // Check mip_lod_bias value.
         {
-            let limit = device.physical_device().limits().max_sampler_lod_bias();
+            let limit = device
+                .physical_device()
+                .properties()
+                .max_sampler_lod_bias
+                .unwrap();
             if mip_lod_bias > limit {
                 return Err(SamplerCreationError::MipLodBiasLimitExceeded {
                     requested: mip_lod_bias,

@@ -214,25 +214,25 @@ impl UnsafeBuffer {
             };
 
             // We have to manually enforce some additional requirements for some buffer types.
-            let limits = device.physical_device().limits();
+            let properties = device.physical_device().properties();
             if usage.uniform_texel_buffer || usage.storage_texel_buffer {
                 output.alignment = align(
                     output.alignment,
-                    limits.min_texel_buffer_offset_alignment() as usize,
+                    properties.min_texel_buffer_offset_alignment.unwrap() as usize,
                 );
             }
 
             if usage.storage_buffer {
                 output.alignment = align(
                     output.alignment,
-                    limits.min_storage_buffer_offset_alignment() as usize,
+                    properties.min_storage_buffer_offset_alignment.unwrap() as usize,
                 );
             }
 
             if usage.uniform_buffer {
                 output.alignment = align(
                     output.alignment,
-                    limits.min_uniform_buffer_offset_alignment() as usize,
+                    properties.min_uniform_buffer_offset_alignment.unwrap() as usize,
                 );
             }
 
@@ -270,15 +270,21 @@ impl UnsafeBuffer {
 
         // Check for alignment correctness.
         {
-            let limits = self.device().physical_device().limits();
+            let properties = self.device().physical_device().properties();
             if self.usage().uniform_texel_buffer || self.usage().storage_texel_buffer {
-                debug_assert!(offset % limits.min_texel_buffer_offset_alignment() as usize == 0);
+                debug_assert!(
+                    offset % properties.min_texel_buffer_offset_alignment.unwrap() as usize == 0
+                );
             }
             if self.usage().storage_buffer {
-                debug_assert!(offset % limits.min_storage_buffer_offset_alignment() as usize == 0);
+                debug_assert!(
+                    offset % properties.min_storage_buffer_offset_alignment.unwrap() as usize == 0
+                );
             }
             if self.usage().uniform_buffer {
-                debug_assert!(offset % limits.min_uniform_buffer_offset_alignment() as usize == 0);
+                debug_assert!(
+                    offset % properties.min_uniform_buffer_offset_alignment.unwrap() as usize == 0
+                );
             }
         }
 
