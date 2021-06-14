@@ -126,18 +126,19 @@ mod traits;
 pub mod validity;
 
 #[derive(Debug, Clone, Copy)]
-pub struct ImageResourceContext {
-    pub uninitialized_safe: bool,
+pub enum ImageUninitializedSafe {
+    Safe,
+    Unsafe,
 }
 
-impl ImageResourceContext {
-    pub fn none() -> Self {
-        Self {
-            uninitialized_safe: false,
+impl ImageUninitializedSafe {
+    pub fn is_safe(&self) -> bool {
+        match self {
+            Self::Safe => true,
+            Self::Unsafe => false
         }
     }
 }
-
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
