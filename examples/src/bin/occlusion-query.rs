@@ -16,7 +16,7 @@ use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::device::{Device, DeviceExtensions, DeviceOwned};
+use vulkano::device::{Device, DeviceExtensions, DeviceOwned, Queue};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
@@ -79,7 +79,7 @@ fn main() {
             .usage(ImageUsage::color_attachment())
             .sharing_mode(&queue)
             .composite_alpha(composite_alpha)
-            .build()
+            .build(queue.clone())
             .unwrap()
     };
 
@@ -252,12 +252,15 @@ fn main() {
         reference: None,
     };
 
-    let mut framebuffers =
-        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(
+        queue.clone(),
+        &images,
+        render_pass.clone(),
+        &mut dynamic_state,
+    );
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
-    let mut initialized = false;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -277,15 +280,19 @@ fn main() {
 
             if recreate_swapchain {
                 let dimensions: [u32; 2] = surface.window().inner_size().into();
-                let (new_swapchain, new_images) =
-                    match swapchain.recreate().dimensions(dimensions).build() {
-                        Ok(r) => r,
-                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                    };
+                let (new_swapchain, new_images) = match swapchain
+                    .recreate()
+                    .dimensions(dimensions)
+                    .build(queue.clone())
+                {
+                    Ok(r) => r,
+                    Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                };
 
                 swapchain = new_swapchain;
                 framebuffers = window_size_dependent_setup(
+                    queue.clone(),
                     &new_images,
                     render_pass.clone(),
                     &mut dynamic_state,
@@ -391,14 +398,6 @@ fn main() {
 
             match future {
                 Ok(future) => {
-                    if !initialized {
-                        // the first submitted command buffer will transition the images to the
-                        // correct layout which needs to be completed before trying to record
-                        // the next command buffer
-                        future.wait(None).unwrap();
-                        initialized = true;
-                    }
-
                     previous_frame_end = Some(future.boxed());
                 }
                 Err(FlushError::OutOfDate) => {
@@ -459,6 +458,7 @@ fn main() {
 }
 
 fn window_size_dependent_setup(
+    queue: Arc<Queue>,
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
     dynamic_state: &mut DynamicState,
@@ -474,7 +474,7 @@ fn window_size_dependent_setup(
 
     let depth_attachment = ImageView::new(
         AttachmentImage::with_usage(
-            render_pass.device().clone(),
+            queue,
             dimensions,
             Format::D16Unorm,
             ImageUsage {

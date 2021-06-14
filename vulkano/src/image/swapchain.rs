@@ -76,17 +76,6 @@ impl<W> SwapchainImage<W> {
     fn my_image(&self) -> ImageInner {
         self.swapchain.raw_image(self.image_offset).unwrap()
     }
-
-    #[inline]
-    fn layout_initialized(&self) {
-        self.swapchain.image_layout_initialized(self.image_offset);
-    }
-
-    #[inline]
-    fn is_layout_initialized(&self) -> bool {
-        self.swapchain
-            .is_image_layout_initialized(self.image_offset)
-    }
 }
 
 unsafe impl<W> ImageAccess for SwapchainImage<W> {
@@ -131,21 +120,12 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn current_layout(&self) -> ImageLayout {
-        if self.is_layout_initialized() {
-            ImageLayout::PresentSrc
-        } else {
-            ImageLayout::Undefined
-        }
+    fn layout(&self) -> ImageLayout {
+        ImageLayout::PresentSrc
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        Some(ImageLayout::PresentSrc)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool) -> Result<(), AccessError> {
         if self.swapchain.is_fullscreen_exclusive() {
             Ok(())
         } else {
@@ -158,10 +138,7 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     unsafe fn increase_gpu_lock(&self) {}
 
     #[inline]
-    unsafe fn unlock(&self, transitioned_layout: ImageLayout) {
-        assert_eq!(transitioned_layout, ImageLayout::PresentSrc);
-        self.layout_initialized();
-    }
+    unsafe fn unlock(&self) {}
 }
 
 unsafe impl<W> ImageClearValue<ClearValue> for SwapchainImage<W> {

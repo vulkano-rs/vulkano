@@ -108,7 +108,7 @@ fn main() {
     // image. But we also pass the number of samples-per-pixel, which is 4 here.
     let intermediary = ImageView::new(
         AttachmentImage::transient_multisampled(
-            device.clone(),
+            queue.clone(),
             [1024, 1024],
             4,
             Format::R8G8B8A8Unorm,
@@ -127,6 +127,7 @@ fn main() {
         },
         Format::R8G8B8A8Unorm,
         Some(queue.family()),
+        queue.clone(),
     )
     .unwrap();
     let view = ImageView::new(image.clone()).unwrap();

@@ -8,11 +8,14 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
-use crate::check_errors;
 use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitPresentBuilder;
 use crate::command_buffer::submit::SubmitPresentError;
 use crate::command_buffer::submit::SubmitSemaphoresWaitBuilder;
+
+use crate::image::initialize_image_layout;
+
+use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -226,7 +229,7 @@ pub struct Swapchain<W> {
     swapchain: vk::SwapchainKHR,
 
     // The images of this swapchain.
-    images: Vec<ImageEntry>,
+    images: Vec<UnsafeImage>,
 
     // If true, that means we have tried to use this swapchain to recreate a new swapchain. The current
     // swapchain can no longer be used for anything except presenting already-acquired images.
@@ -249,13 +252,6 @@ pub struct Swapchain<W> {
     fullscreen_exclusive: FullscreenExclusive,
     fullscreen_exclusive_held: AtomicBool,
     clipped: bool,
-}
-
-struct ImageEntry {
-    // The actual image.
-    image: UnsafeImage,
-    // If true, then the image is still in the undefined layout and must be transitioned.
-    undefined_layout: AtomicBool,
 }
 
 impl<W> Swapchain<W> {
@@ -321,7 +317,7 @@ impl<W> Swapchain<W> {
     #[inline]
     pub fn raw_image(&self, offset: usize) -> Option<ImageInner> {
         self.images.get(offset).map(|i| ImageInner {
-            image: &i.image,
+            image: i,
             first_layer: 0,
             num_layers: self.layers as usize,
             first_mipmap_level: 0,
@@ -442,26 +438,6 @@ impl<W> Swapchain<W> {
             self.fullscreen_exclusive_held.load(Ordering::SeqCst)
         }
     }
-
-    // This method is necessary to allow `SwapchainImage`s to signal when they have been
-    // transitioned out of their initial `undefined` image layout.
-    //
-    // See the `ImageAccess::layout_initialized` method documentation for more details.
-    pub(crate) fn image_layout_initialized(&self, image_offset: usize) {
-        let image_entry = self.images.get(image_offset);
-        if let Some(ref image_entry) = image_entry {
-            image_entry.undefined_layout.store(false, Ordering::SeqCst);
-        }
-    }
-
-    pub(crate) fn is_image_layout_initialized(&self, image_offset: usize) -> bool {
-        let image_entry = self.images.get(image_offset);
-        if let Some(ref image_entry) = image_entry {
-            !image_entry.undefined_layout.load(Ordering::SeqCst)
-        } else {
-            false
-        }
-    }
 }
 
 unsafe impl<W> VulkanObject for Swapchain<W> {
@@ -520,7 +496,10 @@ pub struct SwapchainBuilder<W> {
     clipped: bool,
 }
 
-impl<W> SwapchainBuilder<W> {
+impl<W> SwapchainBuilder<W>
+where
+    W: Send + Sync + 'static,
+{
     /// Builds a new swapchain. Allocates images who content can be made visible on a surface.
     ///
     /// See also the `Surface::get_capabilities` function which returns the values that are
@@ -531,14 +510,19 @@ impl<W> SwapchainBuilder<W> {
     /// swapchain. The order in which the images are returned is important for the
     /// `acquire_next_image` and `present` functions.
     ///
+    /// `initialization_queue` is used to initialize the layout of the image.
+    ///
     /// # Panic
     ///
     /// - Panics if the device and the surface don't belong to the same instance.
+    /// - Panics if the `initialization_queue` doesn't belong to the device
     /// - Panics if `usage` is empty.
+    /// - Panics if not all swapchain images can be acquired for initialization
     ///
     // TODO: isn't it unsafe to take the surface through an Arc when it comes to vulkano-win?
     pub fn build(
         self,
+        initialization_queue: Arc<Queue>,
     ) -> Result<(Arc<Swapchain<W>>, Vec<Arc<SwapchainImage<W>>>), SwapchainCreationError> {
         let SwapchainBuilder {
             device,
@@ -798,13 +782,7 @@ impl<W> SwapchainBuilder<W> {
                     array_layers: layers,
                 };
 
-                let img =
-                    UnsafeImage::from_raw(device.clone(), image, usage, format, flags, dims, 1, 1);
-
-                ImageEntry {
-                    image: img,
-                    undefined_layout: AtomicBool::new(true),
-                }
+                UnsafeImage::from_raw(device.clone(), image, usage, format, flags, dims, 1, 1)
             })
             .collect::<Vec<_>>();
 
@@ -849,6 +827,44 @@ impl<W> SwapchainBuilder<W> {
             }
             swapchain_images
         };
+
+        unsafe {
+            assert_eq!(
+                device.internal_object(),
+                initialization_queue.device().internal_object()
+            );
+
+            let mut uninitialized_image_indices: Vec<usize> = (0..swapchain_images.len()).collect();
+            for n in 0..swapchain_images.len() {
+                let (image_num, _, acquire_future) =
+                    acquire_next_image(swapchain.clone(), None).unwrap();
+                let swapchain_image = swapchain_images.get_unchecked(image_num);
+
+                initialize_image_layout(
+                    swapchain_image.clone(),
+                    device.clone(),
+                    initialization_queue.clone(),
+                    Some(acquire_future.boxed()),
+                )
+                .then_swapchain_present(initialization_queue.clone(), swapchain.clone(), image_num)
+                .then_signal_fence_and_flush()?
+                .wait(None)?;
+
+                // remove the initialized image from the list of uninitialized images
+                let index = uninitialized_image_indices
+                    .iter()
+                    .position(|&x| x == image_num);
+                if let Some(index) = index {
+                    uninitialized_image_indices.remove(index);
+                }
+            }
+
+            assert_eq!(
+                0,
+                uninitialized_image_indices.len(),
+                "could not acquire all swapchain images for initialization"
+            );
+        }
 
         Ok((swapchain, swapchain_images))
     }
@@ -1010,6 +1026,8 @@ pub enum SwapchainCreationError {
     UnsupportedPresentMode,
     /// The image configuration is not supported by the physical device.
     UnsupportedImageConfiguration,
+    /// The initial transition to the image layout failed.
+    LayoutInitializationFailed(FlushError),
 }
 
 impl error::Error for SwapchainCreationError {
@@ -1080,6 +1098,9 @@ impl fmt::Display for SwapchainCreationError {
                 SwapchainCreationError::UnsupportedImageConfiguration => {
                     "the requested image configuration is not supported by the physical device"
                 }
+                SwapchainCreationError::LayoutInitializationFailed { .. } => {
+                    "the initial transition to the image layout failed"
+                }
             }
         )
     }
@@ -1113,6 +1134,13 @@ impl From<CapabilitiesError> for SwapchainCreationError {
             CapabilitiesError::OomError(err) => SwapchainCreationError::OomError(err),
             CapabilitiesError::SurfaceLost => SwapchainCreationError::SurfaceLost,
         }
+    }
+}
+
+impl From<FlushError> for SwapchainCreationError {
+    #[inline]
+    fn from(err: FlushError) -> Self {
+        Self::LayoutInitializationFailed(err)
     }
 }
 
@@ -1202,16 +1230,7 @@ unsafe impl<W> GpuFuture for SwapchainAcquireFuture<W> {
             return Err(AccessCheckError::Unknown);
         }
 
-        if self.swapchain.images[self.image_id]
-            .undefined_layout
-            .load(Ordering::SeqCst)
-        {
-            if layout != ImageLayout::Undefined {
-                return Err(AccessCheckError::Denied(AccessError::ImageNotInitialized {
-                    requested: layout,
-                }));
-            }
-        } else if layout != ImageLayout::PresentSrc {
+        if layout != ImageLayout::PresentSrc {
             return Err(AccessCheckError::Denied(
                 AccessError::UnexpectedImageLayout {
                     allowed: ImageLayout::PresentSrc,

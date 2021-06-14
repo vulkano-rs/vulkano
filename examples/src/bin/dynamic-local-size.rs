@@ -173,6 +173,7 @@ fn main() {
         },
         Format::R8G8B8A8Unorm,
         Some(queue.family()),
+        queue.clone(),
     )
     .unwrap();
     let view = ImageView::new(image.clone()).unwrap();

@@ -2146,6 +2146,85 @@ impl SyncCommandBufferBuilder {
         .unwrap();
     }
 
+    /// Can be called to insert a layout transition from `Undefined` to `image.layout()`.
+    #[inline]
+    pub unsafe fn initialize_image_layout<I>(&mut self, image: I)
+    where
+        I: ImageAccess + Send + Sync + 'static,
+    {
+        struct Cmd<I> {
+            image: Option<I>,
+        }
+
+        impl<I> Command for Cmd<I>
+        where
+            I: ImageAccess + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str {
+                "internal image layout initialization"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {}
+
+            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin<I>(I);
+                impl<I> FinalCommand for Fin<I>
+                where
+                    I: ImageAccess + Send + Sync + 'static,
+                {
+                    fn name(&self) -> &'static str {
+                        "internal image layout initialization"
+                    }
+
+                    fn image(&self, num: usize) -> &dyn ImageAccess {
+                        assert_eq!(num, 0);
+                        &self.0
+                    }
+
+                    fn image_name(&self, num: usize) -> Cow<'static, str> {
+                        assert_eq!(num, 0);
+                        "target".into()
+                    }
+                }
+
+                // Note: borrow checker somehow doesn't accept `self.image` without using an Option.
+                Box::new(Fin(self.image.take().unwrap()))
+            }
+
+            fn image(&self, num: usize) -> &dyn ImageAccess {
+                assert_eq!(num, 0);
+                self.image.as_ref().unwrap()
+            }
+
+            fn image_name(&self, num: usize) -> Cow<'static, str> {
+                assert_eq!(num, 0);
+                "target".into()
+            }
+        }
+
+        let layout = image.layout();
+
+        self.append_command(
+            Cmd { image: Some(image) },
+            &[(
+                KeyTy::Image,
+                Some((
+                    PipelineMemoryAccess {
+                        stages: PipelineStages {
+                            all_commands: true,
+                            ..PipelineStages::none()
+                        },
+                        access: AccessFlags::all(),
+                        exclusive: true,
+                    },
+                    ImageLayout::Undefined,
+                    layout,
+                )),
+            )],
+        )
+        .unwrap();
+    }
+
     /// Calls `vkCmdSetBlendConstants` on the builder.
     #[inline]
     pub unsafe fn set_blend_constants(&mut self, constants: [f32; 4]) {

@@ -578,7 +578,7 @@ mod tests {
 
     #[test]
     fn simple_create() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -599,7 +599,7 @@ mod tests {
         );
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue, [1024, 768], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::start(render_pass)
@@ -623,7 +623,7 @@ mod tests {
 
     #[test]
     fn attachment_format_mismatch() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -643,10 +643,9 @@ mod tests {
             .unwrap(),
         );
 
-        let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [1024, 768], Format::R8Unorm).unwrap())
+                .unwrap();
 
         match Framebuffer::start(render_pass).add(view) {
             Err(FramebufferCreationError::IncompatibleAttachment(_)) => (),
@@ -658,7 +657,7 @@ mod tests {
 
     #[test]
     fn attachment_dims_larger_than_specified_valid() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -678,10 +677,9 @@ mod tests {
             .unwrap(),
         );
 
-        let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [600, 600], Format::R8G8B8A8Unorm).unwrap())
+                .unwrap();
 
         let _ = Framebuffer::with_dimensions(render_pass, [512, 512, 1])
             .add(view)
@@ -692,7 +690,7 @@ mod tests {
 
     #[test]
     fn attachment_dims_smaller_than_specified() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -712,10 +710,9 @@ mod tests {
             .unwrap(),
         );
 
-        let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [512, 700], Format::R8G8B8A8Unorm).unwrap())
+                .unwrap();
 
         match Framebuffer::with_dimensions(render_pass, [600, 600, 1]).add(view) {
             Err(FramebufferCreationError::AttachmentDimensionsIncompatible {
@@ -731,7 +728,7 @@ mod tests {
 
     #[test]
     fn multi_attachments_dims_not_identical() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -758,11 +755,11 @@ mod tests {
         );
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
 
@@ -780,7 +777,7 @@ mod tests {
 
     #[test]
     fn multi_attachments_auto_smaller() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -807,11 +804,11 @@ mod tests {
         );
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
 
@@ -831,7 +828,7 @@ mod tests {
 
     #[test]
     fn not_enough_attachments() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -857,10 +854,9 @@ mod tests {
             .unwrap(),
         );
 
-        let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [256, 512], Format::R8G8B8A8Unorm).unwrap())
+                .unwrap();
 
         let res = Framebuffer::with_intersecting_dimensions(render_pass)
             .add(view)
@@ -878,7 +874,7 @@ mod tests {
 
     #[test]
     fn too_many_attachments() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let render_pass = Arc::new(
             single_pass_renderpass!(device.clone(),
@@ -899,11 +895,11 @@ mod tests {
         );
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(queue.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
         )
         .unwrap();
 

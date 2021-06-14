@@ -59,8 +59,14 @@ pub use self::traits::ImageAccess;
 pub use self::traits::ImageInner;
 pub use self::usage::ImageUsage;
 pub use self::view::ImageViewAbstract;
+use crate::command_buffer::AutoCommandBufferBuilder;
+use crate::command_buffer::CommandBufferUsage;
+use crate::device::{Device, Queue};
+use crate::sync;
+use crate::sync::GpuFuture;
 use std::cmp;
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 mod aspect;
 pub mod attachment; // TODO: make private
@@ -648,4 +654,35 @@ mod tests {
             assert_eq!(image.mipmap_levels(), 10);
         }
     }
+}
+
+/// Helper function for initializing the layout of an image.
+/// Will build a command buffer that transitions the image from an `Undefined` layout to the
+/// `image.layout()` layout.
+#[must_use = "Dropping this object will not flush the future"]
+pub(crate) unsafe fn initialize_image_layout<I>(
+    image: I,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    previous_future: Option<Box<dyn GpuFuture>>,
+) -> Box<dyn GpuFuture>
+where
+    I: ImageAccess + Send + Sync + 'static,
+{
+    let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+        device.clone(),
+        queue.family(),
+        CommandBufferUsage::OneTimeSubmit,
+    )
+    .unwrap();
+
+    command_buffer_builder.initialize_image_layout(image);
+
+    let command_buffer = command_buffer_builder.build().unwrap();
+
+    previous_future
+        .unwrap_or(sync::now(device).boxed())
+        .then_execute(queue.clone(), command_buffer)
+        .unwrap()
+        .boxed()
 }

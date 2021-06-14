@@ -1733,6 +1733,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
         Ok(self)
     }
+
+    /// Adds a memory barrier that transitions the `image` from the `Undefined` to `image.layout()`
+    /// layout.
+    ///
+    /// # Safety
+    /// The layout of the image must not have been transitioned to `image.layout()` before.
+    pub unsafe fn initialize_image_layout<I>(&mut self, image: I) -> &mut Self
+    where
+        I: ImageAccess + Send + Sync + 'static,
+    {
+        self.inner.initialize_image_layout(image);
+
+        self
+    }
 }
 
 /// Commands that can only be executed on primary command buffers

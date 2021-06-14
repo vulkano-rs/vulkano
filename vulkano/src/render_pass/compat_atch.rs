@@ -184,7 +184,7 @@ mod tests {
 
     #[test]
     fn basic_ok() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let rp = single_pass_renderpass!(device.clone(),
             attachments: {
@@ -202,17 +202,16 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [128, 128], Format::R8G8B8A8Unorm).unwrap())
+                .unwrap();
 
         ensure_image_view_compatible(rp.desc(), 0, &view).unwrap();
     }
 
     #[test]
     fn format_mismatch() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (device, queue) = gfx_dev_and_queue!();
 
         let rp = single_pass_renderpass!(device.clone(),
             attachments: {
@@ -230,10 +229,9 @@ mod tests {
         )
         .unwrap();
 
-        let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [128, 128], Format::R8G8B8A8Unorm).unwrap())
+                .unwrap();
 
         match ensure_image_view_compatible(rp.desc(), 0, &view) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
@@ -246,13 +244,12 @@ mod tests {
 
     #[test]
     fn attachment_out_of_range() {
-        let (device, _) = gfx_dev_and_queue!();
+        let (_, queue) = gfx_dev_and_queue!();
 
         let rp = RenderPassDesc::empty();
-        let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
-        )
-        .unwrap();
+        let view =
+            ImageView::new(AttachmentImage::new(queue, [128, 128], Format::R8G8B8A8Unorm).unwrap())
+                .unwrap();
 
         assert_should_panic!("Attachment num out of range", {
             let _ = ensure_image_view_compatible(&rp, 0, &view);

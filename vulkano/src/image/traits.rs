@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
@@ -133,20 +134,16 @@ pub unsafe trait ImageAccess {
     /// Returns the current layer level that is accessed by the gpu
     fn current_layer_levels_access(&self) -> std::ops::Range<u32>;
 
-    /// Returns the current layout of the image.
+    /// Returns the layout of the image.
     ///
-    /// The implementation should keep track of the current layout using the `transitioned_layout`
-    /// parameter of the `unlock()` function.
-    /// If a command buffer depends on an image layout it will generally use the returned value
-    /// as the `expected_layout` of the `try_gpu_lock()` function.
-    fn current_layout(&self) -> ImageLayout;
-
-    /// Returns the layout that the image must be returned to before the end of the command buffer.
+    /// `AutoCommandBufferBuilder` will assume that the image has this layout when it is first
+    /// used in a command buffer. `AutoCommandBufferBuilder` will automatically
+    /// transition this image back to the layout returned by this function at the end of the
+    /// command buffer, if necessary.
     ///
-    /// When an image is used in an `AutoCommandBufferBuilder` vulkano will automatically
-    /// transition this image to the layout returned by this function at the end of the command
-    /// buffer, if necessary.
-    fn final_layout_requirement(&self) -> Option<ImageLayout>;
+    /// This means the implementation if the image needs to ensure that the image has the layout
+    /// returned by this function by the time it can be used in a command buffer.
+    fn layout(&self) -> ImageLayout;
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -154,22 +151,13 @@ pub unsafe trait ImageAccess {
     /// GPU operation requires an exclusive access to the image (which includes image layout
     /// transitions) then `exclusive_access` should be true.
     ///
-    /// The `expected_layout` is the layout we expect the image to be in when we lock it. If the
-    /// actual layout doesn't match this expected layout, then an error should be returned. If
-    /// `None` is passed, that means that the caller doesn't care about the actual layout,
-    /// and that a layout mismatch shouldn't return an error.
-    ///
     /// This function exists to prevent the user from causing a data race by reading and writing
     /// to the same resource at the same time.
     ///
     /// If you call this function, you should call `unlock()` once the resource is no longer in use
     /// by the GPU. The implementation is not expected to automatically perform any unlocking and
     /// can rely on the fact that `unlock()` is going to be called.
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError>;
+    fn try_gpu_lock(&self, exclusive_access: bool) -> Result<(), AccessError>;
 
     /// Locks the resource for usage on the GPU. Supposes that the resource is already locked, and
     /// simply increases the lock by one.
@@ -183,24 +171,9 @@ pub unsafe trait ImageAccess {
 
     /// Unlocks the resource previously acquired with `try_gpu_lock` or `increase_gpu_lock`.
     ///
-    /// If the GPU operation that we unlock from transitioned the image to another layout, then
-    /// it should be passed as parameter.
-    ///
-    /// A layout transition requires exclusive access to the image, which means two things:
-    ///
-    /// - The implementation can panic if it finds out that the layout is not the same as it
-    ///   currently is and that it is not locked in exclusive mode.
-    /// - There shouldn't be any possible race between `unlock` and `try_gpu_lock`, since
-    ///   `try_gpu_lock` should fail if the image is already locked in exclusive mode.
-    ///
     /// # Safety
-    ///
-    /// - Must only be called once per previous lock.
-    /// - The transitioned layout must be supported by the image (eg. the layout shouldn't be
-    ///   `ColorAttachmentOptimal` if the image wasn't created with the `color_attachment` usage).
-    /// - The transitioned layout must not be `Undefined`.
-    ///
-    unsafe fn unlock(&self, transitioned_layout: ImageLayout);
+    /// Must only be called once per previous lock.
+    unsafe fn unlock(&self);
 }
 
 /// Inner information about an image.
@@ -253,22 +226,13 @@ where
     }
 
     #[inline]
-    fn current_layout(&self) -> ImageLayout {
-        (**self).current_layout()
+    fn layout(&self) -> ImageLayout {
+        (**self).layout()
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        (**self).final_layout_requirement()
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, expected_layout)
+    fn try_gpu_lock(&self, exclusive_access: bool) -> Result<(), AccessError> {
+        (**self).try_gpu_lock(exclusive_access)
     }
 
     #[inline]
@@ -277,8 +241,8 @@ where
     }
 
     #[inline]
-    unsafe fn unlock(&self, transitioned_layout: ImageLayout) {
-        (**self).unlock(transitioned_layout)
+    unsafe fn unlock(&self) {
+        (**self).unlock()
     }
 
     fn current_miplevels_access(&self) -> std::ops::Range<u32> {

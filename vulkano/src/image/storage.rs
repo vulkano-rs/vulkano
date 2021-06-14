@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
-use crate::device::Device;
+use crate::device::{Device, Queue};
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
@@ -17,12 +17,12 @@ use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
-use crate::image::ImageCreateFlags;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
 use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
+use crate::image::{initialize_image_layout, ImageCreateFlags};
 use crate::instance::QueueFamily;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
@@ -32,13 +32,13 @@ use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPool;
 use crate::memory::DedicatedAlloc;
-use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::sync::{AccessError, GpuFuture};
 use smallvec::SmallVec;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
-use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::Arc;
 
 /// General-purpose image in device memory. Can be used for any usage, but will be slower than a
@@ -63,21 +63,20 @@ where
     // Queue families allowed to access this image.
     queue_families: SmallVec<[u32; 4]>,
 
-    // keeps track of whether or not the image was already transitioned to the `GENERAL` layout
-    initialized: AtomicBool,
-
     // Number of times this image is locked on the GPU side.
     gpu_lock: AtomicUsize,
 }
 
 impl StorageImage {
     /// Creates a new image with the given dimensions and format.
+    /// `initialization_queue` is used to initialize the layout of the image.
     #[inline]
     pub fn new<'a, I>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
         format: Format,
         queue_families: I,
+        initialization_queue: Arc<Queue>,
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
@@ -102,7 +101,15 @@ impl StorageImage {
         };
         let flags = ImageCreateFlags::none();
 
-        StorageImage::with_usage(device, dimensions, format, usage, flags, queue_families)
+        StorageImage::with_usage(
+            device,
+            dimensions,
+            format,
+            usage,
+            flags,
+            queue_families,
+            initialization_queue,
+        )
     }
 
     /// Same as `new`, but allows specifying the usage.
@@ -113,6 +120,7 @@ impl StorageImage {
         usage: ImageUsage,
         flags: ImageCreateFlags,
         queue_families: I,
+        queue: Arc<Queue>,
     ) -> Result<Arc<StorageImage>, ImageCreationError>
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
@@ -162,15 +170,22 @@ impl StorageImage {
             image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        Ok(Arc::new(StorageImage {
+        let storage_image = Arc::new(StorageImage {
             image,
             memory,
             dimensions,
             format,
             queue_families,
-            initialized: AtomicBool::new(false),
             gpu_lock: AtomicUsize::new(0),
-        }))
+        });
+
+        unsafe {
+            initialize_image_layout(storage_image.clone(), device, queue, None)
+                .then_signal_fence_and_flush()?
+                .wait(None)?;
+        }
+
+        Ok(storage_image)
     }
 }
 
@@ -226,39 +241,12 @@ where
     }
 
     #[inline]
-    fn current_layout(&self) -> ImageLayout {
-        if self.initialized.load(Ordering::SeqCst) {
-            ImageLayout::General
-        } else {
-            ImageLayout::Undefined
-        }
+    fn layout(&self) -> ImageLayout {
+        ImageLayout::General
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        Some(ImageLayout::General)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
-        if self.initialized.load(Ordering::SeqCst) {
-            if expected_layout != ImageLayout::General {
-                return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: ImageLayout::General,
-                });
-            }
-        } else if expected_layout == ImageLayout::General {
-            return Err(AccessError::ImageNotInitialized {
-                requested: expected_layout,
-            });
-        } else if expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: ImageLayout::Undefined,
-            });
-        }
-
+    fn try_gpu_lock(&self, _: bool) -> Result<(), AccessError> {
         let val = self
             .gpu_lock
             .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
@@ -277,10 +265,7 @@ where
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: ImageLayout) {
-        assert_eq!(new_layout, ImageLayout::General);
-        self.initialized.store(true, Ordering::SeqCst);
-
+    unsafe fn unlock(&self) {
         self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
     }
 
@@ -355,6 +340,7 @@ mod tests {
             },
             Format::R8G8B8A8Unorm,
             Some(queue.family()),
+            queue.clone(),
         )
         .unwrap();
     }

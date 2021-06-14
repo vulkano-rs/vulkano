@@ -26,7 +26,7 @@ use crate::image::MipmapsCount;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MemoryRequirements;
-use crate::sync::Sharing;
+use crate::sync::{FlushError, Sharing};
 use crate::vk;
 use crate::Error;
 use crate::OomError;
@@ -915,6 +915,8 @@ pub enum ImageCreationError {
     UnsupportedUsage,
     /// The `shader_storage_image_multisample` feature must be enabled to create such an image.
     ShaderStorageImageMultisampleFeatureNotEnabled,
+    /// The initial transition to the image layout failed.
+    LayoutInitializationFailed(FlushError),
 }
 
 impl error::Error for ImageCreationError {
@@ -958,6 +960,9 @@ impl fmt::Display for ImageCreationError {
                     "the `shader_storage_image_multisample` feature must be enabled to create such \
                  an image"
                 }
+                ImageCreationError::LayoutInitializationFailed { .. } => {
+                    "the initial transition to the image layout failed"
+                }
             }
         )
     }
@@ -985,6 +990,13 @@ impl From<Error> for ImageCreationError {
             err @ Error::OutOfDeviceMemory => ImageCreationError::AllocError(err.into()),
             _ => panic!("unexpected error: {:?}", err),
         }
+    }
+}
+
+impl From<FlushError> for ImageCreationError {
+    #[inline]
+    fn from(err: FlushError) -> Self {
+        Self::LayoutInitializationFailed(err)
     }
 }
 

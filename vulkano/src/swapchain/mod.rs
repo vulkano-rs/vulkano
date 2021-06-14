@@ -167,7 +167,7 @@
 //! # use vulkano::format::Format;
 //! # use vulkano::swapchain::{Surface, Swapchain, SurfaceTransform, PresentMode, CompositeAlpha, ColorSpace, FullscreenExclusive};
 //! # fn create_swapchain(
-//! #     device: Arc<Device>, surface: Arc<Surface<()>>, present_queue: Arc<Queue>,
+//! #     device: Arc<Device>, surface: Arc<Surface<()>>, queue: Arc<Queue>,
 //! #     buffers_count: u32, format: Format, dimensions: [u32; 2],
 //! #     surface_transform: SurfaceTransform, composite_alpha: CompositeAlpha,
 //! #     present_mode: PresentMode, fullscreen_exclusive: FullscreenExclusive
@@ -201,7 +201,7 @@
 //!     .present_mode(present_mode)
 //!     // How to handle fullscreen exclusivity
 //!     .fullscreen_exclusive(fullscreen_exclusive)
-//!     .build()?;
+//!     .build(queue.clone())?;
 //!
 //! # Ok(())
 //! # }
@@ -269,7 +269,7 @@
 //!
 //! loop {
 //!     if recreate_swapchain {
-//!         swapchain = swapchain.0.recreate().dimensions([1024, 768]).build().unwrap();
+//!         swapchain = swapchain.0.recreate().dimensions([1024, 768]).build(queue.clone()).unwrap();
 //!         recreate_swapchain = false;
 //!     }
 //!

@@ -179,7 +179,7 @@ fn main() {
             .usage(ImageUsage::color_attachment())
             .sharing_mode(&queue)
             .composite_alpha(composite_alpha)
-            .build()
+            .build(queue.clone())
             .unwrap()
     };
 
@@ -356,7 +356,6 @@ fn main() {
     // Destroying the `GpuFuture` blocks until the GPU is finished executing it. In order to avoid
     // that, we store the submission of the previous frame here.
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
-    let mut initialized = false;
 
     event_loop.run(move |event, _, control_flow| {
         match event {
@@ -384,14 +383,17 @@ fn main() {
                 if recreate_swapchain {
                     // Get the new dimensions of the window.
                     let dimensions: [u32; 2] = surface.window().inner_size().into();
-                    let (new_swapchain, new_images) =
-                        match swapchain.recreate().dimensions(dimensions).build() {
-                            Ok(r) => r,
-                            // This error tends to happen when the user is manually resizing the window.
-                            // Simply restarting the loop is the easiest way to fix this issue.
-                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                        };
+                    let (new_swapchain, new_images) = match swapchain
+                        .recreate()
+                        .dimensions(dimensions)
+                        .build(queue.clone())
+                    {
+                        Ok(r) => r,
+                        // This error tends to happen when the user is manually resizing the window.
+                        // Simply restarting the loop is the easiest way to fix this issue.
+                        Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                        Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                    };
 
                     swapchain = new_swapchain;
                     // Because framebuffers contains an Arc on the old swapchain, we need to
@@ -500,14 +502,6 @@ fn main() {
 
                 match future {
                     Ok(future) => {
-                        if !initialized {
-                            // the first submitted command buffer will transition the images to the
-                            // correct layout which needs to be completed before trying to record
-                            // the next command buffer
-                            future.wait(None).unwrap();
-                            initialized = true;
-                        }
-
                         previous_frame_end = Some(future.boxed());
                     }
                     Err(FlushError::OutOfDate) => {

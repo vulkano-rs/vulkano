@@ -393,13 +393,8 @@ struct ResourceState {
     // command buffer. Also true if an image layout transition or queue transfer has been performed.
     exclusive_any: bool,
 
-    // additional state information that is included for images but not for buffers
-    image_state: Option<ImageResourceState>,
-}
-
-#[derive(Debug, Clone)]
-struct ImageResourceState {
-    // Layout at the first use of the resource by the command buffer.
+    // Layout at the first use of the resource by the command buffer. Can be `Undefined` if we
+    // don't care.
     initial_layout: ImageLayout,
 
     // Current layout at this stage of the building.
@@ -415,7 +410,8 @@ impl ResourceState {
             final_stages: self.memory.stages,
             final_access: self.memory.access,
             exclusive: self.exclusive_any,
-            image_state: self.image_state,
+            initial_layout: self.initial_layout,
+            final_layout: self.current_layout,
         }
     }
 }
@@ -495,6 +491,8 @@ impl SyncCommandBufferBuilder {
     // - `start_layout` and `end_layout` designate the image layout that the image is expected to be
     //   in when the command starts, and the image layout that the image will be transitioned to
     //   during the command. When it comes to buffers, you should pass `Undefined` for both.
+    // - passing `Undefined` as `start_layout` when the resource type is `Image` will cause a
+    //   memory barrier that transition from `Undefined` to the real image layout to be inserted
     #[inline]
     pub(super) fn append_command<C>(
         &mut self,
@@ -566,9 +564,7 @@ impl SyncCommandBufferBuilder {
                         // Find out if we have a collision with the pending commands.
                         if memory.exclusive
                             || entry.get().memory.exclusive
-                            || (entry.get().image_state.is_some()
-                                && entry.get().image_state.as_ref().unwrap().current_layout
-                                    != start_layout)
+                            || entry.get().current_layout != start_layout
                         {
                             // Collision found between `latest_command_id` and `collision_cmd_id`.
 
@@ -584,9 +580,7 @@ impl SyncCommandBufferBuilder {
                             if collision_cmd_ids
                                 .iter()
                                 .any(|command_id| *command_id >= first_unflushed_cmd_id)
-                                || (entry.get().image_state.is_some()
-                                    && entry.get().image_state.as_ref().unwrap().current_layout
-                                        != start_layout)
+                                || entry.get().current_layout != start_layout
                             {
                                 unsafe {
                                     // Flush the pending barrier.
@@ -680,7 +674,7 @@ impl SyncCommandBufferBuilder {
                                             memory.access,
                                             true,
                                             None,
-                                            entry.image_state.as_ref().unwrap().current_layout,
+                                            entry.current_layout,
                                             start_layout,
                                         );
                                     }
@@ -690,13 +684,11 @@ impl SyncCommandBufferBuilder {
                             // Update state.
                             entry.memory = memory;
                             entry.exclusive_any = true;
-                            if (memory.exclusive || end_layout != ImageLayout::Undefined)
-                                && entry.image_state.is_some()
-                            {
+                            if memory.exclusive || end_layout != ImageLayout::Undefined {
                                 // Only modify the layout in case of a write, because buffer operations
                                 // pass `Undefined` for the layout. While a buffer write *must* set the
                                 // layout to `Undefined`, a buffer read must not touch it.
-                                entry.image_state.as_mut().unwrap().current_layout = end_layout;
+                                entry.current_layout = end_layout;
                             }
                         } else {
                             // There is no collision. Simply merge the stages and accesses.
@@ -715,27 +707,24 @@ impl SyncCommandBufferBuilder {
                             let img =
                                 commands_lock.commands[latest_command_id].image(resource_index);
 
-                            let initial_layout = img.current_layout();
-
                             // We need to perform some tweaks if the initial layout requirement
                             // of the image is different from the first layout usage.
                             let mut actually_exclusive = memory.exclusive;
 
-                            // transition the layout if the current layout doesn't match the layout
-                            // required by the command
-                            if initial_layout != start_layout && !self.is_secondary {
+                            // Transition the layout if the current layout doesn't match the layout
+                            // required by the command.
+                            // Note that we transition from `bottom_of_pipe`, which means that we
+                            // wait for all the previous commands to be entirely finished. This is
+                            // suboptimal, but:
+                            //
+                            // - If we're at the start of the command buffer we have no choice anyway,
+                            //   because we have no knowledge about what comes before.
+                            // - If we're in the middle of the command buffer, this pipeline is going
+                            //   to be merged with an existing barrier. While it may still be
+                            //   suboptimal in some cases, in the general situation it will be ok.
+                            if start_layout == ImageLayout::Undefined && !self.is_secondary {
                                 let b = &mut self.pending_barrier;
                                 unsafe {
-                                    // Note that we transition from `bottom_of_pipe`, which means that we
-                                    // wait for all the previous commands to be entirely finished. This is
-                                    // suboptimal, but:
-                                    //
-                                    // - If we're at the start of the command buffer we have no choice anyway,
-                                    //   because we have no knowledge about what comes before.
-                                    // - If we're in the middle of the command buffer, this pipeline is going
-                                    //   to be merged with an existing barrier. While it may still be
-                                    //   suboptimal in some cases, in the general situation it will be ok.
-                                    //
                                     b.add_image_memory_barrier(
                                         img,
                                         img.current_miplevels_access(),
@@ -749,7 +738,28 @@ impl SyncCommandBufferBuilder {
                                         memory.access,
                                         true,
                                         None,
-                                        initial_layout,
+                                        start_layout,
+                                        img.layout(),
+                                    );
+                                    actually_exclusive = true;
+                                }
+                            } else if img.layout() != start_layout && !self.is_secondary {
+                                let b = &mut self.pending_barrier;
+                                unsafe {
+                                    b.add_image_memory_barrier(
+                                        img,
+                                        img.current_miplevels_access(),
+                                        img.current_layer_levels_access(),
+                                        PipelineStages {
+                                            bottom_of_pipe: true,
+                                            ..PipelineStages::none()
+                                        },
+                                        AccessFlags::none(),
+                                        memory.stages,
+                                        memory.access,
+                                        true,
+                                        None,
+                                        img.layout(),
                                         start_layout,
                                     );
                                     actually_exclusive = true;
@@ -763,10 +773,8 @@ impl SyncCommandBufferBuilder {
                                     exclusive: actually_exclusive,
                                 },
                                 exclusive_any: actually_exclusive,
-                                image_state: Some(ImageResourceState {
-                                    initial_layout,
-                                    current_layout: end_layout, // TODO: what if we reach the end with Undefined? that's not correct?
-                                }),
+                                initial_layout: img.layout(),
+                                current_layout: end_layout, // TODO: what if we reach the end with Undefined? that's not correct?
                             });
                         } else {
                             entry.insert(ResourceState {
@@ -776,7 +784,8 @@ impl SyncCommandBufferBuilder {
                                     exclusive: memory.exclusive,
                                 },
                                 exclusive_any: memory.exclusive,
-                                image_state: None,
+                                initial_layout: start_layout,
+                                current_layout: end_layout,
                             });
                         }
                     }
@@ -879,35 +888,31 @@ impl SyncCommandBufferBuilder {
                         continue;
                     }
 
-                    let current_layout = state.image_state.as_ref().unwrap().current_layout;
-
                     let img = commands_lock.commands[key.command_ids.borrow()[0]]
                         .image(key.resource_index);
-                    if let Some(requested_layout) = img.final_layout_requirement() {
-                        if requested_layout == current_layout {
-                            continue;
-                        }
-
-                        barrier.add_image_memory_barrier(
-                            img,
-                            img.current_miplevels_access(),
-                            img.current_layer_levels_access(),
-                            state.memory.stages,
-                            state.memory.access,
-                            PipelineStages {
-                                top_of_pipe: true,
-                                ..PipelineStages::none()
-                            },
-                            AccessFlags::none(),
-                            true,
-                            None, // TODO: queue transfers?
-                            current_layout,
-                            requested_layout,
-                        );
-
-                        state.exclusive_any = true;
-                        state.image_state.as_mut().unwrap().current_layout = requested_layout;
+                    if img.layout() == state.current_layout {
+                        continue;
                     }
+
+                    barrier.add_image_memory_barrier(
+                        img,
+                        img.current_miplevels_access(),
+                        img.current_layer_levels_access(),
+                        state.memory.stages,
+                        state.memory.access,
+                        PipelineStages {
+                            top_of_pipe: true,
+                            ..PipelineStages::none()
+                        },
+                        AccessFlags::none(),
+                        true,
+                        None, // TODO: queue transfers?
+                        state.current_layout,
+                        img.layout(),
+                    );
+
+                    state.exclusive_any = true;
+                    state.current_layout = img.layout();
                 }
 
                 self.inner.pipeline_barrier(&barrier);
@@ -1048,7 +1053,7 @@ impl SyncCommandBuffer {
 
                     let prev_err = match future.check_image_access(
                         img,
-                        entry.image_state.as_ref().unwrap().initial_layout,
+                        entry.initial_layout,
                         entry.exclusive,
                         queue,
                     ) {
@@ -1062,13 +1067,7 @@ impl SyncCommandBuffer {
                         Err(err) => err,
                     };
 
-                    match (
-                        img.try_gpu_lock(
-                            entry.exclusive,
-                            entry.image_state.as_ref().unwrap().initial_layout,
-                        ),
-                        prev_err,
-                    ) {
+                    match (img.try_gpu_lock(entry.exclusive), prev_err) {
                         (Ok(_), _) => (),
                         (Err(err), AccessCheckError::Unknown)
                         | (_, AccessCheckError::Denied(err)) => {
@@ -1114,7 +1113,7 @@ impl SyncCommandBuffer {
                         let command = &self.commands[command_ids[0]];
                         let img = command.image(resource_index);
                         unsafe {
-                            img.unlock(img.current_layout());
+                            img.unlock();
                         }
                     }
                 }
@@ -1156,7 +1155,7 @@ impl SyncCommandBuffer {
 
                 KeyTy::Image => {
                     let img = command.image(resource_index);
-                    img.unlock(val.image_state.as_ref().unwrap().current_layout);
+                    img.unlock();
                 }
             }
         }
@@ -1199,10 +1198,10 @@ impl SyncCommandBuffer {
         // TODO: check the queue family
 
         if let Some(value) = self.resources.get(&CbKey::ImageRef(image)) {
-            if value.image_state.as_ref().unwrap().current_layout != layout {
+            if value.final_layout != layout {
                 return Err(AccessCheckError::Denied(
                     AccessError::UnexpectedImageLayout {
-                        allowed: value.image_state.as_ref().unwrap().current_layout,
+                        allowed: value.final_layout,
                         requested: layout,
                     },
                 ));
@@ -1285,8 +1284,12 @@ struct ResourceFinalState {
     // True if the resource is used in exclusive mode.
     exclusive: bool,
 
-    // additional state information that is included for images but not for buffers
-    image_state: Option<ImageResourceState>,
+    // Layout that an image must be in at the start of the command buffer. Can be `Undefined` if we
+    // don't care.
+    initial_layout: ImageLayout,
+
+    // Layout the image will be in at the end of the command buffer.
+    final_layout: ImageLayout, // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
 }
 
 /// Equivalent to `Command`, but with less methods. Typically contains less things than the
@@ -1638,10 +1641,11 @@ mod tests {
     }
 
     #[test]
-    fn double_initial_image_layout_transition() {
+    fn double_image_use() {
         let (device, queue) = gfx_dev_and_queue!();
 
-        // the image will initially be in an `Undefined` layout
+        // the image will initially be in an `Undefined` layout and should be transitioned to a
+        // `General` layout automatically
         let img = StorageImage::new(
             device.clone(),
             ImageDimensions::Dim2d {
@@ -1651,11 +1655,11 @@ mod tests {
             },
             Format::R8G8B8A8Unorm,
             Some(queue.family()),
+            queue.clone(),
         )
         .unwrap();
 
-        // helper function for building two command buffers that use the same image and both
-        // assume that the image is still in an `Undefined` layout
+        // helper function for building two command buffers that use the same image
         let build_command_buffer = || {
             let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
                 device.clone(),
@@ -1672,17 +1676,15 @@ mod tests {
         let command_buffer_1 = build_command_buffer();
         let command_buffer_2 = build_command_buffer();
 
-        // the image will be transitioned to a `General` layout after the first command buffer
-        // has been executed but the second command buffer was built when the image was still
-        // in an `Undefined` layout which should cause an error when trying to execute the
-        // second command buffer because it would have tried to insert an incorrect image
-        // memory barrier based on the assumption that the image was still `Undefined`
+        // Ensure that the execution of both command buffers doesn't produce any errors.
+        // This is testing that the command buffers don't insert layout transitions that conflict
+        // even when both command buffers use the same image.
         assert!(matches!(
             sync::now(device.clone())
                 .then_execute(queue.clone(), command_buffer_1)
                 .unwrap()
                 .then_execute(queue.clone(), command_buffer_2),
-            Err(crate::command_buffer::CommandBufferExecError::AccessError { .. })
+            Ok(..)
         ))
     }
 }

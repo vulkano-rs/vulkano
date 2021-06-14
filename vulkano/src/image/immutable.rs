@@ -235,6 +235,9 @@ impl ImmutableImage {
     /// Builds an uninitialized immutable image.
     ///
     /// Returns two things: the image, and a special access that should be used for the initial upload to the image.
+    ///
+    /// You must initialize the image and call `initialized()` on the `ImmutableImageInitialization`
+    /// before you can use the `ImmutableImage`.
     pub fn uninitialized<'a, I, M>(
         device: Arc<Device>,
         dimensions: ImageDimensions,
@@ -479,28 +482,12 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     }
 
     #[inline]
-    fn current_layout(&self) -> ImageLayout {
+    fn layout(&self) -> ImageLayout {
         self.layout
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        Some(self.layout)
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        if expected_layout != self.layout {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: self.layout,
-            });
-        }
-
+    fn try_gpu_lock(&self, exclusive_access: bool) -> Result<(), AccessError> {
         if exclusive_access {
             return Err(AccessError::ExclusiveDenied);
         }
@@ -516,9 +503,7 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     unsafe fn increase_gpu_lock(&self) {}
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: ImageLayout) {
-        assert_eq!(new_layout, self.layout);
-    }
+    unsafe fn unlock(&self) {}
 
     #[inline]
     fn current_miplevels_access(&self) -> std::ops::Range<u32> {
@@ -575,28 +560,12 @@ unsafe impl ImageAccess for SubImage {
     }
 
     #[inline]
-    fn current_layout(&self) -> ImageLayout {
+    fn layout(&self) -> ImageLayout {
         self.layout
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        Some(self.layout)
-    }
-
-    #[inline]
-    fn try_gpu_lock(
-        &self,
-        exclusive_access: bool,
-        expected_layout: ImageLayout,
-    ) -> Result<(), AccessError> {
-        if expected_layout != self.layout {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: self.layout,
-            });
-        }
-
+    fn try_gpu_lock(&self, exclusive_access: bool) -> Result<(), AccessError> {
         Ok(())
     }
 
@@ -606,8 +575,8 @@ unsafe impl ImageAccess for SubImage {
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: ImageLayout) {
-        self.image.unlock(new_layout)
+    unsafe fn unlock(&self) {
+        self.image.unlock()
     }
 }
 
@@ -624,6 +593,18 @@ impl<A> Hash for ImmutableImage<A> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         ImageAccess::inner(self).hash(state);
+    }
+}
+
+impl ImmutableImageInitialization {
+    /// Marks the initialization as complete which means the underlying `ImmutableImage`
+    /// can be used.
+    ///
+    /// # Safety
+    /// The image must be transitioned to its proper layout and been filled with data when this
+    /// is called.
+    pub unsafe fn initialized(&self) {
+        self.image.initialized.store(true, Ordering::SeqCst);
     }
 }
 
@@ -654,24 +635,12 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     }
 
     #[inline]
-    fn current_layout(&self) -> ImageLayout {
-        ImageLayout::Undefined
+    fn layout(&self) -> ImageLayout {
+        self.image.layout
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        Some(self.image.layout)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
-        if expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: ImageLayout::Undefined,
-            });
-        }
-
+    fn try_gpu_lock(&self, _: bool) -> Result<(), AccessError> {
         if self.image.initialized.load(Ordering::SeqCst) {
             return Err(AccessError::AlreadyInUse);
         }
@@ -694,10 +663,7 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: ImageLayout) {
-        assert_eq!(new_layout, self.image.layout);
-        self.image.initialized.store(true, Ordering::SeqCst);
-    }
+    unsafe fn unlock(&self) {}
 
     #[inline]
     fn current_miplevels_access(&self) -> std::ops::Range<u32> {

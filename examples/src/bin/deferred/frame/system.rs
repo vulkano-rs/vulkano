@@ -156,7 +156,7 @@ impl FrameSystem {
         };
         let diffuse_buffer = ImageView::new(
             AttachmentImage::with_usage(
-                gfx_queue.device().clone(),
+                gfx_queue.clone(),
                 [1, 1],
                 Format::A2B10G10R10UnormPack32,
                 atch_usage,
@@ -166,7 +166,7 @@ impl FrameSystem {
         .unwrap();
         let normals_buffer = ImageView::new(
             AttachmentImage::with_usage(
-                gfx_queue.device().clone(),
+                gfx_queue.clone(),
                 [1, 1],
                 Format::R16G16B16A16Sfloat,
                 atch_usage,
@@ -175,13 +175,8 @@ impl FrameSystem {
         )
         .unwrap();
         let depth_buffer = ImageView::new(
-            AttachmentImage::with_usage(
-                gfx_queue.device().clone(),
-                [1, 1],
-                Format::D16Unorm,
-                atch_usage,
-            )
-            .unwrap(),
+            AttachmentImage::with_usage(gfx_queue.clone(), [1, 1], Format::D16Unorm, atch_usage)
+                .unwrap(),
         )
         .unwrap();
 
@@ -252,7 +247,7 @@ impl FrameSystem {
             // render pass their content becomes undefined.
             self.diffuse_buffer = ImageView::new(
                 AttachmentImage::with_usage(
-                    self.gfx_queue.device().clone(),
+                    self.gfx_queue.clone(),
                     img_dims,
                     Format::A2B10G10R10UnormPack32,
                     atch_usage,
@@ -262,7 +257,7 @@ impl FrameSystem {
             .unwrap();
             self.normals_buffer = ImageView::new(
                 AttachmentImage::with_usage(
-                    self.gfx_queue.device().clone(),
+                    self.gfx_queue.clone(),
                     img_dims,
                     Format::R16G16B16A16Sfloat,
                     atch_usage,
@@ -272,7 +267,7 @@ impl FrameSystem {
             .unwrap();
             self.depth_buffer = ImageView::new(
                 AttachmentImage::with_usage(
-                    self.gfx_queue.device().clone(),
+                    self.gfx_queue.clone(),
                     img_dims,
                     Format::D16Unorm,
                     atch_usage,

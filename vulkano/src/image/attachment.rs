@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
-use crate::device::Device;
+use crate::device::{Device, Queue};
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
@@ -17,12 +17,12 @@ use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
 use crate::image::traits::ImageContent;
-use crate::image::ImageCreateFlags;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
 use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
+use crate::image::{initialize_image_layout, ImageCreateFlags};
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -31,12 +31,11 @@ use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
 use crate::memory::DedicatedAlloc;
-use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::sync::{AccessError, GpuFuture};
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::Empty;
-use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -85,10 +84,6 @@ pub struct AttachmentImage<A = PotentialDedicatedAllocation<StdMemoryPoolAlloc>>
     // Must be either "depth-stencil optimal" or "color optimal".
     attachment_layout: ImageLayout,
 
-    // If true, then the image is in the layout of `attachment_layout` (above). If false, then it
-    // is still `Undefined`.
-    initialized: AtomicBool,
-
     // Number of times this image is locked on the GPU side.
     gpu_lock: AtomicUsize,
 }
@@ -100,11 +95,11 @@ impl AttachmentImage {
     /// format as a framebuffer attachment.
     #[inline]
     pub fn new(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), 1)
+        AttachmentImage::new_impl(queue, dimensions, format, ImageUsage::none(), 1)
     }
 
     /// Same as `new`, but creates an image that can be used as an input attachment.
@@ -112,7 +107,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn input_attachment(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
@@ -121,7 +116,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, 1)
     }
 
     /// Same as `new`, but creates a multisampled image.
@@ -130,12 +125,12 @@ impl AttachmentImage {
     /// > want a regular image.
     #[inline]
     pub fn multisampled(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, ImageUsage::none(), samples)
+        AttachmentImage::new_impl(queue, dimensions, format, ImageUsage::none(), samples)
     }
 
     /// Same as `multisampled`, but creates an image that can be used as an input attachment.
@@ -143,7 +138,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn multisampled_input_attachment(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
@@ -153,7 +148,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, samples)
     }
 
     /// Same as `new`, but lets you specify additional usages.
@@ -163,12 +158,12 @@ impl AttachmentImage {
     /// addition to these two.
     #[inline]
     pub fn with_usage(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
         usage: ImageUsage,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, usage, 1)
+        AttachmentImage::new_impl(queue, dimensions, format, usage, 1)
     }
 
     /// Same as `with_usage`, but creates a multisampled image.
@@ -179,13 +174,13 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn multisampled_with_usage(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
         usage: ImageUsage,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
-        AttachmentImage::new_impl(device, dimensions, format, usage, samples)
+        AttachmentImage::new_impl(queue, dimensions, format, usage, samples)
     }
 
     /// Same as `new`, except that the image can later be sampled.
@@ -193,7 +188,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn sampled(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
@@ -202,7 +197,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, 1)
     }
 
     /// Same as `sampled`, except that the image can be used as an input attachment.
@@ -210,7 +205,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn sampled_input_attachment(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
@@ -220,7 +215,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, 1)
     }
 
     /// Same as `sampled`, but creates a multisampled image.
@@ -231,7 +226,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn sampled_multisampled(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
@@ -241,7 +236,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, samples)
     }
 
     /// Same as `sampled_multisampled`, but creates an image that can be used as an input
@@ -250,7 +245,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn sampled_multisampled_input_attachment(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
@@ -261,7 +256,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, samples)
     }
 
     /// Same as `new`, except that the image will be transient.
@@ -272,7 +267,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn transient(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
@@ -281,7 +276,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, 1)
     }
 
     /// Same as `transient`, except that the image can be used as an input attachment.
@@ -289,7 +284,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `with_usage`.
     #[inline]
     pub fn transient_input_attachment(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
@@ -299,7 +294,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, 1)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, 1)
     }
 
     /// Same as `transient`, but creates a multisampled image.
@@ -310,7 +305,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn transient_multisampled(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
@@ -320,7 +315,7 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, samples)
     }
 
     /// Same as `transient_multisampled`, but creates an image that can be used as an input
@@ -329,7 +324,7 @@ impl AttachmentImage {
     /// > **Note**: This function is just a convenient shortcut for `multisampled_with_usage`.
     #[inline]
     pub fn transient_multisampled_input_attachment(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         samples: u32,
         format: Format,
@@ -340,18 +335,20 @@ impl AttachmentImage {
             ..ImageUsage::none()
         };
 
-        AttachmentImage::new_impl(device, dimensions, format, base_usage, samples)
+        AttachmentImage::new_impl(queue, dimensions, format, base_usage, samples)
     }
 
     // All constructors dispatch to this one.
     fn new_impl(
-        device: Arc<Device>,
+        queue: Arc<Queue>,
         dimensions: [u32; 2],
         format: Format,
         base_usage: ImageUsage,
         samples: u32,
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
+
+        let device = queue.device();
 
         let is_depth = match format.ty() {
             FormatTy::Depth => true,
@@ -407,7 +404,7 @@ impl AttachmentImage {
             image.bind_memory(memory.memory(), memory.offset())?;
         }
 
-        Ok(Arc::new(AttachmentImage {
+        let attachment_image = Arc::new(AttachmentImage {
             image,
             memory,
             format,
@@ -416,9 +413,21 @@ impl AttachmentImage {
             } else {
                 ImageLayout::ColorAttachmentOptimal
             },
-            initialized: AtomicBool::new(false),
             gpu_lock: AtomicUsize::new(0),
-        }))
+        });
+
+        unsafe {
+            initialize_image_layout(
+                attachment_image.clone(),
+                device.clone(),
+                queue.clone(),
+                None,
+            )
+            .then_signal_fence_and_flush()?
+            .wait(None)?;
+        }
+
+        Ok(attachment_image)
     }
 }
 
@@ -468,39 +477,12 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
         self.image.key()
     }
 
-    fn current_layout(&self) -> ImageLayout {
-        if self.initialized.load(Ordering::SeqCst) {
-            self.attachment_layout
-        } else {
-            ImageLayout::Undefined
-        }
+    fn layout(&self) -> ImageLayout {
+        self.attachment_layout
     }
 
     #[inline]
-    fn final_layout_requirement(&self) -> Option<ImageLayout> {
-        Some(self.attachment_layout)
-    }
-
-    #[inline]
-    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
-        if self.initialized.load(Ordering::SeqCst) {
-            if expected_layout != self.attachment_layout {
-                return Err(AccessError::UnexpectedImageLayout {
-                    requested: expected_layout,
-                    allowed: self.attachment_layout,
-                });
-            }
-        } else if expected_layout == self.attachment_layout {
-            return Err(AccessError::ImageNotInitialized {
-                requested: expected_layout,
-            });
-        } else if expected_layout != ImageLayout::Undefined {
-            return Err(AccessError::UnexpectedImageLayout {
-                requested: expected_layout,
-                allowed: ImageLayout::Undefined,
-            });
-        }
-
+    fn try_gpu_lock(&self, _: bool) -> Result<(), AccessError> {
         if self
             .gpu_lock
             .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
@@ -520,10 +502,7 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
     }
 
     #[inline]
-    unsafe fn unlock(&self, new_layout: ImageLayout) {
-        assert_eq!(new_layout, self.attachment_layout);
-        self.initialized.store(true, Ordering::SeqCst);
-
+    unsafe fn unlock(&self) {
         let prev_val = self.gpu_lock.fetch_sub(1, Ordering::SeqCst);
         debug_assert!(prev_val >= 1);
     }
@@ -576,19 +555,19 @@ mod tests {
 
     #[test]
     fn create_regular() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+        let (_, queue) = gfx_dev_and_queue!();
+        let _img = AttachmentImage::new(queue, [32, 32], Format::R8G8B8A8Unorm).unwrap();
     }
 
     #[test]
     fn create_transient() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::transient(device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+        let (_, queue) = gfx_dev_and_queue!();
+        let _img = AttachmentImage::transient(queue, [32, 32], Format::R8G8B8A8Unorm).unwrap();
     }
 
     #[test]
     fn d16_unorm_always_supported() {
-        let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(device, [32, 32], Format::D16Unorm).unwrap();
+        let (_, queue) = gfx_dev_and_queue!();
+        let _img = AttachmentImage::new(queue, [32, 32], Format::D16Unorm).unwrap();
     }
 }

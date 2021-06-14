@@ -362,13 +362,6 @@ pub enum AccessError {
         requested: ImageLayout,
     },
 
-    /// Trying to use an image without transitioning it from the "undefined" or "preinitialized"
-    /// layouts first.
-    ImageNotInitialized {
-        /// The layout that was requested for the image.
-        requested: ImageLayout,
-    },
-
     /// Trying to use a buffer that still contains garbage data.
     BufferNotInitialized,
 
@@ -391,10 +384,6 @@ impl fmt::Display for AccessError {
                 }
                 AccessError::UnexpectedImageLayout { .. } => {
                     unimplemented!() // TODO: find a description
-                }
-                AccessError::ImageNotInitialized { .. } => {
-                    "trying to use an image without transitioning it from the undefined or \
-                 preinitialized layouts first"
                 }
                 AccessError::BufferNotInitialized => {
                     "trying to use a buffer that still contains garbage data"
