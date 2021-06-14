@@ -213,6 +213,7 @@ pub unsafe trait ImageAccess {
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
+        uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError>;
 
@@ -311,9 +312,10 @@ where
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
+        uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        (**self).try_gpu_lock(exclusive_access, expected_layout)
+        (**self).try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
     }
 
     #[inline]
@@ -416,9 +418,10 @@ where
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
+        uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        self.image.try_gpu_lock(exclusive_access, expected_layout)
+        self.image.try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
     }
 
     #[inline]

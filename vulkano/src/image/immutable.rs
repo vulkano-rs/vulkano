@@ -493,6 +493,7 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
+        uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
         if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
@@ -589,6 +590,7 @@ unsafe impl ImageAccess for SubImage {
     fn try_gpu_lock(
         &self,
         exclusive_access: bool,
+        uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
         if expected_layout != self.layout && expected_layout != ImageLayout::Undefined {
@@ -665,7 +667,7 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, uninitialized_safe: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
         if expected_layout != ImageLayout::Undefined {
             return Err(AccessError::UnexpectedImageLayout {
                 requested: expected_layout,

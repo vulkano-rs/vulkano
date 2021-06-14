@@ -37,6 +37,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::Mutex;
+use crate::command_buffer::ImageResourceContext;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///
@@ -64,6 +65,7 @@ pub struct SyncCommandBufferBuilder {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageResourceContext,
     )>,
 
     // Stores the current state of all resources (buffers and images) that are in use by the
@@ -399,6 +401,9 @@ struct ResourceState {
 
     // Current layout at this stage of the building.
     current_layout: ImageLayout,
+
+    // Extra context of how the image will be used
+    image_resource_context: ImageResourceContext
 }
 
 impl ResourceState {
@@ -412,6 +417,7 @@ impl ResourceState {
             exclusive: self.exclusive_any,
             initial_layout: self.initial_layout,
             final_layout: self.current_layout,
+            image_resource_context: self.image_resource_context,
         }
     }
 }
@@ -497,7 +503,7 @@ impl SyncCommandBufferBuilder {
         command: C,
         resources: &[(
             KeyTy,
-            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout)>,
+            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout, ImageResourceContext)>,
         )],
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
@@ -523,7 +529,7 @@ impl SyncCommandBufferBuilder {
         let mut last_cmd_image = 0;
 
         for &(resource_ty, resource) in resources {
-            if let Some((memory, start_layout, end_layout)) = resource {
+            if let Some((memory, start_layout, end_layout, image_resource_context)) = resource {
                 // Anti-dumbness checks.
                 debug_assert!(memory.exclusive || start_layout == end_layout);
                 debug_assert!(memory.access.is_compatible_with(&memory.stages));
@@ -776,6 +782,7 @@ impl SyncCommandBufferBuilder {
                             exclusive_any: actually_exclusive,
                             initial_layout: actual_start_layout,
                             current_layout: end_layout, // TODO: what if we reach the end with Undefined? that's not correct?
+                            image_resource_context,
                         });
                     }
                 }
@@ -796,7 +803,7 @@ impl SyncCommandBufferBuilder {
                     }
                     KeyTy::Image => {
                         self.images
-                            .push((location, memory, start_layout, end_layout));
+                            .push((location, memory, start_layout, end_layout, image_resource_context));
                         last_cmd_image += 1;
                     }
                 }
@@ -962,6 +969,7 @@ pub struct SyncCommandBuffer {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageResourceContext,
     )>,
 
     // State of all the resources used by this command buffer.
@@ -1058,7 +1066,7 @@ impl SyncCommandBuffer {
                     };
 
                     match (
-                        img.try_gpu_lock(entry.exclusive, entry.initial_layout),
+                        img.try_gpu_lock(entry.exclusive, entry.image_resource_context.uninitialized_safe, entry.initial_layout),
                         prev_err,
                     ) {
                         (Ok(_), _) => (),
@@ -1247,16 +1255,18 @@ impl SyncCommandBuffer {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageResourceContext,
     )> {
         self.images
             .get(index)
-            .map(|(location, memory, start_layout, end_layout)| {
+            .map(|(location, memory, start_layout, end_layout, image_resource_context)| {
                 let cmd = &self.commands[location.command_id];
                 (
                     cmd.image(location.resource_index),
                     *memory,
                     *start_layout,
                     *end_layout,
+                    *image_resource_context,
                 )
             })
     }
@@ -1293,6 +1303,8 @@ struct ResourceFinalState {
 
     // Layout the image will be in at the end of the command buffer.
     final_layout: ImageLayout, // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
+
+    image_resource_context: ImageResourceContext,
 }
 
 /// Equivalent to `Command`, but with less methods. Typically contains less things than the

@@ -87,6 +87,7 @@ use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use crate::command_buffer::ImageResourceContext;
 
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the
@@ -2483,6 +2484,7 @@ unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageResourceContext,
     )> {
         self.inner.image(index)
     }

@@ -36,6 +36,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
+use crate::command_buffer::ImageResourceContext;
 
 pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.
@@ -245,6 +246,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageResourceContext,
     )>;
 }
 
@@ -297,6 +299,7 @@ where
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageResourceContext,
     )> {
         (**self).image(index)
     }

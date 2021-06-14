@@ -125,6 +125,20 @@ pub mod sys;
 mod traits;
 pub mod validity;
 
+#[derive(Debug, Clone, Copy)]
+pub struct ImageResourceContext {
+    pub uninitialized_safe: bool,
+}
+
+impl ImageResourceContext {
+    pub fn none() -> Self {
+        Self {
+            uninitialized_safe: false,
+        }
+    }
+}
+
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DrawIndirectCommand {
