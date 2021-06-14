@@ -12,6 +12,7 @@ use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::CommandBufferInheritance;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -36,7 +37,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
-use crate::command_buffer::ImageUninitializedSafe;
 
 pub unsafe trait PrimaryCommandBuffer: DeviceOwned {
     /// Returns the underlying `UnsafeCommandBuffer` of this command buffer.

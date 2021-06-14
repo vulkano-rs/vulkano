@@ -233,7 +233,12 @@ where
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, uninitialized_safe: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+    fn try_gpu_lock(
+        &self,
+        _: bool,
+        uninitialized_safe: bool,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
         // TODO: handle initial layout transition
         if expected_layout != ImageLayout::General && expected_layout != ImageLayout::Undefined {
             return Err(AccessError::UnexpectedImageLayout {

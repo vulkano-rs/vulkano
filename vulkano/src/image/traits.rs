@@ -421,7 +421,8 @@ where
         uninitialized_safe: bool,
         expected_layout: ImageLayout,
     ) -> Result<(), AccessError> {
-        self.image.try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
+        self.image
+            .try_gpu_lock(exclusive_access, uninitialized_safe, expected_layout)
     }
 
     #[inline]

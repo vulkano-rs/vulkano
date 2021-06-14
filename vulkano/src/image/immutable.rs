@@ -667,7 +667,12 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, uninitialized_safe: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+    fn try_gpu_lock(
+        &self,
+        _: bool,
+        uninitialized_safe: bool,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
         if expected_layout != ImageLayout::Undefined {
             return Err(AccessError::UnexpectedImageLayout {
                 requested: expected_layout,

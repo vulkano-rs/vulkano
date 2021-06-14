@@ -13,7 +13,6 @@
 //! of pixels or samples.
 //!
 
-
 /// State of the rasterizer.
 #[derive(Clone, Debug)]
 pub struct Rasterization {

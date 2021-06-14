@@ -12,7 +12,6 @@
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 //!
 
-
 /// How the input assembly stage should behave.
 #[derive(Copy, Clone, Debug)]
 #[deprecated]

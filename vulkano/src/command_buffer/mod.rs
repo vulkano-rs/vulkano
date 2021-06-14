@@ -135,7 +135,7 @@ impl ImageUninitializedSafe {
     pub fn is_safe(&self) -> bool {
         match self {
             Self::Safe => true,
-            Self::Unsafe => false
+            Self::Unsafe => false,
         }
     }
 }

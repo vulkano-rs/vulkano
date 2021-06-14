@@ -22,6 +22,7 @@ use crate::command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use crate::command_buffer::CommandBufferExecError;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::DescriptorDescTy;
@@ -43,6 +44,7 @@ use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::render_pass::FramebufferAbstract;
+use crate::render_pass::LoadOp;
 use crate::sampler::Filter;
 use crate::sync::AccessFlags;
 use crate::sync::Event;
@@ -58,8 +60,6 @@ use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
-use crate::command_buffer::ImageUninitializedSafe;
-use crate::render_pass::LoadOp;
 
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
@@ -199,10 +199,12 @@ impl SyncCommandBufferBuilder {
                         },
                         desc.initial_layout,
                         desc.final_layout,
-                        match desc.initial_layout != ImageLayout::Undefined || desc.load == LoadOp::Clear {
+                        match desc.initial_layout != ImageLayout::Undefined
+                            || desc.load == LoadOp::Clear
+                        {
                             true => ImageUninitializedSafe::Safe,
                             false => ImageUninitializedSafe::Unsafe,
-                        }
+                        },
                     )),
                 )
             })
@@ -3116,8 +3118,12 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                     ));
                 }
                 for img_num in 0..cbuf.num_images() {
-                    let (_, memory, start_layout, end_layout, image_uninitialized_safe) = cbuf.image(img_num).unwrap();
-                    resources.push((KeyTy::Image, Some((memory, start_layout, end_layout, image_uninitialized_safe))));
+                    let (_, memory, start_layout, end_layout, image_uninitialized_safe) =
+                        cbuf.image(img_num).unwrap();
+                    resources.push((
+                        KeyTy::Image,
+                        Some((memory, start_layout, end_layout, image_uninitialized_safe)),
+                    ));
                 }
             }
             resources

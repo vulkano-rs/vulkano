@@ -31,6 +31,7 @@ use crate::command_buffer::DispatchIndirectCommand;
 use crate::command_buffer::DrawIndexedIndirectCommand;
 use crate::command_buffer::DrawIndirectCommand;
 use crate::command_buffer::DynamicState;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
@@ -87,7 +88,6 @@ use std::slice;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use crate::command_buffer::ImageUninitializedSafe;
 
 /// Note that command buffers allocated from the default command pool (`Arc<StandardCommandPool>`)
 /// don't implement the `Send` and `Sync` traits. If you use this pool, then the

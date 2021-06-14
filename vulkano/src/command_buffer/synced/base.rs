@@ -15,6 +15,7 @@ use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -37,7 +38,6 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::sync::Mutex;
-use crate::command_buffer::ImageUninitializedSafe;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///
@@ -503,7 +503,12 @@ impl SyncCommandBufferBuilder {
         command: C,
         resources: &[(
             KeyTy,
-            Option<(PipelineMemoryAccess, ImageLayout, ImageLayout, ImageUninitializedSafe)>,
+            Option<(
+                PipelineMemoryAccess,
+                ImageLayout,
+                ImageLayout,
+                ImageUninitializedSafe,
+            )>,
         )],
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
@@ -802,8 +807,13 @@ impl SyncCommandBufferBuilder {
                         last_cmd_buffer += 1;
                     }
                     KeyTy::Image => {
-                        self.images
-                            .push((location, memory, start_layout, end_layout, image_uninitialized_safe));
+                        self.images.push((
+                            location,
+                            memory,
+                            start_layout,
+                            end_layout,
+                            image_uninitialized_safe,
+                        ));
                         last_cmd_image += 1;
                     }
                 }
@@ -1066,7 +1076,11 @@ impl SyncCommandBuffer {
                     };
 
                     match (
-                        img.try_gpu_lock(entry.exclusive, entry.image_uninitialized_safe.is_safe(), entry.initial_layout),
+                        img.try_gpu_lock(
+                            entry.exclusive,
+                            entry.image_uninitialized_safe.is_safe(),
+                            entry.initial_layout,
+                        ),
                         prev_err,
                     ) {
                         (Ok(_), _) => (),
@@ -1257,9 +1271,8 @@ impl SyncCommandBuffer {
         ImageLayout,
         ImageUninitializedSafe,
     )> {
-        self.images
-            .get(index)
-            .map(|(location, memory, start_layout, end_layout, image_uninitialized_safe)| {
+        self.images.get(index).map(
+            |(location, memory, start_layout, end_layout, image_uninitialized_safe)| {
                 let cmd = &self.commands[location.command_id];
                 (
                     cmd.image(location.resource_index),
@@ -1268,7 +1281,8 @@ impl SyncCommandBuffer {
                     *end_layout,
                     *image_uninitialized_safe,
                 )
-            })
+            },
+        )
     }
 }
 
