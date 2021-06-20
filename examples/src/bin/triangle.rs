@@ -24,7 +24,7 @@ use vulkano::command_buffer::{
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -51,29 +51,6 @@ fn main() {
     // Now creating the instance.
     let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
 
-    // We then choose which physical device to use.
-    //
-    // In a real application, there are three things to take into consideration:
-    //
-    // - Some devices may not support some of the optional features that may be required by your
-    //   application. You should filter out the devices that don't support your app.
-    //
-    // - Not all devices can draw to a certain surface. Once you create your window, you have to
-    //   choose a device that is capable of drawing to it.
-    //
-    // - You probably want to leave the choice between the remaining devices to the user.
-    //
-    // For the sake of the example we are just going to use the first device, which should work
-    // most of the time.
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-
-    // Some little debug infos.
-    println!(
-        "Using device: {} (type: {:?})",
-        physical.properties().device_name.as_ref().unwrap(),
-        physical.properties().device_type.unwrap(),
-    );
-
     // The objective of this example is to draw a triangle on a window. To do so, we first need to
     // create the window.
     //
@@ -89,23 +66,69 @@ fn main() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    // The next step is to choose which GPU queue will execute our draw commands.
-    //
-    // Devices can provide multiple queues to run commands in parallel (for example a draw queue
-    // and a compute queue), similar to CPU threads. This is something you have to have to manage
-    // manually in Vulkan.
-    //
-    // In a real-life application, we would probably use at least a graphics queue and a transfers
-    // queue to handle data transfers in parallel. In this example we only use one queue.
-    //
-    // We have to choose which queues to use early on, because we will need this info very soon.
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| {
-            // We take the first queue that supports drawing to our window.
-            q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
+    // We then choose which physical device to use. First, we enumerate all the available physical
+    // devices, then apply filters to narrow them down to those that can support our needs.
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|_p| {
+            // Some devices may not support the extensions or features that your application, or
+            // report properties and limits that are not sufficient for your application. These
+            // should be filtered out here.
+            //
+            // This example does not use any extensions or features, and has no particular
+            // requirements for properties, so any device is fine.
+            true
+        })
+        .filter_map(|p| {
+            // For each physical device, we try to find a suitable queue family that will execute
+            // our draw commands.
+            //
+            // Devices can provide multiple queues to run commands in parallel (for example a draw
+            // queue and a compute queue), similar to CPU threads. This is something you have to
+            // have to manage manually in Vulkan. Queues of the same type belong to the same
+            // queue family.
+            //
+            // Here, we look for a single queue family that is suitable for our purposes. In a
+            // real-life application, you may want to use a separate dedicated transfer queue to
+            // handle data transfers in parallel with graphics operations. You may also need a
+            // separate queue for compute operations, if your application uses those.
+            p.queue_families()
+                .find(|&q| {
+                    // We select a queue family that supports graphics operations. When drawing to
+                    // a window surface, as we do in this example, we also need to check that queues
+                    // in this queue family are capable of presenting images to the surface.
+                    q.supports_graphics() && surface.is_supported(q).unwrap_or(false)
+                })
+                // The code here searches for the first queue family that is suitable. If none is
+                // found, `None` is returned to `filter_map`, which disqualifies this physical
+                // device.
+                .map(|q| (p, q))
+        })
+        // All the physical devices that pass the filters above are suitable for the application.
+        // However, not every device is equal, some are preferred over others. Now, we assign
+        // each physical device a score, and pick the device with the
+        // lowest ("best") score.
+        //
+        // In this example, we simply select the best-scoring device to use in the application.
+        // In a real-life setting, you may want to use the best-scoring device only as a
+        // "default" or "recommended" device, and let the user choose the device themselves.
+        .min_by_key(|(p, _)| {
+            // We assign a better score to device types that are likely to be faster/better.
+            match p.properties().device_type.unwrap() {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+            }
         })
         .unwrap();
+
+    // Some little debug infos.
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name.as_ref().unwrap(),
+        physical_device.properties().device_type.unwrap(),
+    );
 
     // Now initializing the device. This is probably the most important object of Vulkan.
     //
@@ -118,8 +141,6 @@ fn main() {
     //   creation. In this example the only thing we are going to need is the `khr_swapchain`
     //   extension that allows us to draw to a window.
     //
-    // - A list of layers to enable. This is very niche, and you will usually pass `None`.
-    //
     // - The list of queues that we are going to use. The exact parameter is an iterator whose
     //   items are `(Queue, f32)` where the floating-point represents the priority of the queue
     //   between 0.0 and 1.0. The priority of the queue is a hint to the implementation about how
@@ -131,7 +152,7 @@ fn main() {
         ..DeviceExtensions::none()
     };
     let (device, mut queues) = Device::new(
-        physical,
+        physical_device,
         &Features::none(),
         &device_ext,
         [(queue_family, 0.5)].iter().cloned(),
@@ -140,7 +161,7 @@ fn main() {
 
     // Since we can request multiple queues, the `queues` variable is in fact an iterator. We
     // only use one queue in this example, so we just retrieve the first and only element of the
-    // iterator and throw it away.
+    // iterator.
     let queue = queues.next().unwrap();
 
     // Before we can draw on the surface, we have to create what is called a swapchain. Creating
@@ -149,7 +170,7 @@ fn main() {
     let (mut swapchain, images) = {
         // Querying the capabilities of the surface. When we create the swapchain we can only
         // pass values that are allowed by the capabilities.
-        let caps = surface.capabilities(physical).unwrap();
+        let caps = surface.capabilities(physical_device).unwrap();
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example,
         // you can choose whether the window will be opaque or transparent.
