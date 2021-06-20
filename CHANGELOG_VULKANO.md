@@ -50,6 +50,8 @@
 - Every extension is now documented with a link to its Vulkan page and information about requirements, conflicts, promotion and deprecation.
 - `InstanceExtensions` and `DeviceExtensions` now have a `From` implementation that takes an iterator of `&CStr`. There is also a `From` implementation for `Vec<CString>` that performs the reverse conversion.
 - All Vulkan features supported by Ash are now provided.
+- Implement fmt::Display for DisplayMode.
+- Clarify return value is in millihertz for DisplayMode.refresh_rate()
 
 # Version 0.23.0 (2021-04-10)
 
