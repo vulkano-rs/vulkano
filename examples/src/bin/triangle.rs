@@ -66,17 +66,23 @@ fn main() {
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
+    // Choose device extensions that we're going to use.
+    // In order to present images to a surface, we need a `Swapchain`, which is provided by the
+    // `khr_swapchain` extension.
+    let device_extensions = DeviceExtensions {
+        khr_swapchain: true,
+        ..DeviceExtensions::none()
+    };
+
     // We then choose which physical device to use. First, we enumerate all the available physical
     // devices, then apply filters to narrow them down to those that can support our needs.
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|_p| {
+        .filter(|&p| {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
             // should be filtered out here.
-            //
-            // This example does not use any extensions or features, and has no particular
-            // requirements for properties, so any device is fine.
-            true
+            DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
+                == device_extensions
         })
         .filter_map(|p| {
             // For each physical device, we try to find a suitable queue family that will execute
@@ -147,14 +153,13 @@ fn main() {
     //   much it should prioritize queues between one another.
     //
     // The iterator of created queues is returned by the function alongside the device.
-    let device_ext = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::none()
-    };
     let (device, mut queues) = Device::new(
         physical_device,
         &Features::none(),
-        &device_ext,
+        // Some devices require certain extensions to be enabled if they are present
+        // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
+        // enable.
+        &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
