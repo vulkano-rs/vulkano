@@ -31,6 +31,7 @@ use crate::command_buffer::DispatchIndirectCommand;
 use crate::command_buffer::DrawIndexedIndirectCommand;
 use crate::command_buffer::DrawIndirectCommand;
 use crate::command_buffer::DynamicState;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
@@ -2483,6 +2484,7 @@ unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageUninitializedSafe,
     )> {
         self.inner.image(index)
     }

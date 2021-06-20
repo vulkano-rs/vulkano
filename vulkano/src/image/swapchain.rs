@@ -131,7 +131,7 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, _: ImageLayout) -> Result<(), AccessError> {
+    fn try_gpu_lock(&self, _: bool, _: bool, _: ImageLayout) -> Result<(), AccessError> {
         if self.swapchain.is_fullscreen_exclusive() {
             Ok(())
         } else {

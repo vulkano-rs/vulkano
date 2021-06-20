@@ -12,6 +12,7 @@ use crate::command_buffer::submit::SubmitAnyBuilder;
 use crate::command_buffer::submit::SubmitCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::CommandBufferInheritance;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -245,6 +246,7 @@ pub unsafe trait SecondaryCommandBuffer: DeviceOwned {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageUninitializedSafe,
     )>;
 }
 
@@ -297,6 +299,7 @@ where
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageUninitializedSafe,
     )> {
         (**self).image(index)
     }
