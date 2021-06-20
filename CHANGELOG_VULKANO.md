@@ -7,6 +7,8 @@
     Pull Request merge. 
 -->
 
+# Version 0.24.0 (2021-06-20)
+
 - **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
 - **Breaking** (but unlikely) Vulkano-shaders now compiles to SPIR-V 1.0 by default. If your shader needs features only available in a higher version, you can specify the target version on the `shader!` macro with the new `vulkan_version: "major.minor"` and `spirv_version: "major.minor"` arguments.
 - **Breaking** Changes to how image sample counts are represented.
