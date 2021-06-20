@@ -13,7 +13,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract};
 use vulkano::sync;
@@ -29,7 +29,7 @@ fn main() {
         .unwrap();
     let (device, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &DeviceExtensions {
             khr_storage_buffer_storage_class: true,
             ..DeviceExtensions::none()

@@ -16,7 +16,7 @@ use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::device::{Device, DeviceExtensions, DeviceOwned};
+use vulkano::device::{Device, DeviceExtensions, DeviceOwned, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
@@ -61,7 +61,7 @@ fn main() {
     };
     let (device, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &device_ext,
         [(queue_family, 0.5)].iter().cloned(),
     )

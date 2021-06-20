@@ -32,7 +32,7 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 use std::sync::Arc;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::cache::PipelineCache;
 use vulkano::pipeline::ComputePipeline;
@@ -57,7 +57,7 @@ fn main() {
     // Now initializing the device.
     let (device, _) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &DeviceExtensions {
             khr_storage_buffer_storage_class: true,
             ..DeviceExtensions::none()

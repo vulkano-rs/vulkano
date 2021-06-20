@@ -74,7 +74,7 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryCommandBuffer,
     SubpassContents,
 };
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::image::{
@@ -90,8 +90,7 @@ use vulkano::Version;
 fn main() {
     // The usual Vulkan initialization.
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical
         .queue_families()
@@ -99,7 +98,7 @@ fn main() {
         .unwrap();
     let (device, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &DeviceExtensions::none(),
         [(queue_family, 0.5)].iter().cloned(),
     )

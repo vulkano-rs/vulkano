@@ -21,7 +21,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
@@ -53,7 +53,7 @@ fn main() {
         .unwrap();
     let (device, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &DeviceExtensions::none(),
         [(queue_family, 0.5)].iter().cloned(),
     )

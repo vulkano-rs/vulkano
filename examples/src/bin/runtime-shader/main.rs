@@ -30,8 +30,7 @@ use vulkano::buffer::BufferUsage;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::device::Device;
-use vulkano::device::DeviceExtensions;
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
@@ -86,7 +85,7 @@ fn main() {
         };
         Device::new(
             physical,
-            physical.supported_features(),
+            &Features::none(),
             &device_ext,
             [(queue_family, 0.5)].iter().cloned(),
         )

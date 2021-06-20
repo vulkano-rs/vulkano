@@ -38,7 +38,7 @@ use vulkano::command_buffer::{
     SubpassContents,
 };
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::{Instance, PhysicalDevice};
@@ -90,7 +90,7 @@ fn main() {
     };
     let (device, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &device_ext,
         [(queue_family, 0.5)].iter().cloned(),
     )

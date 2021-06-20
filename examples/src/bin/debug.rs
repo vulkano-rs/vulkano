@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
@@ -121,7 +121,7 @@ fn main() {
         .expect("couldn't find a queue family");
     let (_, mut queues) = Device::new(
         physical,
-        physical.supported_features(),
+        &Features::none(),
         &DeviceExtensions::required_extensions(physical),
         vec![(queue_family, 0.5)],
     )
