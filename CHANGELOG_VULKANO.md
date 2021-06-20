@@ -31,6 +31,8 @@
   - To allow for the possibility that not every property is known by the physical device, fields in `Properties` are wrapped by an `Option`.
   - The previous methods for retrieving properties, `name`, `ty`, `limits`, `driver_version`, `pci_device_id`, `pci_vendor_id`, `uuid` and `extended_properties`, have been removed.
   - The `api_version` method remains, but there is now a semantic difference between it and the version reported by `properties`: The raw property gives the maximum supported version that the driver itself reports, while the method on `PhysicalDevice` returns the version a logical device would support if it were created from this physical device (that is, restricted by the instance's `max_api_version`).
+- **Breaking** `ImageAccess` trait method `try_gpu_lock()` now has an additional argument to allow locking the image in an uninitialized state.`
+- Improve `ImageLayout` checks to prevent `AccessError::ImageNotInitialized` from occurring where the image is safe to use uninitialized.
 - Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan 1.1.
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
 - Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return.
