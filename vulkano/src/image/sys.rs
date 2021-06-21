@@ -177,7 +177,7 @@ impl UnsafeImage {
             {
                 return Err(ImageCreationError::UnsupportedUsage);
             }
-            if device.api_version() >= Version::V1_1 || device.loaded_extensions().khr_maintenance1
+            if device.api_version() >= Version::V1_1 || device.enabled_extensions().khr_maintenance1
             {
                 if usage.transfer_source && !features.transfer_src {
                     return Err(ImageCreationError::UnsupportedUsage);
@@ -588,7 +588,7 @@ impl UnsafeImage {
         };
 
         let mem_reqs = if device.api_version() >= Version::V1_1
-            || device.loaded_extensions().khr_get_memory_requirements2
+            || device.enabled_extensions().khr_get_memory_requirements2
         {
             let infos = ash::vk::ImageMemoryRequirementsInfo2 {
                 image,
@@ -596,7 +596,7 @@ impl UnsafeImage {
             };
 
             let mut output2 = if device.api_version() >= Version::V1_1
-                || device.loaded_extensions().khr_dedicated_allocation
+                || device.enabled_extensions().khr_dedicated_allocation
             {
                 Some(ash::vk::MemoryDedicatedRequirements::default())
             } else {

@@ -98,7 +98,7 @@ impl<'a> SubmitPresentBuilder<'a> {
 
         if swapchain
             .device()
-            .loaded_extensions()
+            .enabled_extensions()
             .khr_incremental_present
         {
             let vk_present_region = match present_region {
@@ -141,7 +141,7 @@ impl<'a> SubmitPresentBuilder<'a> {
 
             let present_regions = {
                 if !self.present_regions.is_empty() {
-                    debug_assert!(queue.device().loaded_extensions().khr_incremental_present);
+                    debug_assert!(queue.device().enabled_extensions().khr_incremental_present);
                     debug_assert_eq!(self.swapchains.len(), self.present_regions.len());
                     let mut current_index = 0;
                     for present_region in &mut self.present_regions {

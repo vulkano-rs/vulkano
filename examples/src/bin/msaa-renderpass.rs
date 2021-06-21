@@ -74,13 +74,14 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryCommandBuffer,
     SubpassContents,
 };
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::image::{
     view::ImageView, AttachmentImage, ImageDimensions, SampleCount, StorageImage,
 };
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, Subpass};
@@ -90,8 +91,7 @@ use vulkano::Version;
 fn main() {
     // The usual Vulkan initialization.
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical
         .queue_families()

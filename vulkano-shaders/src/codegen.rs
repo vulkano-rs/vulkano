@@ -233,7 +233,7 @@ where
         (1, 4) => {
             cap_checks.push(quote! {
                 if device.api_version() < Version::V1_2
-                    && !device.loaded_extensions().khr_spirv_1_4 {
+                    && !device.enabled_extensions().khr_spirv_1_4 {
                     panic!("Device API version 1.2 or extension VK_KHR_spirv_1_4 required");
                 }
             });
@@ -283,7 +283,7 @@ where
                 for extension in extensions {
                     let ident = Ident::new(extension, Span::call_site());
                     cap_checks.push(quote! {
-                        if !device.loaded_extensions().#ident {
+                        if !device.enabled_extensions().#ident {
                             panic!("Device extension {:?} required", #extension);
                         }
                     });

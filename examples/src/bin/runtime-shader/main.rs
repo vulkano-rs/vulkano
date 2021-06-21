@@ -24,12 +24,12 @@ use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
-use vulkano as vk;
 use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
 use vulkano::buffer::BufferUsage;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::Device;
 use vulkano::device::DeviceExtensions;
 use vulkano::format::Format;
@@ -66,9 +66,7 @@ vulkano::impl_vertex!(Vertex, position, color);
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
     let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
-    let physical = vk::instance::PhysicalDevice::enumerate(&instance)
-        .next()
-        .unwrap();
+    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()

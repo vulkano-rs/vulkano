@@ -30,10 +30,11 @@ use crate::triangle_draw_system::*;
 use cgmath::Matrix4;
 use cgmath::SquareMatrix;
 use cgmath::Vector3;
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::ImageUsage;
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::Instance;
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync;
@@ -51,8 +52,7 @@ fn main() {
     // Basic initialization. See the triangle example if you want more details about this.
 
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
     let event_loop = EventLoop::new();

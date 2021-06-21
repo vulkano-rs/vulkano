@@ -92,8 +92,8 @@
 //! // TODO: storage formats
 //!
 
+use crate::device::physical::PhysicalDevice;
 use crate::image::ImageAspects;
-use crate::instance::PhysicalDevice;
 use crate::VulkanObject;
 use half::f16;
 use std::convert::TryFrom;

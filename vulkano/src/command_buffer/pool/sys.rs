@@ -8,9 +8,9 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::instance::QueueFamily;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
@@ -149,7 +149,7 @@ impl UnsafeCommandPool {
     pub fn trim(&self) -> Result<(), CommandPoolTrimError> {
         unsafe {
             if !(self.device.api_version() >= Version::V1_1
-                || self.device.loaded_extensions().khr_maintenance1)
+                || self.device.enabled_extensions().khr_maintenance1)
             {
                 return Err(CommandPoolTrimError::Maintenance1ExtensionNotEnabled);
             }

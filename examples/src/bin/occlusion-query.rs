@@ -16,10 +16,11 @@ use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions, DeviceOwned};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, AttachmentImage, ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::query::{QueryControlFlags, QueryPool, QueryResultFlags, QueryType};

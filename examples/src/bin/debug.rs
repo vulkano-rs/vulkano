@@ -7,14 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::physical::PhysicalDevice;
+use vulkano::device::Device;
 use vulkano::format::Format;
 use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
 use vulkano::image::MipmapsCount;
 use vulkano::instance;
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
+use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::Version;
 
 fn main() {
@@ -122,7 +123,7 @@ fn main() {
     let (_, mut queues) = Device::new(
         physical,
         physical.supported_features(),
-        &DeviceExtensions::required_extensions(physical),
+        physical.required_extensions(),
         vec![(queue_family, 0.5)],
     )
     .expect("failed to create device");

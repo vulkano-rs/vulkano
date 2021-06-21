@@ -12,9 +12,9 @@ use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::device::physical::MemoryType;
 use crate::device::Device;
 use crate::instance::Instance;
-use crate::instance::MemoryType;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MappedDeviceMemory;

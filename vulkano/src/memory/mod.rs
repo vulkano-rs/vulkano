@@ -20,7 +20,7 @@
 //!
 //! ```
 //! // Enumerating memory heaps.
-//! # let physical_device: vulkano::instance::PhysicalDevice = return;
+//! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
 //! for heap in physical_device.memory_heaps() {
 //!     println!("Heap #{:?} has a capacity of {:?} bytes", heap.id(), heap.size());
 //! }
@@ -37,7 +37,7 @@
 //!
 //! ```
 //! // Enumerating memory types.
-//! # let physical_device: vulkano::instance::PhysicalDevice = return;
+//! # let physical_device: vulkano::device::physical::PhysicalDevice = return;
 //! for ty in physical_device.memory_types() {
 //!     println!("Memory type belongs to heap #{:?}", ty.heap().id());
 //!     println!("Host-accessible: {:?}", ty.is_host_visible());

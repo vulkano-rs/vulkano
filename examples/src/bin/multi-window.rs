@@ -22,10 +22,11 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -53,8 +54,7 @@ struct WindowSurface {
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let event_loop = EventLoop::new();
 
     // A hashmap that contains all of our created windows and their resources

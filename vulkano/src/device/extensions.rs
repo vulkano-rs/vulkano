@@ -8,10 +8,10 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::device::physical::PhysicalDevice;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
-use crate::instance::PhysicalDevice;
 use crate::VulkanObject;
 use std::ffi::CStr;
 use std::ptr;
@@ -149,21 +149,22 @@ impl DeviceExtensions {
     }
 
     /// Returns a `DeviceExtensions` object with extensions supported by the `PhysicalDevice`.
+    #[deprecated(
+        since = "0.25",
+        note = "Use PhysicalDevice::supported_extensions instead"
+    )]
     pub fn supported_by_device(physical_device: PhysicalDevice) -> Self {
-        match DeviceExtensions::supported_by_device_raw(physical_device) {
-            Ok(l) => l,
-            Err(SupportedExtensionsError::LoadingError(_)) => unreachable!(),
-            Err(SupportedExtensionsError::OomError(e)) => panic!("{:?}", e),
-        }
+        *physical_device.supported_extensions()
     }
 
     /// Returns a `DeviceExtensions` object with extensions required as well as supported by the `PhysicalDevice`.
     /// They are needed to be passed to `Device::new(...)`.
+    #[deprecated(
+        since = "0.25",
+        note = "Use PhysicalDevice::required_extensions instead"
+    )]
     pub fn required_extensions(physical_device: PhysicalDevice) -> Self {
-        let supported = Self::supported_by_device(physical_device);
-        let required_if_supported = Self::required_if_supported_extensions();
-
-        required_if_supported.intersection(&supported)
+        *physical_device.required_extensions()
     }
 }
 

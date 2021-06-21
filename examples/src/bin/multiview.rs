@@ -23,6 +23,7 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
+use vulkano::device::physical::PhysicalDevice;
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::view::ImageView;
@@ -30,7 +31,6 @@ use vulkano::image::{
     ImageAccess, ImageCreateFlags, ImageDimensions, ImageLayout, ImageUsage, SampleCount,
     StorageImage,
 };
-use vulkano::instance::PhysicalDevice;
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;

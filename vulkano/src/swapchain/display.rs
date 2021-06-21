@@ -29,8 +29,8 @@
 #![allow(unused_variables)] // TODO: this module isn't finished
 
 use crate::check_errors;
+use crate::device::physical::PhysicalDevice;
 use crate::instance::Instance;
-use crate::instance::PhysicalDevice;
 use crate::swapchain::SupportedSurfaceTransforms;
 use crate::OomError;
 use crate::VulkanObject;
@@ -58,7 +58,7 @@ impl DisplayPlane {
     pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<DisplayPlane>, OomError> {
         let fns = device.instance().fns();
 
-        assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
+        assert!(device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
         let num = unsafe {
             let mut num: u32 = 0;
@@ -182,7 +182,7 @@ impl Display {
     /// See the docs of enumerate().
     pub fn enumerate_raw(device: PhysicalDevice) -> Result<IntoIter<Display>, OomError> {
         let fns = device.instance().fns();
-        assert!(device.instance().loaded_extensions().khr_display); // TODO: return error instead
+        assert!(device.instance().enabled_extensions().khr_display); // TODO: return error instead
 
         let num = unsafe {
             let mut num = 0;
@@ -353,7 +353,7 @@ pub struct DisplayMode {
 impl DisplayMode {
     /*pub fn new(display: &Display) -> Result<Arc<DisplayMode>, OomError> {
         let fns = instance.fns();
-        assert!(device.instance().loaded_extensions().khr_display);     // TODO: return error instead
+        assert!(device.instance().enabled_extensions().khr_display);     // TODO: return error instead
 
         let parameters = ash::vk::DisplayModeParametersKHR {
             visibleRegion: ash::vk::Extent2D { width: , height:  },
