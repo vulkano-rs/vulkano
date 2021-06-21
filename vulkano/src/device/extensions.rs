@@ -7,14 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::check_errors;
 use crate::device::physical::PhysicalDevice;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
-use crate::VulkanObject;
-use std::ffi::CStr;
-use std::ptr;
 
 macro_rules! device_extensions {
     (
@@ -118,34 +114,14 @@ pub(crate) use device_extensions;
 
 impl DeviceExtensions {
     /// See the docs of supported_by_device().
+    #[deprecated(
+        since = "0.25",
+        note = "Use PhysicalDevice::supported_extensions instead"
+    )]
     pub fn supported_by_device_raw(
         physical_device: PhysicalDevice,
     ) -> Result<Self, SupportedExtensionsError> {
-        let fns = physical_device.instance().fns();
-
-        let properties: Vec<ash::vk::ExtensionProperties> = unsafe {
-            let mut num = 0;
-            check_errors(fns.v1_0.enumerate_device_extension_properties(
-                physical_device.internal_object(),
-                ptr::null(),
-                &mut num,
-                ptr::null_mut(),
-            ))?;
-
-            let mut properties = Vec::with_capacity(num as usize);
-            check_errors(fns.v1_0.enumerate_device_extension_properties(
-                physical_device.internal_object(),
-                ptr::null(),
-                &mut num,
-                properties.as_mut_ptr(),
-            ))?;
-            properties.set_len(num as usize);
-            properties
-        };
-
-        Ok(Self::from(properties.iter().map(|property| unsafe {
-            CStr::from_ptr(property.extension_name.as_ptr())
-        })))
+        Ok(*physical_device.supported_extensions())
     }
 
     /// Returns a `DeviceExtensions` object with extensions supported by the `PhysicalDevice`.
