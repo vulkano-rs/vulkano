@@ -11,11 +11,11 @@ use super::VertexMemberInfo;
 use crate::buffer::BufferAccess;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
-use crate::pipeline::vertex::InputRate;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexInputAttribute;
 use crate::pipeline::vertex::VertexInputBinding;
+use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::vertex::VertexSource;
 use std::mem;
 use std::sync::Arc;
@@ -28,7 +28,7 @@ pub struct BuffersDefinition(Vec<VertexBuffer>);
 struct VertexBuffer {
     info_fn: fn(&str) -> Option<VertexMemberInfo>,
     stride: u32,
-    input_rate: InputRate,
+    input_rate: VertexInputRate,
 }
 
 impl From<VertexBuffer> for VertexInputBinding {
@@ -48,12 +48,42 @@ impl BuffersDefinition {
         BuffersDefinition(Vec::new())
     }
 
-    /// Adds a new buffer to the definition.
-    pub fn push<V: Vertex>(mut self, input_rate: InputRate) -> Self {
+    /// Adds a new vertex buffer containing elements of type `V` to the definition.
+    pub fn vertex<V: Vertex>(mut self) -> Self {
         self.0.push(VertexBuffer {
             info_fn: V::member,
             stride: mem::size_of::<V>() as u32,
-            input_rate,
+            input_rate: VertexInputRate::Vertex,
+        });
+        self
+    }
+
+    /// Adds a new instance buffer containing elements of type `V` to the definition.
+    pub fn instance<V: Vertex>(mut self) -> Self {
+        self.0.push(VertexBuffer {
+            info_fn: V::member,
+            stride: mem::size_of::<V>() as u32,
+            input_rate: VertexInputRate::Instance { divisor: 1 },
+        });
+        self
+    }
+
+    /// Adds a new instance buffer containing elements of type `V` to the definition, with the
+    /// specified input rate divisor.
+    ///
+    /// This requires the
+    /// [`vertex_attribute_instance_rate_divisor`](crate::device::Features::vertex_attribute_instance_rate_divisor)
+    /// feature has been enabled on the device, unless `divisor` is 1.
+    ///
+    /// `divisor` can be 0 if the
+    /// [`vertex_attribute_instance_rate_zero_divisor`](crate::device::Features::vertex_attribute_instance_rate_zero_divisor)
+    /// feature is also enabled. This means that every vertex will use the same vertex and instance
+    /// data.
+    pub fn instance_with_divisor<V: Vertex>(mut self, divisor: u32) -> Self {
+        self.0.push(VertexBuffer {
+            info_fn: V::member,
+            stride: mem::size_of::<V>() as u32,
+            input_rate: VertexInputRate::Instance { divisor },
         });
         self
     }
@@ -157,16 +187,32 @@ impl BuffersDefinition {
         let mut instances = None;
 
         for (buffer, source) in self.0.iter().zip(source) {
-            let len = source.size() / buffer.stride as usize;
-            let count = match buffer.input_rate {
-                InputRate::Vertex => &mut vertices,
-                InputRate::Instance => &mut instances,
+            let items = source.size() / buffer.stride as usize;
+            let (items, count) = match buffer.input_rate {
+                VertexInputRate::Vertex => (items, &mut vertices),
+                VertexInputRate::Instance { divisor } => (
+                    if divisor == 0 {
+                        // A divisor of 0 means the same instance data is used for all instances,
+                        // so we can draw any number of instances from a single element.
+                        // The buffer must contain at least one element though.
+                        if items == 0 {
+                            0
+                        } else {
+                            usize::MAX
+                        }
+                    } else {
+                        // If divisor is 2, we use only half the amount of data from the source buffer,
+                        // so the number of instances that can be drawn is twice as large.
+                        items * divisor as usize
+                    },
+                    &mut instances,
+                ),
             };
 
             if let Some(count) = count {
-                *count = std::cmp::min(*count, len);
+                *count = std::cmp::min(*count, items);
             } else {
-                *count = Some(len);
+                *count = Some(items);
             }
         }
 

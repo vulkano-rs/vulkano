@@ -25,7 +25,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::instance::PhysicalDevice;
-use vulkano::pipeline::vertex::{BuffersDefinition, InputRate};
+use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -334,8 +334,8 @@ fn window_size_dependent_setup(
         GraphicsPipeline::start()
             .vertex_input(
                 BuffersDefinition::new()
-                    .push::<Vertex>(InputRate::Vertex)
-                    .push::<Normal>(InputRate::Vertex),
+                    .vertex::<Vertex>()
+                    .vertex::<Normal>(),
             )
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()

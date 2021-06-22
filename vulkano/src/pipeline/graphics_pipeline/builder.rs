@@ -39,9 +39,9 @@ use crate::pipeline::shader::GraphicsShaderType;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::BuffersDefinition;
-use crate::pipeline::vertex::InputRate;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::viewport::ViewportsState;
@@ -432,7 +432,7 @@ where
         };
 
         // Vertex bindings.
-        let (binding_descriptions, attribute_descriptions) = {
+        let (binding_descriptions, binding_divisor_descriptions, attribute_descriptions) = {
             let bindings = self
                 .vertex_input
                 .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
@@ -457,6 +457,7 @@ where
             }
 
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
+            let mut binding_divisor_descriptions = SmallVec::<[_; 8]>::new();
             let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
 
             for (binding, binding_desc) in bindings.into_iter().enumerate() {
@@ -487,6 +488,49 @@ where
                     stride: binding_desc.stride,
                     input_rate: binding_desc.input_rate.into(),
                 });
+
+                if let VertexInputRate::Instance { divisor } = binding_desc.input_rate {
+                    if divisor != 1 {
+                        if !device
+                            .enabled_features()
+                            .vertex_attribute_instance_rate_divisor
+                        {
+                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateDivisorFeatureNotEnabled);
+                        }
+
+                        if divisor == 0
+                            && !device
+                                .enabled_features()
+                                .vertex_attribute_instance_rate_zero_divisor
+                        {
+                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled);
+                        }
+
+                        if divisor
+                            > device
+                                .physical_device()
+                                .properties()
+                                .max_vertex_attrib_divisor
+                                .unwrap()
+                        {
+                            return Err(
+                                GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded {
+                                    binding,
+                                    max: device
+                                        .physical_device()
+                                        .properties()
+                                        .max_vertex_attrib_divisor
+                                        .unwrap(),
+                                    obtained: divisor,
+                                },
+                            );
+                        }
+
+                        binding_divisor_descriptions.push(
+                            ash::vk::VertexInputBindingDivisorDescriptionEXT { binding, divisor },
+                        )
+                    }
+                }
 
                 for attribute_desc in binding_desc.attributes {
                     // TODO: check attribute format support
@@ -538,10 +582,29 @@ where
                 );
             }
 
-            (binding_descriptions, attribute_descriptions)
+            (
+                binding_descriptions,
+                binding_divisor_descriptions,
+                attribute_descriptions,
+            )
+        };
+
+        let vertex_input_divisor_state = if !binding_divisor_descriptions.is_empty() {
+            Some(ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT {
+                vertex_binding_divisor_count: binding_divisor_descriptions.len() as u32,
+                p_vertex_binding_divisors: binding_divisor_descriptions.as_ptr(),
+                ..Default::default()
+            })
+        } else {
+            None
         };
 
         let vertex_input_state = ash::vk::PipelineVertexInputStateCreateInfo {
+            p_next: if let Some(next) = vertex_input_divisor_state.as_ref() {
+                next as *const _ as *const _
+            } else {
+                ptr::null()
+            },
             flags: ash::vk::PipelineVertexInputStateCreateFlags::empty(),
             vertex_binding_description_count: binding_descriptions.len() as u32,
             p_vertex_binding_descriptions: binding_descriptions.as_ptr(),
@@ -1159,7 +1222,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Gss,
         Fss,
     > {
-        self.vertex_input(BuffersDefinition::new().push::<V>(InputRate::Vertex))
+        self.vertex_input(BuffersDefinition::new().vertex::<V>())
     }
 
     /// Sets the vertex shader to use.
