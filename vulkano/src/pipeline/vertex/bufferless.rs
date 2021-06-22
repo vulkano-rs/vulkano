@@ -9,12 +9,10 @@
 
 use crate::buffer::BufferAccess;
 use crate::pipeline::shader::ShaderInterface;
-use crate::pipeline::vertex::AttributeInfo;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
-use crate::pipeline::vertex::InputRate;
 use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexSource;
-use std::iter;
 
 /// Implementation of `VertexDefinition` for drawing with no buffers at all.
 ///
@@ -60,12 +58,10 @@ unsafe impl<T> VertexSource<Vec<T>> for BufferlessDefinition {
 }
 
 unsafe impl VertexDefinition for BufferlessDefinition {
-    type BuffersIter = iter::Empty<(u32, usize, InputRate)>;
-    type AttribsIter = iter::Empty<(u32, u32, AttributeInfo)>;
     fn definition(
         &self,
         _: &ShaderInterface,
-    ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
-        Ok((iter::empty(), iter::empty()))
+    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
+        Ok(vec![])
     }
 }

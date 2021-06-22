@@ -110,33 +110,31 @@ fn main() {
 
     let image_view = ImageView::new(image.clone()).unwrap();
 
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 2],
-        }
-        vulkano::impl_vertex!(Vertex, position);
+    #[derive(Default, Debug, Clone)]
+    struct Vertex {
+        position: [f32; 2],
+    }
+    vulkano::impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            [
-                Vertex {
-                    position: [-0.5, -0.25],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                },
-                Vertex {
-                    position: [0.25, -0.1],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap()
-    };
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        [
+            Vertex {
+                position: [-0.5, -0.25],
+            },
+            Vertex {
+                position: [0.0, 0.5],
+            },
+            Vertex {
+                position: [0.25, -0.1],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
 
     // Note the `#extension GL_EXT_multiview : enable` that enables the multiview extension
     // for the shader and the use of `gl_ViewIndex` which contains a value based on which
@@ -221,7 +219,7 @@ fn main() {
 
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input_single_buffer()
+            .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
             .viewports(iter::once(Viewport {

@@ -53,8 +53,7 @@ struct WindowSurface {
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let event_loop = EventLoop::new();
 
     // A hashmap that contains all of our created windows and their resources
@@ -116,33 +115,31 @@ fn main() {
             .unwrap()
     };
 
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 2],
-        }
-        vulkano::impl_vertex!(Vertex, position);
+    #[derive(Default, Debug, Clone)]
+    struct Vertex {
+        position: [f32; 2],
+    }
+    vulkano::impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            [
-                Vertex {
-                    position: [-0.5, -0.25],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                },
-                Vertex {
-                    position: [0.25, -0.1],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap()
-    };
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        [
+            Vertex {
+                position: [-0.5, -0.25],
+            },
+            Vertex {
+                position: [0.0, 0.5],
+            },
+            Vertex {
+                position: [0.25, -0.1],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
 
     mod vs {
         vulkano_shaders::shader! {
@@ -198,7 +195,7 @@ fn main() {
 
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input_single_buffer()
+            .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)

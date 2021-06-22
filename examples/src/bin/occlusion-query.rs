@@ -84,69 +84,67 @@ fn main() {
             .unwrap()
     };
 
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 3],
-            color: [f32; 3],
-        }
-        vulkano::impl_vertex!(Vertex, position, color);
+    #[derive(Default, Debug, Clone)]
+    struct Vertex {
+        position: [f32; 3],
+        color: [f32; 3],
+    }
+    vulkano::impl_vertex!(Vertex, position, color);
 
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            [
-                // The first triangle (red) is the same one as in the triangle example.
-                Vertex {
-                    position: [-0.5, -0.25, 0.5],
-                    color: [1.0, 0.0, 0.0],
-                },
-                Vertex {
-                    position: [0.0, 0.5, 0.5],
-                    color: [1.0, 0.0, 0.0],
-                },
-                Vertex {
-                    position: [0.25, -0.1, 0.5],
-                    color: [1.0, 0.0, 0.0],
-                },
-                // The second triangle (cyan) is the same shape and position as the first,
-                // but smaller, and moved behind a bit.
-                // It should be completely occluded by the first triangle.
-                // (You can lower its z value to put it in front)
-                Vertex {
-                    position: [-0.25, -0.125, 0.6],
-                    color: [0.0, 1.0, 1.0],
-                },
-                Vertex {
-                    position: [0.0, 0.25, 0.6],
-                    color: [0.0, 1.0, 1.0],
-                },
-                Vertex {
-                    position: [0.125, -0.05, 0.6],
-                    color: [0.0, 1.0, 1.0],
-                },
-                // The third triangle (green) is the same shape and size as the first,
-                // but moved to the left and behind the second.
-                // It is partially occluded by the first two.
-                Vertex {
-                    position: [-0.25, -0.25, 0.7],
-                    color: [0.0, 1.0, 0.0],
-                },
-                Vertex {
-                    position: [0.25, 0.5, 0.7],
-                    color: [0.0, 1.0, 0.0],
-                },
-                Vertex {
-                    position: [0.5, -0.1, 0.7],
-                    color: [0.0, 1.0, 0.0],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap()
-    };
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        [
+            // The first triangle (red) is the same one as in the triangle example.
+            Vertex {
+                position: [-0.5, -0.25, 0.5],
+                color: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [0.0, 0.5, 0.5],
+                color: [1.0, 0.0, 0.0],
+            },
+            Vertex {
+                position: [0.25, -0.1, 0.5],
+                color: [1.0, 0.0, 0.0],
+            },
+            // The second triangle (cyan) is the same shape and position as the first,
+            // but smaller, and moved behind a bit.
+            // It should be completely occluded by the first triangle.
+            // (You can lower its z value to put it in front)
+            Vertex {
+                position: [-0.25, -0.125, 0.6],
+                color: [0.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.0, 0.25, 0.6],
+                color: [0.0, 1.0, 1.0],
+            },
+            Vertex {
+                position: [0.125, -0.05, 0.6],
+                color: [0.0, 1.0, 1.0],
+            },
+            // The third triangle (green) is the same shape and size as the first,
+            // but moved to the left and behind the second.
+            // It is partially occluded by the first two.
+            Vertex {
+                position: [-0.25, -0.25, 0.7],
+                color: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.25, 0.5, 0.7],
+                color: [0.0, 1.0, 0.0],
+            },
+            Vertex {
+                position: [0.5, -0.1, 0.7],
+                color: [0.0, 1.0, 0.0],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
 
     // Create three buffer slices, one for each triangle.
     let buffer_slice = vertex_buffer.into_buffer_slice();
@@ -230,7 +228,7 @@ fn main() {
 
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input_single_buffer()
+            .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)

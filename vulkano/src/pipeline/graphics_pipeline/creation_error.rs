@@ -44,17 +44,17 @@ pub enum GraphicsPipelineCreationError {
     /// has been exceeded.
     MaxVertexInputBindingStrideExceeded {
         /// Index of the faulty binding.
-        binding: usize,
+        binding: u32,
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
-        obtained: usize,
+        obtained: u32,
     },
 
     /// The maximum number of vertex sources has been exceeded.
     MaxVertexInputBindingsExceeded {
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
         obtained: usize,
     },
@@ -63,15 +63,15 @@ pub enum GraphicsPipelineCreationError {
     /// struct is too large.
     MaxVertexInputAttributeOffsetExceeded {
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
-        obtained: usize,
+        obtained: u32,
     },
 
     /// The maximum number of vertex attributes has been exceeded.
     MaxVertexInputAttributesExceeded {
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
         obtained: usize,
     },
