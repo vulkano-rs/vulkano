@@ -9,8 +9,8 @@
 
 use crate::check_errors;
 use crate::descriptor_set::descriptor::DescriptorDesc;
+use crate::descriptor_set::pool::DescriptorsCount;
 use crate::descriptor_set::DescriptorSetDesc;
-use crate::descriptor_set::DescriptorsCount;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::OomError;
@@ -163,8 +163,8 @@ mod tests {
     use crate::descriptor_set::descriptor::DescriptorDesc;
     use crate::descriptor_set::descriptor::DescriptorDescTy;
     use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::pool::DescriptorsCount;
     use crate::descriptor_set::DescriptorSetLayout;
-    use crate::descriptor_set::DescriptorsCount;
     use std::iter;
 
     #[test]

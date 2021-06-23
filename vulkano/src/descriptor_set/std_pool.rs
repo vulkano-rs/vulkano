@@ -7,12 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_set::DescriptorPool;
-use crate::descriptor_set::DescriptorPoolAlloc;
-use crate::descriptor_set::DescriptorPoolAllocError;
+use crate::descriptor_set::pool::DescriptorPool;
+use crate::descriptor_set::pool::DescriptorPoolAlloc;
+use crate::descriptor_set::pool::DescriptorPoolAllocError;
+use crate::descriptor_set::pool::DescriptorsCount;
+use crate::descriptor_set::pool::UnsafeDescriptorPool;
 use crate::descriptor_set::DescriptorSetLayout;
-use crate::descriptor_set::DescriptorsCount;
-use crate::descriptor_set::UnsafeDescriptorPool;
 use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -180,7 +180,7 @@ mod tests {
     use crate::descriptor_set::descriptor::DescriptorDesc;
     use crate::descriptor_set::descriptor::DescriptorDescTy;
     use crate::descriptor_set::descriptor::ShaderStages;
-    use crate::descriptor_set::DescriptorPool;
+    use crate::descriptor_set::pool::DescriptorPool;
     use crate::descriptor_set::DescriptorSetLayout;
     use crate::descriptor_set::StdDescriptorPool;
     use std::iter;
