@@ -344,7 +344,7 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor_set::UnsafeDescriptorSet;
         #[allow(unused_imports)]
-        use vulkano::descriptor_set::UnsafeDescriptorSetLayout;
+        use vulkano::descriptor_set::DescriptorSetLayout;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]

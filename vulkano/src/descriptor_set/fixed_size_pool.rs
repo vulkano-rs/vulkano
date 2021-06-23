@@ -16,9 +16,9 @@ use crate::descriptor_set::DescriptorPoolAlloc;
 use crate::descriptor_set::DescriptorPoolAllocError;
 use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetDesc;
+use crate::descriptor_set::DescriptorSetLayout;
 use crate::descriptor_set::UnsafeDescriptorPool;
 use crate::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
@@ -70,7 +70,7 @@ use std::sync::Arc;
 ///
 #[derive(Clone)]
 pub struct FixedSizeDescriptorSetsPool {
-    layout: Arc<UnsafeDescriptorSetLayout>,
+    layout: Arc<DescriptorSetLayout>,
     // We hold a local implementation of the `DescriptorPool` trait for our own purpose. Since we
     // don't want to expose this trait impl in our API, we use a separate struct.
     pool: LocalPool,
@@ -79,7 +79,7 @@ pub struct FixedSizeDescriptorSetsPool {
 impl FixedSizeDescriptorSetsPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    pub fn new(layout: Arc<UnsafeDescriptorSetLayout>) -> FixedSizeDescriptorSetsPool {
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> FixedSizeDescriptorSetsPool {
         let device = layout.device().clone();
 
         FixedSizeDescriptorSetsPool {
@@ -218,7 +218,7 @@ struct LocalPoolAlloc {
 unsafe impl DescriptorPool for LocalPool {
     type Alloc = LocalPoolAlloc;
 
-    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
+    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<Self::Alloc, OomError> {
         loop {
             // Try to extract a descriptor from the current pool if any exist.
             // This is the most common case.

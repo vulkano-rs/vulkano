@@ -52,7 +52,7 @@
 //!
 //! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
-//!   instance of this object. This is represented with the `UnsafeDescriptorSetLayout` type in
+//!   instance of this object. This is represented with the `DescriptorSetLayout` type in
 //!   vulkano.
 //! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
 //!   be used to allocate and free individual descriptor sets. This is represented with the
@@ -79,6 +79,7 @@ pub use self::fixed_size_pool::FixedSizeDescriptorSet;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilder;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilderArray;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
+pub use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
 pub use self::persistent::PersistentDescriptorSetBuf;
 pub use self::persistent::PersistentDescriptorSetBufView;
@@ -98,7 +99,6 @@ pub use self::sys::DescriptorsCount;
 pub use self::sys::UnsafeDescriptorPool;
 pub use self::sys::UnsafeDescriptorPoolAllocIter;
 pub use self::sys::UnsafeDescriptorSet;
-pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
 use crate::buffer::BufferAccess;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
@@ -110,10 +110,10 @@ use std::hash::Hasher;
 pub mod collection;
 pub mod descriptor;
 mod fixed_size_pool;
+mod layout;
 mod persistent;
 mod std_pool;
 mod sys;
-mod unsafe_layout;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///

@@ -12,7 +12,7 @@ use crate::buffer::BufferInner;
 use crate::buffer::BufferView;
 use crate::check_errors;
 use crate::descriptor_set::descriptor::DescriptorType;
-use crate::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
@@ -40,7 +40,7 @@ pub unsafe trait DescriptorPool: DeviceOwned {
     type Alloc: DescriptorPoolAlloc;
 
     /// Allocates a descriptor set.
-    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError>;
+    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<Self::Alloc, OomError>;
 }
 
 /// An allocated descriptor set.
@@ -356,7 +356,7 @@ impl UnsafeDescriptorPool {
         layouts: I,
     ) -> Result<UnsafeDescriptorPoolAllocIter, DescriptorPoolAllocError>
     where
-        I: IntoIterator<Item = &'l UnsafeDescriptorSetLayout>,
+        I: IntoIterator<Item = &'l DescriptorSetLayout>,
     {
         let layouts: SmallVec<[_; 8]> = layouts
             .into_iter()
@@ -586,13 +586,13 @@ impl UnsafeDescriptorSet {
     /// Modifies a descriptor set. Doesn't check that the writes or copies are correct, and
     /// doesn't check whether the descriptor set is in use.
     ///
-    /// **Important**: You must ensure that the `UnsafeDescriptorSetLayout` object is alive before
+    /// **Important**: You must ensure that the `DescriptorSetLayout` object is alive before
     /// updating a descriptor set.
     ///
     /// # Safety
     ///
     /// - The `Device` must be the device the pool of this set was created with.
-    /// - The `UnsafeDescriptorSetLayout` object this set was created with must be alive.
+    /// - The `DescriptorSetLayout` object this set was created with must be alive.
     /// - Doesn't verify that the things you write in the descriptor set match its layout.
     /// - Doesn't keep the resources alive. You have to do that yourself.
     /// - Updating a descriptor set obeys synchronization rules that aren't checked here. Once a
@@ -1146,9 +1146,9 @@ mod tests {
     use crate::descriptor_set::descriptor::DescriptorDesc;
     use crate::descriptor_set::descriptor::DescriptorDescTy;
     use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::DescriptorSetLayout;
     use crate::descriptor_set::DescriptorsCount;
     use crate::descriptor_set::UnsafeDescriptorPool;
-    use crate::descriptor_set::UnsafeDescriptorSetLayout;
     use std::iter;
 
     #[test]
@@ -1199,7 +1199,7 @@ mod tests {
         };
 
         let set_layout =
-            UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
+            DescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
 
         let desc = DescriptorsCount {
             uniform_buffer: 10,
@@ -1228,7 +1228,7 @@ mod tests {
             readonly: true,
         };
 
-        let set_layout = UnsafeDescriptorSetLayout::new(device1, iter::once(Some(layout))).unwrap();
+        let set_layout = DescriptorSetLayout::new(device1, iter::once(Some(layout))).unwrap();
 
         let desc = DescriptorsCount {
             uniform_buffer: 10,

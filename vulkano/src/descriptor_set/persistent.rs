@@ -19,10 +19,10 @@ use crate::descriptor_set::DescriptorPool;
 use crate::descriptor_set::DescriptorPoolAlloc;
 use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetDesc;
+use crate::descriptor_set::DescriptorSetLayout;
 use crate::descriptor_set::DescriptorWrite;
 use crate::descriptor_set::StdDescriptorPoolAlloc;
 use crate::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
@@ -58,7 +58,7 @@ use std::sync::Arc;
 pub struct PersistentDescriptorSet<R, P = StdDescriptorPoolAlloc> {
     inner: P,
     resources: R,
-    layout: Arc<UnsafeDescriptorSetLayout>,
+    layout: Arc<DescriptorSetLayout>,
 }
 
 impl PersistentDescriptorSet<()> {
@@ -68,7 +68,7 @@ impl PersistentDescriptorSet<()> {
     ///
     /// - Panics if the set id is out of range.
     ///
-    pub fn start(layout: Arc<UnsafeDescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()> {
+    pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()> {
         let cap = layout.num_bindings();
 
         PersistentDescriptorSetBuilder {
@@ -168,7 +168,7 @@ where
 /// See the docs of `PersistentDescriptorSet` for an example.
 pub struct PersistentDescriptorSetBuilder<R> {
     // The descriptor set layout.
-    layout: Arc<UnsafeDescriptorSetLayout>,
+    layout: Arc<DescriptorSetLayout>,
     // Binding currently being filled.
     binding_id: usize,
     // The writes to perform on a descriptor set in order to put the resources in it.
