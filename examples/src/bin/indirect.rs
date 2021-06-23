@@ -37,7 +37,7 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, DynamicState,
     SubpassContents,
 };
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};

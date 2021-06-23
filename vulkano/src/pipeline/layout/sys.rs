@@ -8,8 +8,8 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor::descriptor::ShaderStages;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::descriptor::ShaderStages;
+use crate::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutDesc;

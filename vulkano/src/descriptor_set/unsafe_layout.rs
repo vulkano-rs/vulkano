@@ -8,9 +8,9 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor::descriptor::DescriptorDesc;
-use crate::descriptor::descriptor_set::DescriptorSetDesc;
-use crate::descriptor::descriptor_set::DescriptorsCount;
+use crate::descriptor_set::descriptor::DescriptorDesc;
+use crate::descriptor_set::DescriptorSetDesc;
+use crate::descriptor_set::DescriptorsCount;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::OomError;
@@ -166,12 +166,12 @@ impl Drop for UnsafeDescriptorSetLayout {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor::descriptor::DescriptorBufferDesc;
-    use crate::descriptor::descriptor::DescriptorDesc;
-    use crate::descriptor::descriptor::DescriptorDescTy;
-    use crate::descriptor::descriptor::ShaderStages;
-    use crate::descriptor::descriptor_set::DescriptorsCount;
-    use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use crate::descriptor_set::descriptor::DescriptorBufferDesc;
+    use crate::descriptor_set::descriptor::DescriptorDesc;
+    use crate::descriptor_set::descriptor::DescriptorDescTy;
+    use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::DescriptorsCount;
+    use crate::descriptor_set::UnsafeDescriptorSetLayout;
     use std::iter;
 
     #[test]

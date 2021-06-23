@@ -9,7 +9,7 @@
 
 use crate::buffer::BufferAccess;
 use crate::command_buffer::DynamicState;
-use crate::descriptor::DescriptorSet;
+use crate::descriptor_set::DescriptorSet;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;

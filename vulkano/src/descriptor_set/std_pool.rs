@@ -7,19 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-use std::sync::Mutex;
-
-use crate::descriptor::descriptor_set::DescriptorPool;
-use crate::descriptor::descriptor_set::DescriptorPoolAlloc;
-use crate::descriptor::descriptor_set::DescriptorPoolAllocError;
-use crate::descriptor::descriptor_set::DescriptorsCount;
-use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::DescriptorPool;
+use crate::descriptor_set::DescriptorPoolAlloc;
+use crate::descriptor_set::DescriptorPoolAllocError;
+use crate::descriptor_set::DescriptorsCount;
+use crate::descriptor_set::UnsafeDescriptorPool;
+use crate::descriptor_set::UnsafeDescriptorSet;
+use crate::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::OomError;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Standard implementation of a descriptor pool.
 ///
@@ -181,12 +180,12 @@ impl Drop for StdDescriptorPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor::descriptor::DescriptorDesc;
-    use crate::descriptor::descriptor::DescriptorDescTy;
-    use crate::descriptor::descriptor::ShaderStages;
-    use crate::descriptor::descriptor_set::DescriptorPool;
-    use crate::descriptor::descriptor_set::StdDescriptorPool;
-    use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use crate::descriptor_set::descriptor::DescriptorDesc;
+    use crate::descriptor_set::descriptor::DescriptorDescTy;
+    use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::DescriptorPool;
+    use crate::descriptor_set::StdDescriptorPool;
+    use crate::descriptor_set::UnsafeDescriptorSetLayout;
     use std::iter;
     use std::sync::Arc;
 

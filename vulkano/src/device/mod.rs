@@ -97,7 +97,7 @@ pub(crate) use self::properties::PropertiesFfi;
 pub use crate::autogen::DeviceExtensions;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
-use crate::descriptor::descriptor_set::StdDescriptorPool;
+use crate::descriptor_set::StdDescriptorPool;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };

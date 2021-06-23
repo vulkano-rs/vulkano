@@ -80,9 +80,9 @@ impl DescriptorDesc {
     ///
     ///# Example
     ///```
-    ///use vulkano::descriptor::descriptor::DescriptorDesc;
-    ///use vulkano::descriptor::descriptor::DescriptorDescTy::*;
-    ///use vulkano::descriptor::descriptor::ShaderStages;
+    ///use vulkano::descriptor_set::descriptor::DescriptorDesc;
+    ///use vulkano::descriptor_set::descriptor::DescriptorDescTy::*;
+    ///use vulkano::descriptor_set::descriptor::ShaderStages;
     ///
     ///let desc_super = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
     ///  vertex: true,
@@ -132,9 +132,9 @@ impl DescriptorDesc {
     ///
     ///# Example
     ///```
-    ///use vulkano::descriptor::descriptor::DescriptorDesc;
-    ///use vulkano::descriptor::descriptor::DescriptorDescTy::*;
-    ///use vulkano::descriptor::descriptor::ShaderStages;
+    ///use vulkano::descriptor_set::descriptor::DescriptorDesc;
+    ///use vulkano::descriptor_set::descriptor::DescriptorDescTy::*;
+    ///use vulkano::descriptor_set::descriptor::ShaderStages;
     ///
     ///let desc_part1 = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
     ///  vertex: true,

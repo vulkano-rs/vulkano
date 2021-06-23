@@ -11,8 +11,8 @@ use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
 use crate::buffer::BufferView;
 use crate::check_errors;
-use crate::descriptor::descriptor::DescriptorType;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::descriptor::DescriptorType;
+use crate::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
@@ -59,7 +59,7 @@ macro_rules! descriptors_count {
         /// # Example
         ///
         /// ```
-        /// use vulkano::descriptor::descriptor_set::DescriptorsCount;
+        /// use vulkano::descriptor_set::DescriptorsCount;
         ///
         /// let _descriptors = DescriptorsCount {
         ///     uniform_buffer: 10,
@@ -1142,13 +1142,13 @@ impl DescriptorWrite {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor::descriptor::DescriptorBufferDesc;
-    use crate::descriptor::descriptor::DescriptorDesc;
-    use crate::descriptor::descriptor::DescriptorDescTy;
-    use crate::descriptor::descriptor::ShaderStages;
-    use crate::descriptor::descriptor_set::DescriptorsCount;
-    use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
-    use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use crate::descriptor_set::descriptor::DescriptorBufferDesc;
+    use crate::descriptor_set::descriptor::DescriptorDesc;
+    use crate::descriptor_set::descriptor::DescriptorDescTy;
+    use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::DescriptorsCount;
+    use crate::descriptor_set::UnsafeDescriptorPool;
+    use crate::descriptor_set::UnsafeDescriptorSetLayout;
     use std::iter;
 
     #[test]

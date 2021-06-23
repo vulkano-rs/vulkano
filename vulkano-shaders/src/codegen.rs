@@ -326,25 +326,25 @@ where
         #[allow(unused_imports)]
         use vulkano::device::Device;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorDesc;
+        use vulkano::descriptor_set::descriptor::DescriptorDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorDescTy;
+        use vulkano::descriptor_set::descriptor::DescriptorDescTy;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        use vulkano::descriptor_set::descriptor::DescriptorBufferDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDesc;
+        use vulkano::descriptor_set::descriptor::DescriptorImageDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
+        use vulkano::descriptor_set::descriptor::DescriptorImageDescDimensions;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDescArray;
+        use vulkano::descriptor_set::descriptor::DescriptorImageDescArray;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::ShaderStages;
+        use vulkano::descriptor_set::descriptor::ShaderStages;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::DescriptorSet;
+        use vulkano::descriptor_set::DescriptorSet;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
+        use vulkano::descriptor_set::UnsafeDescriptorSet;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+        use vulkano::descriptor_set::UnsafeDescriptorSetLayout;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]

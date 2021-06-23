@@ -7,29 +7,28 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam_queue::SegQueue;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
-
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
-use crate::descriptor::descriptor::DescriptorDesc;
-use crate::descriptor::descriptor_set::persistent::*;
-use crate::descriptor::descriptor_set::DescriptorPool;
-use crate::descriptor::descriptor_set::DescriptorPoolAlloc;
-use crate::descriptor::descriptor_set::DescriptorPoolAllocError;
-use crate::descriptor::descriptor_set::DescriptorSet;
-use crate::descriptor::descriptor_set::DescriptorSetDesc;
-use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::descriptor::DescriptorDesc;
+use crate::descriptor_set::persistent::*;
+use crate::descriptor_set::DescriptorPool;
+use crate::descriptor_set::DescriptorPoolAlloc;
+use crate::descriptor_set::DescriptorPoolAllocError;
+use crate::descriptor_set::DescriptorSet;
+use crate::descriptor_set::DescriptorSetDesc;
+use crate::descriptor_set::UnsafeDescriptorPool;
+use crate::descriptor_set::UnsafeDescriptorSet;
+use crate::descriptor_set::UnsafeDescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
+use crossbeam_queue::SegQueue;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
 
 /// Pool of descriptor sets of a specific capacity and that are automatically reclaimed.
 ///
@@ -41,7 +40,7 @@ use crate::VulkanObject;
 /// At initialization, create a `FixedSizeDescriptorSetsPool`.
 ///
 /// ```rust
-/// use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
+/// use vulkano::descriptor_set::FixedSizeDescriptorSetsPool;
 /// # use vulkano::pipeline::GraphicsPipelineAbstract;
 /// # use std::sync::Arc;
 /// # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
@@ -57,7 +56,7 @@ use crate::VulkanObject;
 ///
 /// ```rust
 /// # use std::sync::Arc;
-/// # use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
+/// # use vulkano::descriptor_set::FixedSizeDescriptorSetsPool;
 /// # use vulkano::pipeline::GraphicsPipelineAbstract;
 /// # let mut pool: FixedSizeDescriptorSetsPool = return;
 /// let descriptor_set = pool.next()

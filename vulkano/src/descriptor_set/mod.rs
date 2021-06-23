@@ -7,10 +7,48 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Descriptor sets creation and management
+//! Bindings between shaders and the resources they access.
 //!
-//! This module is dedicated to managing descriptor sets. There are three concepts in Vulkan
-//! related to descriptor sets:
+//! # Overview
+//!
+//! In order to access a buffer or an image from a shader, that buffer or image must be put in a
+//! *descriptor*. Each descriptor contains one buffer or one image alongside with the way that it
+//! can be accessed. A descriptor can also be an array, in which case it contains multiple buffers
+//! or images that all have the same layout.
+//!
+//! Descriptors are grouped in what is called *descriptor sets*. In Vulkan you don't bind
+//! individual descriptors one by one, but you create then bind descriptor sets one by one. As
+//! binding a descriptor set has (small but non-null) a cost, you are encouraged to put descriptors
+//! that are often used together in the same set so that you can keep the same set binding through
+//! multiple draws.
+//!
+//! # Example
+//!
+//! > **Note**: This section describes the simple way to bind resources. There are more optimized
+//! > ways.
+//!
+//! There are two steps to give access to a resource in a shader: creating the descriptor set, and
+//! passing the descriptor sets when drawing.
+//!
+//! ## Creating a descriptor set
+//!
+//! TODO: write example for: PersistentDescriptorSet::start(layout.clone()).add_buffer(data_buffer.clone())
+//!
+//! ## Passing the descriptor set when drawing
+//!
+//! TODO: write
+//!
+//! # When drawing
+//!
+//! When you call a function that adds a draw command to a command buffer, one of the parameters
+//! corresponds to the list of descriptor sets to use. Vulkano will check that what you passed is
+//! compatible with the layout of the pipeline.
+//!
+//! TODO: talk about perfs of changing sets
+//!
+//! # Descriptor sets creation and management
+//!
+//! There are three concepts in Vulkan related to descriptor sets:
 //!
 //! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
@@ -35,17 +73,8 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use std::hash::Hash;
-use std::hash::Hasher;
-
-use crate::buffer::BufferAccess;
-use crate::descriptor::descriptor::DescriptorDesc;
-use crate::device::DeviceOwned;
-use crate::image::view::ImageViewAbstract;
-use crate::SafeDeref;
-use crate::VulkanObject;
-
 pub use self::collection::DescriptorSetsCollection;
+use self::descriptor::DescriptorDesc;
 pub use self::fixed_size_pool::FixedSizeDescriptorSet;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilder;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilderArray;
@@ -70,9 +99,16 @@ pub use self::sys::UnsafeDescriptorPool;
 pub use self::sys::UnsafeDescriptorPoolAllocIter;
 pub use self::sys::UnsafeDescriptorSet;
 pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
+use crate::buffer::BufferAccess;
+use crate::device::DeviceOwned;
+use crate::image::view::ImageViewAbstract;
+use crate::SafeDeref;
+use crate::VulkanObject;
+use std::hash::Hash;
+use std::hash::Hasher;
 
 pub mod collection;
-
+pub mod descriptor;
 mod fixed_size_pool;
 mod persistent;
 mod std_pool;

@@ -14,7 +14,7 @@
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::{Device, DeviceExtensions};
 use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
 use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract};
@@ -23,13 +23,7 @@ use vulkano::sync::GpuFuture;
 use vulkano::Version;
 
 fn main() {
-    let instance = Instance::new(
-        None,
-        Version::V1_1,
-        &InstanceExtensions::none(),
-        None,
-    )
-    .unwrap();
+    let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     let queue_family = physical
         .queue_families()
