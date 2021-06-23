@@ -80,8 +80,6 @@ pub use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
 pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetError;
-pub use self::std_pool::StdDescriptorPool;
-pub use self::std_pool::StdDescriptorPoolAlloc;
 pub use self::sys::DescriptorWrite;
 pub use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
@@ -98,7 +96,6 @@ pub mod fixed_size_pool;
 mod layout;
 pub mod persistent;
 pub mod pool;
-mod std_pool;
 mod sys;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.

@@ -181,8 +181,8 @@ mod tests {
     use crate::descriptor_set::descriptor::DescriptorDescTy;
     use crate::descriptor_set::descriptor::ShaderStages;
     use crate::descriptor_set::pool::DescriptorPool;
+    use crate::descriptor_set::pool::StdDescriptorPool;
     use crate::descriptor_set::DescriptorSetLayout;
-    use crate::descriptor_set::StdDescriptorPool;
     use std::iter;
     use std::sync::Arc;
 
