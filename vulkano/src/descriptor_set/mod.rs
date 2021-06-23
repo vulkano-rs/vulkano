@@ -75,20 +75,11 @@
 
 pub use self::collection::DescriptorSetsCollection;
 use self::descriptor::DescriptorDesc;
-pub use self::fixed_size_pool::FixedSizeDescriptorSet;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilder;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilderArray;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
 pub use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
-pub use self::persistent::PersistentDescriptorSetBuf;
-pub use self::persistent::PersistentDescriptorSetBufView;
 pub use self::persistent::PersistentDescriptorSetBuildError;
-pub use self::persistent::PersistentDescriptorSetBuilder;
-pub use self::persistent::PersistentDescriptorSetBuilderArray;
 pub use self::persistent::PersistentDescriptorSetError;
-pub use self::persistent::PersistentDescriptorSetImg;
-pub use self::persistent::PersistentDescriptorSetSampler;
 pub use self::std_pool::StdDescriptorPool;
 pub use self::std_pool::StdDescriptorPoolAlloc;
 pub use self::sys::DescriptorPool;
@@ -109,9 +100,9 @@ use std::hash::Hasher;
 
 pub mod collection;
 pub mod descriptor;
-mod fixed_size_pool;
+pub mod fixed_size_pool;
 mod layout;
-mod persistent;
+pub mod persistent;
 mod std_pool;
 mod sys;
 
