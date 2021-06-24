@@ -583,21 +583,15 @@ pub struct SpecializationMapEntry {
     pub size: usize,
 }
 
-/// Describes which shader stages have access to a descriptor.
+/// Describes a set of shader stages.
 // TODO: add example with BitOr
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct ShaderStages {
-    /// `True` means that the descriptor will be used by the vertex shader.
     pub vertex: bool,
-    /// `True` means that the descriptor will be used by the tessellation control shader.
     pub tessellation_control: bool,
-    /// `True` means that the descriptor will be used by the tessellation evaluation shader.
     pub tessellation_evaluation: bool,
-    /// `True` means that the descriptor will be used by the geometry shader.
     pub geometry: bool,
-    /// `True` means that the descriptor will be used by the fragment shader.
     pub fragment: bool,
-    /// `True` means that the descriptor will be used by the compute shader.
     pub compute: bool,
 }
 
@@ -763,7 +757,7 @@ impl From<ShaderStages> for PipelineStages {
     }
 }
 
-/// Error when checking whether some shader stages are superset of others.
+/// Error when checking that a `ShaderStages` object is a superset of another.
 #[derive(Debug, Clone)]
 pub enum ShaderStagesSupersetError {
     NotSuperset,

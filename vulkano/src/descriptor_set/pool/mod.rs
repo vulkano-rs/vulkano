@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A pool from which descriptor sets can be allocated.
+
 pub use self::standard::StdDescriptorPool;
 pub use self::sys::DescriptorPoolAllocError;
 pub use self::sys::UnsafeDescriptorPool;

@@ -7,6 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Describes the layout of all descriptors within a descriptor set.
+//!
+//! When creating a new descriptor set, you must provide a *layout* object to create it from. You
+//! can create a descriptor set layout manually, but it is normally created automatically by each
+//! pipeline layout.
+
 pub use self::desc::DescriptorBufferDesc;
 pub use self::desc::DescriptorDesc;
 pub use self::desc::DescriptorDescSupersetError;

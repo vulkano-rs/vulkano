@@ -7,6 +7,25 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A simple, immutable descriptor set that is expected to be long-lived.
+//!
+//! Creating a persistent descriptor set allocates from a pool, and can't be modified once created.
+//! You are therefore encouraged to create them at initialization and not the during
+//! performance-critical paths.
+//!
+//! > **Note**: You can control of the pool that is used to create the descriptor set, if you wish
+//! > so. By creating a implementation of the `DescriptorPool` trait that doesn't perform any
+//! > actual allocation, you can skip this allocation and make it acceptable to use a persistent
+//! > descriptor set in performance-critical paths..
+//!
+//! The template parameter of the `PersistentDescriptorSet` is complex, and you shouldn't try to
+//! express it explicitly. If you want to store your descriptor set in a struct or in a `Vec` for
+//! example, you are encouraged to turn the `PersistentDescriptorSet` into a `Box<DescriptorSet>`
+//! or a `Arc<DescriptorSet>`.
+//!
+//! # Example
+//! TODO:
+
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
 use crate::descriptor_set::layout::DescriptorDesc;
@@ -37,24 +56,7 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// An immutable descriptor set that is expected to be long-lived.
-///
-/// Creating a persistent descriptor set allocates from a pool, and can't be modified once created.
-/// You are therefore encouraged to create them at initialization and not the during
-/// performance-critical paths.
-///
-/// > **Note**: You can control of the pool that is used to create the descriptor set, if you wish
-/// > so. By creating a implementation of the `DescriptorPool` trait that doesn't perform any
-/// > actual allocation, you can skip this allocation and make it acceptable to use a persistent
-/// > descriptor set in performance-critical paths..
-///
-/// The template parameter of the `PersistentDescriptorSet` is complex, and you shouldn't try to
-/// express it explicitly. If you want to store your descriptor set in a struct or in a `Vec` for
-/// example, you are encouraged to turn the `PersistentDescriptorSet` into a `Box<DescriptorSet>`
-/// or a `Arc<DescriptorSet>`.
-///
-/// # Example
-// TODO:
+/// A simple, immutable descriptor set that is expected to be long-lived.
 pub struct PersistentDescriptorSet<R, P = StdDescriptorPoolAlloc> {
     inner: P,
     resources: R,

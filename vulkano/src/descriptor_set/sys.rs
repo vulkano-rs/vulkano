@@ -7,6 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! Low-level descriptor set.
+
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
 use crate::buffer::BufferView;
