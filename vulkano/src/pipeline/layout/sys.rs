@@ -9,12 +9,12 @@
 
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::layout::ShaderStages;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::layout::PipelineLayoutDescPcRange;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
+use crate::pipeline::shader::ShaderStages;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;

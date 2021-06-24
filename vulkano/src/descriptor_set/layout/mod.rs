@@ -16,8 +16,6 @@ pub use self::desc::DescriptorImageDescArray;
 pub use self::desc::DescriptorImageDescDimensions;
 pub use self::desc::DescriptorSetDesc;
 pub use self::desc::DescriptorType;
-pub use self::desc::ShaderStages;
-pub use self::desc::ShaderStagesSupersetError;
 pub use self::sys::DescriptorSetLayout;
 
 mod desc;

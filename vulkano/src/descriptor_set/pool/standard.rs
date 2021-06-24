@@ -180,9 +180,9 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetLayout;
-    use crate::descriptor_set::layout::ShaderStages;
     use crate::descriptor_set::pool::DescriptorPool;
     use crate::descriptor_set::pool::StdDescriptorPool;
+    use crate::pipeline::shader::ShaderStages;
     use std::iter;
     use std::sync::Arc;
 

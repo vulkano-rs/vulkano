@@ -10,10 +10,10 @@
 //! Contains the `check_desc_against_limits` function and the `PipelineLayoutLimitsError` error.
 
 use crate::descriptor_set::layout::DescriptorType;
-use crate::descriptor_set::layout::ShaderStages;
 use crate::device::Properties;
 use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::layout::PipelineLayoutDescPcRange;
+use crate::pipeline::shader::ShaderStages;
 use std::error;
 use std::fmt;
 

@@ -22,6 +22,7 @@ use crate::device::Device;
 use crate::format::Format;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::sync::PipelineStages;
 use crate::OomError;
 use crate::VulkanObject;
 use std::borrow::Cow;
@@ -30,6 +31,7 @@ use std::ffi::CStr;
 use std::fmt;
 use std::mem;
 use std::mem::MaybeUninit;
+use std::ops::BitOr;
 use std::ops::Range;
 use std::ptr;
 use std::sync::Arc;
@@ -579,4 +581,205 @@ pub struct SpecializationMapEntry {
 
     /// Size of the data in bytes. Must match the size of the constant (`4` for booleans).
     pub size: usize,
+}
+
+/// Describes which shader stages have access to a descriptor.
+// TODO: add example with BitOr
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct ShaderStages {
+    /// `True` means that the descriptor will be used by the vertex shader.
+    pub vertex: bool,
+    /// `True` means that the descriptor will be used by the tessellation control shader.
+    pub tessellation_control: bool,
+    /// `True` means that the descriptor will be used by the tessellation evaluation shader.
+    pub tessellation_evaluation: bool,
+    /// `True` means that the descriptor will be used by the geometry shader.
+    pub geometry: bool,
+    /// `True` means that the descriptor will be used by the fragment shader.
+    pub fragment: bool,
+    /// `True` means that the descriptor will be used by the compute shader.
+    pub compute: bool,
+}
+
+impl ShaderStages {
+    /// Creates a `ShaderStages` struct will all stages set to `true`.
+    // TODO: add example
+    #[inline]
+    pub const fn all() -> ShaderStages {
+        ShaderStages {
+            vertex: true,
+            tessellation_control: true,
+            tessellation_evaluation: true,
+            geometry: true,
+            fragment: true,
+            compute: true,
+        }
+    }
+
+    /// Creates a `ShaderStages` struct will all stages set to `false`.
+    // TODO: add example
+    #[inline]
+    pub const fn none() -> ShaderStages {
+        ShaderStages {
+            vertex: false,
+            tessellation_control: false,
+            tessellation_evaluation: false,
+            geometry: false,
+            fragment: false,
+            compute: false,
+        }
+    }
+
+    /// Creates a `ShaderStages` struct with all graphics stages set to `true`.
+    // TODO: add example
+    #[inline]
+    pub const fn all_graphics() -> ShaderStages {
+        ShaderStages {
+            vertex: true,
+            tessellation_control: true,
+            tessellation_evaluation: true,
+            geometry: true,
+            fragment: true,
+            compute: false,
+        }
+    }
+
+    /// Creates a `ShaderStages` struct with the compute stage set to `true`.
+    // TODO: add example
+    #[inline]
+    pub const fn compute() -> ShaderStages {
+        ShaderStages {
+            vertex: false,
+            tessellation_control: false,
+            tessellation_evaluation: false,
+            geometry: false,
+            fragment: false,
+            compute: true,
+        }
+    }
+
+    /// Checks whether we have more stages enabled than `other`.
+    // TODO: add example
+    #[inline]
+    pub const fn is_superset_of(
+        &self,
+        other: &ShaderStages,
+    ) -> Result<(), ShaderStagesSupersetError> {
+        if (self.vertex || !other.vertex)
+            && (self.tessellation_control || !other.tessellation_control)
+            && (self.tessellation_evaluation || !other.tessellation_evaluation)
+            && (self.geometry || !other.geometry)
+            && (self.fragment || !other.fragment)
+            && (self.compute || !other.compute)
+        {
+            Ok(())
+        } else {
+            Err(ShaderStagesSupersetError::NotSuperset)
+        }
+    }
+
+    /// Checks whether any of the stages in `self` are also present in `other`.
+    // TODO: add example
+    #[inline]
+    pub const fn intersects(&self, other: &ShaderStages) -> bool {
+        (self.vertex && other.vertex)
+            || (self.tessellation_control && other.tessellation_control)
+            || (self.tessellation_evaluation && other.tessellation_evaluation)
+            || (self.geometry && other.geometry)
+            || (self.fragment && other.fragment)
+            || (self.compute && other.compute)
+    }
+}
+
+impl From<ShaderStages> for ash::vk::ShaderStageFlags {
+    #[inline]
+    fn from(val: ShaderStages) -> Self {
+        let mut result = ash::vk::ShaderStageFlags::empty();
+        if val.vertex {
+            result |= ash::vk::ShaderStageFlags::VERTEX;
+        }
+        if val.tessellation_control {
+            result |= ash::vk::ShaderStageFlags::TESSELLATION_CONTROL;
+        }
+        if val.tessellation_evaluation {
+            result |= ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION;
+        }
+        if val.geometry {
+            result |= ash::vk::ShaderStageFlags::GEOMETRY;
+        }
+        if val.fragment {
+            result |= ash::vk::ShaderStageFlags::FRAGMENT;
+        }
+        if val.compute {
+            result |= ash::vk::ShaderStageFlags::COMPUTE;
+        }
+        result
+    }
+}
+
+impl From<ash::vk::ShaderStageFlags> for ShaderStages {
+    #[inline]
+    fn from(val: ash::vk::ShaderStageFlags) -> Self {
+        Self {
+            vertex: val.intersects(ash::vk::ShaderStageFlags::VERTEX),
+            tessellation_control: val.intersects(ash::vk::ShaderStageFlags::TESSELLATION_CONTROL),
+            tessellation_evaluation: val
+                .intersects(ash::vk::ShaderStageFlags::TESSELLATION_EVALUATION),
+            geometry: val.intersects(ash::vk::ShaderStageFlags::GEOMETRY),
+            fragment: val.intersects(ash::vk::ShaderStageFlags::FRAGMENT),
+            compute: val.intersects(ash::vk::ShaderStageFlags::COMPUTE),
+        }
+    }
+}
+
+impl BitOr for ShaderStages {
+    type Output = ShaderStages;
+
+    #[inline]
+    fn bitor(self, other: ShaderStages) -> ShaderStages {
+        ShaderStages {
+            vertex: self.vertex || other.vertex,
+            tessellation_control: self.tessellation_control || other.tessellation_control,
+            tessellation_evaluation: self.tessellation_evaluation || other.tessellation_evaluation,
+            geometry: self.geometry || other.geometry,
+            fragment: self.fragment || other.fragment,
+            compute: self.compute || other.compute,
+        }
+    }
+}
+
+impl From<ShaderStages> for PipelineStages {
+    #[inline]
+    fn from(stages: ShaderStages) -> PipelineStages {
+        PipelineStages {
+            vertex_shader: stages.vertex,
+            tessellation_control_shader: stages.tessellation_control,
+            tessellation_evaluation_shader: stages.tessellation_evaluation,
+            geometry_shader: stages.geometry,
+            fragment_shader: stages.fragment,
+            compute_shader: stages.compute,
+            ..PipelineStages::none()
+        }
+    }
+}
+
+/// Error when checking whether some shader stages are superset of others.
+#[derive(Debug, Clone)]
+pub enum ShaderStagesSupersetError {
+    NotSuperset,
+}
+
+impl error::Error for ShaderStagesSupersetError {}
+
+impl fmt::Display for ShaderStagesSupersetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                ShaderStagesSupersetError::NotSuperset => "shader stages not a superset",
+            }
+        )
+    }
 }

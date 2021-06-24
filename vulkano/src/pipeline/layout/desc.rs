@@ -11,10 +11,10 @@ use crate::descriptor_set::layout::DescriptorBufferDesc;
 use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::layout::DescriptorDescSupersetError;
 use crate::descriptor_set::layout::DescriptorDescTy;
-use crate::descriptor_set::layout::ShaderStages;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::Device;
 use crate::pipeline::layout::limits_check;
+use crate::pipeline::shader::ShaderStages;
 use fnv::FnvHashSet;
 use std::cmp;
 use std::error;
@@ -418,10 +418,10 @@ impl fmt::Display for PipelineLayoutNotSupersetError {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::ShaderStages;
     use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::layout::PipelineLayoutDescError;
     use crate::pipeline::layout::PipelineLayoutDescPcRange;
+    use crate::pipeline::shader::ShaderStages;
 
     #[test]
     fn pc_conflict() {

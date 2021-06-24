@@ -1,9 +1,9 @@
-use crate::descriptor_set::layout::ShaderStages;
 use crate::image::{SampleCount, SampleCounts};
 use crate::instance::{
     ConformanceVersion, DriverId, PhysicalDeviceType, PointClippingBehavior, ShaderCoreProperties,
     ShaderFloatControlsIndependence, SubgroupFeatures,
 };
+use crate::pipeline::shader::ShaderStages;
 use crate::render_pass::ResolveModes;
 use crate::Version;
 use std::convert::TryInto;

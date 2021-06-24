@@ -341,7 +341,7 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> &'static str {
             "VkShaderFloatControlsIndependence" => {
                 "crate::instance::ShaderFloatControlsIndependence"
             }
-            "VkShaderStageFlags" => "crate::descriptor_set::layout::ShaderStages",
+            "VkShaderStageFlags" => "crate::pipeline::shader::ShaderStages",
             "VkSubgroupFeatureFlags" => "crate::instance::SubgroupFeatures",
             _ => unimplemented!("{}", ty),
         }

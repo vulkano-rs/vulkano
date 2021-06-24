@@ -377,9 +377,9 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetLayout;
-    use crate::descriptor_set::layout::ShaderStages;
     use crate::descriptor_set::pool::DescriptorsCount;
     use crate::descriptor_set::pool::UnsafeDescriptorPool;
+    use crate::pipeline::shader::ShaderStages;
     use std::iter;
 
     #[test]

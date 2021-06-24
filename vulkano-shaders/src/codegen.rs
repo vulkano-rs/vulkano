@@ -340,13 +340,13 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorSetLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::ShaderStages;
-        #[allow(unused_imports)]
         use vulkano::descriptor_set::DescriptorSet;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayoutDescPcRange;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::ShaderStages;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
         #[allow(unused_imports)]

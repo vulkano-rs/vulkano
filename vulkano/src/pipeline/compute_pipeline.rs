@@ -367,10 +367,10 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
-    use crate::descriptor_set::layout::ShaderStages;
     use crate::descriptor_set::PersistentDescriptorSet;
     use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
+    use crate::pipeline::shader::ShaderStages;
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
