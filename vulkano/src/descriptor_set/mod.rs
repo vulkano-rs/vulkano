@@ -74,9 +74,8 @@
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
 pub use self::collection::DescriptorSetsCollection;
-use self::descriptor::DescriptorDesc;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
-pub use self::layout::DescriptorSetLayout;
+use self::layout::DescriptorSetDesc;
 pub use self::persistent::PersistentDescriptorSet;
 pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetError;
@@ -90,9 +89,8 @@ use std::hash::Hash;
 use std::hash::Hasher;
 
 pub mod collection;
-pub mod descriptor;
 pub mod fixed_size_pool;
-mod layout;
+pub mod layout;
 pub mod persistent;
 pub mod pool;
 pub mod sys;
@@ -169,30 +167,5 @@ impl Hash for dyn DescriptorSet + Send + Sync {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
-    }
-}
-
-/// Trait for objects that describe the layout of the descriptors of a set.
-pub unsafe trait DescriptorSetDesc {
-    /// Returns the number of binding slots in the set.
-    fn num_bindings(&self) -> usize;
-
-    /// Returns a description of a descriptor, or `None` if out of range.
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
-}
-
-unsafe impl<T> DescriptorSetDesc for T
-where
-    T: SafeDeref,
-    T::Target: DescriptorSetDesc,
-{
-    #[inline]
-    fn num_bindings(&self) -> usize {
-        (**self).num_bindings()
-    }
-
-    #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        (**self).descriptor(binding)
     }
 }

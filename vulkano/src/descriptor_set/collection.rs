@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetDesc;
-use crate::descriptor_set::descriptor::DescriptorDesc;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {

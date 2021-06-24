@@ -45,10 +45,36 @@ use crate::format::Format;
 use crate::image::view::ImageViewType;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
+use crate::SafeDeref;
 use std::cmp;
 use std::error;
 use std::fmt;
 use std::ops::BitOr;
+
+/// Trait for objects that describe the layout of the descriptors of a set.
+pub unsafe trait DescriptorSetDesc {
+    /// Returns the number of binding slots in the set.
+    fn num_bindings(&self) -> usize;
+
+    /// Returns a description of a descriptor, or `None` if out of range.
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
+}
+
+unsafe impl<T> DescriptorSetDesc for T
+where
+    T: SafeDeref,
+    T::Target: DescriptorSetDesc,
+{
+    #[inline]
+    fn num_bindings(&self) -> usize {
+        (**self).num_bindings()
+    }
+
+    #[inline]
+    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
+        (**self).descriptor(binding)
+    }
+}
 
 /// Contains the exact description of a single descriptor.
 ///
@@ -80,9 +106,9 @@ impl DescriptorDesc {
     ///
     ///# Example
     ///```
-    ///use vulkano::descriptor_set::descriptor::DescriptorDesc;
-    ///use vulkano::descriptor_set::descriptor::DescriptorDescTy::*;
-    ///use vulkano::descriptor_set::descriptor::ShaderStages;
+    ///use vulkano::descriptor_set::layout::DescriptorDesc;
+    ///use vulkano::descriptor_set::layout::DescriptorDescTy::*;
+    ///use vulkano::descriptor_set::layout::ShaderStages;
     ///
     ///let desc_super = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
     ///  vertex: true,
@@ -132,9 +158,9 @@ impl DescriptorDesc {
     ///
     ///# Example
     ///```
-    ///use vulkano::descriptor_set::descriptor::DescriptorDesc;
-    ///use vulkano::descriptor_set::descriptor::DescriptorDescTy::*;
-    ///use vulkano::descriptor_set::descriptor::ShaderStages;
+    ///use vulkano::descriptor_set::layout::DescriptorDesc;
+    ///use vulkano::descriptor_set::layout::DescriptorDescTy::*;
+    ///use vulkano::descriptor_set::layout::ShaderStages;
     ///
     ///let desc_part1 = DescriptorDesc{ ty: Sampler, array_count: 2, stages: ShaderStages{
     ///  vertex: true,

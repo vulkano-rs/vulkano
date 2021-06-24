@@ -364,10 +364,10 @@ mod tests {
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::descriptor::DescriptorBufferDesc;
-    use crate::descriptor_set::descriptor::DescriptorDesc;
-    use crate::descriptor_set::descriptor::DescriptorDescTy;
-    use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::layout::DescriptorBufferDesc;
+    use crate::descriptor_set::layout::DescriptorDesc;
+    use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::ShaderStages;
     use crate::descriptor_set::PersistentDescriptorSet;
     use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;

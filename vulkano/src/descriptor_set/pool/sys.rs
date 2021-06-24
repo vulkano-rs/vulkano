@@ -8,8 +8,8 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::pool::DescriptorsCount;
-use crate::descriptor_set::DescriptorSetLayout;
 use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -373,13 +373,13 @@ impl ExactSizeIterator for UnsafeDescriptorPoolAllocIter {}
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::descriptor::DescriptorBufferDesc;
-    use crate::descriptor_set::descriptor::DescriptorDesc;
-    use crate::descriptor_set::descriptor::DescriptorDescTy;
-    use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::layout::DescriptorBufferDesc;
+    use crate::descriptor_set::layout::DescriptorDesc;
+    use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::layout::ShaderStages;
     use crate::descriptor_set::pool::DescriptorsCount;
     use crate::descriptor_set::pool::UnsafeDescriptorPool;
-    use crate::descriptor_set::DescriptorSetLayout;
     use std::iter;
 
     #[test]

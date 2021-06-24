@@ -10,7 +10,7 @@
 use std::error;
 use std::fmt;
 
-use crate::descriptor_set::descriptor::DescriptorDescSupersetError;
+use crate::descriptor_set::layout::DescriptorDescSupersetError;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::pipeline::layout::PipelineLayoutDesc;
 

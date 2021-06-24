@@ -1,4 +1,4 @@
-use crate::descriptor_set::descriptor::ShaderStages;
+use crate::descriptor_set::layout::ShaderStages;
 use crate::image::{SampleCount, SampleCounts};
 use crate::instance::{
     ConformanceVersion, DriverId, PhysicalDeviceType, PointClippingBehavior, ShaderCoreProperties,

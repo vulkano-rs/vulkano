@@ -9,7 +9,8 @@
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
-use crate::descriptor_set::descriptor::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::persistent::*;
 use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
@@ -17,7 +18,6 @@ use crate::descriptor_set::pool::DescriptorPoolAllocError;
 use crate::descriptor_set::pool::UnsafeDescriptorPool;
 use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetDesc;
-use crate::descriptor_set::DescriptorSetLayout;
 use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;

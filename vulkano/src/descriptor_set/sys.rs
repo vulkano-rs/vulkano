@@ -10,7 +10,7 @@
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferInner;
 use crate::buffer::BufferView;
-use crate::descriptor_set::descriptor::DescriptorType;
+use crate::descriptor_set::layout::DescriptorType;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;

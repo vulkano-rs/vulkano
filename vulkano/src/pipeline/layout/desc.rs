@@ -7,11 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_set::descriptor::DescriptorBufferDesc;
-use crate::descriptor_set::descriptor::DescriptorDesc;
-use crate::descriptor_set::descriptor::DescriptorDescSupersetError;
-use crate::descriptor_set::descriptor::DescriptorDescTy;
-use crate::descriptor_set::descriptor::ShaderStages;
+use crate::descriptor_set::layout::DescriptorBufferDesc;
+use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorDescSupersetError;
+use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::descriptor_set::layout::ShaderStages;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::Device;
 use crate::pipeline::layout::limits_check;
@@ -418,7 +418,7 @@ impl fmt::Display for PipelineLayoutNotSupersetError {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::descriptor::ShaderStages;
+    use crate::descriptor_set::layout::ShaderStages;
     use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::layout::PipelineLayoutDescError;
     use crate::pipeline::layout::PipelineLayoutDescPcRange;

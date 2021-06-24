@@ -9,19 +9,19 @@
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
-use crate::descriptor_set::descriptor::DescriptorDesc;
-use crate::descriptor_set::descriptor::DescriptorDescTy;
-use crate::descriptor_set::descriptor::DescriptorImageDesc;
-use crate::descriptor_set::descriptor::DescriptorImageDescArray;
-use crate::descriptor_set::descriptor::DescriptorImageDescDimensions;
-use crate::descriptor_set::descriptor::DescriptorType;
+use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::descriptor_set::layout::DescriptorImageDesc;
+use crate::descriptor_set::layout::DescriptorImageDescArray;
+use crate::descriptor_set::layout::DescriptorImageDescDimensions;
+use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::sys::DescriptorWrite;
 use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetDesc;
-use crate::descriptor_set::DescriptorSetLayout;
 use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
