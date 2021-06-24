@@ -22,7 +22,7 @@ macro_rules! instance_extensions {
             doc: $doc:expr,
             raw: $raw:expr,
             requires_core: $requires_core:expr,
-            requires_extensions: [$($requires_extension:ident),*]$(,)?
+            requires_instance_extensions: [$($requires_instance_extension:ident),*]$(,)?
         },)*
     ) => (
         extensions! {
@@ -32,7 +32,7 @@ macro_rules! instance_extensions {
                 raw: $raw,
                 requires_core: $requires_core,
                 requires_device_extensions: [],
-                requires_instance_extensions: [$($requires_extension),*],
+                requires_instance_extensions: [$($requires_instance_extension),*],
             },)*
         }
 
@@ -59,10 +59,10 @@ macro_rules! instance_extensions {
                             });
                         } else {
                             $(
-                                if !self.$requires_extension {
+                                if !self.$requires_instance_extension {
                                     return Err(crate::extensions::ExtensionRestrictionError {
                                         extension: stringify!($member),
-                                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_extension)),
+                                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_instance_extension)),
                                     });
                                 }
                             )*

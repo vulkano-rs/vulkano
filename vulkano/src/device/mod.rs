@@ -92,6 +92,8 @@
 
 pub(crate) use self::features::FeaturesFfi;
 pub use self::features::{FeatureRestriction, FeatureRestrictionError, Features};
+pub use self::properties::Properties;
+pub(crate) use self::properties::PropertiesFfi;
 pub use crate::autogen::DeviceExtensions;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
@@ -138,6 +140,7 @@ use std::sync::Weak;
 
 pub(crate) mod extensions;
 pub(crate) mod features;
+pub(crate) mod properties;
 
 /// Represents a Vulkan context.
 pub struct Device {
@@ -200,9 +203,7 @@ impl Device {
     {
         let instance = physical_device.instance();
         let fns_i = instance.fns();
-
-        let max_api_version = instance.max_api_version();
-        let api_version = std::cmp::min(max_api_version, physical_device.api_version());
+        let api_version = physical_device.api_version();
 
         // Check if the extensions are correct
         requested_extensions.check_requirements(
@@ -286,7 +287,11 @@ impl Device {
                 .collect::<SmallVec<[_; 16]>>();
 
             let mut features_ffi = FeaturesFfi::default();
-            features_ffi.make_chain(api_version, requested_extensions);
+            features_ffi.make_chain(
+                api_version,
+                requested_extensions,
+                instance.loaded_extensions(),
+            );
             features_ffi.write(&requested_features);
 
             // Device layers were deprecated in Vulkan 1.0.13, and device layer requests should be

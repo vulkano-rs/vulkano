@@ -31,6 +31,7 @@ use crate::command_buffer::DispatchIndirectCommand;
 use crate::command_buffer::DrawIndexedIndirectCommand;
 use crate::command_buffer::DrawIndirectCommand;
 use crate::command_buffer::DynamicState;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
@@ -1218,7 +1219,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](crate::instance::Limits::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
     /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
     /// enabled.
@@ -1264,8 +1265,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let limit = self
                 .device()
                 .physical_device()
-                .limits()
-                .max_draw_indirect_count();
+                .properties()
+                .max_draw_indirect_count
+                .unwrap();
 
             if requested > limit {
                 return Err(
@@ -1397,7 +1399,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     ///
     /// One draw is performed for each [`DrawIndirectCommand`] struct in `indirect_buffer`.
     /// The maximum number of draw commands in the buffer is limited by the
-    /// [`max_draw_indirect_count`](crate::instance::Limits::max_draw_indirect_count) limit.
+    /// [`max_draw_indirect_count`](crate::device::Properties::max_draw_indirect_count) limit.
     /// This limit is 1 unless the
     /// [`multi_draw_indirect`](crate::device::Features::multi_draw_indirect) feature has been
     /// enabled.
@@ -1448,8 +1450,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let limit = self
                 .device()
                 .physical_device()
-                .limits()
-                .max_draw_indirect_count();
+                .properties()
+                .max_draw_indirect_count
+                .unwrap();
 
             if requested > limit {
                 return Err(
@@ -2197,9 +2200,9 @@ where
     // Ensure that the number of dynamic_offsets is correct and that each
     // dynamic offset is a multiple of the minimum offset alignment specified
     // by the physical device.
-    let limits = pipeline_layout.device().physical_device().limits();
-    let min_uniform_off_align = limits.min_uniform_buffer_offset_alignment() as u32;
-    let min_storage_off_align = limits.min_storage_buffer_offset_alignment() as u32;
+    let properties = pipeline_layout.device().physical_device().properties();
+    let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment.unwrap() as u32;
+    let min_storage_off_align = properties.min_storage_buffer_offset_alignment.unwrap() as u32;
     let mut dynamic_offset_index = 0;
     for set in &sets {
         for desc_index in 0..set.num_bindings() {
@@ -2481,6 +2484,7 @@ unsafe impl<P> SecondaryCommandBuffer for SecondaryAutoCommandBuffer<P> {
         PipelineMemoryAccess,
         ImageLayout,
         ImageLayout,
+        ImageUninitializedSafe,
     )> {
         self.inner.image(index)
     }

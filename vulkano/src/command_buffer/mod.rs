@@ -125,6 +125,21 @@ pub mod sys;
 mod traits;
 pub mod validity;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ImageUninitializedSafe {
+    Safe,
+    Unsafe,
+}
+
+impl ImageUninitializedSafe {
+    pub fn is_safe(&self) -> bool {
+        match self {
+            Self::Safe => true,
+            Self::Unsafe => false,
+        }
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DrawIndirectCommand {

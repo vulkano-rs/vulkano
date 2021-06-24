@@ -7,6 +7,8 @@
     Pull Request merge. 
 -->
 
+# Version 0.24.0 (2021-06-20)
+
 - **Breaking** Vulkano-shaders now checks if the device supports the shader's SPIR-V version, when loading the shader.
 - **Breaking** (but unlikely) Vulkano-shaders now compiles to SPIR-V 1.0 by default. If your shader needs features only available in a higher version, you can specify the target version on the `shader!` macro with the new `vulkan_version: "major.minor"` and `spirv_version: "major.minor"` arguments.
 - **Breaking** Changes to how image sample counts are represented.
@@ -27,6 +29,12 @@
   - The `TYPE` associated constant has been removed from the `VulkanObject` trait. This is now provided by the Ash `Handle` trait, which the object returned by `internal_object` must implement.
 - **Breaking** `RawInstanceExtensions` and `RawDeviceExtensions` have been removed. The `Instance` and `Device` constructors now take `&InstanceExtensions` and `&DeviceExtensions` respectively. The `loaded_extensions` function returns these reference types as well.
 - **Breaking** The restrictions of each enabled extension and feature are checked when creating an instance or device.
+- **Breaking** Physical device properties are now retrieved through a new `properties` method, returning a `&Properties` reference.
+  - To allow for the possibility that not every property is known by the physical device, fields in `Properties` are wrapped by an `Option`.
+  - The previous methods for retrieving properties, `name`, `ty`, `limits`, `driver_version`, `pci_device_id`, `pci_vendor_id`, `uuid` and `extended_properties`, have been removed.
+  - The `api_version` method remains, but there is now a semantic difference between it and the version reported by `properties`: The raw property gives the maximum supported version that the driver itself reports, while the method on `PhysicalDevice` returns the version a logical device would support if it were created from this physical device (that is, restricted by the instance's `max_api_version`).
+- **Breaking** `ImageAccess` trait method `try_gpu_lock()` now has an additional argument to allow locking the image in an uninitialized state.`
+- Improve `ImageLayout` checks to prevent `AccessError::ImageNotInitialized` from occurring where the image is safe to use uninitialized.
 - Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan 1.1.
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
 - Added `Instance::api_version` and `Device::api_version` to return the actual supported Vulkan version. These may differ between instance and device, and be lower than what `FunctionPointers::api_version` and `PhysicalDevice::api_version` return.
@@ -46,6 +54,8 @@
 - Every extension is now documented with a link to its Vulkan page and information about requirements, conflicts, promotion and deprecation.
 - `InstanceExtensions` and `DeviceExtensions` now have a `From` implementation that takes an iterator of `&CStr`. There is also a `From` implementation for `Vec<CString>` that performs the reverse conversion.
 - All Vulkan features supported by Ash are now provided.
+- Implement fmt::Display for DisplayMode.
+- Clarify return value is in millihertz for DisplayMode.refresh_rate()
 
 # Version 0.23.0 (2021-04-10)
 

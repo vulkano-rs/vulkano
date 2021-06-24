@@ -537,7 +537,12 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
     }
 
     #[inline]
-    fn try_gpu_lock(&self, _: bool, expected_layout: ImageLayout) -> Result<(), AccessError> {
+    fn try_gpu_lock(
+        &self,
+        _: bool,
+        uninitialized_safe: bool,
+        expected_layout: ImageLayout,
+    ) -> Result<(), AccessError> {
         if expected_layout != self.attachment_layout && expected_layout != ImageLayout::Undefined {
             if self.initialized.load(Ordering::SeqCst) {
                 return Err(AccessError::UnexpectedImageLayout {
@@ -552,7 +557,7 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
             }
         }
 
-        if expected_layout != ImageLayout::Undefined {
+        if !uninitialized_safe && expected_layout != ImageLayout::Undefined {
             if !self.initialized.load(Ordering::SeqCst) {
                 return Err(AccessError::ImageNotInitialized {
                     requested: expected_layout,

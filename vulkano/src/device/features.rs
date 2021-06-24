@@ -179,7 +179,7 @@ macro_rules! features {
 }
 
 pub use crate::autogen::Features;
-pub(crate) use {crate::autogen::FeaturesFfi, features};
+pub(crate) use features;
 
 /// An error that can happen when enabling a feature on a device.
 #[derive(Clone, Copy, Debug)]
@@ -238,7 +238,8 @@ impl fmt::Display for FeatureRestriction {
 macro_rules! features_ffi {
     {
         $api_version:ident,
-        $extensions:ident,
+        $device_extensions:ident,
+        $instance_extensions:ident,
         $($member:ident => {
             ty: $ty:ident,
             provided_by: [$($provided_by:expr),+],
@@ -255,14 +256,22 @@ macro_rules! features_ffi {
         }
 
         impl FeaturesFfi {
-            pub(crate) fn make_chain(&mut self, $api_version: crate::Version, $extensions: &DeviceExtensions) {
+            pub(crate) fn make_chain(
+                &mut self,
+                $api_version: crate::Version,
+                $device_extensions: &DeviceExtensions,
+                $instance_extensions: &InstanceExtensions,
+            ) {
                 self.features_vulkan10 = Some(Default::default());
+                let head = self.features_vulkan10.as_mut().unwrap();
+
                 $(
                     if std::array::IntoIter::new([$($provided_by),+]).any(|x| x) &&
                         std::array::IntoIter::new([$(self.$conflicts.is_none()),*]).all(|x| x) {
                         self.$member = Some(Default::default());
-                        self.$member.unwrap().p_next = self.features_vulkan10.unwrap().p_next;
-                        self.features_vulkan10.unwrap().p_next = self.$member.as_mut().unwrap() as *mut _ as _;
+                        let member = self.$member.as_mut().unwrap();
+                        member.p_next = head.p_next;
+                        head.p_next = member as *mut _ as _;
                     }
                 )+
             }
@@ -278,4 +287,4 @@ macro_rules! features_ffi {
     };
 }
 
-pub(crate) use features_ffi;
+pub(crate) use {crate::autogen::FeaturesFfi, features_ffi};

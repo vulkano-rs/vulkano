@@ -70,8 +70,8 @@ fn main() {
     // Some little debug infos.
     println!(
         "Using device: {} (type: {:?})",
-        physical.name(),
-        physical.ty()
+        physical.properties().device_name.as_ref().unwrap(),
+        physical.properties().device_type.unwrap(),
     );
 
     // The objective of this example is to draw a triangle on a window. To do so, we first need to

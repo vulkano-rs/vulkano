@@ -22,7 +22,6 @@
 //! will take precedence if it is activated, otherwise the blending operation is applied.
 //!
 
-
 /// Describes how the color output of the fragment shader is written to the attachment. See the
 /// documentation of the `blend` module for more info.
 #[derive(Debug, Clone, PartialEq)]
@@ -154,7 +153,11 @@ impl From<AttachmentBlend> for ash::vk::PipelineColorBlendAttachmentState {
     #[inline]
     fn from(val: AttachmentBlend) -> Self {
         ash::vk::PipelineColorBlendAttachmentState {
-            blend_enable: if val.enabled { ash::vk::TRUE } else { ash::vk::FALSE },
+            blend_enable: if val.enabled {
+                ash::vk::TRUE
+            } else {
+                ash::vk::FALSE
+            },
             src_color_blend_factor: val.color_source.into(),
             dst_color_blend_factor: val.color_destination.into(),
             color_blend_op: val.color_op.into(),

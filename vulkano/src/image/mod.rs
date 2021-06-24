@@ -92,6 +92,24 @@ impl From<SampleCount> for ash::vk::SampleCountFlags {
     }
 }
 
+impl TryFrom<ash::vk::SampleCountFlags> for SampleCount {
+    type Error = ();
+
+    #[inline]
+    fn try_from(val: ash::vk::SampleCountFlags) -> Result<Self, Self::Error> {
+        match val {
+            ash::vk::SampleCountFlags::TYPE_1 => Ok(Self::Sample1),
+            ash::vk::SampleCountFlags::TYPE_2 => Ok(Self::Sample2),
+            ash::vk::SampleCountFlags::TYPE_4 => Ok(Self::Sample4),
+            ash::vk::SampleCountFlags::TYPE_8 => Ok(Self::Sample8),
+            ash::vk::SampleCountFlags::TYPE_16 => Ok(Self::Sample16),
+            ash::vk::SampleCountFlags::TYPE_32 => Ok(Self::Sample32),
+            ash::vk::SampleCountFlags::TYPE_64 => Ok(Self::Sample64),
+            _ => Err(()),
+        }
+    }
+}
+
 impl TryFrom<u32> for SampleCount {
     type Error = ();
 

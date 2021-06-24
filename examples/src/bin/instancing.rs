@@ -68,8 +68,8 @@ fn main() {
     let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
     println!(
         "Using device: {} (type: {:?})",
-        physical.name(),
-        physical.ty()
+        physical.properties().device_name.as_ref().unwrap(),
+        physical.properties().device_type.unwrap(),
     );
 
     let event_loop = EventLoop::new();

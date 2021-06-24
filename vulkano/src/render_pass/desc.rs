@@ -399,3 +399,36 @@ impl MultiviewDesc {
             .count_ones()
     }
 }
+
+/// Possible resolve modes for depth and stencil attachments.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ResolveMode {
+    None = ash::vk::ResolveModeFlags::NONE.as_raw(),
+    SampleZero = ash::vk::ResolveModeFlags::SAMPLE_ZERO.as_raw(),
+    Average = ash::vk::ResolveModeFlags::AVERAGE.as_raw(),
+    Min = ash::vk::ResolveModeFlags::MIN.as_raw(),
+    Max = ash::vk::ResolveModeFlags::MAX.as_raw(),
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ResolveModes {
+    pub none: bool,
+    pub sample_zero: bool,
+    pub average: bool,
+    pub min: bool,
+    pub max: bool,
+}
+
+impl From<ash::vk::ResolveModeFlags> for ResolveModes {
+    #[inline]
+    fn from(val: ash::vk::ResolveModeFlags) -> Self {
+        Self {
+            none: val.intersects(ash::vk::ResolveModeFlags::NONE),
+            sample_zero: val.intersects(ash::vk::ResolveModeFlags::SAMPLE_ZERO),
+            average: val.intersects(ash::vk::ResolveModeFlags::AVERAGE),
+            min: val.intersects(ash::vk::ResolveModeFlags::MIN),
+            max: val.intersects(ash::vk::ResolveModeFlags::MAX),
+        }
+    }
+}

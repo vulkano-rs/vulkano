@@ -25,6 +25,7 @@ fn main() {
     }
 
     // Write autogen.rs
+    println!("cargo:rerun-if-changed=vk.xml");
     let path = Path::new(&env::var_os("OUT_DIR").unwrap()).join("autogen.rs");
     let mut writer = BufWriter::new(File::create(path).unwrap());
     autogen::write(&mut writer);

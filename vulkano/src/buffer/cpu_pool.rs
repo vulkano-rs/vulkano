@@ -468,16 +468,18 @@ where
                     if self.usage.uniform_buffer {
                         self.device()
                             .physical_device()
-                            .limits()
-                            .min_uniform_buffer_offset_alignment() as usize
+                            .properties()
+                            .min_uniform_buffer_offset_alignment
+                            .unwrap() as usize
                     } else {
                         1
                     },
                     if self.usage.storage_buffer {
                         self.device()
                             .physical_device()
-                            .limits()
-                            .min_storage_buffer_offset_alignment() as usize
+                            .properties()
+                            .min_storage_buffer_offset_alignment
+                            .unwrap() as usize
                     } else {
                         1
                     },

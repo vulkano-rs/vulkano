@@ -280,11 +280,11 @@ where
 
         // Checking the dimensions against the limits.
         {
-            let limits = device.physical_device().limits();
+            let properties = device.physical_device().properties();
             let limits = [
-                limits.max_framebuffer_width(),
-                limits.max_framebuffer_height(),
-                limits.max_framebuffer_layers(),
+                properties.max_framebuffer_width.unwrap(),
+                properties.max_framebuffer_height.unwrap(),
+                properties.max_framebuffer_layers.unwrap(),
             ];
             if dimensions[0] > limits[0] || dimensions[1] > limits[1] || dimensions[2] > limits[2] {
                 return Err(FramebufferCreationError::DimensionsTooLarge);

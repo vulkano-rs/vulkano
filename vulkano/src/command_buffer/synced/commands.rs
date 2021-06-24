@@ -22,6 +22,7 @@ use crate::command_buffer::sys::UnsafeCommandBufferBuilderExecuteCommands;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageBlit;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderImageCopy;
 use crate::command_buffer::CommandBufferExecError;
+use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor::descriptor::DescriptorDescTy;
@@ -43,6 +44,7 @@ use crate::query::QueryPool;
 use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::render_pass::FramebufferAbstract;
+use crate::render_pass::LoadOp;
 use crate::sampler::Filter;
 use crate::sync::AccessFlags;
 use crate::sync::Event;
@@ -197,6 +199,12 @@ impl SyncCommandBufferBuilder {
                         },
                         desc.initial_layout,
                         desc.final_layout,
+                        match desc.initial_layout != ImageLayout::Undefined
+                            || desc.load == LoadOp::Clear
+                        {
+                            true => ImageUninitializedSafe::Safe,
+                            false => ImageUninitializedSafe::Unsafe,
+                        },
                     )),
                 )
             })
@@ -292,6 +300,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )?;
@@ -528,6 +537,7 @@ impl SyncCommandBufferBuilder {
                         },
                         source_layout,
                         source_layout,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -546,6 +556,7 @@ impl SyncCommandBufferBuilder {
                         },
                         destination_layout,
                         destination_layout,
+                        ImageUninitializedSafe::Safe,
                     )),
                 ),
             ],
@@ -688,6 +699,7 @@ impl SyncCommandBufferBuilder {
                         },
                         source_layout,
                         source_layout,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -706,6 +718,7 @@ impl SyncCommandBufferBuilder {
                         },
                         destination_layout,
                         destination_layout,
+                        ImageUninitializedSafe::Safe,
                     )),
                 ),
             ],
@@ -811,6 +824,7 @@ impl SyncCommandBufferBuilder {
                     },
                     layout,
                     layout,
+                    ImageUninitializedSafe::Safe,
                 )),
             )],
         )?;
@@ -931,6 +945,7 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -949,6 +964,7 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
             ],
@@ -1081,6 +1097,7 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -1099,6 +1116,7 @@ impl SyncCommandBufferBuilder {
                         },
                         destination_layout,
                         destination_layout,
+                        ImageUninitializedSafe::Safe,
                     )),
                 ),
             ],
@@ -1231,6 +1249,7 @@ impl SyncCommandBufferBuilder {
                         },
                         source_layout,
                         source_layout,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
                 (
@@ -1249,6 +1268,7 @@ impl SyncCommandBufferBuilder {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 ),
             ],
@@ -1358,6 +1378,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )?;
@@ -1550,6 +1571,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )?;
@@ -1738,6 +1760,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )?;
@@ -1828,6 +1851,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )?;
@@ -1970,6 +1994,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )
@@ -2531,6 +2556,7 @@ impl SyncCommandBufferBuilder {
                     },
                     ImageLayout::Undefined,
                     ImageLayout::Undefined,
+                    ImageUninitializedSafe::Unsafe,
                 )),
             )],
         )
@@ -2755,6 +2781,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                             },
                             ImageLayout::Undefined,
                             ImageLayout::Undefined,
+                            ImageUninitializedSafe::Unsafe,
                         )),
                     ));
                 }
@@ -2801,6 +2828,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                                 },
                                 layout,
                                 layout,
+                                ImageUninitializedSafe::Unsafe,
                             ))
                         },
                     ));
@@ -2904,6 +2932,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
                         },
                         ImageLayout::Undefined,
                         ImageLayout::Undefined,
+                        ImageUninitializedSafe::Unsafe,
                     )),
                 )
             })
@@ -3084,12 +3113,17 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                             cbuf.buffer(buf_num).unwrap().1,
                             ImageLayout::Undefined,
                             ImageLayout::Undefined,
+                            ImageUninitializedSafe::Unsafe,
                         )),
                     ));
                 }
                 for img_num in 0..cbuf.num_images() {
-                    let (_, memory, start_layout, end_layout) = cbuf.image(img_num).unwrap();
-                    resources.push((KeyTy::Image, Some((memory, start_layout, end_layout))));
+                    let (_, memory, start_layout, end_layout, image_uninitialized_safe) =
+                        cbuf.image(img_num).unwrap();
+                    resources.push((
+                        KeyTy::Image,
+                        Some((memory, start_layout, end_layout, image_uninitialized_safe)),
+                    ));
                 }
             }
             resources

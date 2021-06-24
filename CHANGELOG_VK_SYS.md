@@ -1,5 +1,7 @@
 # Unreleased
 
+# Version 0.6.2 (2021-06-20)
+
 - Added structs for Vulkan 1.1 and 1.2 features, with `Default` implementations.
 
 # Version 0.6.1 (2021-04-10)
