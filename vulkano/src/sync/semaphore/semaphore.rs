@@ -336,7 +336,10 @@ mod tests {
         )
         .unwrap();
 
-        let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
-        let fd = sem.export_opaque_fd().unwrap();
+        let supported_ext = DeviceExtensions::supported_by_device(physical.clone());
+        if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {
+            let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
+            let fd = sem.export_opaque_fd().unwrap();
+        }
     }
 }
