@@ -18,7 +18,7 @@ use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor_set::descriptor::ShaderStages;
-use crate::descriptor_set::UnsafeDescriptorSet;
+use crate::descriptor_set::sys::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
