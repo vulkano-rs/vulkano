@@ -88,7 +88,7 @@ use crate::VulkanObject;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-pub mod collection;
+mod collection;
 pub mod fixed_size_pool;
 pub mod layout;
 pub mod persistent;
