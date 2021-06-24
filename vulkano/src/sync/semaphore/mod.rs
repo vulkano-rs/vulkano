@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub use self::external_semaphore_handle_type::ExternalSemaphoreHandleType;
 pub use self::semaphore::Semaphore;
+pub use self::semaphore::SemaphoreError;
 
+mod external_semaphore_handle_type;
 mod semaphore;

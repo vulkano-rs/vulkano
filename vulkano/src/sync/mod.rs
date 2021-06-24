@@ -128,7 +128,7 @@ mod event;
 mod fence;
 mod future;
 mod pipeline;
-mod semaphore;
+pub(crate) mod semaphore;
 
 /// Declares in which queue(s) a resource can be used.
 ///

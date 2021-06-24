@@ -10,9 +10,11 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::Error;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::fmt;
 #[cfg(target_os = "linux")]
 use std::fs::File;
 use std::mem::MaybeUninit;
@@ -20,6 +22,8 @@ use std::mem::MaybeUninit;
 use std::os::unix::io::FromRawFd;
 use std::ptr;
 use std::sync::Arc;
+
+use super::ExternalSemaphoreHandleType;
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
@@ -35,6 +39,84 @@ where
     must_put_in_pool: bool,
 }
 
+// TODO: Add support for VkExportSemaphoreWin32HandleInfoKHR
+// TODO: Add suport for importable semaphores
+pub struct SemaphoreBuilder<D = Arc<Device>>
+where
+    D: SafeDeref<Target = Device>,
+{
+    device: D,
+    export_info: Option<ash::vk::ExportSemaphoreCreateInfo>,
+    create: ash::vk::SemaphoreCreateInfo,
+    must_put_in_pool: bool,
+}
+
+impl<D> SemaphoreBuilder<D>
+where
+    D: SafeDeref<Target = Device>,
+{
+    pub fn new(device: D, must_put_in_pool: bool) -> Self {
+        let create = ash::vk::SemaphoreCreateInfo::default();
+
+        Self {
+            device,
+            export_info: None,
+            create,
+            must_put_in_pool,
+        }
+    }
+
+    /// Sets an optional field for exportable allocations in the `SemaphoreBuilder`.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the export info has already been set.
+    pub fn export_info(mut self, handle_types: ExternalSemaphoreHandleType) -> Self {
+        assert!(self.export_info.is_none());
+        let export_info = ash::vk::ExportSemaphoreCreateInfo {
+            handle_types: handle_types.into(),
+            ..Default::default()
+        };
+
+        self.export_info = Some(export_info);
+        self.create.p_next = unsafe { std::mem::transmute(&export_info) };
+
+        self
+    }
+
+    pub fn build(self) -> Result<Semaphore<D>, SemaphoreError> {
+        if self.export_info.is_some()
+            && !self
+                .device
+                .instance()
+                .loaded_extensions()
+                .khr_external_semaphore_capabilities
+        {
+            Err(SemaphoreError::MissingExtension(
+                "khr_external_semaphore_capabilities",
+            ))
+        } else {
+            let semaphore = unsafe {
+                let fns = self.device.fns();
+                let mut output = MaybeUninit::uninit();
+                check_errors(fns.v1_0.create_semaphore(
+                    self.device.internal_object(),
+                    &self.create,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                ))?;
+                output.assume_init()
+            };
+
+            Ok(Semaphore {
+                device: self.device,
+                semaphore,
+                must_put_in_pool: self.must_put_in_pool,
+            })
+        }
+    }
+}
+
 impl<D> Semaphore<D>
 where
     D: SafeDeref<Target = Device>,
@@ -45,77 +127,38 @@ where
     ///
     /// For most applications, using the pool should be preferred,
     /// in order to avoid creating new semaphores every frame.
-    pub fn from_pool(device: D) -> Result<Semaphore<D>, OomError> {
+    pub fn from_pool(device: D) -> Result<Semaphore<D>, SemaphoreError> {
         let maybe_raw_sem = device.semaphore_pool().lock().unwrap().pop();
         match maybe_raw_sem {
             Some(raw_sem) => Ok(Semaphore {
-                device: device,
+                device,
                 semaphore: raw_sem,
                 must_put_in_pool: true,
             }),
             None => {
                 // Pool is empty, alloc new semaphore
-                Semaphore::alloc_impl(device, true, false)
+                Self::alloc(device)
             }
         }
     }
 
     /// Builds a new semaphore.
     #[inline]
-    pub fn alloc(device: D) -> Result<Semaphore<D>, OomError> {
-        Semaphore::alloc_impl(device, false, false)
+    pub fn alloc(device: D) -> Result<Semaphore<D>, SemaphoreError> {
+        SemaphoreBuilder::new(device, false).build()
     }
 
     /// Same as `alloc`, but allows exportable opaque file descriptor on Linux
     #[inline]
     #[cfg(target_os = "linux")]
-    pub fn alloc_with_exportable_fd(device: D) -> Result<Semaphore<D>, OomError> {
-        Semaphore::alloc_impl(device, false, true)
-    }
-
-    fn alloc_impl(
-        device: D,
-        must_put_in_pool: bool,
-        exportable_fd: bool,
-    ) -> Result<Semaphore<D>, OomError> {
-        let semaphore = unsafe {
-            // since the creation is constant, we use a `static` instead of a struct on the stack
-
-            let export_semaphore_info = ash::vk::ExportSemaphoreCreateInfoKHR {
-                handle_types: ash::vk::ExternalSemaphoreHandleTypeFlagsKHR::OPAQUE_FD,
-                ..Default::default()
-            };
-
-            let mut infos = ash::vk::SemaphoreCreateInfo {
-                flags: ash::vk::SemaphoreCreateFlags::empty(),
-                ..Default::default()
-            };
-
-            #[cfg(target_os = "linux")]
-            {
-                infos.p_next = std::mem::transmute(&export_semaphore_info);
-            }
-
-            let fns = device.fns();
-            let mut output = MaybeUninit::uninit();
-            check_errors(fns.v1_0.create_semaphore(
-                device.internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
-        };
-
-        Ok(Semaphore {
-            device: device,
-            semaphore: semaphore,
-            must_put_in_pool: must_put_in_pool,
-        })
+    pub fn alloc_with_exportable_fd(device: D) -> Result<Semaphore<D>, SemaphoreError> {
+        SemaphoreBuilder::new(device, true)
+            .export_info(ExternalSemaphoreHandleType::posix())
+            .build()
     }
 
     #[cfg(target_os = "linux")]
-    pub fn export_opaque_fd(&self) -> Result<File, OomError> {
+    pub fn export_opaque_fd(&self) -> Result<File, SemaphoreError> {
         let fns = self.device.fns();
 
         assert!(self.device.loaded_extensions().khr_external_semaphore);
@@ -179,6 +222,54 @@ where
                 );
             }
         }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum SemaphoreError {
+    /// Not enough memory available.
+    OomError(OomError),
+    /// An extensions is missing.
+    MissingExtension(&'static str),
+}
+
+impl fmt::Display for SemaphoreError {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            SemaphoreError::OomError(_) => write!(fmt, "not enough memory available"),
+            SemaphoreError::MissingExtension(s) => {
+                write!(fmt, "Missing the following extension: {}", s)
+            }
+        }
+    }
+}
+
+impl From<Error> for SemaphoreError {
+    #[inline]
+    fn from(err: Error) -> SemaphoreError {
+        match err {
+            e @ Error::OutOfHostMemory | e @ Error::OutOfDeviceMemory => {
+                SemaphoreError::OomError(e.into())
+            }
+            _ => panic!("unexpected error: {:?}", err),
+        }
+    }
+}
+
+impl std::error::Error for SemaphoreError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match *self {
+            SemaphoreError::OomError(ref err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<OomError> for SemaphoreError {
+    #[inline]
+    fn from(err: OomError) -> SemaphoreError {
+        SemaphoreError::OomError(err)
     }
 }
 
