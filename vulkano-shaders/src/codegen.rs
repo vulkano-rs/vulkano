@@ -346,6 +346,8 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
         #[allow(unused_imports)]
+        use vulkano::format::Format;
+        #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayoutDescPcRange;

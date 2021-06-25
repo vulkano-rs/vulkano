@@ -430,6 +430,8 @@ fn descriptor_infos(
                                               have a Sampled operand of 1 or 2",
                     );
 
+                    let vulkan_format = to_vulkan_format(*format);
+
                     let arrayed = match arrayed {
                         true => quote! { DescriptorImageDescArray::Arrayed { max_layers: None } },
                         false => quote! { DescriptorImageDescArray::NonArrayed },
@@ -445,11 +447,7 @@ fn descriptor_infos(
                                                                 SubpassData"
                             );
                             assert!(
-                                if let &ImageFormat::ImageFormatUnknown = format {
-                                    true
-                                } else {
-                                    false
-                                },
+                                *format == ImageFormat::ImageFormatUnknown,
                                 "If Dim is SubpassData, Image Format must be Unknown"
                             );
                             assert!(!sampled, "If Dim is SubpassData, Sampled must be 2");
@@ -470,7 +468,7 @@ fn descriptor_infos(
                             let desc = quote! {
                                 DescriptorDescTy::TexelBuffer {
                                     storage: #storage,
-                                    format: None, // TODO: specify format if known
+                                    format: #vulkan_format,
                                 }
                             };
 
@@ -507,7 +505,7 @@ fn descriptor_infos(
                                 #ty(DescriptorImageDesc {
                                     sampled: #sampled,
                                     dimensions: #dim,
-                                    format: None,       // TODO: specify format if known
+                                    format: #vulkan_format,
                                     multisampled: #ms,
                                     array_layers: #arrayed,
                                 })
@@ -741,5 +739,50 @@ mod tests {
             }
         }
         panic!("Could not find entrypoint");
+    }
+}
+
+fn to_vulkan_format(spirv_format: ImageFormat) -> TokenStream {
+    match spirv_format {
+        ImageFormat::ImageFormatUnknown => quote! { None },
+        ImageFormat::ImageFormatRgba32f => quote! { Some(Format::R32G32B32A32Sfloat) },
+        ImageFormat::ImageFormatRgba16f => quote! { Some(Format::R16G16B16A16Sfloat) },
+        ImageFormat::ImageFormatR32f => quote! { Some(Format::R32Sfloat) },
+        ImageFormat::ImageFormatRgba8 => quote! { Some(Format::R8G8B8A8Unorm) },
+        ImageFormat::ImageFormatRgba8Snorm => quote! { Some(Format::R8G8B8A8Snorm) },
+        ImageFormat::ImageFormatRg32f => quote! { Some(Format::R32G32Sfloat) },
+        ImageFormat::ImageFormatRg16f => quote! { Some(Format::R16G16Sfloat) },
+        ImageFormat::ImageFormatR11fG11fB10f => quote! { Some(Format::B10G11R11UfloatPack32) },
+        ImageFormat::ImageFormatR16f => quote! { Some(Format::R16Sfloat) },
+        ImageFormat::ImageFormatRgba16 => quote! { Some(Format::R16G16B16A16Unorm) },
+        ImageFormat::ImageFormatRgb10A2 => quote! { Some(Format::A2B10G10R10UnormPack32) },
+        ImageFormat::ImageFormatRg16 => quote! { Some(Format::R16G16Unorm) },
+        ImageFormat::ImageFormatRg8 => quote! { Some(Format::R8G8Unorm) },
+        ImageFormat::ImageFormatR16 => quote! { Some(Format::R16Unorm) },
+        ImageFormat::ImageFormatR8 => quote! { Some(Format::R8Unorm) },
+        ImageFormat::ImageFormatRgba16Snorm => quote! { Some(Format::R16G16B16A16Snorm) },
+        ImageFormat::ImageFormatRg16Snorm => quote! { Some(Format::R16G16Snorm) },
+        ImageFormat::ImageFormatRg8Snorm => quote! { Some(Format::R8G8Snorm) },
+        ImageFormat::ImageFormatR16Snorm => quote! { Some(Format::R16Snorm) },
+        ImageFormat::ImageFormatR8Snorm => quote! { Some(Format::R8Snorm) },
+        ImageFormat::ImageFormatRgba32i => quote! { Some(Format::R32G32B32A32Sint) },
+        ImageFormat::ImageFormatRgba16i => quote! { Some(Format::R16G16B16A16Sint) },
+        ImageFormat::ImageFormatRgba8i => quote! { Some(Format::R8G8B8A8Sint) },
+        ImageFormat::ImageFormatR32i => quote! { Some(Format::R32Sint) },
+        ImageFormat::ImageFormatRg32i => quote! { Some(Format::R32G32Sint) },
+        ImageFormat::ImageFormatRg16i => quote! { Some(Format::R16G16Sint) },
+        ImageFormat::ImageFormatRg8i => quote! { Some(Format::R8G8Sint) },
+        ImageFormat::ImageFormatR16i => quote! { Some(Format::R16Sint) },
+        ImageFormat::ImageFormatR8i => quote! { Some(Format::R8Sint) },
+        ImageFormat::ImageFormatRgba32ui => quote! { Some(Format::R32G32B32A32Uint) },
+        ImageFormat::ImageFormatRgba16ui => quote! { Some(Format::R16G16B16A16Uint) },
+        ImageFormat::ImageFormatRgba8ui => quote! { Some(Format::R8G8B8A8Uint) },
+        ImageFormat::ImageFormatR32ui => quote! { Some(Format::R32Uint) },
+        ImageFormat::ImageFormatRgb10a2ui => quote! { Some(Format::A2B10G10R10UintPack32) },
+        ImageFormat::ImageFormatRg32ui => quote! { Some(Format::R32G32Uint) },
+        ImageFormat::ImageFormatRg16ui => quote! { Some(Format::R16G16Uint) },
+        ImageFormat::ImageFormatRg8ui => quote! { Some(Format::R8G8Uint) },
+        ImageFormat::ImageFormatR16ui => quote! { Some(Format::R16Uint) },
+        ImageFormat::ImageFormatR8ui => quote! { Some(Format::R8Uint) },
     }
 }
