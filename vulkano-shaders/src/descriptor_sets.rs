@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::TokenStream;
+use spirv_headers::{Decoration, Dim, ImageFormat, StorageClass};
 use std::cmp;
 use std::collections::HashSet;
 
@@ -42,7 +42,7 @@ pub(super) fn write_pipeline_layout_desc(
         let type_id = match instruction {
             &Instruction::TypePointer {
                 type_id,
-                storage_class: StorageClass::StorageClassPushConstant,
+                storage_class: StorageClass::PushConstant,
                 ..
             } => type_id,
             _ => continue,
@@ -158,7 +158,7 @@ fn find_descriptors(
     };
 
     // Looping to find all the interface elements that have the `DescriptorSet` decoration.
-    for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
+    for set_decoration in doc.get_decorations(Decoration::DescriptorSet) {
         let variable_id = set_decoration.target_id;
 
         if exact && !variables.as_ref().unwrap().contains(&variable_id) {
@@ -175,11 +175,11 @@ fn find_descriptors(
         // Find the binding point of this descriptor.
         // TODO: There was a previous todo here, I think it was asking for this to be implemented for member decorations? check git history
         let binding = doc
-            .get_decoration_params(variable_id, Decoration::DecorationBinding)
+            .get_decoration_params(variable_id, Decoration::Binding)
             .unwrap()[0];
 
         let nonwritable = doc
-            .get_decoration_params(variable_id, Decoration::DecorationNonWritable)
+            .get_decoration_params(variable_id, Decoration::NonWritable)
             .is_some();
 
         // Find information about the kind of binding for this descriptor.
@@ -385,10 +385,10 @@ fn descriptor_infos(
             match i {
                 Instruction::TypeStruct { result_id, member_types } if *result_id == pointed_ty => {
                     let decoration_block = doc
-                        .get_decoration_params(pointed_ty, Decoration::DecorationBlock)
+                        .get_decoration_params(pointed_ty, Decoration::Block)
                         .is_some();
                     let decoration_buffer_block = doc
-                        .get_decoration_params(pointed_ty, Decoration::DecorationBufferBlock)
+                        .get_decoration_params(pointed_ty, Decoration::BufferBlock)
                         .is_some();
                     assert!(
                         decoration_block ^ decoration_buffer_block,
@@ -397,11 +397,11 @@ fn descriptor_infos(
 
                     // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                     // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-                    let storage = pointer_storage == StorageClass::StorageClassStorageBuffer;
+                    let storage = pointer_storage == StorageClass::StorageBuffer;
 
                     // Determine whether all members have a NonWritable decoration.
                     let nonwritable = (0..member_types.len() as u32).all(|i| {
-                        doc.get_member_decoration_params(pointed_ty, i, Decoration::DecorationNonWritable).is_some()
+                        doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
                     });
 
                     // Uniforms are never writable.
@@ -445,7 +445,7 @@ fn descriptor_infos(
                                                                 SubpassData"
                             );
                             assert!(
-                                if let &ImageFormat::ImageFormatUnknown = format {
+                                if let &ImageFormat::Unknown = format {
                                     true
                                 } else {
                                     false

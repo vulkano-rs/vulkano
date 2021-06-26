@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
+use spirv_headers::Decoration;
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///
@@ -146,10 +146,7 @@ pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> 
 
 /// Returns true if a `BuiltIn` decorator is applied on an id.
 pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
-    if doc
-        .get_decoration_params(id, Decoration::DecorationBuiltIn)
-        .is_some()
-    {
+    if doc.get_decoration_params(id, Decoration::BuiltIn).is_some() {
         return true;
     }
     if doc.get_member_decoration_builtin_params(id).is_some() {
