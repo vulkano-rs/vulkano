@@ -57,7 +57,7 @@ macro_rules! gfx_dev_and_queue {
         };
 
         // If the physical device doesn't support the requested features, just return.
-        if !physical.supported_features().superset_of(&features) {
+        if !physical.supported_features().is_superset_of(&features) {
             return;
         }
 

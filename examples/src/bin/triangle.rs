@@ -82,7 +82,7 @@ fn main() {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
             // should be filtered out here.
-            p.supported_extensions().intersection(&device_extensions) == device_extensions
+            p.supported_extensions().is_superset_of(&device_extensions)
         })
         .filter_map(|p| {
             // For each physical device, we try to find a suitable queue family that will execute
