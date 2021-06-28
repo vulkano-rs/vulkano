@@ -35,6 +35,7 @@
 - `SemaphoreBuilder` introduced. 
 - Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
 - Vulkano-shaders now provides the image format for descriptors, if the shader requires a specific format.
+- Vulkano-shaders now uses the `spirv_headers` crate for some of its types.
 
 # Version 0.24.0 (2021-06-20)
 
