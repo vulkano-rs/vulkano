@@ -17,51 +17,55 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::{Device, DeviceExtensions};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice};
+use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice, PhysicalDeviceType};
 use vulkano::pipeline::ComputePipeline;
 use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
 
-const DEVICE_EXTENSIONS: DeviceExtensions = DeviceExtensions {
-    khr_storage_buffer_storage_class: true,
-    ..DeviceExtensions::none()
-};
-
-const BUFFER_USAGE: BufferUsage = BufferUsage {
-    storage_buffer: true,
-    ..BufferUsage::none()
-};
-
 fn main() {
     // As with other examples, the first step is to create an instance.
-    let instance = Instance::new(
-        None,
-        Version::V1_1,
-        &InstanceExtensions::none(),
-        None,
-    )
-    .unwrap();
+    let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 
     // Choose which physical device to use.
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-
-    // Choose the queue of the physical device which is going to run our compute operation.
-    //
-    // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
-    // that supports compute operations.
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| q.supports_compute())
+    let device_extensions = DeviceExtensions {
+        khr_storage_buffer_storage_class: true,
+        ..DeviceExtensions::none()
+    };
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| {
+            DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
+                == device_extensions
+        })
+        .filter_map(|p| {
+            // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
+            // that supports compute operations.
+            p.queue_families()
+                .find(|&q| q.supports_compute())
+                .map(|q| (p, q))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        })
         .unwrap();
+
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name.as_ref().unwrap(),
+        physical_device.properties().device_type.unwrap()
+    );
 
     // Now initializing the device.
     let (device, mut queues) = Device::new(
-        physical,
-        physical.supported_features(),
-        &DEVICE_EXTENSIONS,
+        physical_device,
+        &Features::none(),
+        &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
@@ -70,8 +74,6 @@ fn main() {
     // example we use only one queue, so we just retrieve the first and only element of the
     // iterator and throw it away.
     let queue = queues.next().unwrap();
-
-    println!("Device initialized");
 
     // Now let's get to the actual example.
     //
@@ -120,7 +122,16 @@ fn main() {
         // Iterator that produces the data.
         let data_iter = (0..65536u32).map(|n| n);
         // Builds the buffer and fills it with this iterator.
-        CpuAccessibleBuffer::from_iter(device.clone(), BUFFER_USAGE, false, data_iter).unwrap()
+        CpuAccessibleBuffer::from_iter(
+            device.clone(),
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::none()
+            },
+            false,
+            data_iter,
+        )
+        .unwrap()
     };
 
     // In order to let the shader access the buffer, we need to build a *descriptor set* that

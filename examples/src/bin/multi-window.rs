@@ -22,10 +22,10 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice};
+use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -53,8 +53,7 @@ struct WindowSurface {
 
 fn main() {
     let required_extensions = vulkano_win::required_extensions();
-    let instance =
-        Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
     let event_loop = EventLoop::new();
 
     // A hashmap that contains all of our created windows and their resources
@@ -70,27 +69,46 @@ fn main() {
     // TODO: it is assumed the device, queue, and surface caps are the same for all windows
 
     let (device, queue, surface_caps) = {
-        let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-        let queue_family = physical
-            .queue_families()
-            .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-            .unwrap();
-
-        let device_ext = DeviceExtensions {
+        let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::none()
         };
+        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+            .filter(|&p| {
+                DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
+                    == device_extensions
+            })
+            .filter_map(|p| {
+                p.queue_families()
+                    .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
+                    .map(|q| (p, q))
+            })
+            .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+            })
+            .unwrap();
+
+        println!(
+            "Using device: {} (type: {:?})",
+            physical_device.properties().device_name.as_ref().unwrap(),
+            physical_device.properties().device_type.unwrap()
+        );
+
         let (device, mut queues) = Device::new(
-            physical,
-            physical.supported_features(),
-            &device_ext,
+            physical_device,
+            &Features::none(),
+            &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
             [(queue_family, 0.5)].iter().cloned(),
         )
         .unwrap();
         (
             device,
             queues.next().unwrap(),
-            surface.capabilities(physical).unwrap(),
+            surface.capabilities(physical_device).unwrap(),
         )
     };
 

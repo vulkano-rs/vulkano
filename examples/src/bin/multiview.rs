@@ -31,7 +31,7 @@ use vulkano::image::{
     StorageImage,
 };
 use vulkano::instance::PhysicalDevice;
-use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::instance::{Instance, InstanceExtensions, PhysicalDeviceType};
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{
@@ -54,36 +54,58 @@ fn main() {
     )
     .unwrap();
 
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-
-    // This example renders to two layers of the framebuffer using the multiview extension so we
-    // check that at least two views are supported by the device.
-    // Not checking this on a device that doesn't support two views
-    // will lead to a runtime error when creating the `RenderPass`.
-    // The `max_multiview_view_count` function will return `None`
-    // when the `VK_KHR_get_physical_device_properties2` instance extension has not been enabled.
-    if physical.properties().max_multiview_view_count.unwrap_or(0) < 2 {
-        println!("The device doesn't support two multiview views or the VK_KHR_get_physical_device_properties2 instance extension has not been loaded");
-
+    let device_extensions = DeviceExtensions {
+        ..DeviceExtensions::none()
+    };
+    let features = Features {
+        // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on
+        // Vulkan 1.0 and the device feature on Vulkan 1.1+
+        multiview: true,
+        ..Features::none()
+    };
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| {
+            DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
+                == device_extensions
+        })
+        .filter(|&p| {
+            p.supported_features().superset_of(&features)
+        })
+        .filter(|&p| {
+            // This example renders to two layers of the framebuffer using the multiview
+            // extension so we check that at least two views are supported by the device.
+            // Not checking this on a device that doesn't support two views
+            // will lead to a runtime error when creating the `RenderPass`.
+            // The `max_multiview_view_count` function will return `None` when the
+            // `VK_KHR_get_physical_device_properties2` instance extension has not been enabled.
+            p.properties().max_multiview_view_count.unwrap_or(0) >= 2
+        })
+        .filter_map(|p| {
+            p.queue_families()
+                .find(|&q| q.supports_graphics())
+                .map(|q| (p, q))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        })
         // A real application should probably fall back to rendering the framebuffer layers
         // in multiple passes when multiview isn't supported.
-        return;
-    }
+        .expect("No device supports two multiview views or the VK_KHR_get_physical_device_properties2 instance extension has not been loaded");
 
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| q.supports_graphics())
-        .unwrap();
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name.as_ref().unwrap(),
+        physical_device.properties().device_type.unwrap()
+    );
 
     let (device, mut queues) = Device::new(
-        physical,
-        &Features {
-            // enabling the `multiview` feature will use the `VK_KHR_multiview` extension on
-            // Vulkan 1.0 and the device feature on Vulkan 1.1+
-            multiview: true,
-            ..Features::none()
-        },
-        &DeviceExtensions::none(),
+        physical_device,
+        &features,
+        &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
