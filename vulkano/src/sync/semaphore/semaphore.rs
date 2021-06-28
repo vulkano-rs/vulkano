@@ -312,39 +312,44 @@ mod tests {
     #[test]
     #[cfg(target_os = "linux")]
     fn semaphore_export() {
-        let instance = Instance::new(
-            None,
-            Version::V1_1,
-            &InstanceExtensions {
-                khr_get_physical_device_properties2: true,
-                khr_external_semaphore_capabilities: true,
-                ..InstanceExtensions::none()
-            },
-            None,
-        )
-        .unwrap();
+        let supported_ext = InstanceExtensions::supported_by_core().unwrap();
+        if supported_ext.khr_get_display_properties2
+            && supported_ext.khr_external_semaphore_capabilities
+        {
+            let instance = Instance::new(
+                None,
+                Version::V1_1,
+                &InstanceExtensions {
+                    khr_get_physical_device_properties2: true,
+                    khr_external_semaphore_capabilities: true,
+                    ..InstanceExtensions::none()
+                },
+                None,
+            )
+            .unwrap();
 
-        let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
+            let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
 
-        let queue_family = physical.queue_families().next().unwrap();
+            let queue_family = physical.queue_families().next().unwrap();
 
-        let device_ext = DeviceExtensions {
-            khr_external_semaphore: true,
-            khr_external_semaphore_fd: true,
-            ..DeviceExtensions::none()
-        };
-        let (device, _) = Device::new(
-            physical,
-            physical.supported_features(),
-            &device_ext,
-            [(queue_family, 0.5)].iter().cloned(),
-        )
-        .unwrap();
+            let device_ext = DeviceExtensions {
+                khr_external_semaphore: true,
+                khr_external_semaphore_fd: true,
+                ..DeviceExtensions::none()
+            };
+            let (device, _) = Device::new(
+                physical,
+                physical.supported_features(),
+                &device_ext,
+                [(queue_family, 0.5)].iter().cloned(),
+            )
+            .unwrap();
 
-        let supported_ext = DeviceExtensions::supported_by_device(physical.clone());
-        if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {
-            let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
-            let fd = sem.export_opaque_fd().unwrap();
+            let supported_ext = DeviceExtensions::supported_by_device(physical.clone());
+            if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {
+                let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
+                let fd = sem.export_opaque_fd().unwrap();
+            }
         }
     }
 }
