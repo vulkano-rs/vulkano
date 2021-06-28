@@ -55,15 +55,20 @@ impl<D> SemaphoreBuilder<D>
 where
     D: SafeDeref<Target = Device>,
 {
-    pub fn new(device: D, must_put_in_pool: bool) -> Self {
+    pub fn new(device: D) -> Self {
         let create = ash::vk::SemaphoreCreateInfo::default();
 
         Self {
             device,
             export_info: None,
             create,
-            must_put_in_pool,
+            must_put_in_pool: false,
         }
+    }
+    /// Configures the semaphore to be added to the semaphore pool once it is destroyed.
+    pub(crate) fn in_pool(mut self) -> Self {
+        self.must_put_in_pool = true;
+        self
     }
 
     /// Sets an optional field for exportable allocations in the `SemaphoreBuilder`.
@@ -137,7 +142,7 @@ where
             }),
             None => {
                 // Pool is empty, alloc new semaphore
-                SemaphoreBuilder::new(device, true).build()
+                SemaphoreBuilder::new(device).in_pool().build()
             }
         }
     }
@@ -145,14 +150,14 @@ where
     /// Builds a new semaphore.
     #[inline]
     pub fn alloc(device: D) -> Result<Semaphore<D>, SemaphoreError> {
-        SemaphoreBuilder::new(device, false).build()
+        SemaphoreBuilder::new(device).build()
     }
 
     /// Same as `alloc`, but allows exportable opaque file descriptor on Linux
     #[inline]
     #[cfg(target_os = "linux")]
     pub fn alloc_with_exportable_fd(device: D) -> Result<Semaphore<D>, SemaphoreError> {
-        SemaphoreBuilder::new(device, false)
+        SemaphoreBuilder::new(device)
             .export_info(ExternalSemaphoreHandleType::posix())
             .build()
     }
