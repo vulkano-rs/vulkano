@@ -12,6 +12,21 @@
   - `PhysicalDevice` now has new methods `supported_extensions` and `required_extensions`. The equivalent constructors on `DeviceExtensions` are deprecated, but still present.
 - **Breaking** Renamed `Device::loaded_extensions` to `enabled_extensions`, to match the terminology used for `enabled_features` as well as the Vulkan standard.
 - **Breaking** Renamed `Instance::loaded_extensions` and `loaded_layers` to `enabled_extensions` and `enabled_layers` respectively.
+- **Breaking** Major reorganisation of the `descriptor` module. Most importantly, its `descriptor_set` child is moved to the crate root and everything is placed under there. Full list of module changes:
+  - `descriptor::descriptor_set::*` > `descriptor_set`.
+  - `descriptor::descriptor::*` > `descriptor_set::layout`.
+    - But `ShaderStages*` are moved to `pipeline::shader`.
+  - `descriptor_set::UnsafeDescriptorSetLayout` > `descriptor_set::layout::DescriptorSetLayout` (renamed).
+  - `descriptor_set::DescriptorSetDesc` > `descriptor_set::layout`.
+  - `descriptor_set::{FixedSize*}` > `descriptor_set::fixed_size_pool`.
+    - Re-exported `descriptor_set::FixedSizeDescriptorSetsPool`.
+  - `descriptor_set::{Persistent*}` > `descriptor_set::persistent`.
+    - Re-exported `descriptor_set::PersistentDescriptorSet`, `descriptor_set::PersistentDescriptorSetBuildError`, `descriptor_set::PersistentDescriptorSetError`.
+  - `descriptor_set::{DescriptorPool*, DescriptorsCount, UnsafeDescriptorSetPool*}` > `descriptor_set::pool`.
+  - `descriptor_set::{StdDescriptorPool*}` > `descriptor_set::pool::standard`.
+    - Re-exported `descriptor_set::pool::StdDescriptorPool`.
+  - `descriptor_set::{DescriptorWrite, UnsafeDescriptorSet}` > `descriptor_set::sys`.
+  - `descriptor_set::collection` is now private.
 - Examples now enable only the features they need instead of all of them.
 - Examples have much smarter device selection logic. In the triangle example this is supplied with comments.
 - Errors checking(by unwrapping) in `MappedDeviceMemory::read_write`.
