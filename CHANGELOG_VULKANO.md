@@ -13,6 +13,7 @@
 - Add method to export file descriptor corresponding to Semaphore.
 - `SemaphoreBuilder` introduced. 
 - Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
+- Vulkano-shaders now provides the image format for descriptors, if the shader requires a specific format.
 
 # Version 0.24.0 (2021-06-20)
 
