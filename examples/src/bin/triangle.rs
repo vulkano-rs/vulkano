@@ -21,10 +21,11 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -81,8 +82,7 @@ fn main() {
             // Some devices may not support the extensions or features that your application, or
             // report properties and limits that are not sufficient for your application. These
             // should be filtered out here.
-            DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
-                == device_extensions
+            p.supported_extensions().intersection(&device_extensions) == device_extensions
         })
         .filter_map(|p| {
             // For each physical device, we try to find a suitable queue family that will execute
@@ -159,7 +159,9 @@ fn main() {
         // Some devices require certain extensions to be enabled if they are present
         // (e.g. `khr_portability_subset`). We add them to the device extensions that we're going to
         // enable.
-        &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
+        &physical_device
+            .required_extensions()
+            .union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();

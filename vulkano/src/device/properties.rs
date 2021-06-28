@@ -1,8 +1,8 @@
-use crate::image::{SampleCount, SampleCounts};
-use crate::instance::{
+use crate::device::physical::{
     ConformanceVersion, DriverId, PhysicalDeviceType, PointClippingBehavior, ShaderCoreProperties,
     ShaderFloatControlsIndependence, SubgroupFeatures,
 };
+use crate::image::{SampleCount, SampleCounts};
 use crate::pipeline::shader::ShaderStages;
 use crate::render_pass::ResolveModes;
 use crate::Version;

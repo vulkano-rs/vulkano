@@ -74,7 +74,7 @@ impl DebugCallback {
     where
         F: Fn(&Message) + 'static + Send + panic::RefUnwindSafe,
     {
-        if !instance.loaded_extensions().ext_debug_utils {
+        if !instance.enabled_extensions().ext_debug_utils {
             return Err(DebugCallbackCreationError::MissingExtension);
         }
 

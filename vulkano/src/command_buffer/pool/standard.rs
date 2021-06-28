@@ -23,7 +23,7 @@ use crate::command_buffer::pool::CommandPoolAlloc;
 use crate::command_buffer::pool::CommandPoolBuilderAlloc;
 use crate::command_buffer::pool::UnsafeCommandPool;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::instance::QueueFamily;
+use crate::device::physical::QueueFamily;
 
 use crate::device::Device;
 use crate::device::DeviceOwned;

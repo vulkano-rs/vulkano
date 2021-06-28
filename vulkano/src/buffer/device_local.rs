@@ -19,11 +19,11 @@ use crate::buffer::traits::BufferAccess;
 use crate::buffer::traits::BufferInner;
 use crate::buffer::traits::TypedBufferAccess;
 use crate::buffer::BufferUsage;
+use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
-use crate::instance::QueueFamily;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -170,8 +170,8 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
-        assert!(device.loaded_extensions().khr_external_memory_fd);
-        assert!(device.loaded_extensions().khr_external_memory);
+        assert!(device.enabled_extensions().khr_external_memory_fd);
+        assert!(device.enabled_extensions().khr_external_memory);
 
         let queue_families = queue_families
             .into_iter()

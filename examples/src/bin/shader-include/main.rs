@@ -15,8 +15,9 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice, PhysicalDeviceType};
+use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
@@ -29,10 +30,7 @@ fn main() {
         ..DeviceExtensions::none()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| {
-            DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
-                == device_extensions
-        })
+        .filter(|&p| p.supported_extensions().intersection(&device_extensions) == device_extensions)
         .filter_map(|p| {
             p.queue_families()
                 .find(|&q| q.supports_compute())
@@ -56,7 +54,9 @@ fn main() {
     let (device, mut queues) = Device::new(
         physical_device,
         &Features::none(),
-        &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
+        &physical_device
+            .required_extensions()
+            .union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();

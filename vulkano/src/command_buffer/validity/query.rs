@@ -8,9 +8,9 @@
 // according to those terms.
 
 use crate::buffer::TypedBufferAccess;
+use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::instance::QueueFamily;
 use crate::query::GetResultsError;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPool;

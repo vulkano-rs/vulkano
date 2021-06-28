@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::ImageDimensions;
@@ -14,7 +15,7 @@ use vulkano::image::ImmutableImage;
 use vulkano::image::MipmapsCount;
 use vulkano::instance;
 use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
-use vulkano::instance::{Instance, InstanceExtensions, PhysicalDevice, PhysicalDeviceType};
+use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::Version;
 
 fn main() {
@@ -116,10 +117,7 @@ fn main() {
         ..DeviceExtensions::none()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| {
-            DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
-                == device_extensions
-        })
+        .filter(|&p| p.supported_extensions().intersection(&device_extensions) == device_extensions)
         .filter_map(|p| {
             Some(
                 p.queue_families()
@@ -140,7 +138,9 @@ fn main() {
     let (_, mut queues) = Device::new(
         physical_device,
         &Features::none(),
-        &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
+        &physical_device
+            .required_extensions()
+            .union(&device_extensions),
         vec![(queue_family, 0.5)],
     )
     .expect("failed to create device");

@@ -8,11 +8,11 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::device::physical::PhysicalDevice;
+use crate::device::physical::QueueFamily;
 use crate::format::Format;
 use crate::image::ImageUsage;
 use crate::instance::Instance;
-use crate::instance::PhysicalDevice;
-use crate::instance::QueueFamily;
 use crate::swapchain::capabilities::SupportedSurfaceTransforms;
 use crate::swapchain::display::DisplayMode;
 use crate::swapchain::display::DisplayPlane;
@@ -76,7 +76,7 @@ impl<W> Surface<W> {
             .display()
             .physical_device()
             .instance()
-            .loaded_extensions()
+            .enabled_extensions()
             .khr_display
         {
             return Err(SurfaceCreationError::MissingExtension {
@@ -145,7 +145,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().khr_win32_surface {
+        if !instance.enabled_extensions().khr_win32_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_KHR_win32_surface",
             });
@@ -193,7 +193,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().khr_xcb_surface {
+        if !instance.enabled_extensions().khr_xcb_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_KHR_xcb_surface",
             });
@@ -241,7 +241,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().khr_xlib_surface {
+        if !instance.enabled_extensions().khr_xlib_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_KHR_xlib_surface",
             });
@@ -289,7 +289,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().khr_wayland_surface {
+        if !instance.enabled_extensions().khr_wayland_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_KHR_wayland_surface",
             });
@@ -334,7 +334,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().khr_android_surface {
+        if !instance.enabled_extensions().khr_android_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_KHR_android_surface",
             });
@@ -379,7 +379,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().mvk_ios_surface {
+        if !instance.enabled_extensions().mvk_ios_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_MVK_ios_surface",
             });
@@ -424,7 +424,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().mvk_macos_surface {
+        if !instance.enabled_extensions().mvk_macos_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_MVK_macos_surface",
             });
@@ -468,7 +468,7 @@ impl<W> Surface<W> {
     ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
         let fns = instance.fns();
 
-        if !instance.loaded_extensions().nn_vi_surface {
+        if !instance.enabled_extensions().nn_vi_surface {
             return Err(SurfaceCreationError::MissingExtension {
                 name: "VK_NN_vi_surface",
             });

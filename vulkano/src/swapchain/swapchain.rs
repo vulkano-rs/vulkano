@@ -678,7 +678,7 @@ impl<W> SwapchainBuilder<W> {
             }
         }
 
-        if !device.loaded_extensions().khr_swapchain {
+        if !device.enabled_extensions().khr_swapchain {
             return Err(SwapchainCreationError::MissingExtensionKHRSwapchain);
         }
 
@@ -687,14 +687,14 @@ impl<W> SwapchainBuilder<W> {
         // TODO: VK_EXT_FULL_SCREEN_EXCLUSIVE requires these extensions, so they should always
         // be enabled if it is. A separate check here is unnecessary; this should be checked at
         // device creation.
-        if device.loaded_extensions().ext_full_screen_exclusive
+        if device.enabled_extensions().ext_full_screen_exclusive
             && surface
                 .instance()
-                .loaded_extensions()
+                .enabled_extensions()
                 .khr_get_physical_device_properties2
             && surface
                 .instance()
-                .loaded_extensions()
+                .enabled_extensions()
                 .khr_get_surface_capabilities2
         {
             surface_full_screen_exclusive_info = Some(ash::vk::SurfaceFullScreenExclusiveInfoEXT {

@@ -30,14 +30,14 @@ macro_rules! instance {
 /// Creates a device and a queue for graphics operations.
 macro_rules! gfx_dev_and_queue {
     ($($feature:ident),*) => ({
-        use crate::instance;
+        use crate::device::physical::PhysicalDevice;
         use crate::device::Device;
         use crate::device::DeviceExtensions;
         use crate::device::Features;
 
         let instance = instance!();
 
-        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+        let physical = match PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
             None => return
         };

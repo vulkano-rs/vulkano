@@ -22,10 +22,11 @@ use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
-use vulkano::instance::{Instance, PhysicalDevice, PhysicalDeviceType};
+use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -75,8 +76,7 @@ fn main() {
         };
         let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
             .filter(|&p| {
-                DeviceExtensions::supported_by_device(p).intersection(&device_extensions)
-                    == device_extensions
+                p.supported_extensions().intersection(&device_extensions) == device_extensions
             })
             .filter_map(|p| {
                 p.queue_families()
@@ -101,7 +101,9 @@ fn main() {
         let (device, mut queues) = Device::new(
             physical_device,
             &Features::none(),
-            &DeviceExtensions::required_extensions(physical_device).union(&device_extensions),
+            &physical_device
+                .required_extensions()
+                .union(&device_extensions),
             [(queue_family, 0.5)].iter().cloned(),
         )
         .unwrap();

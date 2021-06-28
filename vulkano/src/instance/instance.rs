@@ -8,13 +8,13 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::device::physical::{init_physical_devices, PhysicalDeviceInfo};
 use crate::extensions::ExtensionRestrictionError;
 use crate::fns::InstanceFunctions;
 use crate::instance::loader;
 use crate::instance::loader::FunctionPointers;
 use crate::instance::loader::Loader;
 use crate::instance::loader::LoadingError;
-use crate::instance::physical_device::{init_physical_devices, PhysicalDeviceInfos};
 use crate::instance::InstanceExtensions;
 use crate::Error;
 use crate::OomError;
@@ -180,7 +180,7 @@ pub struct Instance {
     // The highest allowed API version for instances and devices created from it.
     max_api_version: Version,
 
-    pub(super) physical_devices: Vec<PhysicalDeviceInfos>,
+    pub(crate) physical_device_infos: Vec<PhysicalDeviceInfo>,
     fns: InstanceFunctions,
     extensions: InstanceExtensions,
     layers: SmallVec<[CString; 16]>,
@@ -387,7 +387,7 @@ impl Instance {
             api_version,
             max_api_version,
             //alloc: None,
-            physical_devices: Vec::new(),
+            physical_device_infos: Vec::new(),
             fns,
             extensions: extensions.clone(),
             layers,
@@ -395,7 +395,7 @@ impl Instance {
         };
 
         // Enumerating all physical devices.
-        instance.physical_devices = init_physical_devices(&instance)?;
+        instance.physical_device_infos = init_physical_devices(&instance)?;
 
         Ok(Arc::new(instance))
     }
@@ -431,29 +431,15 @@ impl Instance {
     }
 
     /// Returns the extensions that have been enabled on the instance.
-    ///
-    /// This list is equal to what was passed to `Instance::new()`.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use vulkano::instance::Instance;
-    /// use vulkano::instance::InstanceExtensions;
-    /// use vulkano::Version;
-    ///
-    /// let extensions = InstanceExtensions::supported_by_core().unwrap();
-    /// let instance = Instance::new(None, Version::V1_1, &extensions, None).unwrap();
-    /// assert_eq!(instance.loaded_extensions(), &extensions);
-    /// ```
     #[inline]
-    pub fn loaded_extensions(&self) -> &InstanceExtensions {
+    pub fn enabled_extensions(&self) -> &InstanceExtensions {
         &self.extensions
     }
 
     /// Returns the layers that have been enabled on the instance.
     #[doc(hidden)]
     #[inline]
-    pub fn loaded_layers(&self) -> slice::Iter<CString> {
+    pub fn enabled_layers(&self) -> slice::Iter<CString> {
         self.layers.iter()
     }
 }
@@ -680,7 +666,7 @@ impl From<Error> for InstanceCreationError {
 
 #[cfg(test)]
 mod tests {
-    use crate::instance;
+    use crate::device::physical::PhysicalDevice;
 
     #[test]
     fn create_instance() {
@@ -691,7 +677,7 @@ mod tests {
     fn queue_family_by_id() {
         let instance = instance!();
 
-        let phys = match instance::PhysicalDevice::enumerate(&instance).next() {
+        let phys = match PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
             None => return,
         };
