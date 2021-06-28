@@ -233,7 +233,6 @@ use syn::{
 mod codegen;
 mod descriptor_sets;
 mod entry_point;
-mod enums;
 mod parse;
 mod spec_consts;
 mod spirv_search;

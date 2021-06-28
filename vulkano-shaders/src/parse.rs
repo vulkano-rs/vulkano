@@ -7,7 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::enums::*;
+use num_traits::FromPrimitive;
+use spirv_headers::{
+    AccessQualifier, AddressingModel, Capability, Decoration, Dim, ExecutionMode, ExecutionModel,
+    ImageFormat, MemoryModel, Op, StorageClass,
+};
 
 /// Parses a SPIR-V document from a list of words.
 pub fn parse_spirv(i: &[u32]) -> Result<Spirv, ParseError> {
@@ -430,76 +434,89 @@ fn parse_instruction(i: &[u32]) -> Result<(Instruction, &[u32]), ParseError> {
 }
 
 fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, ParseError> {
-    Ok(match opcode {
-        0 => Instruction::Nop,
-        5 => Instruction::Name {
+    let instruction = match Op::from_u16(opcode) {
+        Some(x) => x,
+        None => return Ok(Instruction::Unknown(opcode, operands.to_owned())),
+    };
+
+    Ok(match instruction {
+        Op::Nop => Instruction::Nop,
+        Op::Name => Instruction::Name {
             target_id: operands[0],
             name: parse_string(&operands[1..]).0,
         },
-        6 => Instruction::MemberName {
+        Op::MemberName => Instruction::MemberName {
             target_id: operands[0],
             member: operands[1],
             name: parse_string(&operands[2..]).0,
         },
-        11 => Instruction::ExtInstImport {
+        Op::ExtInstImport => Instruction::ExtInstImport {
             result_id: operands[0],
             name: parse_string(&operands[1..]).0,
         },
-        12 => Instruction::ExtInst {
+        Op::ExtInst => Instruction::ExtInst {
             result_type_id: operands[0],
             result_id: operands[1],
             set: operands[2],
             instruction: operands[3],
             operands: operands[4..].to_owned(),
         },
-        14 => Instruction::MemoryModel(
-            AddressingModel::from_num(operands[0])?,
-            MemoryModel::from_num(operands[1])?,
+        Op::MemoryModel => Instruction::MemoryModel(
+            AddressingModel::from_u32(operands[0])
+                .ok_or(ParseError::UnknownConstant("AddressingModel", operands[0]))?,
+            MemoryModel::from_u32(operands[1])
+                .ok_or(ParseError::UnknownConstant("MemoryModel", operands[1]))?,
         ),
-        15 => {
+        Op::EntryPoint => {
             let (n, r) = parse_string(&operands[2..]);
             Instruction::EntryPoint {
-                execution: ExecutionModel::from_num(operands[0])?,
+                execution: ExecutionModel::from_u32(operands[0])
+                    .ok_or(ParseError::UnknownConstant("ExecutionModel", operands[0]))?,
                 id: operands[1],
                 name: n,
                 interface: r.to_owned(),
             }
         }
-        16 => Instruction::ExecutionMode {
+        Op::ExecutionMode => Instruction::ExecutionMode {
             target_id: operands[0],
-            mode: ExecutionMode::from_num(operands[1])?,
+            mode: ExecutionMode::from_u32(operands[1])
+                .ok_or(ParseError::UnknownConstant("ExecutionMode", operands[0]))?,
             optional_literals: operands[2..].to_vec(),
         },
-        17 => Instruction::Capability(Capability::from_num(operands[0])?),
-        19 => Instruction::TypeVoid {
+        Op::Capability => Instruction::Capability(
+            Capability::from_u32(operands[0])
+                .ok_or(ParseError::UnknownConstant("Capability", operands[0]))?,
+        ),
+        Op::TypeVoid => Instruction::TypeVoid {
             result_id: operands[0],
         },
-        20 => Instruction::TypeBool {
+        Op::TypeBool => Instruction::TypeBool {
             result_id: operands[0],
         },
-        21 => Instruction::TypeInt {
+        Op::TypeInt => Instruction::TypeInt {
             result_id: operands[0],
             width: operands[1],
             signedness: operands[2] != 0,
         },
-        22 => Instruction::TypeFloat {
+        Op::TypeFloat => Instruction::TypeFloat {
             result_id: operands[0],
             width: operands[1],
         },
-        23 => Instruction::TypeVector {
+        Op::TypeVector => Instruction::TypeVector {
             result_id: operands[0],
             component_id: operands[1],
             count: operands[2],
         },
-        24 => Instruction::TypeMatrix {
+        Op::TypeMatrix => Instruction::TypeMatrix {
             result_id: operands[0],
             column_type_id: operands[1],
             column_count: operands[2],
         },
-        25 => Instruction::TypeImage {
+        Op::TypeImage => Instruction::TypeImage {
             result_id: operands[0],
             sampled_type_id: operands[1],
-            dim: Dim::from_num(operands[2])?,
+            dim: Dim::from_u32(operands[2])
+                .ok_or(ParseError::UnknownConstant("Dim", operands[2]))?,
             depth: match operands[3] {
                 0 => Some(false),
                 1 => Some(true),
@@ -514,161 +531,169 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
                 2 => Some(false),
                 _ => unreachable!(),
             },
-            format: ImageFormat::from_num(operands[7])?,
+            format: ImageFormat::from_u32(operands[7])
+                .ok_or(ParseError::UnknownConstant("ImageFormat", operands[7]))?,
             access: if operands.len() >= 9 {
-                Some(AccessQualifier::from_num(operands[8])?)
+                Some(
+                    AccessQualifier::from_u32(operands[8])
+                        .ok_or(ParseError::UnknownConstant("AccessQualifier", operands[8]))?,
+                )
             } else {
                 None
             },
         },
-        26 => Instruction::TypeSampler {
+        Op::TypeSampler => Instruction::TypeSampler {
             result_id: operands[0],
         },
-        27 => Instruction::TypeSampledImage {
+        Op::TypeSampledImage => Instruction::TypeSampledImage {
             result_id: operands[0],
             image_type_id: operands[1],
         },
-        28 => Instruction::TypeArray {
+        Op::TypeArray => Instruction::TypeArray {
             result_id: operands[0],
             type_id: operands[1],
             length_id: operands[2],
         },
-        29 => Instruction::TypeRuntimeArray {
+        Op::TypeRuntimeArray => Instruction::TypeRuntimeArray {
             result_id: operands[0],
             type_id: operands[1],
         },
-        30 => Instruction::TypeStruct {
+        Op::TypeStruct => Instruction::TypeStruct {
             result_id: operands[0],
             member_types: operands[1..].to_owned(),
         },
-        31 => Instruction::TypeOpaque {
+        Op::TypeOpaque => Instruction::TypeOpaque {
             result_id: operands[0],
             name: parse_string(&operands[1..]).0,
         },
-        32 => Instruction::TypePointer {
+        Op::TypePointer => Instruction::TypePointer {
             result_id: operands[0],
-            storage_class: StorageClass::from_num(operands[1])?,
+            storage_class: StorageClass::from_u32(operands[1])
+                .ok_or(ParseError::UnknownConstant("StorageClass", operands[1]))?,
             type_id: operands[2],
         },
-        43 => Instruction::Constant {
+        Op::Constant => Instruction::Constant {
             result_type_id: operands[0],
             result_id: operands[1],
             data: operands[2..].to_owned(),
         },
-        48 => Instruction::SpecConstantTrue {
+        Op::SpecConstantTrue => Instruction::SpecConstantTrue {
             result_type_id: operands[0],
             result_id: operands[1],
         },
-        49 => Instruction::SpecConstantFalse {
+        Op::SpecConstantFalse => Instruction::SpecConstantFalse {
             result_type_id: operands[0],
             result_id: operands[1],
         },
-        50 => Instruction::SpecConstant {
-            result_type_id: operands[0],
-            result_id: operands[1],
-            data: operands[2..].to_owned(),
-        },
-        51 => Instruction::SpecConstantComposite {
+        Op::SpecConstant => Instruction::SpecConstant {
             result_type_id: operands[0],
             result_id: operands[1],
             data: operands[2..].to_owned(),
         },
-        54 => Instruction::Function {
+        Op::SpecConstantComposite => Instruction::SpecConstantComposite {
+            result_type_id: operands[0],
+            result_id: operands[1],
+            data: operands[2..].to_owned(),
+        },
+        Op::Function => Instruction::Function {
             result_type_id: operands[0],
             result_id: operands[1],
             function_control: operands[2],
             function_type_id: operands[3],
         },
-        56 => Instruction::FunctionEnd,
-        57 => Instruction::FunctionCall {
+        Op::FunctionEnd => Instruction::FunctionEnd,
+        Op::FunctionCall => Instruction::FunctionCall {
             result_type_id: operands[0],
             result_id: operands[1],
             function_id: operands[2],
             args: operands[3..].to_owned(),
         },
-        59 => Instruction::Variable {
+        Op::Variable => Instruction::Variable {
             result_type_id: operands[0],
             result_id: operands[1],
-            storage_class: StorageClass::from_num(operands[2])?,
+            storage_class: StorageClass::from_u32(operands[2])
+                .ok_or(ParseError::UnknownConstant("StorageClass", operands[2]))?,
             initializer: operands.get(3).map(|&v| v),
         },
-        60 => Instruction::ImageTexelPointer {
+        Op::ImageTexelPointer => Instruction::ImageTexelPointer {
             result_type_id: operands[0],
             result_id: operands[1],
             image: operands[2],
             coordinate: operands[3],
             sample: operands[4],
         },
-        61 => Instruction::Load {
+        Op::Load => Instruction::Load {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
             memory_operands: operands.get(3).map(|&v| v),
         },
-        62 => Instruction::Store {
+        Op::Store => Instruction::Store {
             pointer: operands[0],
             object: operands[1],
             memory_operands: operands.get(2).map(|&v| v),
         },
-        63 => Instruction::CopyMemory {
+        Op::CopyMemory => Instruction::CopyMemory {
             target_id: operands[0],
             source_id: operands[1],
             memory_operands: operands.get(2).map(|&v| v),
             source_memory_operands: operands.get(3).map(|&v| v),
         },
-        65 => Instruction::AccessChain {
+        Op::AccessChain => Instruction::AccessChain {
             result_type_id: operands[0],
             result_id: operands[1],
             base_id: operands[2],
             indexes: operands[3..].iter().map(|&v| v as i32).collect(),
         },
-        66 => Instruction::InBoundsAccessChain {
+        Op::InBoundsAccessChain => Instruction::InBoundsAccessChain {
             result_type_id: operands[0],
             result_id: operands[1],
             base_id: operands[2],
             indexes: operands[3..].iter().map(|&v| v as i32).collect(),
         },
-        71 => Instruction::Decorate {
+        Op::Decorate => Instruction::Decorate {
             target_id: operands[0],
-            decoration: Decoration::from_num(operands[1])?,
+            decoration: Decoration::from_u32(operands[1])
+                .ok_or(ParseError::UnknownConstant("Decoration", operands[1]))?,
             params: operands[2..].to_owned(),
         },
-        72 => Instruction::MemberDecorate {
+        Op::MemberDecorate => Instruction::MemberDecorate {
             target_id: operands[0],
             member: operands[1],
-            decoration: Decoration::from_num(operands[2])?,
+            decoration: Decoration::from_u32(operands[2])
+                .ok_or(ParseError::UnknownConstant("Decoration", operands[2]))?,
             params: operands[3..].to_owned(),
         },
-        73 => Instruction::DecorationGroup {
+        Op::DecorationGroup => Instruction::DecorationGroup {
             result_id: operands[0],
         },
-        74 => Instruction::GroupDecorate {
+        Op::GroupDecorate => Instruction::GroupDecorate {
             decoration_group: operands[0],
             targets: operands[1..].to_owned(),
         },
-        75 => Instruction::GroupMemberDecorate {
+        Op::GroupMemberDecorate => Instruction::GroupMemberDecorate {
             decoration_group: operands[0],
             targets: operands.chunks(2).map(|x| (x[0], x[1])).collect(),
         },
-        83 => Instruction::CopyObject {
+        Op::CopyObject => Instruction::CopyObject {
             result_type_id: operands[0],
             result_id: operands[1],
             operand_id: operands[2],
         },
-        227 => Instruction::AtomicLoad {
+        Op::AtomicLoad => Instruction::AtomicLoad {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
             scope_id: operands[3],
             memory_semantics_id: operands[4],
         },
-        228 => Instruction::AtomicStore {
+        Op::AtomicStore => Instruction::AtomicStore {
             pointer: operands[0],
             scope_id: operands[1],
             memory_semantics_id: operands[2],
             value_id: operands[3],
         },
-        229 => Instruction::AtomicExchange {
+        Op::AtomicExchange => Instruction::AtomicExchange {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -676,7 +701,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        230 => Instruction::AtomicCompareExchange {
+        Op::AtomicCompareExchange => Instruction::AtomicCompareExchange {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -686,7 +711,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             value_id: operands[6],
             comparator_id: operands[7],
         },
-        231 => Instruction::AtomicCompareExchangeWeak {
+        Op::AtomicCompareExchangeWeak => Instruction::AtomicCompareExchangeWeak {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -696,29 +721,21 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             value_id: operands[6],
             comparator_id: operands[7],
         },
-        232 => Instruction::AtomicIIncrement {
+        Op::AtomicIIncrement => Instruction::AtomicIIncrement {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
             scope_id: operands[3],
             memory_semantics_id: operands[4],
         },
-        233 => Instruction::AtomicIDecrement {
+        Op::AtomicIDecrement => Instruction::AtomicIDecrement {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
             scope_id: operands[3],
             memory_semantics_id: operands[4],
         },
-        234 => Instruction::AtomicIAdd {
-            result_type_id: operands[0],
-            result_id: operands[1],
-            pointer: operands[2],
-            scope_id: operands[3],
-            memory_semantics_id: operands[4],
-            value_id: operands[5],
-        },
-        235 => Instruction::AtomicISub {
+        Op::AtomicIAdd => Instruction::AtomicIAdd {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -726,7 +743,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        236 => Instruction::AtomicSMin {
+        Op::AtomicISub => Instruction::AtomicISub {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -734,7 +751,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        237 => Instruction::AtomicUMin {
+        Op::AtomicSMin => Instruction::AtomicSMin {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -742,7 +759,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        238 => Instruction::AtomicSMax {
+        Op::AtomicUMin => Instruction::AtomicUMin {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -750,7 +767,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        239 => Instruction::AtomicUMax {
+        Op::AtomicSMax => Instruction::AtomicSMax {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -758,7 +775,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        240 => Instruction::AtomicAnd {
+        Op::AtomicUMax => Instruction::AtomicUMax {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -766,7 +783,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        241 => Instruction::AtomicOr {
+        Op::AtomicAnd => Instruction::AtomicAnd {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -774,7 +791,7 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        242 => Instruction::AtomicXor {
+        Op::AtomicOr => Instruction::AtomicOr {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
@@ -782,22 +799,30 @@ fn decode_instruction(opcode: u16, operands: &[u32]) -> Result<Instruction, Pars
             memory_semantics_id: operands[4],
             value_id: operands[5],
         },
-        248 => Instruction::Label {
+        Op::AtomicXor => Instruction::AtomicXor {
+            result_type_id: operands[0],
+            result_id: operands[1],
+            pointer: operands[2],
+            scope_id: operands[3],
+            memory_semantics_id: operands[4],
+            value_id: operands[5],
+        },
+        Op::Label => Instruction::Label {
             result_id: operands[0],
         },
-        249 => Instruction::Branch {
+        Op::Branch => Instruction::Branch {
             result_id: operands[0],
         },
-        252 => Instruction::Kill,
-        253 => Instruction::Return,
-        318 => Instruction::AtomicFlagTestAndSet {
+        Op::Kill => Instruction::Kill,
+        Op::Return => Instruction::Return,
+        Op::AtomicFlagTestAndSet => Instruction::AtomicFlagTestAndSet {
             result_type_id: operands[0],
             result_id: operands[1],
             pointer: operands[2],
             scope_id: operands[3],
             memory_semantics_id: operands[4],
         },
-        319 => Instruction::AtomicFlagClear {
+        Op::AtomicFlagClear => Instruction::AtomicFlagClear {
             pointer: operands[0],
             scope_id: operands[1],
             memory_semantics_id: operands[2],
@@ -987,7 +1012,7 @@ impl Spirv {
         None
     }
 
-    /// Returns the params held by the Decoration::DecorationBuiltIn for the specified struct id
+    /// Returns the params held by the Decoration::BuiltIn for the specified struct id
     /// Searches OpMemberDecorate and OpGroupMemberDecorate
     /// Returns None if such a decoration does not exist
     ///
@@ -998,7 +1023,7 @@ impl Spirv {
             match instruction {
                 Instruction::MemberDecorate {
                     target_id,
-                    decoration: Decoration::DecorationBuiltIn,
+                    decoration: Decoration::BuiltIn,
                     ref params,
                     ..
                 } if *target_id == struct_id => {
@@ -1013,7 +1038,7 @@ impl Spirv {
                             for instruction in &self.instructions {
                                 if let Instruction::Decorate {
                                     target_id,
-                                    decoration: Decoration::DecorationBuiltIn,
+                                    decoration: Decoration::BuiltIn,
                                     ref params,
                                 } = instruction
                                 {
