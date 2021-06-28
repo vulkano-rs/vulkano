@@ -985,7 +985,7 @@ mod tests {
 
         let features = Features::all();
         // In the unlikely situation where the device supports everything, we ignore the test.
-        if physical.supported_features().superset_of(&features) {
+        if physical.supported_features().is_superset_of(&features) {
             return;
         }
 

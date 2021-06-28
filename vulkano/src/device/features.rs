@@ -43,11 +43,11 @@ macro_rules! features {
         ///     .. Features::none()
         /// };
         ///
-        /// if !physical_device.supported_features().superset_of(&minimal_features) {
+        /// if !physical_device.supported_features().is_superset_of(&minimal_features) {
         ///     panic!("The physical device is not good enough for this application.");
         /// }
         ///
-        /// assert!(optimal_features.superset_of(&minimal_features));
+        /// assert!(optimal_features.is_superset_of(&minimal_features));
         /// let features_to_request = optimal_features.intersection(physical_device.supported_features());
         /// ```
         ///
@@ -130,7 +130,7 @@ macro_rules! features {
             ///
             /// That is, for each feature of the parameter that is true, the corresponding value
             /// in self is true as well.
-            pub fn superset_of(&self, other: &Features) -> bool {
+            pub fn is_superset_of(&self, other: &Features) -> bool {
                 $((self.$member == true || other.$member == false))&&+
             }
 

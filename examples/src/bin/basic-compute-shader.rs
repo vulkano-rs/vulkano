@@ -36,7 +36,7 @@ fn main() {
         ..DeviceExtensions::none()
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        .filter(|&p| p.supported_extensions().intersection(&device_extensions) == device_extensions)
+        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
         .filter_map(|p| {
             // The Vulkan specs guarantee that a compliant implementation must provide at least one queue
             // that supports compute operations.

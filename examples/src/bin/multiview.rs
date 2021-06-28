@@ -65,10 +65,10 @@ fn main() {
     };
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
         .filter(|&p| {
-            p.supported_extensions().intersection(&device_extensions) == device_extensions
+            p.supported_extensions().is_superset_of(&device_extensions)
         })
         .filter(|&p| {
-            p.supported_features().superset_of(&features)
+            p.supported_features().is_superset_of(&features)
         })
         .filter(|&p| {
             // This example renders to two layers of the framebuffer using the multiview
