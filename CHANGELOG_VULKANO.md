@@ -11,7 +11,8 @@
 - Errors checking(by unwrapping) in `MappedDeviceMemory::read_write`.
 - Add creation of Semaphores with exportable Linux file descriptor on.
 - Add method to export file descriptor corresponding to Semaphore.
-- `SemaphoreBuilder` introduced.
+- `SemaphoreBuilder` introduced. 
+- Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
 
 # Version 0.24.0 (2021-06-20)
 
