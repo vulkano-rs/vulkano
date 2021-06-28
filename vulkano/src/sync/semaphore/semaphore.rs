@@ -23,7 +23,7 @@ use std::os::unix::io::FromRawFd;
 use std::ptr;
 use std::sync::Arc;
 
-use super::ExternalSemaphoreHandleType;
+use crate::sync::semaphore::ExternalSemaphoreHandleType;
 
 /// Used to provide synchronization between command buffers during their execution.
 ///
