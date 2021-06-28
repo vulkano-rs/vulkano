@@ -27,7 +27,7 @@ impl ExternalSemaphoreHandleType {
     /// # Example
     ///
     /// ```rust
-    /// use vulkano::semaphore::ExternalSemaphoreHandleType as ExternalSemaphoreHandleType;
+    /// use vulkano::sync::ExternalSemaphoreHandleType as ExternalSemaphoreHandleType;
     ///
     /// let _handle_type = ExternalSemaphoreHandleType {
     ///     opaque_fd: true,
@@ -50,7 +50,7 @@ impl ExternalSemaphoreHandleType {
     /// # Example
     ///
     /// ```rust
-    /// use vulkano::semaphore::ExternalSemaphoreHandleType as ExternalSemaphoreHandleType;
+    /// use vulkano::sync::ExternalSemaphoreHandleType as ExternalSemaphoreHandleType;
     ///
     /// let _handle_type = ExternalSemaphoreHandleType::posix();
     /// ```

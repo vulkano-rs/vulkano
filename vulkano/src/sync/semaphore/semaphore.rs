@@ -137,7 +137,7 @@ where
             }),
             None => {
                 // Pool is empty, alloc new semaphore
-                Self::alloc(device)
+                SemaphoreBuilder::new(device, true).build()
             }
         }
     }
@@ -152,7 +152,7 @@ where
     #[inline]
     #[cfg(target_os = "linux")]
     pub fn alloc_with_exportable_fd(device: D) -> Result<Semaphore<D>, SemaphoreError> {
-        SemaphoreBuilder::new(device, true)
+        SemaphoreBuilder::new(device, false)
             .export_info(ExternalSemaphoreHandleType::posix())
             .build()
     }
