@@ -119,7 +119,7 @@ This repository contains four libraries:
 - `vulkano-shaders` Provides the `shader!` macro for compiling glsl shaders.
 - `vulkano-win` provides a safe link between vulkano and the `winit` library which can create
   a window to render to.
-- `vk-sys` contains raw bindings for Vulkan. You can use it even if you don't care about vulkano.
+- `vk-sys` contains raw bindings for Vulkan. We used these binding previously in Vulkano, but now they are deprecated as we have migrated to Ash. However, the subproject is still in maintenance for legacy purposes, and you can use it even if you don't care about Vulkano.
 
 In order to run tests, run `cargo test --all` at the root of the repository. Make sure your Vulkan
 driver is up to date before doing so.
