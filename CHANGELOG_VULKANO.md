@@ -6,6 +6,13 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- Examples now enable only the features they need instead of all of them.
+- Examples have much smarter device selection logic. In the triangle example this is supplied with comments.
+- Errors checking(by unwrapping) in `MappedDeviceMemory::read_write`.
+- Add creation of Semaphores with exportable Linux file descriptor on.
+- Add method to export file descriptor corresponding to Semaphore.
+- `SemaphoreBuilder` introduced. 
+- Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
 
 # Version 0.24.0 (2021-06-20)
 

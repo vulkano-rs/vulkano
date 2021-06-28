@@ -625,6 +625,7 @@ pub enum ColorSpace {
     AdobeRgbLinear = ash::vk::ColorSpaceKHR::ADOBERGB_LINEAR_EXT.as_raw(),
     AdobeRgbNonLinear = ash::vk::ColorSpaceKHR::ADOBERGB_NONLINEAR_EXT.as_raw(),
     PassThrough = ash::vk::ColorSpaceKHR::PASS_THROUGH_EXT.as_raw(),
+    DisplayNative = ash::vk::ColorSpaceKHR::DISPLAY_NATIVE_AMD.as_raw(),
 }
 
 impl From<ColorSpace> for ash::vk::ColorSpaceKHR {
@@ -652,6 +653,7 @@ impl From<ash::vk::ColorSpaceKHR> for ColorSpace {
             ash::vk::ColorSpaceKHR::ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
             ash::vk::ColorSpaceKHR::ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
             ash::vk::ColorSpaceKHR::PASS_THROUGH_EXT => ColorSpace::PassThrough,
+            ash::vk::ColorSpaceKHR::DISPLAY_NATIVE_AMD => ColorSpace::DisplayNative,
             _ => panic!("Wrong value for color space enum"),
         }
     }
