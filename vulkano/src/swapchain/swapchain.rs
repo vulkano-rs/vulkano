@@ -36,6 +36,7 @@ use crate::swapchain::PresentRegion;
 use crate::swapchain::Surface;
 use crate::swapchain::SurfaceSwapchainLock;
 use crate::swapchain::SurfaceTransform;
+use crate::sync::semaphore::SemaphoreError;
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlags;
@@ -1369,6 +1370,9 @@ pub enum AcquireError {
     /// The surface has changed in a way that makes the swapchain unusable. You must query the
     /// surface's new properties and recreate a new swapchain if you want to continue drawing.
     OutOfDate,
+
+    /// Error during semaphore creation
+    SemaphoreError(SemaphoreError),
 }
 
 impl error::Error for AcquireError {
@@ -1396,8 +1400,15 @@ impl fmt::Display for AcquireError {
                 AcquireError::FullscreenExclusiveLost => {
                     "the swapchain no longer has fullscreen exclusivity"
                 }
+                AcquireError::SemaphoreError(_) => "error creating semaphore",
             }
         )
+    }
+}
+
+impl From<SemaphoreError> for AcquireError {
+    fn from(err: SemaphoreError) -> Self {
+        AcquireError::SemaphoreError(err)
     }
 }
 

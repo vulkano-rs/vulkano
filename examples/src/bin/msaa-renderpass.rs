@@ -74,8 +74,8 @@ use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryCommandBuffer,
     SubpassContents,
 };
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::ClearValue;
 use vulkano::format::Format;
 use vulkano::image::{
@@ -92,15 +92,39 @@ fn main() {
     // The usual Vulkan initialization.
     let required_extensions = vulkano_win::required_extensions();
     let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| q.supports_graphics())
+
+    let device_extensions = DeviceExtensions {
+        khr_swapchain: true,
+        ..DeviceExtensions::none()
+    };
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| p.supported_extensions().intersection(&device_extensions) == device_extensions)
+        .filter_map(|p| {
+            p.queue_families()
+                .find(|&q| q.supports_graphics())
+                .map(|q| (p, q))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        })
         .unwrap();
+
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name.as_ref().unwrap(),
+        physical_device.properties().device_type.unwrap()
+    );
+
     let (device, mut queues) = Device::new(
-        physical,
-        physical.supported_features(),
-        &DeviceExtensions::none(),
+        physical_device,
+        &Features::none(),
+        &physical_device
+            .required_extensions()
+            .union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();

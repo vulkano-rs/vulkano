@@ -15,8 +15,8 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::{Device, DeviceExtensions};
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract};
 use vulkano::sync;
@@ -25,25 +25,42 @@ use vulkano::Version;
 
 fn main() {
     let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
-    let physical = PhysicalDevice::enumerate(&instance).next().unwrap();
-    let queue_family = physical
-        .queue_families()
-        .find(|&q| q.supports_compute())
-        .unwrap();
     let device_extensions = DeviceExtensions {
         khr_storage_buffer_storage_class: true,
         ..DeviceExtensions::none()
     };
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| p.supported_extensions().intersection(&device_extensions) == device_extensions)
+        .filter_map(|p| {
+            p.queue_families()
+                .find(|&q| q.supports_compute())
+                .map(|q| (p, q))
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        })
+        .unwrap();
+
+    println!(
+        "Using device: {} (type: {:?})",
+        physical_device.properties().device_name.as_ref().unwrap(),
+        physical_device.properties().device_type.unwrap()
+    );
+
     let (device, mut queues) = Device::new(
-        physical,
-        physical.supported_features(),
-        &device_extensions,
+        physical_device,
+        &Features::none(),
+        &physical_device
+            .required_extensions()
+            .union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
     .unwrap();
     let queue = queues.next().unwrap();
-
-    println!("Device initialized");
 
     let pipeline = Arc::new({
         mod cs {

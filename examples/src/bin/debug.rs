@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use vulkano::device::physical::PhysicalDevice;
-use vulkano::device::Device;
+use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
+use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::ImageDimensions;
 use vulkano::image::ImmutableImage;
@@ -113,17 +113,34 @@ fn main() {
     // Create Vulkan objects in the same way as the other examples                                               //
     ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    let physical = PhysicalDevice::enumerate(&instance)
-        .next()
+    let device_extensions = DeviceExtensions {
+        ..DeviceExtensions::none()
+    };
+    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        .filter(|&p| p.supported_extensions().intersection(&device_extensions) == device_extensions)
+        .filter_map(|p| {
+            Some(
+                p.queue_families()
+                    .next()
+                    .map(|q| (p, q))
+                    .expect("couldn't find a queue family"),
+            )
+        })
+        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+            PhysicalDeviceType::DiscreteGpu => 0,
+            PhysicalDeviceType::IntegratedGpu => 1,
+            PhysicalDeviceType::VirtualGpu => 2,
+            PhysicalDeviceType::Cpu => 3,
+            PhysicalDeviceType::Other => 4,
+        })
         .expect("no device available");
-    let queue_family = physical
-        .queue_families()
-        .next()
-        .expect("couldn't find a queue family");
+
     let (_, mut queues) = Device::new(
-        physical,
-        physical.supported_features(),
-        physical.required_extensions(),
+        physical_device,
+        &Features::none(),
+        &physical_device
+            .required_extensions()
+            .union(&device_extensions),
         vec![(queue_family, 0.5)],
     )
     .expect("failed to create device");
