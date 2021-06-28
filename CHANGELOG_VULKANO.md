@@ -27,6 +27,8 @@
     - Re-exported `descriptor_set::pool::StdDescriptorPool`.
   - `descriptor_set::{DescriptorWrite, UnsafeDescriptorSet}` > `descriptor_set::sys`.
   - `descriptor_set::collection` is now private.
+- **Breaking** `Features::superset_of` is renamed to `is_superset_of`.
+- Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
 - Examples have much smarter device selection logic. In the triangle example this is supplied with comments.
 - Errors checking(by unwrapping) in `MappedDeviceMemory::read_write`.
