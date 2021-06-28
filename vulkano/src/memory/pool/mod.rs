@@ -7,8 +7,8 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::device::physical::MemoryType;
 use crate::device::{Device, DeviceOwned};
-use crate::instance::MemoryType;
 use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
@@ -153,7 +153,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
 
         // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
         if !requirements.prefer_dedicated
-            || !self.device().loaded_extensions().khr_dedicated_allocation
+            || !self.device().enabled_extensions().khr_dedicated_allocation
         {
             let alloc = self.alloc_generic(
                 mem_ty,
@@ -211,13 +211,13 @@ pub unsafe trait MemoryPool: DeviceOwned {
     where
         F: FnMut(MemoryType) -> AllocFromRequirementsFilter,
     {
-        assert!(self.device().loaded_extensions().khr_external_memory_fd);
-        assert!(self.device().loaded_extensions().khr_external_memory);
+        assert!(self.device().enabled_extensions().khr_external_memory_fd);
+        assert!(self.device().enabled_extensions().khr_external_memory);
 
         let mem_ty = choose_allocation_memory_type(self.device(), requirements, filter, map);
 
         if !requirements.prefer_dedicated
-            || !self.device().loaded_extensions().khr_dedicated_allocation
+            || !self.device().enabled_extensions().khr_dedicated_allocation
         {
             let alloc = self.alloc_generic_with_exportable_fd(
                 mem_ty,

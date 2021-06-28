@@ -8,9 +8,9 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::device::physical::MemoryType;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::instance::MemoryType;
 use crate::memory::Content;
 use crate::memory::DedicatedAlloc;
 use crate::memory::ExternalMemoryHandleType;
@@ -269,7 +269,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
 
         let mut export_handle_bits = ash::vk::ExternalMemoryHandleTypeFlags::empty();
         if self.dedicated_info.is_some() {
-            if !self.device.loaded_extensions().khr_dedicated_allocation {
+            if !self.device.enabled_extensions().khr_dedicated_allocation {
                 return Err(DeviceMemoryAllocError::MissingExtension(
                     "khr_dedicated_allocation",
                 ));
@@ -291,7 +291,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             if !(export_handle_bits & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
                 .is_empty()
             {
-                if !self.device.loaded_extensions().ext_external_memory_dma_buf {
+                if !self.device.enabled_extensions().ext_external_memory_dma_buf {
                     return Err(DeviceMemoryAllocError::MissingExtension(
                         "ext_external_memory_dmabuf",
                     ));
@@ -300,7 +300,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
 
             if !(export_handle_bits & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD).is_empty()
             {
-                if !self.device.loaded_extensions().khr_external_memory_fd {
+                if !self.device.enabled_extensions().khr_external_memory_fd {
                     return Err(DeviceMemoryAllocError::MissingExtension(
                         "khr_external_memory_fd",
                     ));
@@ -310,7 +310,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
             if !(import_handle_bits & ash::vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT)
                 .is_empty()
             {
-                if !self.device.loaded_extensions().ext_external_memory_dma_buf {
+                if !self.device.enabled_extensions().ext_external_memory_dma_buf {
                     return Err(DeviceMemoryAllocError::MissingExtension(
                         "ext_external_memory_dmabuf",
                     ));
@@ -319,7 +319,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
 
             if !(import_handle_bits & ash::vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD).is_empty()
             {
-                if !self.device.loaded_extensions().khr_external_memory_fd {
+                if !self.device.enabled_extensions().khr_external_memory_fd {
                     return Err(DeviceMemoryAllocError::MissingExtension(
                         "khr_external_memory_fd",
                     ));
@@ -747,12 +747,13 @@ impl MappedDeviceMemory {
                 ..Default::default()
             };
 
-            // TODO: check result?
-            fns.v1_0.invalidate_mapped_memory_ranges(
+            // TODO: return result instead?
+            check_errors(fns.v1_0.invalidate_mapped_memory_ranges(
                 self.memory.device().internal_object(),
                 1,
                 &range,
-            );
+            ))
+            .unwrap();
         }
 
         CpuAccess {
@@ -984,13 +985,13 @@ impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
                 ..Default::default()
             };
 
-            // TODO: check result?
             unsafe {
-                fns.v1_0.flush_mapped_memory_ranges(
+                check_errors(fns.v1_0.flush_mapped_memory_ranges(
                     self.mem.as_ref().device().internal_object(),
                     1,
                     &range,
-                );
+                ))
+                .unwrap();
             }
         }
     }

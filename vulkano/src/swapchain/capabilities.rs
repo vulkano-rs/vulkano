@@ -597,7 +597,7 @@ impl Default for SurfaceTransform {
 /// - Swapchain images should have a format with the `Srgb` suffix.
 ///
 /// > **Note**: It is unclear whether the `SrgbNonLinear` color space is always supported by the
-/// > the implementation or not. See https://github.com/KhronosGroup/Vulkan-Docs/issues/442.
+/// > the implementation or not. See <https://github.com/KhronosGroup/Vulkan-Docs/issues/442>.
 ///
 /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
 /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for
@@ -625,6 +625,7 @@ pub enum ColorSpace {
     AdobeRgbLinear = ash::vk::ColorSpaceKHR::ADOBERGB_LINEAR_EXT.as_raw(),
     AdobeRgbNonLinear = ash::vk::ColorSpaceKHR::ADOBERGB_NONLINEAR_EXT.as_raw(),
     PassThrough = ash::vk::ColorSpaceKHR::PASS_THROUGH_EXT.as_raw(),
+    DisplayNative = ash::vk::ColorSpaceKHR::DISPLAY_NATIVE_AMD.as_raw(),
 }
 
 impl From<ColorSpace> for ash::vk::ColorSpaceKHR {
@@ -652,6 +653,7 @@ impl From<ash::vk::ColorSpaceKHR> for ColorSpace {
             ash::vk::ColorSpaceKHR::ADOBERGB_LINEAR_EXT => ColorSpace::AdobeRgbLinear,
             ash::vk::ColorSpaceKHR::ADOBERGB_NONLINEAR_EXT => ColorSpace::AdobeRgbNonLinear,
             ash::vk::ColorSpaceKHR::PASS_THROUGH_EXT => ColorSpace::PassThrough,
+            ash::vk::ColorSpaceKHR::DISPLAY_NATIVE_AMD => ColorSpace::DisplayNative,
             _ => panic!("Wrong value for color space enum"),
         }
     }

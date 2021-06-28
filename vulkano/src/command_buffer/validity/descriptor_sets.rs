@@ -10,8 +10,8 @@
 use std::error;
 use std::fmt;
 
-use crate::descriptor::descriptor::DescriptorDescSupersetError;
-use crate::descriptor::descriptor_set::DescriptorSetsCollection;
+use crate::descriptor_set::layout::DescriptorDescSupersetError;
+use crate::descriptor_set::DescriptorSetsCollection;
 use crate::pipeline::layout::PipelineLayoutDesc;
 
 /// Checks whether descriptor sets are compatible with the pipeline.

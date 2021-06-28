@@ -8,13 +8,13 @@
 // according to those terms.
 
 use crate::check_errors;
-use crate::descriptor::descriptor::ShaderStages;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::layout::PipelineLayoutDescPcRange;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
+use crate::pipeline::shader::ShaderStages;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
@@ -30,7 +30,7 @@ use std::sync::Arc;
 pub struct PipelineLayout {
     device: Arc<Device>,
     layout: ash::vk::PipelineLayout,
-    descriptor_set_layouts: SmallVec<[Arc<UnsafeDescriptorSetLayout>; 16]>,
+    descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]>,
     desc: PipelineLayoutDesc,
 }
 
@@ -45,12 +45,12 @@ impl PipelineLayout {
 
         desc.check_against_limits(&device)?;
 
-        // Building the list of `UnsafeDescriptorSetLayout` objects.
+        // Building the list of `DescriptorSetLayout` objects.
         let descriptor_set_layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
             for set in desc.descriptor_sets() {
                 layouts.push({
-                    Arc::new(UnsafeDescriptorSetLayout::new(
+                    Arc::new(DescriptorSetLayout::new(
                         device.clone(),
                         set.iter().map(|s| s.clone()),
                     )?)
@@ -145,11 +145,11 @@ impl PipelineLayout {
         &self.desc
     }
 
-    /// Returns the `UnsafeDescriptorSetLayout` object of the specified set index.
+    /// Returns the `DescriptorSetLayout` object of the specified set index.
     ///
     /// Returns `None` if out of range or if the set is empty for this index.
     #[inline]
-    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<UnsafeDescriptorSetLayout>> {
+    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<DescriptorSetLayout>> {
         self.descriptor_set_layouts.get(index)
     }
 }
@@ -270,7 +270,7 @@ mod tests {
     use std::iter;
     use std::sync::Arc;
     use descriptor::descriptor::ShaderStages;
-    use descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use descriptor::descriptor_set::DescriptorSetLayout;
     use descriptor::pipeline_layout::sys::PipelineLayout;
     use descriptor::pipeline_layout::sys::PipelineLayoutCreationError;
 
@@ -285,7 +285,7 @@ mod tests {
         let (device1, _) = gfx_dev_and_queue!();
         let (device2, _) = gfx_dev_and_queue!();
 
-        let set = match UnsafeDescriptorSetLayout::raw(device1, iter::empty()) {
+        let set = match DescriptorSetLayout::raw(device1, iter::empty()) {
             Ok(s) => Arc::new(s),
             Err(_) => return
         };

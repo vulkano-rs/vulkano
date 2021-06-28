@@ -7,16 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::device::physical::MemoryType;
+use crate::device::Device;
+use crate::instance::Instance;
+use crate::memory::DeviceMemory;
+use crate::memory::DeviceMemoryAllocError;
 use std::cmp;
 use std::ops::Range;
 use std::sync::Arc;
 use std::sync::Mutex;
-
-use crate::device::Device;
-use crate::instance::Instance;
-use crate::instance::MemoryType;
-use crate::memory::DeviceMemory;
-use crate::memory::DeviceMemoryAllocError;
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]

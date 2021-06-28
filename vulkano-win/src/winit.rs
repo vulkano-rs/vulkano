@@ -151,7 +151,7 @@ unsafe fn winit_to_surface<W: SafeBorrow<Window>>(
         _ => {
             // No wayland display found, check if we can use xlib.
             // If not, we use xcb.
-            if instance.loaded_extensions().khr_xlib_surface {
+            if instance.enabled_extensions().khr_xlib_surface {
                 Surface::from_xlib(
                     instance,
                     win.borrow().xlib_display().unwrap(),

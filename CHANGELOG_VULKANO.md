@@ -6,6 +6,20 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** Refactoring of `PhysicalDevice` and related types.
+  - The module `instance::physical_device` is moved to `device::physical`. Items are exported directly from there.
+  - Functions on `PhysicalDevice` that previously returned a custom iterator type now return `impl ExactSizeIterator`.
+  - `PhysicalDevice` now has new methods `supported_extensions` and `required_extensions`. The equivalent constructors on `DeviceExtensions` are deprecated, but still present.
+- **Breaking** Renamed `Device::loaded_extensions` to `enabled_extensions`, to match the terminology used for `enabled_features` as well as the Vulkan standard.
+- **Breaking** Renamed `Instance::loaded_extensions` and `loaded_layers` to `enabled_extensions` and `enabled_layers` respectively.
+- Examples now enable only the features they need instead of all of them.
+- Examples have much smarter device selection logic. In the triangle example this is supplied with comments.
+- Errors checking(by unwrapping) in `MappedDeviceMemory::read_write`.
+- Add creation of Semaphores with exportable Linux file descriptor on.
+- Add method to export file descriptor corresponding to Semaphore.
+- `SemaphoreBuilder` introduced. 
+- Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
+- Vulkano-shaders now provides the image format for descriptors, if the shader requires a specific format.
 
 # Version 0.24.0 (2021-06-20)
 

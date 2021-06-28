@@ -232,7 +232,7 @@ where
         (1, 4) => {
             cap_checks.push(quote! {
                 if device.api_version() < Version::V1_2
-                    && !device.loaded_extensions().khr_spirv_1_4 {
+                    && !device.enabled_extensions().khr_spirv_1_4 {
                     panic!("Device API version 1.2 or extension VK_KHR_spirv_1_4 required");
                 }
             });
@@ -282,7 +282,7 @@ where
                 for extension in extensions {
                     let ident = Ident::new(extension, Span::call_site());
                     cap_checks.push(quote! {
-                        if !device.loaded_extensions().#ident {
+                        if !device.enabled_extensions().#ident {
                             panic!("Device extension {:?} required", #extension);
                         }
                     });
@@ -325,29 +325,29 @@ where
         #[allow(unused_imports)]
         use vulkano::device::Device;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorDesc;
+        use vulkano::descriptor_set::layout::DescriptorDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorDescTy;
+        use vulkano::descriptor_set::layout::DescriptorDescTy;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorBufferDesc;
+        use vulkano::descriptor_set::layout::DescriptorBufferDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDesc;
+        use vulkano::descriptor_set::layout::DescriptorImageDesc;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDescDimensions;
+        use vulkano::descriptor_set::layout::DescriptorImageDescDimensions;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::DescriptorImageDescArray;
+        use vulkano::descriptor_set::layout::DescriptorImageDescArray;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor::ShaderStages;
+        use vulkano::descriptor_set::layout::DescriptorSetLayout;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::DescriptorSet;
+        use vulkano::descriptor_set::DescriptorSet;
         #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSet;
-        #[allow(unused_imports)]
-        use vulkano::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+        use vulkano::format::Format;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayoutDescPcRange;
+        #[allow(unused_imports)]
+        use vulkano::pipeline::shader::ShaderStages;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
         #[allow(unused_imports)]

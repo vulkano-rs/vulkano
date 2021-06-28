@@ -20,7 +20,7 @@
 //! use vulkano::device::Features;
 //! use vulkano::instance::Instance;
 //! use vulkano::instance::InstanceExtensions;
-//! use vulkano::instance::PhysicalDevice;
+//! use vulkano::device::physical::PhysicalDevice;
 //! use vulkano::Version;
 //!
 //! // Creating the instance. See the documentation of the `instance` module.
@@ -97,7 +97,9 @@ pub(crate) use self::properties::PropertiesFfi;
 pub use crate::autogen::DeviceExtensions;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
-use crate::descriptor::descriptor_set::StdDescriptorPool;
+use crate::descriptor_set::pool::StdDescriptorPool;
+use crate::device::physical::PhysicalDevice;
+use crate::device::physical::QueueFamily;
 pub use crate::extensions::{
     ExtensionRestriction, ExtensionRestrictionError, SupportedExtensionsError,
 };
@@ -109,8 +111,6 @@ use crate::image::ImageTiling;
 use crate::image::ImageType;
 use crate::image::ImageUsage;
 use crate::instance::Instance;
-use crate::instance::PhysicalDevice;
-use crate::instance::QueueFamily;
 use crate::memory::pool::StdMemoryPool;
 use crate::Error;
 use crate::OomError;
@@ -140,6 +140,7 @@ use std::sync::Weak;
 
 pub(crate) mod extensions;
 pub(crate) mod features;
+pub mod physical;
 pub(crate) mod properties;
 
 /// Represents a Vulkan context.
@@ -207,9 +208,9 @@ impl Device {
 
         // Check if the extensions are correct
         requested_extensions.check_requirements(
-            &DeviceExtensions::supported_by_device(physical_device),
+            physical_device.supported_extensions(),
             api_version,
-            instance.loaded_extensions(),
+            instance.enabled_extensions(),
         )?;
 
         let mut requested_features = requested_features.clone();
@@ -290,7 +291,7 @@ impl Device {
             features_ffi.make_chain(
                 api_version,
                 requested_extensions,
-                instance.loaded_extensions(),
+                instance.enabled_extensions(),
             );
             features_ffi.write(&requested_features);
 
@@ -304,7 +305,7 @@ impl Device {
             // to save it alongside the instance. (`vkEnumerateDeviceLayerProperties` should get
             // the right list post-1.0.13, but not pre-1.0.13, so we can't use it here.)
             let layers_ptrs = instance
-                .loaded_layers()
+                .enabled_layers()
                 .map(|layer| layer.as_ptr())
                 .collect::<SmallVec<[_; 16]>>();
 
@@ -315,7 +316,7 @@ impl Device {
                 .collect::<SmallVec<[_; 16]>>();
 
             let has_khr_get_physical_device_properties2 = instance
-                .loaded_extensions()
+                .enabled_extensions()
                 .khr_get_physical_device_properties2;
 
             let infos = ash::vk::DeviceCreateInfo {
@@ -465,7 +466,7 @@ impl Device {
 
     /// Returns the extensions that have been enabled on the device.
     #[inline]
-    pub fn loaded_extensions(&self) -> &DeviceExtensions {
+    pub fn enabled_extensions(&self) -> &DeviceExtensions {
         &self.extensions
     }
 
@@ -937,11 +938,11 @@ unsafe impl SynchronizedVulkanObject for Queue {
 
 #[cfg(test)]
 mod tests {
+    use crate::device::physical::PhysicalDevice;
     use crate::device::Device;
     use crate::device::DeviceCreationError;
     use crate::device::DeviceExtensions;
     use crate::device::{FeatureRestriction, FeatureRestrictionError, Features};
-    use crate::instance;
     use std::sync::Arc;
 
     #[test]
@@ -953,7 +954,7 @@ mod tests {
     #[test]
     fn too_many_queues() {
         let instance = instance!();
-        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+        let physical = match PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
             None => return,
         };
@@ -975,7 +976,7 @@ mod tests {
     #[test]
     fn unsupposed_features() {
         let instance = instance!();
-        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+        let physical = match PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
             None => return,
         };
@@ -1005,7 +1006,7 @@ mod tests {
     #[test]
     fn priority_out_of_range() {
         let instance = instance!();
-        let physical = match instance::PhysicalDevice::enumerate(&instance).next() {
+        let physical = match PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
             None => return,
         };

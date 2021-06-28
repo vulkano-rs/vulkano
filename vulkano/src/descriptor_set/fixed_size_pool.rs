@@ -7,71 +7,71 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crossbeam_queue::SegQueue;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::Arc;
+//! Pool of descriptor sets of a specific capacity that are automatically reclaimed.
+//!
+//! You are encouraged to use this type when you need a different descriptor set at each frame, or
+//! regularly during the execution.
+//!
+//! # Example
+//!
+//! At initialization, create a `FixedSizeDescriptorSetsPool`.
+//!
+//! ```rust
+//! use vulkano::descriptor_set::FixedSizeDescriptorSetsPool;
+//! # use vulkano::pipeline::GraphicsPipelineAbstract;
+//! # use std::sync::Arc;
+//! # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
+//! // use vulkano::pipeline::GraphicsPipelineAbstract;
+//! // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
+//!
+//! let layout = graphics_pipeline.layout().descriptor_set_layout(0).unwrap();
+//! let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
+//! ```
+//!
+//! You would then typically store the pool in a struct for later. Then whenever you need a
+//! descriptor set, call `pool.next()` to start the process of building it.
+//!
+//! ```rust
+//! # use std::sync::Arc;
+//! # use vulkano::descriptor_set::FixedSizeDescriptorSetsPool;
+//! # use vulkano::pipeline::GraphicsPipelineAbstract;
+//! # let mut pool: FixedSizeDescriptorSetsPool = return;
+//! let descriptor_set = pool.next()
+//!     //.add_buffer(...)
+//!     //.add_sampled_image(...)
+//!     .build().unwrap();
+//! ```
+//!
+//! Note that `next()` requires exclusive (`mut`) access to the pool. You can use a `Mutex` around
+//! the pool if you can't provide this.
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
-use crate::descriptor::descriptor::DescriptorDesc;
-use crate::descriptor::descriptor_set::persistent::*;
-use crate::descriptor::descriptor_set::DescriptorPool;
-use crate::descriptor::descriptor_set::DescriptorPoolAlloc;
-use crate::descriptor::descriptor_set::DescriptorPoolAllocError;
-use crate::descriptor::descriptor_set::DescriptorSet;
-use crate::descriptor::descriptor_set::DescriptorSetDesc;
-use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::persistent::*;
+use crate::descriptor_set::pool::DescriptorPool;
+use crate::descriptor_set::pool::DescriptorPoolAlloc;
+use crate::descriptor_set::pool::DescriptorPoolAllocError;
+use crate::descriptor_set::pool::UnsafeDescriptorPool;
+use crate::descriptor_set::DescriptorSet;
+use crate::descriptor_set::DescriptorSetDesc;
+use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::sampler::Sampler;
 use crate::OomError;
 use crate::VulkanObject;
+use crossbeam_queue::SegQueue;
+use std::hash::Hash;
+use std::hash::Hasher;
+use std::sync::Arc;
 
-/// Pool of descriptor sets of a specific capacity and that are automatically reclaimed.
-///
-/// You are encouraged to use this type when you need a different descriptor set at each frame, or
-/// regularly during the execution.
-///
-/// # Example
-///
-/// At initialization, create a `FixedSizeDescriptorSetsPool`.
-///
-/// ```rust
-/// use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
-/// # use vulkano::pipeline::GraphicsPipelineAbstract;
-/// # use std::sync::Arc;
-/// # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
-/// // use vulkano::pipeline::GraphicsPipelineAbstract;
-/// // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
-///
-/// let layout = graphics_pipeline.layout().descriptor_set_layout(0).unwrap();
-/// let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
-/// ```
-///
-/// You would then typically store the pool in a struct for later. Then whenever you need a
-/// descriptor set, call `pool.next()` to start the process of building it.
-///
-/// ```rust
-/// # use std::sync::Arc;
-/// # use vulkano::descriptor::descriptor_set::FixedSizeDescriptorSetsPool;
-/// # use vulkano::pipeline::GraphicsPipelineAbstract;
-/// # let mut pool: FixedSizeDescriptorSetsPool = return;
-/// let descriptor_set = pool.next()
-///     //.add_buffer(...)
-///     //.add_sampled_image(...)
-///     .build().unwrap();
-/// ```
-///
-/// Note that `next()` requires exclusive (`mut`) access to the pool. You can use a `Mutex` around
-/// the pool if you can't provide this.
-///
+/// Pool of descriptor sets of a specific capacity that are automatically reclaimed.
 #[derive(Clone)]
 pub struct FixedSizeDescriptorSetsPool {
-    layout: Arc<UnsafeDescriptorSetLayout>,
+    layout: Arc<DescriptorSetLayout>,
     // We hold a local implementation of the `DescriptorPool` trait for our own purpose. Since we
     // don't want to expose this trait impl in our API, we use a separate struct.
     pool: LocalPool,
@@ -80,7 +80,7 @@ pub struct FixedSizeDescriptorSetsPool {
 impl FixedSizeDescriptorSetsPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    pub fn new(layout: Arc<UnsafeDescriptorSetLayout>) -> FixedSizeDescriptorSetsPool {
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> FixedSizeDescriptorSetsPool {
         let device = layout.device().clone();
 
         FixedSizeDescriptorSetsPool {
@@ -219,7 +219,7 @@ struct LocalPoolAlloc {
 unsafe impl DescriptorPool for LocalPool {
     type Alloc = LocalPoolAlloc;
 
-    fn alloc(&mut self, layout: &UnsafeDescriptorSetLayout) -> Result<Self::Alloc, OomError> {
+    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<Self::Alloc, OomError> {
         loop {
             // Try to extract a descriptor from the current pool if any exist.
             // This is the most common case.
