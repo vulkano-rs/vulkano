@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::buffer::BufferAccess;
+use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::format::ClearValue;
 use crate::format::Format;
@@ -24,7 +25,6 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
-use crate::instance::QueueFamily;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;

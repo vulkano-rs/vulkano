@@ -94,7 +94,7 @@ where
             && !self
                 .device
                 .instance()
-                .loaded_extensions()
+                .enabled_extensions()
                 .khr_external_semaphore_capabilities
         {
             Err(SemaphoreError::MissingExtension(
@@ -166,8 +166,8 @@ where
     pub fn export_opaque_fd(&self) -> Result<File, SemaphoreError> {
         let fns = self.device.fns();
 
-        assert!(self.device.loaded_extensions().khr_external_semaphore);
-        assert!(self.device.loaded_extensions().khr_external_semaphore_fd);
+        assert!(self.device.enabled_extensions().khr_external_semaphore);
+        assert!(self.device.enabled_extensions().khr_external_semaphore_fd);
 
         let fd = unsafe {
             let info = ash::vk::SemaphoreGetFdInfoKHR {
@@ -280,9 +280,9 @@ impl From<OomError> for SemaphoreError {
 
 #[cfg(test)]
 mod tests {
-
+    use crate::device::physical::PhysicalDevice;
     use crate::device::{Device, DeviceExtensions};
-    use crate::instance::{Instance, InstanceExtensions, PhysicalDevice};
+    use crate::instance::{Instance, InstanceExtensions};
     use crate::VulkanObject;
     use crate::{sync::Semaphore, Version};
 
@@ -345,7 +345,7 @@ mod tests {
             )
             .unwrap();
 
-            let supported_ext = DeviceExtensions::supported_by_device(physical.clone());
+            let supported_ext = physical.supported_extensions();
             if supported_ext.khr_external_semaphore && supported_ext.khr_external_semaphore_fd {
                 let sem = Semaphore::alloc_with_exportable_fd(device.clone()).unwrap();
                 let fd = sem.export_opaque_fd().unwrap();

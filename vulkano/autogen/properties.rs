@@ -328,21 +328,21 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> &'static str {
             "uint32_t" => "u32",
             "uint64_t" => "u64",
             "VkBool32" => "bool",
-            "VkConformanceVersion" => "crate::instance::ConformanceVersion",
+            "VkConformanceVersion" => "crate::device::physical::ConformanceVersion",
             "VkDeviceSize" => "u64",
-            "VkDriverId" => "crate::instance::DriverId",
+            "VkDriverId" => "crate::device::physical::DriverId",
             "VkExtent2D" => "[u32; 2]",
-            "VkPhysicalDeviceType" => "crate::instance::PhysicalDeviceType",
-            "VkPointClippingBehavior" => "crate::instance::PointClippingBehavior",
+            "VkPhysicalDeviceType" => "crate::device::physical::PhysicalDeviceType",
+            "VkPointClippingBehavior" => "crate::device::physical::PointClippingBehavior",
             "VkResolveModeFlags" => "crate::render_pass::ResolveModes",
             "VkSampleCountFlags" => "crate::image::SampleCounts",
             "VkSampleCountFlagBits" => "crate::image::SampleCount",
-            "VkShaderCorePropertiesFlagsAMD" => "crate::instance::ShaderCoreProperties",
+            "VkShaderCorePropertiesFlagsAMD" => "crate::device::physical::ShaderCoreProperties",
             "VkShaderFloatControlsIndependence" => {
-                "crate::instance::ShaderFloatControlsIndependence"
+                "crate::device::physical::ShaderFloatControlsIndependence"
             }
             "VkShaderStageFlags" => "crate::descriptor::descriptor::ShaderStages",
-            "VkSubgroupFeatureFlags" => "crate::instance::SubgroupFeatures",
+            "VkSubgroupFeatureFlags" => "crate::device::physical::SubgroupFeatures",
             _ => unimplemented!("{}", ty),
         }
     }

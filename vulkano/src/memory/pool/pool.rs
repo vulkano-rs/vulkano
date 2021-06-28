@@ -14,9 +14,9 @@ use std::hash::BuildHasherDefault;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crate::device::physical::MemoryType;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::instance::MemoryType;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
 use crate::memory::pool::MemoryPool;

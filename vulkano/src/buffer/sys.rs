@@ -155,14 +155,14 @@ impl UnsafeBuffer {
             }
 
             let mut output = if device.api_version() >= Version::V1_1
-                || device.loaded_extensions().khr_get_memory_requirements2
+                || device.enabled_extensions().khr_get_memory_requirements2
             {
                 let infos = ash::vk::BufferMemoryRequirementsInfo2 {
                     buffer: buffer,
                     ..Default::default()
                 };
 
-                let mut output2 = if device.loaded_extensions().khr_dedicated_allocation {
+                let mut output2 = if device.enabled_extensions().khr_dedicated_allocation {
                     Some(ash::vk::MemoryDedicatedRequirementsKHR::default())
                 } else {
                     None

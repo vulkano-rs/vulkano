@@ -299,7 +299,7 @@ impl Sampler {
             .iter()
             .any(|&mode| mode == SamplerAddressMode::MirrorClampToEdge)
         {
-            if !device.loaded_extensions().khr_sampler_mirror_clamp_to_edge {
+            if !device.enabled_extensions().khr_sampler_mirror_clamp_to_edge {
                 return Err(SamplerCreationError::SamplerMirrorClampToEdgeExtensionNotEnabled);
             }
         }

@@ -31,7 +31,7 @@ macro_rules! features {
         ///
         /// ```
         /// use vulkano::device::Features;
-        /// # let physical_device: vulkano::instance::PhysicalDevice = return;
+        /// # let physical_device: vulkano::device::physical::PhysicalDevice = return;
         /// let minimal_features = Features {
         ///     geometry_shader: true,
         ///     .. Features::none()
