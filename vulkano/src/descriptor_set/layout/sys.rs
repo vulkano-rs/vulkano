@@ -10,7 +10,6 @@
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::pool::DescriptorsCount;
-use crate::descriptor_set::DescriptorSetDesc;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::OomError;
@@ -93,10 +92,10 @@ impl DescriptorSetLayout {
         };
 
         Ok(DescriptorSetLayout {
-            layout: layout,
-            device: device,
-            descriptors: descriptors,
-            descriptors_count: descriptors_count,
+            layout,
+            device,
+            descriptors,
+            descriptors_count,
         })
     }
 
@@ -105,15 +104,16 @@ impl DescriptorSetLayout {
     pub fn descriptors_count(&self) -> &DescriptorsCount {
         &self.descriptors_count
     }
-}
 
-unsafe impl DescriptorSetDesc for DescriptorSetLayout {
+    /// Returns the number of binding slots in the set.
     #[inline]
-    fn num_bindings(&self) -> usize {
+    pub fn num_bindings(&self) -> usize {
         self.descriptors.len()
     }
+
+    /// Returns a description of a descriptor, or `None` if out of range.
     #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
+    pub fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
         self.descriptors.get(binding).cloned().unwrap_or(None)
     }
 }

@@ -47,35 +47,9 @@ use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::shader::ShaderStagesSupersetError;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
-use crate::SafeDeref;
 use std::cmp;
 use std::error;
 use std::fmt;
-
-/// Trait for objects that describe the layout of the descriptors of a set.
-pub unsafe trait DescriptorSetDesc {
-    /// Returns the number of binding slots in the set.
-    fn num_bindings(&self) -> usize;
-
-    /// Returns a description of a descriptor, or `None` if out of range.
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
-}
-
-unsafe impl<T> DescriptorSetDesc for T
-where
-    T: SafeDeref,
-    T::Target: DescriptorSetDesc,
-{
-    #[inline]
-    fn num_bindings(&self) -> usize {
-        (**self).num_bindings()
-    }
-
-    #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        (**self).descriptor(binding)
-    }
-}
 
 /// Contains the exact description of a single descriptor.
 ///

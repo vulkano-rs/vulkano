@@ -9,7 +9,6 @@
 
 use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::DescriptorSet;
-use crate::descriptor_set::DescriptorSetDesc;
 
 /// A collection of descriptor set objects.
 pub unsafe trait DescriptorSetsCollection {
@@ -57,7 +56,7 @@ where
     #[inline]
     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
         match set {
-            0 => Some(self.num_bindings()),
+            0 => Some(self.layout().num_bindings()),
             _ => None,
         }
     }
@@ -65,7 +64,7 @@ where
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
         match set {
-            0 => self.descriptor(binding),
+            0 => self.layout().descriptor(binding),
             _ => None,
         }
     }
@@ -86,19 +85,19 @@ where
 
     #[inline]
     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-        self.get(set).map(|x| x.num_bindings())
+        self.get(set).map(|x| x.layout().num_bindings())
     }
     #[inline]
     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-        self.get(set).and_then(|x| x.descriptor(binding))
+        self.get(set).and_then(|x| x.layout().descriptor(binding))
     }
 }
 
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
         unsafe impl<$first$(, $others)+> DescriptorSetsCollection for ($first, $($others),+)
-            where $first: DescriptorSet + DescriptorSetDesc + Send + Sync + 'static
-                  $(, $others: DescriptorSet + DescriptorSetDesc + Send + Sync + 'static)*
+            where $first: DescriptorSet + Send + Sync + 'static
+                  $(, $others: DescriptorSet + Send + Sync + 'static)*
         {
             #[inline]
             fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
@@ -120,7 +119,7 @@ macro_rules! impl_collection {
                 #![allow(unused_mut)]       // For the `set` parameter.
 
                 if set == 0 {
-                    return Some(self.0.num_bindings());
+                    return Some(self.0.layout().num_bindings());
                 }
 
                 let &(_, $(ref $others,)*) = self;
@@ -128,7 +127,7 @@ macro_rules! impl_collection {
                 $(
                     set -= 1;
                     if set == 0 {
-                        return Some($others.num_bindings());
+                        return Some($others.layout().num_bindings());
                     }
                 )*
 
@@ -141,7 +140,7 @@ macro_rules! impl_collection {
                 #![allow(unused_mut)]       // For the `set` parameter.
 
                 if set == 0 {
-                    return self.0.descriptor(binding);
+                    return self.0.layout().descriptor(binding);
                 }
 
                 let &(_, $(ref $others,)*) = self;
@@ -149,7 +148,7 @@ macro_rules! impl_collection {
                 $(
                     set -= 1;
                     if set == 0 {
-                        return $others.descriptor(binding);
+                        return $others.layout().descriptor(binding);
                     }
                 )*
 

@@ -40,7 +40,6 @@ use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::sys::DescriptorWrite;
 use crate::descriptor_set::DescriptorSet;
-use crate::descriptor_set::DescriptorSetDesc;
 use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -93,6 +92,11 @@ where
     }
 
     #[inline]
+    fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        &self.layout
+    }
+
+    #[inline]
     fn num_buffers(&self) -> usize {
         self.resources.num_buffers()
     }
@@ -110,18 +114,6 @@ where
     #[inline]
     fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.resources.image(index)
-    }
-}
-
-unsafe impl<R, P> DescriptorSetDesc for PersistentDescriptorSet<R, P> {
-    #[inline]
-    fn num_bindings(&self) -> usize {
-        self.layout.num_bindings()
-    }
-
-    #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        self.layout.descriptor(binding)
     }
 }
 

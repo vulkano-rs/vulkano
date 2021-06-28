@@ -37,7 +37,7 @@ use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
 use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy, DescriptorSetDesc};
+use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy};
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
@@ -2205,8 +2205,8 @@ where
     let min_storage_off_align = properties.min_storage_buffer_offset_alignment.unwrap() as u32;
     let mut dynamic_offset_index = 0;
     for set in &sets {
-        for desc_index in 0..set.num_bindings() {
-            let desc = DescriptorSetDesc::descriptor(&set, desc_index).unwrap();
+        for desc_index in 0..set.layout().num_bindings() {
+            let desc = set.layout().descriptor(desc_index).unwrap();
             if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
                 dynamic: Some(true),
                 storage,
