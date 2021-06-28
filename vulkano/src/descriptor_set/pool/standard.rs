@@ -7,19 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::sync::Arc;
-use std::sync::Mutex;
-
-use crate::descriptor::descriptor_set::DescriptorPool;
-use crate::descriptor::descriptor_set::DescriptorPoolAlloc;
-use crate::descriptor::descriptor_set::DescriptorPoolAllocError;
-use crate::descriptor::descriptor_set::DescriptorsCount;
-use crate::descriptor::descriptor_set::UnsafeDescriptorPool;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::pool::DescriptorPool;
+use crate::descriptor_set::pool::DescriptorPoolAlloc;
+use crate::descriptor_set::pool::DescriptorPoolAllocError;
+use crate::descriptor_set::pool::DescriptorsCount;
+use crate::descriptor_set::pool::UnsafeDescriptorPool;
+use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::OomError;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Standard implementation of a descriptor pool.
 ///
@@ -65,10 +64,7 @@ unsafe impl DescriptorPool for Arc<StdDescriptorPool> {
     type Alloc = StdDescriptorPoolAlloc;
 
     // TODO: eventually use a lock-free algorithm?
-    fn alloc(
-        &mut self,
-        layout: &UnsafeDescriptorSetLayout,
-    ) -> Result<StdDescriptorPoolAlloc, OomError> {
+    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<StdDescriptorPoolAlloc, OomError> {
         let mut pools = self.pools.lock().unwrap();
 
         // Try find an existing pool with some free space.
@@ -181,12 +177,12 @@ impl Drop for StdDescriptorPoolAlloc {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor::descriptor::DescriptorDesc;
-    use crate::descriptor::descriptor::DescriptorDescTy;
-    use crate::descriptor::descriptor::ShaderStages;
-    use crate::descriptor::descriptor_set::DescriptorPool;
-    use crate::descriptor::descriptor_set::StdDescriptorPool;
-    use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+    use crate::descriptor_set::layout::DescriptorDesc;
+    use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::pool::DescriptorPool;
+    use crate::descriptor_set::pool::StdDescriptorPool;
+    use crate::pipeline::shader::ShaderStages;
     use std::iter;
     use std::sync::Arc;
 
@@ -201,8 +197,7 @@ mod tests {
             stages: ShaderStages::all(),
             readonly: false,
         };
-        let layout =
-            UnsafeDescriptorSetLayout::new(device.clone(), iter::once(Some(desc))).unwrap();
+        let layout = DescriptorSetLayout::new(device.clone(), iter::once(Some(desc))).unwrap();
 
         let mut pool = Arc::new(StdDescriptorPool::new(device));
         let pool_weak = Arc::downgrade(&pool);

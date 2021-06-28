@@ -12,7 +12,7 @@ use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SecondaryAutoCommandBuffer,
 };
-use vulkano::descriptor::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
 use vulkano::image::ImageViewAbstract;
 use vulkano::pipeline::blend::AttachmentBlend;

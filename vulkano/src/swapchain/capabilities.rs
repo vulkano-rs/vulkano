@@ -597,7 +597,7 @@ impl Default for SurfaceTransform {
 /// - Swapchain images should have a format with the `Srgb` suffix.
 ///
 /// > **Note**: It is unclear whether the `SrgbNonLinear` color space is always supported by the
-/// > the implementation or not. See https://github.com/KhronosGroup/Vulkan-Docs/issues/442.
+/// > the implementation or not. See <https://github.com/KhronosGroup/Vulkan-Docs/issues/442>.
 ///
 /// > **Note**: Lots of developers are confused by color spaces. You can sometimes find articles
 /// > talking about gamma correction and suggestion to put your colors to the power 2.2 for

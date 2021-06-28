@@ -7,14 +7,52 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! Descriptor sets creation and management
+//! Bindings between shaders and the resources they access.
 //!
-//! This module is dedicated to managing descriptor sets. There are three concepts in Vulkan
-//! related to descriptor sets:
+//! # Overview
+//!
+//! In order to access a buffer or an image from a shader, that buffer or image must be put in a
+//! *descriptor*. Each descriptor contains one buffer or one image alongside with the way that it
+//! can be accessed. A descriptor can also be an array, in which case it contains multiple buffers
+//! or images that all have the same layout.
+//!
+//! Descriptors are grouped in what is called *descriptor sets*. In Vulkan you don't bind
+//! individual descriptors one by one, but you create then bind descriptor sets one by one. As
+//! binding a descriptor set has (small but non-null) a cost, you are encouraged to put descriptors
+//! that are often used together in the same set so that you can keep the same set binding through
+//! multiple draws.
+//!
+//! # Example
+//!
+//! > **Note**: This section describes the simple way to bind resources. There are more optimized
+//! > ways.
+//!
+//! There are two steps to give access to a resource in a shader: creating the descriptor set, and
+//! passing the descriptor sets when drawing.
+//!
+//! ## Creating a descriptor set
+//!
+//! TODO: write example for: PersistentDescriptorSet::start(layout.clone()).add_buffer(data_buffer.clone())
+//!
+//! ## Passing the descriptor set when drawing
+//!
+//! TODO: write
+//!
+//! # When drawing
+//!
+//! When you call a function that adds a draw command to a command buffer, one of the parameters
+//! corresponds to the list of descriptor sets to use. Vulkano will check that what you passed is
+//! compatible with the layout of the pipeline.
+//!
+//! TODO: talk about perfs of changing sets
+//!
+//! # Descriptor sets creation and management
+//!
+//! There are three concepts in Vulkan related to descriptor sets:
 //!
 //! - A `DescriptorSetLayout` is a Vulkan object that describes to the Vulkan implementation the
 //!   layout of a future descriptor set. When you allocate a descriptor set, you have to pass an
-//!   instance of this object. This is represented with the `UnsafeDescriptorSetLayout` type in
+//!   instance of this object. This is represented with the `DescriptorSetLayout` type in
 //!   vulkano.
 //! - A `DescriptorPool` is a Vulkan object that holds the memory of descriptor sets and that can
 //!   be used to allocate and free individual descriptor sets. This is represented with the
@@ -35,49 +73,27 @@
 //! - The `DescriptorSetsCollection` trait is implemented on collections of types that implement
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
-use std::hash::Hash;
-use std::hash::Hasher;
-
+pub use self::collection::DescriptorSetsCollection;
+pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
+use self::layout::DescriptorSetDesc;
+pub use self::persistent::PersistentDescriptorSet;
+pub use self::persistent::PersistentDescriptorSetBuildError;
+pub use self::persistent::PersistentDescriptorSetError;
+use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
-use crate::descriptor::descriptor::DescriptorDesc;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use std::hash::Hash;
+use std::hash::Hasher;
 
-pub use self::collection::DescriptorSetsCollection;
-pub use self::fixed_size_pool::FixedSizeDescriptorSet;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilder;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetBuilderArray;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
-pub use self::persistent::PersistentDescriptorSet;
-pub use self::persistent::PersistentDescriptorSetBuf;
-pub use self::persistent::PersistentDescriptorSetBufView;
-pub use self::persistent::PersistentDescriptorSetBuildError;
-pub use self::persistent::PersistentDescriptorSetBuilder;
-pub use self::persistent::PersistentDescriptorSetBuilderArray;
-pub use self::persistent::PersistentDescriptorSetError;
-pub use self::persistent::PersistentDescriptorSetImg;
-pub use self::persistent::PersistentDescriptorSetSampler;
-pub use self::std_pool::StdDescriptorPool;
-pub use self::std_pool::StdDescriptorPoolAlloc;
-pub use self::sys::DescriptorPool;
-pub use self::sys::DescriptorPoolAlloc;
-pub use self::sys::DescriptorPoolAllocError;
-pub use self::sys::DescriptorWrite;
-pub use self::sys::DescriptorsCount;
-pub use self::sys::UnsafeDescriptorPool;
-pub use self::sys::UnsafeDescriptorPoolAllocIter;
-pub use self::sys::UnsafeDescriptorSet;
-pub use self::unsafe_layout::UnsafeDescriptorSetLayout;
-
-pub mod collection;
-
-mod fixed_size_pool;
-mod persistent;
-mod std_pool;
-mod sys;
-mod unsafe_layout;
+mod collection;
+pub mod fixed_size_pool;
+pub mod layout;
+pub mod persistent;
+pub mod pool;
+pub mod sys;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
@@ -151,30 +167,5 @@ impl Hash for dyn DescriptorSet + Send + Sync {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
-    }
-}
-
-/// Trait for objects that describe the layout of the descriptors of a set.
-pub unsafe trait DescriptorSetDesc {
-    /// Returns the number of binding slots in the set.
-    fn num_bindings(&self) -> usize;
-
-    /// Returns a description of a descriptor, or `None` if out of range.
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
-}
-
-unsafe impl<T> DescriptorSetDesc for T
-where
-    T: SafeDeref,
-    T::Target: DescriptorSetDesc,
-{
-    #[inline]
-    fn num_bindings(&self) -> usize {
-        (**self).num_bindings()
-    }
-
-    #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        (**self).descriptor(binding)
     }
 }
