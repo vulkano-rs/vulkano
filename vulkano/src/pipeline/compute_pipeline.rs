@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
@@ -62,9 +63,21 @@ impl ComputePipeline {
         Css: SpecializationConstants,
     {
         unsafe {
+            let descriptor_set_layouts = shader
+                .layout_desc()
+                .descriptor_sets()
+                .iter()
+                .map(|desc| {
+                    Ok(Arc::new(DescriptorSetLayout::new(
+                        device.clone(),
+                        desc.clone(),
+                    )?))
+                })
+                .collect::<Result<Vec<_>, OomError>>()?;
             let pipeline_layout = Arc::new(PipelineLayout::new(
                 device.clone(),
-                shader.layout_desc().clone(),
+                descriptor_set_layouts,
+                shader.layout_desc().push_constants().iter().cloned(),
             )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,

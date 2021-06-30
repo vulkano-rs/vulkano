@@ -12,6 +12,7 @@ use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDescError;
 use crate::pipeline::layout::PipelineLayoutDescPcRange;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
 use crate::pipeline::shader::ShaderStages;
@@ -28,8 +29,8 @@ use std::sync::Arc;
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
 /// descriptor sets and push constants available to your shaders.
 pub struct PipelineLayout {
+    handle: ash::vk::PipelineLayout,
     device: Arc<Device>,
-    layout: ash::vk::PipelineLayout,
     descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]>,
     desc: PipelineLayoutDesc,
 }
@@ -37,25 +38,29 @@ pub struct PipelineLayout {
 impl PipelineLayout {
     /// Creates a new `PipelineLayout`.
     #[inline]
-    pub fn new(
+    pub fn new<D, P>(
         device: Arc<Device>,
-        desc: PipelineLayoutDesc,
-    ) -> Result<PipelineLayout, PipelineLayoutCreationError> {
+        descriptor_set_layouts: D,
+        push_constant_ranges: P,
+    ) -> Result<PipelineLayout, PipelineLayoutCreationError>
+    where
+        D: IntoIterator<Item = Arc<DescriptorSetLayout>>,
+        P: IntoIterator<Item = PipelineLayoutDescPcRange>,
+    {
         let fns = device.fns();
 
-        desc.check_against_limits(&device)?;
+        let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]> =
+            descriptor_set_layouts.into_iter().collect();
 
-        // Building the list of `DescriptorSetLayout` objects.
-        let descriptor_set_layouts = {
-            let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
-            for set in desc.descriptor_sets() {
-                layouts.push(Arc::new(DescriptorSetLayout::new(
-                    device.clone(),
-                    set.clone(),
-                )?));
-            }
-            layouts
-        };
+        let desc = PipelineLayoutDesc::new(
+            descriptor_set_layouts
+                .iter()
+                .map(|layout| layout.desc().clone())
+                .collect(),
+            push_constant_ranges.into_iter().collect(),
+        )?;
+
+        desc.check_against_limits(&device)?;
 
         // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
         let layouts_ids = descriptor_set_layouts
@@ -107,7 +112,7 @@ impl PipelineLayout {
         //        have tess shaders enabled
 
         // Build the final object.
-        let layout = unsafe {
+        let handle = unsafe {
             let infos = ash::vk::PipelineLayoutCreateInfo {
                 flags: ash::vk::PipelineLayoutCreateFlags::empty(),
                 set_layout_count: layouts_ids.len() as u32,
@@ -128,8 +133,8 @@ impl PipelineLayout {
         };
 
         Ok(PipelineLayout {
+            handle,
             device: device.clone(),
-            layout,
             descriptor_set_layouts,
             desc,
         })
@@ -163,14 +168,14 @@ unsafe impl VulkanObject for PipelineLayout {
     type Object = ash::vk::PipelineLayout;
 
     fn internal_object(&self) -> Self::Object {
-        self.layout
+        self.handle
     }
 }
 
 impl fmt::Debug for PipelineLayout {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("PipelineLayout")
-            .field("raw", &self.layout)
+            .field("raw", &self.handle)
             .field("device", &self.device)
             .field("desc", &self.desc)
             .finish()
@@ -184,7 +189,7 @@ impl Drop for PipelineLayout {
             let fns = self.device.fns();
             fns.v1_0.destroy_pipeline_layout(
                 self.device.internal_object(),
-                self.layout,
+                self.handle,
                 ptr::null(),
             );
         }
@@ -244,6 +249,13 @@ impl From<PipelineLayoutLimitsError> for PipelineLayoutCreationError {
     #[inline]
     fn from(err: PipelineLayoutLimitsError) -> PipelineLayoutCreationError {
         PipelineLayoutCreationError::LimitsError(err)
+    }
+}
+
+impl From<PipelineLayoutDescError> for PipelineLayoutCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutDescError) -> PipelineLayoutCreationError {
+        PipelineLayoutCreationError::InvalidPushConstant
     }
 }
 

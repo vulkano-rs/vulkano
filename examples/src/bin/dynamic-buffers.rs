@@ -18,6 +18,7 @@ use std::mem;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::descriptor_set::layout::DescriptorSetLayout;
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -28,6 +29,7 @@ use vulkano::pipeline::ComputePipeline;
 use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::OomError;
 use vulkano::Version;
 
 fn main() {
@@ -111,9 +113,28 @@ fn main() {
             &shader.main_entry_point(),
             &(),
             {
-                let mut layout_desc = shader.main_entry_point().layout_desc().clone();
-                layout_desc.tweak(vec![(0, 0)]); // The dynamic uniform buffer is at set 0, descriptor 0
-                Arc::new(PipelineLayout::new(device.clone(), layout_desc).unwrap())
+                let mut pipeline_layout_desc = shader.main_entry_point().layout_desc().clone();
+                pipeline_layout_desc.tweak(vec![(0, 0)]); // The dynamic uniform buffer is at set 0, descriptor 0
+
+                let descriptor_set_layouts = pipeline_layout_desc
+                    .descriptor_sets()
+                    .iter()
+                    .map(|desc| {
+                        Ok(Arc::new(DescriptorSetLayout::new(
+                            device.clone(),
+                            desc.clone(),
+                        )?))
+                    })
+                    .collect::<Result<Vec<_>, OomError>>()
+                    .unwrap();
+                Arc::new(
+                    PipelineLayout::new(
+                        device.clone(),
+                        descriptor_set_layouts,
+                        pipeline_layout_desc.push_constants().iter().cloned(),
+                    )
+                    .unwrap(),
+                )
             },
             None,
         )

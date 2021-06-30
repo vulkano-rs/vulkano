@@ -12,6 +12,7 @@
 #![allow(deprecated)]
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::image::SampleCount;
 use crate::pipeline::blend::AttachmentBlend;
@@ -44,6 +45,7 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::viewport::ViewportsState;
 use crate::render_pass::Subpass;
+use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::mem;
@@ -175,8 +177,26 @@ where
         };
 
         pipeline_layout_desc.tweak(dynamic_buffers.into_iter().cloned());
-        let pipeline_layout = PipelineLayout::new(device.clone(), pipeline_layout_desc).unwrap();
-        self.with_pipeline_layout(device, Arc::new(pipeline_layout))
+
+        let descriptor_set_layouts = pipeline_layout_desc
+            .descriptor_sets()
+            .iter()
+            .map(|desc| {
+                Ok(Arc::new(DescriptorSetLayout::new(
+                    device.clone(),
+                    desc.clone(),
+                )?))
+            })
+            .collect::<Result<Vec<_>, OomError>>()?;
+        let pipeline_layout = Arc::new(
+            PipelineLayout::new(
+                device.clone(),
+                descriptor_set_layouts,
+                pipeline_layout_desc.push_constants().iter().cloned(),
+            )
+            .unwrap(),
+        );
+        self.with_pipeline_layout(device, pipeline_layout)
     }
 
     /// Builds the graphics pipeline.

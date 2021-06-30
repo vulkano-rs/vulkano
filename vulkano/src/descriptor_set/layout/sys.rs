@@ -100,6 +100,10 @@ impl DescriptorSetLayout {
         })
     }
 
+    pub(crate) fn desc(&self) -> &DescriptorSetDesc {
+        &self.desc
+    }
+
     /// Returns the number of descriptors of each type.
     #[inline]
     pub fn descriptors_count(&self) -> &DescriptorsCount {
