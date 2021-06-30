@@ -7,15 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_set::layout::DescriptorBufferDesc;
 use crate::descriptor_set::layout::DescriptorDesc;
-use crate::descriptor_set::layout::DescriptorDescSupersetError;
-use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::descriptor_set::layout::DescriptorSetDesc;
+use crate::descriptor_set::layout::DescriptorSetDescSupersetError;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::Device;
 use crate::pipeline::layout::limits_check;
 use crate::pipeline::shader::ShaderStages;
-use fnv::FnvHashSet;
 use std::cmp;
 use std::error;
 use std::fmt;
@@ -23,14 +21,14 @@ use std::fmt;
 /// Object that describes the layout of the descriptors and push constants of a pipeline.
 #[derive(Debug, Clone)]
 pub struct PipelineLayoutDesc {
-    descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
+    descriptor_sets: Vec<DescriptorSetDesc>,
     push_constants: Vec<PipelineLayoutDescPcRange>,
 }
 
 impl PipelineLayoutDesc {
     /// Builds a new `PipelineLayoutDesc` from the descriptors and push constants descriptions.
     pub fn new(
-        descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
+        descriptor_sets: Vec<DescriptorSetDesc>,
         push_constants: Vec<PipelineLayoutDescPcRange>,
     ) -> Result<PipelineLayoutDesc, PipelineLayoutDescError> {
         unsafe {
@@ -65,7 +63,7 @@ impl PipelineLayoutDesc {
     /// The provided push constants must not conflict with each other.
     #[inline]
     pub unsafe fn new_unchecked(
-        descriptor_sets: Vec<Vec<Option<DescriptorDesc>>>,
+        descriptor_sets: Vec<DescriptorSetDesc>,
         push_constants: Vec<PipelineLayoutDescPcRange>,
     ) -> PipelineLayoutDesc {
         PipelineLayoutDesc {
@@ -86,7 +84,7 @@ impl PipelineLayoutDesc {
 
     /// Returns a description of the descriptor sets.
     #[inline]
-    pub fn descriptor_sets(&self) -> &[Vec<Option<DescriptorDesc>>] {
+    pub fn descriptor_sets(&self) -> &[DescriptorSetDesc] {
         &self.descriptor_sets
     }
 
@@ -97,10 +95,14 @@ impl PipelineLayoutDesc {
     }
 
     #[inline]
+    fn descriptor_set(&self, num: usize) -> Option<&DescriptorSetDesc> {
+        self.descriptor_sets.get(num)
+    }
+
+    #[inline]
     fn descriptor(&self, set_num: usize, binding_num: usize) -> Option<&DescriptorDesc> {
-        self.descriptor_sets
-            .get(set_num)
-            .and_then(|b| b.get(binding_num).and_then(|b| b.as_ref()))
+        self.descriptor_set(set_num)
+            .and_then(|set| set.descriptor(binding_num))
     }
 
     /// Transforms a `PipelineLayoutDesc`.
@@ -110,69 +112,39 @@ impl PipelineLayoutDesc {
     where
         I: IntoIterator<Item = (usize, usize)>,
     {
-        let dynamic_buffers: FnvHashSet<(usize, usize)> = dynamic_buffers.into_iter().collect();
-        for &(set_num, binding_num) in &dynamic_buffers {
+        for (set_num, binding_num) in dynamic_buffers {
             debug_assert!(
-                self.descriptor(set_num, binding_num)
-                    .map_or(false, |desc| match desc.ty {
-                        DescriptorDescTy::Buffer(_) => true,
-                        _ => false,
-                    }),
-                "tried to make the non-buffer descriptor at set {} binding {} a dynamic buffer",
+                set_num < self.descriptor_sets.len(),
+                "tried to make a dynamic buffer in the nonexistent set {}",
                 set_num,
-                binding_num
             );
-        }
 
-        for (set_num, set) in self.descriptor_sets.iter_mut().enumerate() {
-            for (binding_num, binding) in set.iter_mut().enumerate() {
-                if dynamic_buffers.contains(&(set_num, binding_num)) {
-                    if let Some(desc) = binding {
-                        if let DescriptorDescTy::Buffer(ref buffer_desc) = desc.ty {
-                            desc.ty = DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                                dynamic: Some(true),
-                                ..*buffer_desc
-                            });
-                        }
-                    }
-                }
-            }
+            self.descriptor_sets
+                .get_mut(set_num)
+                .map(|set| set.tweak([binding_num]));
         }
     }
 
     /// Builds the union of this layout description and another.
     #[inline]
     pub fn union(&self, other: &PipelineLayoutDesc) -> PipelineLayoutDesc {
+        // Ewwwwwww
+        let empty = DescriptorSetDesc::empty();
+
         unsafe {
             let descriptor_sets = {
-                let self_sets = self.descriptor_sets();
-                let other_sets = other.descriptor_sets();
-                let num_sets = cmp::max(self_sets.len(), other_sets.len());
+                let num_sets = std::array::IntoIter::new([self, other])
+                    .map(|desc| desc.descriptor_sets().len())
+                    .max()
+                    .unwrap_or(0);
 
                 (0..num_sets)
                     .map(|set_num| {
-                        let self_bindings = self_sets.get(set_num);
-                        let other_bindings = other_sets.get(set_num);
-                        let num_bindings = cmp::max(
-                            self_bindings.map(|s| s.len()).unwrap_or(0),
-                            other_bindings.map(|s| s.len()).unwrap_or(0),
-                        );
-
-                        (0..num_bindings)
-                            .map(|binding_num| {
-                                let self_desc = self.descriptor(set_num, binding_num);
-                                let other_desc = other.descriptor(set_num, binding_num);
-
-                                match (self_desc, other_desc) {
-                                    (Some(a), Some(b)) => {
-                                        Some(a.union(&b).expect("Can't be union-ed"))
-                                    }
-                                    (Some(a), None) => Some(a.clone()),
-                                    (None, Some(b)) => Some(b.clone()),
-                                    (None, None) => None,
-                                }
-                            })
-                            .collect()
+                        DescriptorSetDesc::union(
+                            self.descriptor_set(set_num).unwrap_or_else(|| &empty),
+                            other.descriptor_set(set_num).unwrap_or_else(|| &empty),
+                        )
+                        .expect("Can't be union-ed")
                     })
                     .collect()
             };
@@ -234,46 +206,20 @@ impl PipelineLayoutDesc {
     pub fn ensure_superset_of(
         &self,
         other: &PipelineLayoutDesc,
-    ) -> Result<(), PipelineLayoutNotSupersetError> {
-        let self_sets = self.descriptor_sets();
-        let other_sets = other.descriptor_sets();
+    ) -> Result<(), PipelineLayoutSupersetError> {
+        // Ewwwwwww
+        let empty = DescriptorSetDesc::empty();
 
-        for set_num in 0..cmp::max(self_sets.len(), other_sets.len()) {
-            let self_bindings = self_sets.get(set_num);
-            let other_bindings = other_sets.get(set_num);
-            let self_num_bindings = self_bindings.map(|s| s.len()).unwrap_or(0);
-            let other_num_bindings = other_bindings.map(|s| s.len()).unwrap_or(0);
-
-            if self_num_bindings < other_num_bindings {
-                return Err(PipelineLayoutNotSupersetError::DescriptorsCountMismatch {
+        for set_num in 0..cmp::max(self.descriptor_sets.len(), other.descriptor_sets.len()) {
+            if let Err(error) = self
+                .descriptor_set(set_num)
+                .unwrap_or_else(|| &empty)
+                .ensure_superset_of(other.descriptor_set(set_num).unwrap_or_else(|| &empty))
+            {
+                return Err(PipelineLayoutSupersetError::DescriptorSet {
+                    error,
                     set_num: set_num as u32,
-                    self_num_descriptors: self_num_bindings as u32,
-                    other_num_descriptors: other_num_bindings as u32,
                 });
-            }
-
-            for binding_num in 0..other_num_bindings {
-                let self_desc = self.descriptor(set_num, binding_num);
-                let other_desc = self.descriptor(set_num, binding_num);
-
-                match (self_desc, other_desc) {
-                    (Some(mine), Some(other)) => {
-                        if let Err(err) = mine.is_superset_of(&other) {
-                            return Err(PipelineLayoutNotSupersetError::IncompatibleDescriptors {
-                                error: err,
-                                set_num: set_num as u32,
-                                binding_num: binding_num as u32,
-                            });
-                        }
-                    }
-                    (None, Some(_)) => {
-                        return Err(PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor {
-                            set_num: set_num as u32,
-                            binding_num: binding_num as u32,
-                        })
-                    }
-                    _ => (),
-                }
             }
         }
 
@@ -362,54 +308,33 @@ impl fmt::Display for PipelineLayoutDescError {
     }
 }
 
-/// Error that can happen when creating a graphics pipeline.
+/// Error when checking whether a pipeline layout is a superset of another one.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum PipelineLayoutNotSupersetError {
-    /// There are more descriptors in the child than in the parent layout.
-    DescriptorsCountMismatch {
+pub enum PipelineLayoutSupersetError {
+    DescriptorSet {
+        error: DescriptorSetDescSupersetError,
         set_num: u32,
-        self_num_descriptors: u32,
-        other_num_descriptors: u32,
-    },
-
-    /// Expected an empty descriptor, but got something instead.
-    ExpectedEmptyDescriptor { set_num: u32, binding_num: u32 },
-
-    /// Two descriptors are incompatible.
-    IncompatibleDescriptors {
-        error: DescriptorDescSupersetError,
-        set_num: u32,
-        binding_num: u32,
     },
 }
 
-impl error::Error for PipelineLayoutNotSupersetError {
+impl error::Error for PipelineLayoutSupersetError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
-            PipelineLayoutNotSupersetError::IncompatibleDescriptors { ref error, .. } => {
-                Some(error)
-            }
-            _ => None,
+            PipelineLayoutSupersetError::DescriptorSet { ref error, .. } => Some(error),
         }
     }
 }
 
-impl fmt::Display for PipelineLayoutNotSupersetError {
+impl fmt::Display for PipelineLayoutSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
             fmt,
             "{}",
             match *self {
-                PipelineLayoutNotSupersetError::DescriptorsCountMismatch { .. } => {
-                    "there are more descriptors in the child than in the parent layout"
-                }
-                PipelineLayoutNotSupersetError::ExpectedEmptyDescriptor { .. } => {
-                    "expected an empty descriptor, but got something instead"
-                }
-                PipelineLayoutNotSupersetError::IncompatibleDescriptors { .. } => {
-                    "two descriptors are incompatible"
+                PipelineLayoutSupersetError::DescriptorSet { .. } => {
+                    "the descriptor set was not a superset of the other"
                 }
             }
         )

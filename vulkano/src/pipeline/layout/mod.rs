@@ -40,7 +40,7 @@
 pub use self::desc::PipelineLayoutDesc;
 pub use self::desc::PipelineLayoutDescError;
 pub use self::desc::PipelineLayoutDescPcRange;
-pub use self::desc::PipelineLayoutNotSupersetError;
+pub use self::desc::PipelineLayoutSupersetError;
 pub use self::limits_check::PipelineLayoutLimitsError;
 pub use self::sys::PipelineLayout;
 pub use self::sys::PipelineLayoutCreationError;

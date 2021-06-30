@@ -33,7 +33,7 @@ pub fn check_desc_against_limits(
     let mut num_input_attachments = Counter::default();
 
     for set in desc.descriptor_sets() {
-        for descriptor in set.iter().filter_map(|b| b.as_ref()) {
+        for (_, descriptor) in set.descriptors() {
             num_resources.increment(descriptor.array_count, &descriptor.stages);
 
             match descriptor.ty.ty() {

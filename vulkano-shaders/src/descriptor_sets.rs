@@ -90,9 +90,9 @@ pub(super) fn write_pipeline_layout_desc(
                     .collect();
 
                 quote! {
-                    vec![
-                        #( #bindings )*
-                    ],
+                    DescriptorSetDesc::new(
+                        [#( #bindings )*]
+                    ),
                 }
             })
             .collect();

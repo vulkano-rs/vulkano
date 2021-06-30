@@ -655,7 +655,7 @@ impl ShaderStages {
     /// Checks whether we have more stages enabled than `other`.
     // TODO: add example
     #[inline]
-    pub const fn is_superset_of(
+    pub const fn ensure_superset_of(
         &self,
         other: &ShaderStages,
     ) -> Result<(), ShaderStagesSupersetError> {

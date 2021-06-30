@@ -13,7 +13,7 @@ use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::layout::PipelineLayoutCreationError;
-use crate::pipeline::layout::PipelineLayoutNotSupersetError;
+use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::Error;
@@ -283,7 +283,7 @@ pub enum ComputePipelineCreationError {
     /// Error while creating the pipeline layout object.
     PipelineLayoutCreationError(PipelineLayoutCreationError),
     /// The pipeline layout is not compatible with what the shader expects.
-    IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
+    IncompatiblePipelineLayout(PipelineLayoutSupersetError),
     /// The provided specialization constants are not compatible with what the shader expects.
     IncompatibleSpecializationConstants,
 }
@@ -336,9 +336,9 @@ impl From<PipelineLayoutCreationError> for ComputePipelineCreationError {
     }
 }
 
-impl From<PipelineLayoutNotSupersetError> for ComputePipelineCreationError {
+impl From<PipelineLayoutSupersetError> for ComputePipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutNotSupersetError) -> ComputePipelineCreationError {
+    fn from(err: PipelineLayoutSupersetError) -> ComputePipelineCreationError {
         ComputePipelineCreationError::IncompatiblePipelineLayout(err)
     }
 }
@@ -367,6 +367,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::PersistentDescriptorSet;
     use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
@@ -436,7 +437,7 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 PipelineLayoutDesc::new_unchecked(
-                    vec![vec![Some(DescriptorDesc {
+                    vec![DescriptorSetDesc::new([Some(DescriptorDesc {
                         ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
                             dynamic: Some(false),
                             storage: true,
@@ -447,7 +448,7 @@ mod tests {
                             ..ShaderStages::none()
                         },
                         readonly: true,
-                    })]],
+                    })])],
                     vec![],
                 ),
                 SpecConsts::descriptors(),

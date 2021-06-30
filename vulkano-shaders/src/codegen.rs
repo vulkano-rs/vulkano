@@ -337,6 +337,8 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorImageDescArray;
         #[allow(unused_imports)]
+        use vulkano::descriptor_set::layout::DescriptorSetDesc;
+        #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorSetLayout;
         #[allow(unused_imports)]
         use vulkano::descriptor_set::DescriptorSet;

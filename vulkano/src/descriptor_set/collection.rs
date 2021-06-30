@@ -14,6 +14,8 @@ use crate::descriptor_set::DescriptorSet;
 pub unsafe trait DescriptorSetsCollection {
     fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>>;
 
+    fn set(&self, num: usize) -> Option<&(dyn DescriptorSet + Send + Sync)>;
+
     /// Returns the number of descriptors in the set. Includes possibly empty descriptors.
     ///
     /// Returns `None` if the set is out of range.
@@ -34,6 +36,11 @@ unsafe impl DescriptorSetsCollection for () {
     }
 
     #[inline]
+    fn set(&self, num: usize) -> Option<&(dyn DescriptorSet + Send + Sync)> {
+        None
+    }
+
+    #[inline]
     fn num_bindings_in_set(&self, _: usize) -> Option<usize> {
         None
     }
@@ -51,6 +58,14 @@ where
     #[inline]
     fn into_vec(self) -> Vec<Box<dyn DescriptorSet + Send + Sync>> {
         vec![Box::new(self) as Box<_>]
+    }
+
+    #[inline]
+    fn set(&self, num: usize) -> Option<&(dyn DescriptorSet + Send + Sync)> {
+        match num {
+            0 => Some(self),
+            _ => None,
+        }
     }
 
     #[inline]
@@ -84,6 +99,11 @@ where
     }
 
     #[inline]
+    fn set(&self, num: usize) -> Option<&(dyn DescriptorSet + Send + Sync)> {
+        self.get(num).map(|x| x as _)
+    }
+
+    #[inline]
     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
         self.get(set).map(|x| x.layout().num_bindings())
     }
@@ -111,6 +131,27 @@ macro_rules! impl_collection {
                     list.push(Box::new($others) as Box<_>);
                 )+
                 list
+            }
+
+            #[inline]
+            fn set(&self, mut num: usize) -> Option<&(dyn DescriptorSet + Send + Sync)> {
+                #![allow(non_snake_case)]
+                #![allow(unused_mut)]       // For the `num` parameter.
+
+                if num == 0 {
+                    return Some(&self.0);
+                }
+
+                let &(_, $(ref $others,)*) = self;
+
+                $(
+                    num -= 1;
+                    if num == 0 {
+                        return Some($others);
+                    }
+                )*
+
+                None
             }
 
             #[inline]

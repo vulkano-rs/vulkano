@@ -52,7 +52,7 @@ impl PipelineLayout {
                 layouts.push({
                     Arc::new(DescriptorSetLayout::new(
                         device.clone(),
-                        set.iter().map(|s| s.clone()),
+                        (0..set.num_bindings()).map(|num| set.descriptor(num).map(|s| s.clone())),
                     )?)
                 });
             }
