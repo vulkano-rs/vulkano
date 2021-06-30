@@ -16,12 +16,12 @@ use crate::device::DeviceOwned;
 use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
-use std::fmt;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
 
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
+#[derive(Debug)]
 pub struct DescriptorSetLayout {
     // The layout.
     handle: ash::vk::DescriptorSetLayout,
@@ -127,15 +127,6 @@ unsafe impl DeviceOwned for DescriptorSetLayout {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.device
-    }
-}
-
-impl fmt::Debug for DescriptorSetLayout {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        fmt.debug_struct("DescriptorSetLayout")
-            .field("raw", &self.handle)
-            .field("device", &self.device)
-            .finish()
     }
 }
 

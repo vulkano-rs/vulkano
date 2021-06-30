@@ -27,12 +27,8 @@ where
     // a problem if the descriptor sets provide more elements than expected.
 
     for (set_num, set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
-        for (binding_num, pipeline_desc) in set
-            .desc()
-            .bindings()
-            .iter()
-            .enumerate()
-            .filter_map(|(i, d)| d.as_ref().map(|d| (i, d)))
+        for (binding_num, pipeline_desc) in
+            (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| (i, d)))
         {
             let set_desc = descriptor_sets.descriptor(set_num, binding_num);
 

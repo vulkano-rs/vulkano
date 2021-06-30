@@ -153,8 +153,8 @@ impl PipelineLayout {
         &self.push_constant_ranges
     }
 
-    /// Makes sure that `self` is a superset the provided descriptor set layouts and push constant
-    /// ranges. Returns an `Err` if this is not the case.
+    /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
+    /// constant ranges. Returns an `Err` if this is not the case.
     pub fn ensure_superset_of(
         &self,
         descriptor_set_layout_descs: &[DescriptorSetDesc],
