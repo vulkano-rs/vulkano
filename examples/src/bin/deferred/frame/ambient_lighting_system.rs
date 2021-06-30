@@ -123,7 +123,12 @@ impl AmbientLightingSystem {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
 
-        let layout = self.pipeline.layout().descriptor_set_layout(0).unwrap();
+        let layout = self
+            .pipeline
+            .layout()
+            .descriptor_set_layouts()
+            .get(0)
+            .unwrap();
         let descriptor_set = PersistentDescriptorSet::start(layout.clone())
             .add_image(color_input)
             .unwrap()

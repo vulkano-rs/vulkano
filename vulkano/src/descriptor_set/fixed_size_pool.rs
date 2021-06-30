@@ -24,7 +24,7 @@
 //! // use vulkano::pipeline::GraphicsPipelineAbstract;
 //! // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
 //!
-//! let layout = graphics_pipeline.layout().descriptor_set_layout(0).unwrap();
+//! let layout = graphics_pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 //! let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 //! ```
 //!

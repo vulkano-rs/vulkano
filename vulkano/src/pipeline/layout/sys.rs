@@ -147,14 +147,6 @@ impl PipelineLayout {
         &self.descriptor_set_layouts
     }
 
-    /// Returns the `DescriptorSetLayout` object of the specified set index.
-    ///
-    /// Returns `None` if out of range or if the set is empty for this index.
-    #[inline]
-    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<DescriptorSetLayout>> {
-        self.descriptor_set_layouts.get(index)
-    }
-
     /// Returns a slice containing the push constant ranges this pipeline layout was created from.
     #[inline]
     pub fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {

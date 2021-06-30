@@ -200,7 +200,7 @@ fn main() {
     )
     .unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let set = Arc::new(
         PersistentDescriptorSet::start(layout.clone())
             .add_buffer(input_buffer.clone())
