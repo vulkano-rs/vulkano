@@ -49,12 +49,10 @@ impl PipelineLayout {
         let descriptor_set_layouts = {
             let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
             for set in desc.descriptor_sets() {
-                layouts.push({
-                    Arc::new(DescriptorSetLayout::new(
-                        device.clone(),
-                        (0..set.num_bindings()).map(|num| set.descriptor(num).map(|s| s.clone())),
-                    )?)
-                });
+                layouts.push(Arc::new(DescriptorSetLayout::new(
+                    device.clone(),
+                    set.clone(),
+                )?));
             }
             layouts
         };

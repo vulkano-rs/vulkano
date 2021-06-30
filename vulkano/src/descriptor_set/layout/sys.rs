@@ -9,6 +9,7 @@
 
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::pool::DescriptorsCount;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -23,11 +24,11 @@ use std::sync::Arc;
 /// Describes to the Vulkan implementation the layout of all descriptors within a descriptor set.
 pub struct DescriptorSetLayout {
     // The layout.
-    layout: ash::vk::DescriptorSetLayout,
+    handle: ash::vk::DescriptorSetLayout,
     // The device this layout belongs to.
     device: Arc<Device>,
     // Descriptors.
-    descriptors: SmallVec<[Option<DescriptorDesc>; 32]>,
+    desc: DescriptorSetDesc,
     // Number of descriptors.
     descriptors_count: DescriptorsCount,
 }
@@ -38,14 +39,14 @@ impl DescriptorSetLayout {
     /// The descriptors must be passed in the order of the bindings. In order words, descriptor
     /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
     /// empty, you can make the iterator yield `None` for an element.
-    pub fn new<I>(device: Arc<Device>, descriptors: I) -> Result<DescriptorSetLayout, OomError>
-    where
-        I: IntoIterator<Item = Option<DescriptorDesc>>,
-    {
-        let descriptors = descriptors.into_iter().collect::<SmallVec<[_; 32]>>();
+    pub fn new(
+        device: Arc<Device>,
+        desc: DescriptorSetDesc,
+    ) -> Result<DescriptorSetLayout, OomError> {
         let mut descriptors_count = DescriptorsCount::zero();
 
-        let bindings = descriptors
+        let bindings = desc
+            .bindings()
             .iter()
             .enumerate()
             .filter_map(|(binding, desc)| {
@@ -72,7 +73,7 @@ impl DescriptorSetLayout {
 
         // Note that it seems legal to have no descriptor at all in the set.
 
-        let layout = unsafe {
+        let handle = unsafe {
             let infos = ash::vk::DescriptorSetLayoutCreateInfo {
                 flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
                 binding_count: bindings.len() as u32,
@@ -92,9 +93,9 @@ impl DescriptorSetLayout {
         };
 
         Ok(DescriptorSetLayout {
-            layout,
+            handle,
             device,
-            descriptors,
+            desc,
             descriptors_count,
         })
     }
@@ -108,13 +109,13 @@ impl DescriptorSetLayout {
     /// Returns the number of binding slots in the set.
     #[inline]
     pub fn num_bindings(&self) -> usize {
-        self.descriptors.len()
+        self.desc.bindings().len()
     }
 
     /// Returns a description of a descriptor, or `None` if out of range.
     #[inline]
     pub fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        self.descriptors.get(binding).cloned().unwrap_or(None)
+        self.desc.bindings().get(binding).cloned().unwrap_or(None)
     }
 }
 
@@ -128,7 +129,7 @@ unsafe impl DeviceOwned for DescriptorSetLayout {
 impl fmt::Debug for DescriptorSetLayout {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("DescriptorSetLayout")
-            .field("raw", &self.layout)
+            .field("raw", &self.handle)
             .field("device", &self.device)
             .finish()
     }
@@ -139,7 +140,7 @@ unsafe impl VulkanObject for DescriptorSetLayout {
 
     #[inline]
     fn internal_object(&self) -> ash::vk::DescriptorSetLayout {
-        self.layout
+        self.handle
     }
 }
 
@@ -150,7 +151,7 @@ impl Drop for DescriptorSetLayout {
             let fns = self.device.fns();
             fns.v1_0.destroy_descriptor_set_layout(
                 self.device.internal_object(),
-                self.layout,
+                self.handle,
                 ptr::null(),
             );
         }
@@ -162,6 +163,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
     use crate::descriptor_set::pool::DescriptorsCount;
     use crate::pipeline::shader::ShaderStages;
@@ -170,7 +172,7 @@ mod tests {
     #[test]
     fn empty() {
         let (device, _) = gfx_dev_and_queue!();
-        let _layout = DescriptorSetLayout::new(device, iter::empty());
+        let _layout = DescriptorSetLayout::new(device, DescriptorSetDesc::empty());
     }
 
     #[test]
@@ -187,7 +189,11 @@ mod tests {
             readonly: true,
         };
 
-        let sl = DescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
+        let sl = DescriptorSetLayout::new(
+            device.clone(),
+            DescriptorSetDesc::new(iter::once(Some(layout))),
+        )
+        .unwrap();
 
         assert_eq!(
             sl.descriptors_count(),

@@ -81,17 +81,9 @@ impl DescriptorSetDesc {
         }
     }
 
-    /// Returns the highest binding number.
-    pub fn num_bindings(&self) -> usize {
-        self.descriptors.len()
-    }
-
-    /// Returns an iterator over all descriptors in the set.
-    pub fn descriptors(&self) -> impl Iterator<Item = (usize, &DescriptorDesc)> {
-        self.descriptors
-            .iter()
-            .enumerate()
-            .filter_map(|(i, d)| d.as_ref().map(|d| (i, d)))
+    /// Returns the descriptors in the set.
+    pub fn bindings(&self) -> &[Option<DescriptorDesc>] {
+        &self.descriptors
     }
 
     /// Returns the descriptor with the given binding number, or `None` if the binding is empty.
@@ -106,7 +98,7 @@ impl DescriptorSetDesc {
         first: &DescriptorSetDesc,
         second: &DescriptorSetDesc,
     ) -> Result<DescriptorSetDesc, ()> {
-        let num_bindings = cmp::max(first.descriptors.len(), first.descriptors.len());
+        let num_bindings = cmp::max(first.descriptors.len(), second.descriptors.len());
         let descriptors = (0..num_bindings)
             .map(|binding_num| {
                 DescriptorDesc::union(
