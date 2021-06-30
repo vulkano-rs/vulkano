@@ -111,7 +111,7 @@ pub(super) fn write_push_constant_ranges(doc: &Spirv, types_meta: &TypesMeta) ->
     } else {
         quote! {
             [
-                PipelineLayoutDescPcRange {
+                PipelineLayoutPcRange {
                     offset: 0,                   // FIXME: not necessarily true
                     size: #push_constants_size,
                     stages: ShaderStages::all(), // FIXME: wrong

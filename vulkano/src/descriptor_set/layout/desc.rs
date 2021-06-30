@@ -118,6 +118,25 @@ impl DescriptorSetDesc {
         Ok(DescriptorSetDesc { descriptors })
     }
 
+    /// Builds the union of multiple descriptor sets.
+    pub fn union_multiple(
+        first: &[DescriptorSetDesc],
+        second: &[DescriptorSetDesc],
+    ) -> Result<Vec<DescriptorSetDesc>, ()> {
+        // Ewwwwwww
+        let empty = DescriptorSetDesc::empty();
+        let num_sets = cmp::max(first.len(), second.len());
+
+        (0..num_sets)
+            .map(|set_num| {
+                Ok(DescriptorSetDesc::union(
+                    first.get(set_num).unwrap_or_else(|| &empty),
+                    second.get(set_num).unwrap_or_else(|| &empty),
+                )?)
+            })
+            .collect()
+    }
+
     /// Transforms a `DescriptorSetDesc`.
     ///
     /// Used to adjust automatically inferred `DescriptorSetDesc`s with information that cannot be inferred.
@@ -149,6 +168,21 @@ impl DescriptorSetDesc {
                     });
                 }
             }
+        }
+    }
+
+    pub fn tweak_multiple<I>(sets: &mut [DescriptorSetDesc], dynamic_buffers: I)
+    where
+        I: IntoIterator<Item = (usize, usize)>,
+    {
+        for (set_num, binding_num) in dynamic_buffers {
+            debug_assert!(
+                set_num < sets.len(),
+                "tried to make a dynamic buffer in the nonexistent set {}",
+                set_num,
+            );
+
+            sets.get_mut(set_num).map(|set| set.tweak([binding_num]));
         }
     }
 

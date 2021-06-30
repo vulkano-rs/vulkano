@@ -347,7 +347,7 @@ where
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
-        use vulkano::pipeline::layout::PipelineLayoutDescPcRange;
+        use vulkano::pipeline::layout::PipelineLayoutPcRange;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::ShaderStages;
         #[allow(unused_imports)]

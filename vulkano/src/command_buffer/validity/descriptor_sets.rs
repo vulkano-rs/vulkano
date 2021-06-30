@@ -12,11 +12,11 @@ use std::fmt;
 
 use crate::descriptor_set::layout::DescriptorDescSupersetError;
 use crate::descriptor_set::DescriptorSetsCollection;
-use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayout;
 
 /// Checks whether descriptor sets are compatible with the pipeline.
 pub fn check_descriptor_sets_validity<D>(
-    pipeline_layout_desc: &PipelineLayoutDesc,
+    pipeline_layout: &PipelineLayout,
     descriptor_sets: &D,
 ) -> Result<(), CheckDescriptorSetsValidityError>
 where
@@ -26,8 +26,9 @@ where
     // what's important is that the descriptor sets are a superset of the pipeline layout. It's not
     // a problem if the descriptor sets provide more elements than expected.
 
-    for (set_num, set) in pipeline_layout_desc.descriptor_sets().iter().enumerate() {
+    for (set_num, set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
         for (binding_num, pipeline_desc) in set
+            .desc()
             .bindings()
             .iter()
             .enumerate()

@@ -9,18 +9,20 @@
 
 //! Contains the `check_desc_against_limits` function and the `PipelineLayoutLimitsError` error.
 
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::device::Properties;
-use crate::pipeline::layout::PipelineLayoutDesc;
-use crate::pipeline::layout::PipelineLayoutDescPcRange;
+use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::pipeline::shader::ShaderStages;
 use std::error;
 use std::fmt;
+use std::sync::Arc;
 
 /// Checks whether the pipeline layout description fulfills the device limits requirements.
 pub fn check_desc_against_limits(
-    desc: &PipelineLayoutDesc,
     properties: &Properties,
+    descriptor_set_layouts: &[Arc<DescriptorSetLayout>],
+    push_constants_ranges: &[PipelineLayoutPcRange],
 ) -> Result<(), PipelineLayoutLimitsError> {
     let mut num_resources = Counter::default();
     let mut num_samplers = Counter::default();
@@ -32,8 +34,9 @@ pub fn check_desc_against_limits(
     let mut num_storage_images = Counter::default();
     let mut num_input_attachments = Counter::default();
 
-    for set in desc.descriptor_sets() {
+    for set in descriptor_set_layouts {
         for (_, descriptor) in set
+            .desc()
             .bindings()
             .iter()
             .enumerate()
@@ -77,10 +80,10 @@ pub fn check_desc_against_limits(
         }
     }
 
-    if desc.descriptor_sets().len() > properties.max_bound_descriptor_sets.unwrap() as usize {
+    if descriptor_set_layouts.len() > properties.max_bound_descriptor_sets.unwrap() as usize {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
             limit: properties.max_bound_descriptor_sets.unwrap() as usize,
-            requested: desc.descriptor_sets().len(),
+            requested: descriptor_set_layouts.len(),
         });
     }
 
@@ -233,7 +236,7 @@ pub fn check_desc_against_limits(
         );
     }
 
-    for &PipelineLayoutDescPcRange { offset, size, .. } in desc.push_constants() {
+    for &PipelineLayoutPcRange { offset, size, .. } in push_constants_ranges {
         if offset + size > properties.max_push_constants_size.unwrap() as usize {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
                 limit: properties.max_push_constants_size.unwrap() as usize,

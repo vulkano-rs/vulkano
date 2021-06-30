@@ -12,6 +12,7 @@
 #![allow(deprecated)]
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::image::SampleCount;
@@ -28,8 +29,7 @@ use crate::pipeline::graphics_pipeline::GraphicsPipelineCreationError;
 use crate::pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::layout::PipelineLayoutDesc;
-use crate::pipeline::layout::PipelineLayoutDescError;
+use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::pipeline::raster::CullMode;
 use crate::pipeline::raster::DepthBiasControl;
 use crate::pipeline::raster::FrontFace;
@@ -149,7 +149,7 @@ where
         device: Arc<Device>,
         dynamic_buffers: &[(usize, usize)],
     ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
-        let mut pipeline_layout_desc = {
+        let (descriptor_set_layout_descs, push_constant_ranges) = {
             let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
                 self.tessellation
@@ -170,44 +170,31 @@ where
                 }
             }
 
-            stages
-                .into_iter()
-                .try_fold(
-                    PipelineLayoutDesc::empty(),
-                    |total, shader| -> Result<_, PipelineLayoutDescError> {
-                        let shader_layout_desc = PipelineLayoutDesc::new(
-                            shader
-                                .descriptor_set_layout_descs()
-                                .iter()
-                                .cloned()
-                                .collect(),
-                            shader.push_constant_ranges().iter().cloned().collect(),
-                        )?;
-                        Ok(total.union(&shader_layout_desc))
-                    },
-                )
-                .unwrap()
+            let mut descriptor_set_layout_descs = stages
+                .iter()
+                .try_fold(vec![], |total, shader| -> Result<_, ()> {
+                    DescriptorSetDesc::union_multiple(&total, shader.descriptor_set_layout_descs())
+                })
+                .expect("Can't be union'd");
+            DescriptorSetDesc::tweak_multiple(
+                &mut descriptor_set_layout_descs,
+                dynamic_buffers.into_iter().cloned(),
+            );
+
+            let push_constant_ranges = stages.iter().fold(vec![], |total, shader| {
+                PipelineLayoutPcRange::union_multiple(&total, shader.push_constant_ranges())
+            });
+
+            (descriptor_set_layout_descs, push_constant_ranges)
         };
 
-        pipeline_layout_desc.tweak(dynamic_buffers.into_iter().cloned());
-
-        let descriptor_set_layouts = pipeline_layout_desc
-            .descriptor_sets()
-            .iter()
-            .map(|desc| {
-                Ok(Arc::new(DescriptorSetLayout::new(
-                    device.clone(),
-                    desc.clone(),
-                )?))
-            })
+        let descriptor_set_layouts = descriptor_set_layout_descs
+            .into_iter()
+            .map(|desc| Ok(Arc::new(DescriptorSetLayout::new(device.clone(), desc)?)))
             .collect::<Result<Vec<_>, OomError>>()?;
         let pipeline_layout = Arc::new(
-            PipelineLayout::new(
-                device.clone(),
-                descriptor_set_layouts,
-                pipeline_layout_desc.push_constants().iter().cloned(),
-            )
-            .unwrap(),
+            PipelineLayout::new(device.clone(), descriptor_set_layouts, push_constant_ranges)
+                .unwrap(),
         );
         self.with_pipeline_layout(device, pipeline_layout)
     }
@@ -229,71 +216,46 @@ where
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
 
-        pipeline_layout.desc().ensure_superset_of({
+        {
             let shader = &self.vertex_shader.as_ref().unwrap().0;
-            &PipelineLayoutDesc::new(
-                shader
-                    .descriptor_set_layout_descs()
-                    .iter()
-                    .cloned()
-                    .collect(),
-                shader.push_constant_ranges().iter().cloned().collect(),
-            )
-            .unwrap()
-        })?;
+            pipeline_layout.ensure_superset_of(
+                shader.descriptor_set_layout_descs(),
+                shader.push_constant_ranges(),
+            )?;
+        }
+
         if let Some(ref geometry_shader) = self.geometry_shader {
-            pipeline_layout.desc().ensure_superset_of({
-                let shader = &geometry_shader.0;
-                &PipelineLayoutDesc::new(
-                    shader
-                        .descriptor_set_layout_descs()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    shader.push_constant_ranges().iter().cloned().collect(),
-                )
-                .unwrap()
-            })?;
+            let shader = &geometry_shader.0;
+            pipeline_layout.ensure_superset_of(
+                shader.descriptor_set_layout_descs(),
+                shader.push_constant_ranges(),
+            )?;
         }
+
         if let Some(ref tess) = self.tessellation {
-            pipeline_layout.desc().ensure_superset_of({
+            {
                 let shader = &tess.tessellation_control_shader.0;
-                &PipelineLayoutDesc::new(
-                    shader
-                        .descriptor_set_layout_descs()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    shader.push_constant_ranges().iter().cloned().collect(),
-                )
-                .unwrap()
-            })?;
-            pipeline_layout.desc().ensure_superset_of({
+                pipeline_layout.ensure_superset_of(
+                    shader.descriptor_set_layout_descs(),
+                    shader.push_constant_ranges(),
+                )?;
+            }
+
+            {
                 let shader = &tess.tessellation_evaluation_shader.0;
-                &PipelineLayoutDesc::new(
-                    shader
-                        .descriptor_set_layout_descs()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    shader.push_constant_ranges().iter().cloned().collect(),
-                )
-                .unwrap()
-            })?;
+                pipeline_layout.ensure_superset_of(
+                    shader.descriptor_set_layout_descs(),
+                    shader.push_constant_ranges(),
+                )?;
+            }
         }
+
         if let Some(ref fragment_shader) = self.fragment_shader {
-            pipeline_layout.desc().ensure_superset_of({
-                let shader = &fragment_shader.0;
-                &PipelineLayoutDesc::new(
-                    shader
-                        .descriptor_set_layout_descs()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    shader.push_constant_ranges().iter().cloned().collect(),
-                )
-                .unwrap()
-            })?;
+            let shader = &fragment_shader.0;
+            pipeline_layout.ensure_superset_of(
+                shader.descriptor_set_layout_descs(),
+                shader.push_constant_ranges(),
+            )?;
 
             // Check that the subpass can accept the output of the fragment shader.
             // TODO: If there is no fragment shader, what should be checked then? The previous stage?
@@ -301,7 +263,7 @@ where
                 .subpass
                 .as_ref()
                 .unwrap()
-                .is_compatible_with(fragment_shader.0.output())
+                .is_compatible_with(shader.output())
             {
                 return Err(GraphicsPipelineCreationError::FragmentShaderRenderPassIncompatible);
             }

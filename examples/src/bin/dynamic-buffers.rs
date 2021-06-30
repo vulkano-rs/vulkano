@@ -18,13 +18,12 @@ use std::mem;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
+use vulkano::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::layout::PipelineLayout;
-use vulkano::pipeline::layout::PipelineLayoutDesc;
 use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::pipeline::ComputePipelineAbstract;
@@ -114,26 +113,18 @@ fn main() {
             &shader.main_entry_point(),
             &(),
             {
-                let mut pipeline_layout_desc = PipelineLayoutDesc::new(
-                    shader
-                        .main_entry_point()
-                        .descriptor_set_layout_descs()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    shader
-                        .main_entry_point()
-                        .push_constant_ranges()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                )
-                .unwrap();
-                pipeline_layout_desc.tweak(vec![(0, 0)]); // The dynamic uniform buffer is at set 0, descriptor 0
-
-                let descriptor_set_layouts = pipeline_layout_desc
-                    .descriptor_sets()
+                let mut descriptor_set_layout_descs: Vec<_> = shader
+                    .main_entry_point()
+                    .descriptor_set_layout_descs()
                     .iter()
+                    .cloned()
+                    .collect();
+                DescriptorSetDesc::tweak_multiple(
+                    &mut descriptor_set_layout_descs,
+                    [(0, 0)], // The dynamic uniform buffer is at set 0, descriptor 0
+                );
+                let descriptor_set_layouts = descriptor_set_layout_descs
+                    .into_iter()
                     .map(|desc| {
                         Ok(Arc::new(DescriptorSetLayout::new(
                             device.clone(),
@@ -142,11 +133,16 @@ fn main() {
                     })
                     .collect::<Result<Vec<_>, OomError>>()
                     .unwrap();
+
                 Arc::new(
                     PipelineLayout::new(
                         device.clone(),
                         descriptor_set_layouts,
-                        pipeline_layout_desc.push_constants().iter().cloned(),
+                        shader
+                            .main_entry_point()
+                            .push_constant_ranges()
+                            .iter()
+                            .cloned(),
                     )
                     .unwrap(),
                 )

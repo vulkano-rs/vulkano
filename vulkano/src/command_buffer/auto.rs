@@ -1070,8 +1070,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             }
 
             self.ensure_outside_render_pass()?;
-            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
             check_dispatch(pipeline.device(), group_counts)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1124,8 +1124,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_outside_render_pass()?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -1175,8 +1175,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1257,8 +1257,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let requested = indirect_buffer.len() as u32;
@@ -1347,8 +1347,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1442,8 +1442,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout().desc(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout().desc(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
             let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
 
             let requested = indirect_buffer.len() as u32;
@@ -2101,7 +2101,7 @@ unsafe fn push_constants<Pc>(
     pipeline_layout: &Arc<PipelineLayout>,
     push_constants: Pc,
 ) {
-    for range in pipeline_layout.desc().push_constants() {
+    for range in pipeline_layout.push_constant_ranges() {
         debug_assert_eq!(range.offset % 4, 0);
         debug_assert_eq!(range.size % 4, 0);
 

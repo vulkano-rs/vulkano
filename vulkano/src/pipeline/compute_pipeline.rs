@@ -14,7 +14,6 @@ use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::layout::PipelineLayoutCreationError;
-use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
@@ -109,16 +108,9 @@ impl ComputePipeline {
         }
 
         unsafe {
-            pipeline_layout.desc().ensure_superset_of(
-                &PipelineLayoutDesc::new(
-                    shader
-                        .descriptor_set_layout_descs()
-                        .iter()
-                        .cloned()
-                        .collect(),
-                    shader.push_constant_ranges().iter().cloned().collect(),
-                )
-                .unwrap(),
+            pipeline_layout.ensure_superset_of(
+                shader.descriptor_set_layout_descs(),
+                shader.push_constant_ranges(),
             )?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
