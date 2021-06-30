@@ -24,6 +24,7 @@ use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::layout::PipelineLayout;
+use vulkano::pipeline::layout::PipelineLayoutDesc;
 use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::ComputePipeline;
 use vulkano::pipeline::ComputePipelineAbstract;
@@ -113,7 +114,21 @@ fn main() {
             &shader.main_entry_point(),
             &(),
             {
-                let mut pipeline_layout_desc = shader.main_entry_point().layout_desc().clone();
+                let mut pipeline_layout_desc = PipelineLayoutDesc::new(
+                    shader
+                        .main_entry_point()
+                        .descriptor_set_layout_descs()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    shader
+                        .main_entry_point()
+                        .push_constant_ranges()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                )
+                .unwrap();
                 pipeline_layout_desc.tweak(vec![(0, 0)]); // The dynamic uniform buffer is at set 0, descriptor 0
 
                 let descriptor_set_layouts = pipeline_layout_desc

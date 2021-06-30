@@ -29,6 +29,7 @@ use crate::pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayoutDescError;
 use crate::pipeline::raster::CullMode;
 use crate::pipeline::raster::DepthBiasControl;
 use crate::pipeline::raster::FrontFace;
@@ -171,9 +172,21 @@ where
 
             stages
                 .into_iter()
-                .fold(PipelineLayoutDesc::empty(), |total, stage| {
-                    total.union(stage.layout_desc())
-                })
+                .try_fold(
+                    PipelineLayoutDesc::empty(),
+                    |total, shader| -> Result<_, PipelineLayoutDescError> {
+                        let shader_layout_desc = PipelineLayoutDesc::new(
+                            shader
+                                .descriptor_set_layout_descs()
+                                .iter()
+                                .cloned()
+                                .collect(),
+                            shader.push_constant_ranges().iter().cloned().collect(),
+                        )?;
+                        Ok(total.union(&shader_layout_desc))
+                    },
+                )
+                .unwrap()
         };
 
         pipeline_layout_desc.tweak(dynamic_buffers.into_iter().cloned());
@@ -215,26 +228,72 @@ where
 
         // Checking that the pipeline layout matches the shader stages.
         // TODO: more details in the errors
-        pipeline_layout
-            .desc()
-            .ensure_superset_of(self.vertex_shader.as_ref().unwrap().0.layout_desc())?;
+
+        pipeline_layout.desc().ensure_superset_of({
+            let shader = &self.vertex_shader.as_ref().unwrap().0;
+            &PipelineLayoutDesc::new(
+                shader
+                    .descriptor_set_layout_descs()
+                    .iter()
+                    .cloned()
+                    .collect(),
+                shader.push_constant_ranges().iter().cloned().collect(),
+            )
+            .unwrap()
+        })?;
         if let Some(ref geometry_shader) = self.geometry_shader {
-            pipeline_layout
-                .desc()
-                .ensure_superset_of(geometry_shader.0.layout_desc())?;
+            pipeline_layout.desc().ensure_superset_of({
+                let shader = &geometry_shader.0;
+                &PipelineLayoutDesc::new(
+                    shader
+                        .descriptor_set_layout_descs()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    shader.push_constant_ranges().iter().cloned().collect(),
+                )
+                .unwrap()
+            })?;
         }
         if let Some(ref tess) = self.tessellation {
-            pipeline_layout
-                .desc()
-                .ensure_superset_of(tess.tessellation_control_shader.0.layout_desc())?;
-            pipeline_layout
-                .desc()
-                .ensure_superset_of(tess.tessellation_evaluation_shader.0.layout_desc())?;
+            pipeline_layout.desc().ensure_superset_of({
+                let shader = &tess.tessellation_control_shader.0;
+                &PipelineLayoutDesc::new(
+                    shader
+                        .descriptor_set_layout_descs()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    shader.push_constant_ranges().iter().cloned().collect(),
+                )
+                .unwrap()
+            })?;
+            pipeline_layout.desc().ensure_superset_of({
+                let shader = &tess.tessellation_evaluation_shader.0;
+                &PipelineLayoutDesc::new(
+                    shader
+                        .descriptor_set_layout_descs()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    shader.push_constant_ranges().iter().cloned().collect(),
+                )
+                .unwrap()
+            })?;
         }
         if let Some(ref fragment_shader) = self.fragment_shader {
-            pipeline_layout
-                .desc()
-                .ensure_superset_of(fragment_shader.0.layout_desc())?;
+            pipeline_layout.desc().ensure_superset_of({
+                let shader = &fragment_shader.0;
+                &PipelineLayoutDesc::new(
+                    shader
+                        .descriptor_set_layout_descs()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    shader.push_constant_ranges().iter().cloned().collect(),
+                )
+                .unwrap()
+            })?;
 
             // Check that the subpass can accept the output of the fragment shader.
             // TODO: If there is no fragment shader, what should be checked then? The previous stage?

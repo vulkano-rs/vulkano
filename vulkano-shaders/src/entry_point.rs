@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::descriptor_sets::write_pipeline_layout_desc;
+use crate::descriptor_sets::{write_descriptor_set_layout_descs, write_push_constant_ranges};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::{Span, TokenStream};
@@ -81,14 +81,9 @@ pub(super) fn write_entry_point(
         }
     };
 
-    let pipeline_layout_desc = write_pipeline_layout_desc(
-        &doc,
-        id,
-        interface,
-        &types_meta,
-        exact_entrypoint_interface,
-        stage,
-    );
+    let descriptor_set_layout_descs =
+        write_descriptor_set_layout_descs(&doc, id, interface, exact_entrypoint_interface, stage);
+    let push_constant_ranges = write_push_constant_ranges(&doc, &types_meta);
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         quote! { SpecializationConstants }
@@ -102,7 +97,8 @@ pub(super) fn write_entry_point(
                 quote! { ::vulkano::pipeline::shader::ComputeEntryPoint },
                 quote! { compute_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    #pipeline_layout_desc,
+                    #descriptor_set_layout_descs,
+                    #push_constant_ranges,
                     <#spec_consts_struct>::descriptors(),
                 )},
             )
@@ -178,7 +174,8 @@ pub(super) fn write_entry_point(
             let f_call = quote! {
                 graphics_entry_point(
                     ::std::ffi::CStr::from_ptr(NAME.as_ptr() as *const _),
-                    #pipeline_layout_desc,
+                    #descriptor_set_layout_descs,
+                    #push_constant_ranges,
                     <#spec_consts_struct>::descriptors(),
                     #input_interface,
                     #output_interface,

@@ -246,7 +246,6 @@ impl Drop for PipelineCache {
 #[cfg(test)]
 mod tests {
     use crate::pipeline::cache::PipelineCache;
-    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::ComputePipeline;
@@ -290,7 +289,8 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                [],
+                [],
                 <()>::descriptors(),
             )
         };
@@ -334,7 +334,8 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             first_module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                [],
+                [],
                 <()>::descriptors(),
             )
         };
@@ -374,7 +375,8 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             second_module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                [],
+                [],
                 <()>::descriptors(),
             )
         };
@@ -427,7 +429,8 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                PipelineLayoutDesc::new_unchecked(vec![], vec![]),
+                [],
+                [],
                 <()>::descriptors(),
             )
         };

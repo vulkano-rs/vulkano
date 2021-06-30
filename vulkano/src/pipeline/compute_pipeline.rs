@@ -14,6 +14,7 @@ use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::layout::PipelineLayoutCreationError;
+use crate::pipeline::layout::PipelineLayoutDesc;
 use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
@@ -64,8 +65,7 @@ impl ComputePipeline {
     {
         unsafe {
             let descriptor_set_layouts = shader
-                .layout_desc()
-                .descriptor_sets()
+                .descriptor_set_layout_descs()
                 .iter()
                 .map(|desc| {
                     Ok(Arc::new(DescriptorSetLayout::new(
@@ -77,7 +77,7 @@ impl ComputePipeline {
             let pipeline_layout = Arc::new(PipelineLayout::new(
                 device.clone(),
                 descriptor_set_layouts,
-                shader.layout_desc().push_constants().iter().cloned(),
+                shader.push_constant_ranges().iter().cloned(),
             )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
@@ -109,9 +109,17 @@ impl ComputePipeline {
         }
 
         unsafe {
-            pipeline_layout
-                .desc()
-                .ensure_superset_of(shader.layout_desc())?;
+            pipeline_layout.desc().ensure_superset_of(
+                &PipelineLayoutDesc::new(
+                    shader
+                        .descriptor_set_layout_descs()
+                        .iter()
+                        .cloned()
+                        .collect(),
+                    shader.push_constant_ranges().iter().cloned().collect(),
+                )
+                .unwrap(),
+            )?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -382,7 +390,6 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::PersistentDescriptorSet;
-    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::ShaderStages;
     use crate::pipeline::shader::SpecializationConstants;
@@ -449,21 +456,19 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                PipelineLayoutDesc::new_unchecked(
-                    vec![DescriptorSetDesc::new([Some(DescriptorDesc {
-                        ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: Some(false),
-                            storage: true,
-                        }),
-                        array_count: 1,
-                        stages: ShaderStages {
-                            compute: true,
-                            ..ShaderStages::none()
-                        },
-                        readonly: true,
-                    })])],
-                    vec![],
-                ),
+                [DescriptorSetDesc::new([Some(DescriptorDesc {
+                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                        dynamic: Some(false),
+                        storage: true,
+                    }),
+                    array_count: 1,
+                    stages: ShaderStages {
+                        compute: true,
+                        ..ShaderStages::none()
+                    },
+                    readonly: true,
+                })])],
+                [],
                 SpecConsts::descriptors(),
             )
         };
