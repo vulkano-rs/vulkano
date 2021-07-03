@@ -39,10 +39,11 @@ impl DescriptorSetLayout {
     /// The descriptors must be passed in the order of the bindings. In order words, descriptor
     /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
     /// empty, you can make the iterator yield `None` for an element.
-    pub fn new(
-        device: Arc<Device>,
-        desc: DescriptorSetDesc,
-    ) -> Result<DescriptorSetLayout, OomError> {
+    pub fn new<D>(device: Arc<Device>, desc: D) -> Result<DescriptorSetLayout, OomError>
+    where
+        D: Into<DescriptorSetDesc>,
+    {
+        let desc = desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
 
         let bindings = desc

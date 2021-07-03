@@ -49,12 +49,33 @@ impl PipelineLayout {
         P: IntoIterator<Item = PipelineLayoutPcRange>,
     {
         let fns = device.fns();
-
         let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]> =
             descriptor_set_layouts.into_iter().collect();
         let push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
             push_constant_ranges.into_iter().collect();
 
+        // Check for overlapping ranges
+        for (a_id, a) in push_constant_ranges.iter().enumerate() {
+            for b in push_constant_ranges.iter().skip(a_id + 1) {
+                if a.offset <= b.offset && a.offset + a.size > b.offset {
+                    return Err(PipelineLayoutCreationError::PushConstantsConflict {
+                        first_offset: a.offset,
+                        first_size: a.size,
+                        second_offset: b.offset,
+                    });
+                }
+
+                if b.offset <= a.offset && b.offset + b.size > a.offset {
+                    return Err(PipelineLayoutCreationError::PushConstantsConflict {
+                        first_offset: b.offset,
+                        first_size: b.size,
+                        second_offset: a.offset,
+                    });
+                }
+            }
+        }
+
+        // Check against device limits
         limits_check::check_desc_against_limits(
             device.physical_device().properties(),
             &descriptor_set_layouts,
@@ -400,32 +421,6 @@ impl PipelineLayoutPcRange {
             )
             .collect()
     }
-}
-
-fn check_push_constant_ranges(
-    push_constant_ranges: &[PipelineLayoutPcRange],
-) -> Result<(), PipelineLayoutCreationError> {
-    for (a_id, a) in push_constant_ranges.iter().enumerate() {
-        for b in push_constant_ranges.iter().skip(a_id + 1) {
-            if a.offset <= b.offset && a.offset + a.size > b.offset {
-                return Err(PipelineLayoutCreationError::PushConstantsConflict {
-                    first_offset: a.offset,
-                    first_size: a.size,
-                    second_offset: b.offset,
-                });
-            }
-
-            if b.offset <= a.offset && b.offset + b.size > a.offset {
-                return Err(PipelineLayoutCreationError::PushConstantsConflict {
-                    first_offset: b.offset,
-                    first_size: b.size,
-                    second_offset: a.offset,
-                });
-            }
-        }
-    }
-
-    Ok(())
 }
 
 /* TODO: restore

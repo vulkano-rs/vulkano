@@ -224,6 +224,18 @@ impl DescriptorSetDesc {
     }
 }
 
+impl<I> From<I> for DescriptorSetDesc
+where
+    I: IntoIterator<Item = Option<DescriptorDesc>>,
+{
+    #[inline]
+    fn from(val: I) -> Self {
+        DescriptorSetDesc {
+            descriptors: val.into_iter().collect(),
+        }
+    }
+}
+
 /// Contains the exact description of a single descriptor.
 ///
 /// > **Note**: You are free to fill a `DescriptorDesc` struct the way you want, but its validity
