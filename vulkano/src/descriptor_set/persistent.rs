@@ -7,22 +7,41 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A simple, immutable descriptor set that is expected to be long-lived.
+//!
+//! Creating a persistent descriptor set allocates from a pool, and can't be modified once created.
+//! You are therefore encouraged to create them at initialization and not the during
+//! performance-critical paths.
+//!
+//! > **Note**: You can control of the pool that is used to create the descriptor set, if you wish
+//! > so. By creating a implementation of the `DescriptorPool` trait that doesn't perform any
+//! > actual allocation, you can skip this allocation and make it acceptable to use a persistent
+//! > descriptor set in performance-critical paths..
+//!
+//! The template parameter of the `PersistentDescriptorSet` is complex, and you shouldn't try to
+//! express it explicitly. If you want to store your descriptor set in a struct or in a `Vec` for
+//! example, you are encouraged to turn the `PersistentDescriptorSet` into a `Box<DescriptorSet>`
+//! or a `Arc<DescriptorSet>`.
+//!
+//! # Example
+//! TODO:
+
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
-use crate::descriptor::descriptor::DescriptorDesc;
-use crate::descriptor::descriptor::DescriptorDescTy;
-use crate::descriptor::descriptor::DescriptorImageDesc;
-use crate::descriptor::descriptor::DescriptorImageDescArray;
-use crate::descriptor::descriptor::DescriptorImageDescDimensions;
-use crate::descriptor::descriptor::DescriptorType;
-use crate::descriptor::descriptor_set::DescriptorPool;
-use crate::descriptor::descriptor_set::DescriptorPoolAlloc;
-use crate::descriptor::descriptor_set::DescriptorSet;
-use crate::descriptor::descriptor_set::DescriptorSetDesc;
-use crate::descriptor::descriptor_set::DescriptorWrite;
-use crate::descriptor::descriptor_set::StdDescriptorPoolAlloc;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSet;
-use crate::descriptor::descriptor_set::UnsafeDescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorDescTy;
+use crate::descriptor_set::layout::DescriptorImageDesc;
+use crate::descriptor_set::layout::DescriptorImageDescArray;
+use crate::descriptor_set::layout::DescriptorImageDescDimensions;
+use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorType;
+use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
+use crate::descriptor_set::pool::DescriptorPool;
+use crate::descriptor_set::pool::DescriptorPoolAlloc;
+use crate::descriptor_set::sys::DescriptorWrite;
+use crate::descriptor_set::DescriptorSet;
+use crate::descriptor_set::DescriptorSetDesc;
+use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
@@ -37,28 +56,11 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// An immutable descriptor set that is expected to be long-lived.
-///
-/// Creating a persistent descriptor set allocates from a pool, and can't be modified once created.
-/// You are therefore encouraged to create them at initialization and not the during
-/// performance-critical paths.
-///
-/// > **Note**: You can control of the pool that is used to create the descriptor set, if you wish
-/// > so. By creating a implementation of the `DescriptorPool` trait that doesn't perform any
-/// > actual allocation, you can skip this allocation and make it acceptable to use a persistent
-/// > descriptor set in performance-critical paths..
-///
-/// The template parameter of the `PersistentDescriptorSet` is complex, and you shouldn't try to
-/// express it explicitly. If you want to store your descriptor set in a struct or in a `Vec` for
-/// example, you are encouraged to turn the `PersistentDescriptorSet` into a `Box<DescriptorSet>`
-/// or a `Arc<DescriptorSet>`.
-///
-/// # Example
-// TODO:
+/// A simple, immutable descriptor set that is expected to be long-lived.
 pub struct PersistentDescriptorSet<R, P = StdDescriptorPoolAlloc> {
     inner: P,
     resources: R,
-    layout: Arc<UnsafeDescriptorSetLayout>,
+    layout: Arc<DescriptorSetLayout>,
 }
 
 impl PersistentDescriptorSet<()> {
@@ -68,7 +70,7 @@ impl PersistentDescriptorSet<()> {
     ///
     /// - Panics if the set id is out of range.
     ///
-    pub fn start(layout: Arc<UnsafeDescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()> {
+    pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()> {
         let cap = layout.num_bindings();
 
         PersistentDescriptorSetBuilder {
@@ -168,7 +170,7 @@ where
 /// See the docs of `PersistentDescriptorSet` for an example.
 pub struct PersistentDescriptorSetBuilder<R> {
     // The descriptor set layout.
-    layout: Arc<UnsafeDescriptorSetLayout>,
+    layout: Arc<DescriptorSetLayout>,
     // Binding currently being filled.
     binding_id: usize,
     // The writes to perform on a descriptor set in order to put the resources in it.

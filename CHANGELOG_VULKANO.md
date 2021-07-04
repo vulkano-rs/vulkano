@@ -6,6 +6,38 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** Refactoring of `PhysicalDevice` and related types.
+  - The module `instance::physical_device` is moved to `device::physical`. Items are exported directly from there.
+  - Functions on `PhysicalDevice` that previously returned a custom iterator type now return `impl ExactSizeIterator`.
+  - `PhysicalDevice` now has new methods `supported_extensions` and `required_extensions`. The equivalent constructors on `DeviceExtensions` are deprecated, but still present.
+- **Breaking** Renamed `Device::loaded_extensions` to `enabled_extensions`, to match the terminology used for `enabled_features` as well as the Vulkan standard.
+- **Breaking** Renamed `Instance::loaded_extensions` and `loaded_layers` to `enabled_extensions` and `enabled_layers` respectively.
+- **Breaking** Major reorganisation of the `descriptor` module. Most importantly, its `descriptor_set` child is moved to the crate root and everything is placed under there. Full list of module changes:
+  - `descriptor::descriptor_set::*` > `descriptor_set`.
+  - `descriptor::descriptor::*` > `descriptor_set::layout`.
+    - But `ShaderStages*` are moved to `pipeline::shader`.
+  - `descriptor_set::UnsafeDescriptorSetLayout` > `descriptor_set::layout::DescriptorSetLayout` (renamed).
+  - `descriptor_set::DescriptorSetDesc` > `descriptor_set::layout`.
+  - `descriptor_set::{FixedSize*}` > `descriptor_set::fixed_size_pool`.
+    - Re-exported `descriptor_set::FixedSizeDescriptorSetsPool`.
+  - `descriptor_set::{Persistent*}` > `descriptor_set::persistent`.
+    - Re-exported `descriptor_set::PersistentDescriptorSet`, `descriptor_set::PersistentDescriptorSetBuildError`, `descriptor_set::PersistentDescriptorSetError`.
+  - `descriptor_set::{DescriptorPool*, DescriptorsCount, UnsafeDescriptorSetPool*}` > `descriptor_set::pool`.
+  - `descriptor_set::{StdDescriptorPool*}` > `descriptor_set::pool::standard`.
+    - Re-exported `descriptor_set::pool::StdDescriptorPool`.
+  - `descriptor_set::{DescriptorWrite, UnsafeDescriptorSet}` > `descriptor_set::sys`.
+  - `descriptor_set::collection` is now private.
+- **Breaking** `Features::superset_of` is renamed to `is_superset_of`.
+- Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
+- Examples now enable only the features they need instead of all of them.
+- Examples have much smarter device selection logic. In the triangle example this is supplied with comments.
+- Errors checking(by unwrapping) in `MappedDeviceMemory::read_write`.
+- Add creation of Semaphores with exportable Linux file descriptor on.
+- Add method to export file descriptor corresponding to Semaphore.
+- `SemaphoreBuilder` introduced. 
+- Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
+- Vulkano-shaders now provides the image format for descriptors, if the shader requires a specific format.
+- Vulkano-shaders now uses the `spirv_headers` crate for some of its types.
 
 # Version 0.24.0 (2021-06-20)
 

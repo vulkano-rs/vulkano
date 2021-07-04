@@ -1,6 +1,10 @@
 # Unreleased
 
-# Version 0.6.2 (2021-06-20)
+# Version 0.7.0
+
+The yanked version of 0.6.2 had breaking changes. This version duplicating 0.6.2 with the minor, not patch version bump.
+
+# Version 0.6.2 (2021-06-20). Yanked.
 
 - Added structs for Vulkan 1.1 and 1.2 features, with `Default` implementations.
 

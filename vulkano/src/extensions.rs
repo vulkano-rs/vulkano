@@ -50,6 +50,14 @@ macro_rules! extensions {
                 }
             }
 
+            /// Returns true if `self` is a superset of the parameter.
+            ///
+            /// That is, for each extension of the parameter that is true, the corresponding value
+            /// in self is true as well.
+            pub fn is_superset_of(&self, other: &$sname) -> bool {
+                $((self.$member == true || other.$member == false))&&+
+            }
+
             /// Returns the union of this list and another list.
             #[inline]
             pub const fn union(&self, other: &$sname) -> $sname {

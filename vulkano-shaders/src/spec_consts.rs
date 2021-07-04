@@ -7,15 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
-
-use proc_macro2::{Span, TokenStream};
-use syn::Ident;
-
-use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
 use crate::structs;
 use crate::{spirv_search, TypesMeta};
+use proc_macro2::{Span, TokenStream};
+use spirv_headers::Decoration;
+use std::mem;
+use syn::Ident;
 
 /// Returns true if the document has specialization constants.
 pub fn has_specialization_constants(doc: &Spirv) -> bool {
@@ -85,7 +83,7 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
             spec_const_type_from_id(doc, type_id, types_meta);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
-        let constant_id = doc.get_decoration_params(result_id, Decoration::DecorationSpecId);
+        let constant_id = doc.get_decoration_params(result_id, Decoration::SpecId);
 
         if let Some(constant_id) = constant_id {
             let constant_id = constant_id[0];

@@ -7,14 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::mem;
-
-use proc_macro2::{Span, TokenStream};
-use syn::Ident;
-
-use crate::enums::Decoration;
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
+use proc_macro2::{Span, TokenStream};
+use spirv_headers::Decoration;
+use std::mem;
+use syn::Ident;
 use syn::LitStr;
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
@@ -70,7 +68,7 @@ fn write_struct(
         // Ignore the whole struct is a member is built in, which includes
         // `gl_Position` for example.
         if doc
-            .get_member_decoration_params(struct_id, num as u32, Decoration::DecorationBuiltIn)
+            .get_member_decoration_params(struct_id, num as u32, Decoration::BuiltIn)
             .is_some()
         {
             return (quote! {}, None); // TODO: is this correct? shouldn't it return a correct struct but with a flag or something?
@@ -78,7 +76,7 @@ fn write_struct(
 
         // Finding offset of the current member, as requested by the SPIR-V code.
         let spirv_offset = doc
-            .get_member_decoration_params(struct_id, num as u32, Decoration::DecorationOffset)
+            .get_member_decoration_params(struct_id, num as u32, Decoration::Offset)
             .map(|x| x[0]);
 
         // Some structs don't have `Offset` decorations, in the case they are used as local
@@ -135,15 +133,13 @@ fn write_struct(
             Instruction::TypeArray {
                 result_id, type_id, ..
             } if type_id == struct_id => {
-                if let Some(params) =
-                    doc.get_decoration_params(result_id, Decoration::DecorationArrayStride)
+                if let Some(params) = doc.get_decoration_params(result_id, Decoration::ArrayStride)
                 {
                     spirv_req_total_size = Some(params[0]);
                 }
             }
             Instruction::TypeRuntimeArray { result_id, type_id } if type_id == struct_id => {
-                if let Some(params) =
-                    doc.get_decoration_params(result_id, Decoration::DecorationArrayStride)
+                if let Some(params) = doc.get_decoration_params(result_id, Decoration::ArrayStride)
                 {
                     spirv_req_total_size = Some(params[0]);
                 }
@@ -526,7 +522,7 @@ pub(super) fn type_from_id(
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
                 let stride = doc
-                    .get_decoration_params(searched, Decoration::DecorationArrayStride)
+                    .get_decoration_params(searched, Decoration::ArrayStride)
                     .unwrap()[0];
                 if stride as usize > t_size {
                     panic!("Not possible to generate a rust array with the correct alignment since the SPIR-V \

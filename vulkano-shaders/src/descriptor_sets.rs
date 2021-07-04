@@ -7,10 +7,10 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::enums::{Decoration, Dim, ImageFormat, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::TokenStream;
+use spirv_headers::{Decoration, Dim, ImageFormat, StorageClass};
 use std::cmp;
 use std::collections::HashSet;
 
@@ -42,7 +42,7 @@ pub(super) fn write_pipeline_layout_desc(
         let type_id = match instruction {
             &Instruction::TypePointer {
                 type_id,
-                storage_class: StorageClass::StorageClassPushConstant,
+                storage_class: StorageClass::PushConstant,
                 ..
             } => type_id,
             _ => continue,
@@ -158,7 +158,7 @@ fn find_descriptors(
     };
 
     // Looping to find all the interface elements that have the `DescriptorSet` decoration.
-    for set_decoration in doc.get_decorations(Decoration::DecorationDescriptorSet) {
+    for set_decoration in doc.get_decorations(Decoration::DescriptorSet) {
         let variable_id = set_decoration.target_id;
 
         if exact && !variables.as_ref().unwrap().contains(&variable_id) {
@@ -175,11 +175,11 @@ fn find_descriptors(
         // Find the binding point of this descriptor.
         // TODO: There was a previous todo here, I think it was asking for this to be implemented for member decorations? check git history
         let binding = doc
-            .get_decoration_params(variable_id, Decoration::DecorationBinding)
+            .get_decoration_params(variable_id, Decoration::Binding)
             .unwrap()[0];
 
         let nonwritable = doc
-            .get_decoration_params(variable_id, Decoration::DecorationNonWritable)
+            .get_decoration_params(variable_id, Decoration::NonWritable)
             .is_some();
 
         // Find information about the kind of binding for this descriptor.
@@ -385,10 +385,10 @@ fn descriptor_infos(
             match i {
                 Instruction::TypeStruct { result_id, member_types } if *result_id == pointed_ty => {
                     let decoration_block = doc
-                        .get_decoration_params(pointed_ty, Decoration::DecorationBlock)
+                        .get_decoration_params(pointed_ty, Decoration::Block)
                         .is_some();
                     let decoration_buffer_block = doc
-                        .get_decoration_params(pointed_ty, Decoration::DecorationBufferBlock)
+                        .get_decoration_params(pointed_ty, Decoration::BufferBlock)
                         .is_some();
                     assert!(
                         decoration_block ^ decoration_buffer_block,
@@ -397,11 +397,11 @@ fn descriptor_infos(
 
                     // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                     // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-                    let storage = pointer_storage == StorageClass::StorageClassStorageBuffer;
+                    let storage = pointer_storage == StorageClass::StorageBuffer;
 
                     // Determine whether all members have a NonWritable decoration.
                     let nonwritable = (0..member_types.len() as u32).all(|i| {
-                        doc.get_member_decoration_params(pointed_ty, i, Decoration::DecorationNonWritable).is_some()
+                        doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
                     });
 
                     // Uniforms are never writable.
@@ -430,6 +430,8 @@ fn descriptor_infos(
                                               have a Sampled operand of 1 or 2",
                     );
 
+                    let vulkan_format = to_vulkan_format(*format);
+
                     let arrayed = match arrayed {
                         true => quote! { DescriptorImageDescArray::Arrayed { max_layers: None } },
                         false => quote! { DescriptorImageDescArray::NonArrayed },
@@ -445,11 +447,7 @@ fn descriptor_infos(
                                                                 SubpassData"
                             );
                             assert!(
-                                if let &ImageFormat::ImageFormatUnknown = format {
-                                    true
-                                } else {
-                                    false
-                                },
+                                *format == ImageFormat::Unknown,
                                 "If Dim is SubpassData, Image Format must be Unknown"
                             );
                             assert!(!sampled, "If Dim is SubpassData, Sampled must be 2");
@@ -470,7 +468,7 @@ fn descriptor_infos(
                             let desc = quote! {
                                 DescriptorDescTy::TexelBuffer {
                                     storage: #storage,
-                                    format: None, // TODO: specify format if known
+                                    format: #vulkan_format,
                                 }
                             };
 
@@ -507,7 +505,7 @@ fn descriptor_infos(
                                 #ty(DescriptorImageDesc {
                                     sampled: #sampled,
                                     dimensions: #dim,
-                                    format: None,       // TODO: specify format if known
+                                    format: #vulkan_format,
                                     multisampled: #ms,
                                     array_layers: #arrayed,
                                 })
@@ -741,5 +739,50 @@ mod tests {
             }
         }
         panic!("Could not find entrypoint");
+    }
+}
+
+fn to_vulkan_format(spirv_format: ImageFormat) -> TokenStream {
+    match spirv_format {
+        ImageFormat::Unknown => quote! { None },
+        ImageFormat::Rgba32f => quote! { Some(Format::R32G32B32A32Sfloat) },
+        ImageFormat::Rgba16f => quote! { Some(Format::R16G16B16A16Sfloat) },
+        ImageFormat::R32f => quote! { Some(Format::R32Sfloat) },
+        ImageFormat::Rgba8 => quote! { Some(Format::R8G8B8A8Unorm) },
+        ImageFormat::Rgba8Snorm => quote! { Some(Format::R8G8B8A8Snorm) },
+        ImageFormat::Rg32f => quote! { Some(Format::R32G32Sfloat) },
+        ImageFormat::Rg16f => quote! { Some(Format::R16G16Sfloat) },
+        ImageFormat::R11fG11fB10f => quote! { Some(Format::B10G11R11UfloatPack32) },
+        ImageFormat::R16f => quote! { Some(Format::R16Sfloat) },
+        ImageFormat::Rgba16 => quote! { Some(Format::R16G16B16A16Unorm) },
+        ImageFormat::Rgb10A2 => quote! { Some(Format::A2B10G10R10UnormPack32) },
+        ImageFormat::Rg16 => quote! { Some(Format::R16G16Unorm) },
+        ImageFormat::Rg8 => quote! { Some(Format::R8G8Unorm) },
+        ImageFormat::R16 => quote! { Some(Format::R16Unorm) },
+        ImageFormat::R8 => quote! { Some(Format::R8Unorm) },
+        ImageFormat::Rgba16Snorm => quote! { Some(Format::R16G16B16A16Snorm) },
+        ImageFormat::Rg16Snorm => quote! { Some(Format::R16G16Snorm) },
+        ImageFormat::Rg8Snorm => quote! { Some(Format::R8G8Snorm) },
+        ImageFormat::R16Snorm => quote! { Some(Format::R16Snorm) },
+        ImageFormat::R8Snorm => quote! { Some(Format::R8Snorm) },
+        ImageFormat::Rgba32i => quote! { Some(Format::R32G32B32A32Sint) },
+        ImageFormat::Rgba16i => quote! { Some(Format::R16G16B16A16Sint) },
+        ImageFormat::Rgba8i => quote! { Some(Format::R8G8B8A8Sint) },
+        ImageFormat::R32i => quote! { Some(Format::R32Sint) },
+        ImageFormat::Rg32i => quote! { Some(Format::R32G32Sint) },
+        ImageFormat::Rg16i => quote! { Some(Format::R16G16Sint) },
+        ImageFormat::Rg8i => quote! { Some(Format::R8G8Sint) },
+        ImageFormat::R16i => quote! { Some(Format::R16Sint) },
+        ImageFormat::R8i => quote! { Some(Format::R8Sint) },
+        ImageFormat::Rgba32ui => quote! { Some(Format::R32G32B32A32Uint) },
+        ImageFormat::Rgba16ui => quote! { Some(Format::R16G16B16A16Uint) },
+        ImageFormat::Rgba8ui => quote! { Some(Format::R8G8B8A8Uint) },
+        ImageFormat::R32ui => quote! { Some(Format::R32Uint) },
+        ImageFormat::Rgb10a2ui => quote! { Some(Format::A2B10G10R10UintPack32) },
+        ImageFormat::Rg32ui => quote! { Some(Format::R32G32Uint) },
+        ImageFormat::Rg16ui => quote! { Some(Format::R16G16Uint) },
+        ImageFormat::Rg8ui => quote! { Some(Format::R8G8Uint) },
+        ImageFormat::R16ui => quote! { Some(Format::R16Uint) },
+        ImageFormat::R8ui => quote! { Some(Format::R8Uint) },
     }
 }

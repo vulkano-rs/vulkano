@@ -8,10 +8,10 @@
 // according to those terms.
 
 use crate::descriptor_sets::write_pipeline_layout_desc;
-use crate::enums::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::{Span, TokenStream};
+use spirv_headers::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use syn::Ident;
 
 pub(super) fn write_entry_point(
@@ -32,13 +32,13 @@ pub(super) fn write_entry_point(
     };
 
     let ignore_first_array_in = match *execution {
-        ExecutionModel::ExecutionModelTessellationControl => true,
-        ExecutionModel::ExecutionModelTessellationEvaluation => true,
-        ExecutionModel::ExecutionModelGeometry => true,
+        ExecutionModel::TessellationControl => true,
+        ExecutionModel::TessellationEvaluation => true,
+        ExecutionModel::Geometry => true,
         _ => false,
     };
     let ignore_first_array_out = match *execution {
-        ExecutionModel::ExecutionModelTessellationControl => true,
+        ExecutionModel::TessellationControl => true,
         _ => false,
     };
 
@@ -49,27 +49,35 @@ pub(super) fn write_entry_point(
         ignore_first_array_out,
     );
 
-    let stage = if let ExecutionModel::ExecutionModelGLCompute = *execution {
+    let stage = if let ExecutionModel::GLCompute = *execution {
         quote! { ShaderStages { compute: true, ..ShaderStages::none() } }
     } else {
         match *execution {
-            ExecutionModel::ExecutionModelVertex => {
+            ExecutionModel::Vertex => {
                 quote! { ShaderStages { vertex: true, ..ShaderStages::none() } }
             }
-            ExecutionModel::ExecutionModelTessellationControl => {
+            ExecutionModel::TessellationControl => {
                 quote! { ShaderStages { tessellation_control: true, ..ShaderStages::none() } }
             }
-            ExecutionModel::ExecutionModelTessellationEvaluation => {
+            ExecutionModel::TessellationEvaluation => {
                 quote! { ShaderStages { tessellation_evaluation: true, ..ShaderStages::none() } }
             }
-            ExecutionModel::ExecutionModelGeometry => {
+            ExecutionModel::Geometry => {
                 quote! { ShaderStages { geometry: true, ..ShaderStages::none() } }
             }
-            ExecutionModel::ExecutionModelFragment => {
+            ExecutionModel::Fragment => {
                 quote! { ShaderStages { fragment: true, ..ShaderStages::none() } }
             }
-            ExecutionModel::ExecutionModelGLCompute => unreachable!(),
-            ExecutionModel::ExecutionModelKernel => unreachable!(),
+            ExecutionModel::GLCompute
+            | ExecutionModel::Kernel
+            | ExecutionModel::TaskNV
+            | ExecutionModel::MeshNV
+            | ExecutionModel::RayGenerationNV
+            | ExecutionModel::IntersectionNV
+            | ExecutionModel::AnyHitNV
+            | ExecutionModel::ClosestHitNV
+            | ExecutionModel::MissNV
+            | ExecutionModel::CallableNV => unreachable!(),
         }
     };
 
@@ -89,7 +97,7 @@ pub(super) fn write_entry_point(
     };
 
     let (ty, f_call) = {
-        if let ExecutionModel::ExecutionModelGLCompute = *execution {
+        if let ExecutionModel::GLCompute = *execution {
             (
                 quote! { ::vulkano::pipeline::shader::ComputeEntryPoint },
                 quote! { compute_entry_point(
@@ -100,19 +108,19 @@ pub(super) fn write_entry_point(
             )
         } else {
             let entry_ty = match *execution {
-                ExecutionModel::ExecutionModelVertex => {
+                ExecutionModel::Vertex => {
                     quote! { ::vulkano::pipeline::shader::GraphicsShaderType::Vertex }
                 }
 
-                ExecutionModel::ExecutionModelTessellationControl => {
+                ExecutionModel::TessellationControl => {
                     quote! { ::vulkano::pipeline::shader::GraphicsShaderType::TessellationControl }
                 }
 
-                ExecutionModel::ExecutionModelTessellationEvaluation => {
+                ExecutionModel::TessellationEvaluation => {
                     quote! { ::vulkano::pipeline::shader::GraphicsShaderType::TessellationEvaluation }
                 }
 
-                ExecutionModel::ExecutionModelGeometry => {
+                ExecutionModel::Geometry => {
                     let mut execution_mode = None;
 
                     for instruction in doc.instructions.iter() {
@@ -124,19 +132,13 @@ pub(super) fn write_entry_point(
                         {
                             if target_id == id {
                                 execution_mode = match mode {
-                                    &ExecutionMode::ExecutionModeInputPoints => {
-                                        Some(quote! { Points })
-                                    }
-                                    &ExecutionMode::ExecutionModeInputLines => {
-                                        Some(quote! { Lines })
-                                    }
-                                    &ExecutionMode::ExecutionModeInputLinesAdjacency => {
+                                    &ExecutionMode::InputPoints => Some(quote! { Points }),
+                                    &ExecutionMode::InputLines => Some(quote! { Lines }),
+                                    &ExecutionMode::InputLinesAdjacency => {
                                         Some(quote! { LinesWithAdjacency })
                                     }
-                                    &ExecutionMode::ExecutionModeTriangles => {
-                                        Some(quote! { Triangles })
-                                    }
-                                    &ExecutionMode::ExecutionModeInputTrianglesAdjacency => {
+                                    &ExecutionMode::Triangles => Some(quote! { Triangles }),
+                                    &ExecutionMode::InputTrianglesAdjacency => {
                                         Some(quote! { TrianglesWithAdjacency })
                                     }
                                     _ => continue,
@@ -153,13 +155,23 @@ pub(super) fn write_entry_point(
                     }
                 }
 
-                ExecutionModel::ExecutionModelFragment => {
+                ExecutionModel::Fragment => {
                     quote! { ::vulkano::pipeline::shader::GraphicsShaderType::Fragment }
                 }
 
-                ExecutionModel::ExecutionModelGLCompute => unreachable!(),
+                ExecutionModel::GLCompute => unreachable!(),
 
-                ExecutionModel::ExecutionModelKernel => panic!("Kernels are not supported"),
+                ExecutionModel::Kernel
+                | ExecutionModel::TaskNV
+                | ExecutionModel::MeshNV
+                | ExecutionModel::RayGenerationNV
+                | ExecutionModel::IntersectionNV
+                | ExecutionModel::AnyHitNV
+                | ExecutionModel::ClosestHitNV
+                | ExecutionModel::MissNV
+                | ExecutionModel::CallableNV => {
+                    panic!("Shaders with {:?} are not supported", execution)
+                }
             };
 
             let ty = quote! { ::vulkano::pipeline::shader::GraphicsEntryPoint };
@@ -232,12 +244,8 @@ fn write_interfaces(
                     }
 
                     let (to_write, ignore_first_array) = match storage_class {
-                        &StorageClass::StorageClassInput => {
-                            (&mut input_elements, ignore_first_array_in)
-                        }
-                        &StorageClass::StorageClassOutput => {
-                            (&mut output_elements, ignore_first_array_out)
-                        }
+                        &StorageClass::Input => (&mut input_elements, ignore_first_array_in),
+                        &StorageClass::Output => (&mut output_elements, ignore_first_array_out),
                         _ => continue,
                     };
 
@@ -246,8 +254,7 @@ fn write_interfaces(
                         continue;
                     } // FIXME: hack
 
-                    let location = match doc
-                        .get_decoration_params(result_id, Decoration::DecorationLocation)
+                    let location = match doc.get_decoration_params(result_id, Decoration::Location)
                     {
                         Some(l) => l[0],
                         None => panic!(

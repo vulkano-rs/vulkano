@@ -122,13 +122,15 @@ pub use self::pipeline::AccessFlags;
 pub use self::pipeline::PipelineMemoryAccess;
 pub use self::pipeline::PipelineStage;
 pub use self::pipeline::PipelineStages;
+pub use self::semaphore::ExternalSemaphoreHandleType;
 pub use self::semaphore::Semaphore;
+pub use self::semaphore::SemaphoreError;
 
 mod event;
 mod fence;
 mod future;
 mod pipeline;
-mod semaphore;
+pub(crate) mod semaphore;
 
 /// Declares in which queue(s) a resource can be used.
 ///

@@ -37,8 +37,9 @@ use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
 use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor::descriptor::{DescriptorBufferDesc, DescriptorDescTy};
-use crate::descriptor::descriptor_set::{DescriptorSetDesc, DescriptorSetsCollection};
+use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy, DescriptorSetDesc};
+use crate::descriptor_set::DescriptorSetsCollection;
+use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
@@ -49,7 +50,6 @@ use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
-use crate::instance::QueueFamily;
 use crate::pipeline::input_assembly::Index;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::vertex::VertexSource;
@@ -2796,10 +2796,10 @@ mod tests {
     use crate::command_buffer::CommandBufferUsage;
     use crate::command_buffer::ExecuteCommandsError;
     use crate::command_buffer::PrimaryCommandBuffer;
+    use crate::device::physical::PhysicalDevice;
     use crate::device::Device;
     use crate::device::DeviceExtensions;
     use crate::device::Features;
-    use crate::instance;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
 
@@ -2807,7 +2807,7 @@ mod tests {
     fn copy_buffer_dimensions() {
         let instance = instance!();
 
-        let phys = match instance::PhysicalDevice::enumerate(&instance).next() {
+        let phys = match PhysicalDevice::enumerate(&instance).next() {
             Some(p) => p,
             None => return,
         };
