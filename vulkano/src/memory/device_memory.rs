@@ -16,6 +16,7 @@ use crate::memory::DedicatedAlloc;
 use crate::memory::ExternalMemoryHandleType;
 use crate::Error;
 use crate::OomError;
+use crate::Version;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -132,6 +133,12 @@ impl<'a> DeviceMemoryBuilder<'a> {
     /// - Panics if the dedicated allocation info has already been set.
     pub fn dedicated_info(mut self, dedicated: DedicatedAlloc<'a>) -> DeviceMemoryBuilder {
         assert!(self.dedicated_info.is_none());
+
+        if !(self.device.api_version() >= Version::V1_1
+            || self.device.enabled_extensions().khr_dedicated_allocation)
+        {
+            return self;
+        }
 
         let mut dedicated_info = match dedicated {
             DedicatedAlloc::Buffer(buffer) => ash::vk::MemoryDedicatedAllocateInfoKHR {
@@ -268,13 +275,6 @@ impl<'a> DeviceMemoryBuilder<'a> {
         }
 
         let mut export_handle_bits = ash::vk::ExternalMemoryHandleTypeFlags::empty();
-        if self.dedicated_info.is_some() {
-            if !self.device.enabled_extensions().khr_dedicated_allocation {
-                return Err(DeviceMemoryAllocError::MissingExtension(
-                    "khr_dedicated_allocation",
-                ));
-            }
-        }
 
         if self.export_info.is_some() || self.import_info.is_some() {
             // TODO: check exportFromImportedHandleTypes
