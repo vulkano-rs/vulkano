@@ -23,11 +23,10 @@ struct Descriptor {
     readonly: bool,
 }
 
-pub(super) fn write_pipeline_layout_desc(
+pub(super) fn write_descriptor_set_layout_descs(
     doc: &Spirv,
     entrypoint_id: u32,
     interface: &[u32],
-    types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
     stages: TokenStream,
 ) -> TokenStream {
@@ -35,6 +34,58 @@ pub(super) fn write_pipeline_layout_desc(
 
     // Finding all the descriptors.
     let descriptors = find_descriptors(doc, entrypoint_id, interface, exact_entrypoint_interface);
+    let num_sets = descriptors.iter().map(|d| d.set + 1).max().unwrap_or(0);
+    let sets: Vec<_> = (0..num_sets)
+        .map(|set_num| {
+            let num_bindings = descriptors
+                .iter()
+                .filter(|d| d.set == set_num)
+                .map(|d| d.binding + 1)
+                .max()
+                .unwrap_or(0);
+            let bindings: Vec<_> = (0..num_bindings)
+                .map(|binding_num| {
+                    match descriptors
+                        .iter()
+                        .find(|d| d.set == set_num && d.binding == binding_num)
+                    {
+                        Some(d) => {
+                            let desc_ty = &d.desc_ty;
+                            let array_count = d.array_count as u32;
+                            let readonly = d.readonly;
+                            quote! {
+                                Some(DescriptorDesc {
+                                    ty: #desc_ty,
+                                    array_count: #array_count,
+                                    stages: #stages,
+                                    readonly: #readonly,
+                                }),
+                            }
+                        }
+                        None => quote! {
+                            None,
+                        },
+                    }
+                })
+                .collect();
+
+            quote! {
+                DescriptorSetDesc::new(
+                    [#( #bindings )*]
+                ),
+            }
+        })
+        .collect();
+
+    quote! {
+        [
+            #( #sets )*
+        ]
+    }
+}
+
+pub(super) fn write_push_constant_ranges(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+    // TODO: somewhat implemented correctly
 
     // Looping to find all the push constant structs.
     let mut push_constants_size = 0;
@@ -53,80 +104,19 @@ pub(super) fn write_pipeline_layout_desc(
         push_constants_size = cmp::max(push_constants_size, size);
     }
 
-    let descriptor_sets = {
-        let num_sets = descriptors.iter().map(|d| d.set + 1).max().unwrap_or(0);
-        let sets: Vec<_> = (0..num_sets)
-            .map(|set_num| {
-                let num_bindings = descriptors
-                    .iter()
-                    .filter(|d| d.set == set_num)
-                    .map(|d| d.binding + 1)
-                    .max()
-                    .unwrap_or(0);
-                let bindings: Vec<_> = (0..num_bindings)
-                    .map(|binding_num| {
-                        match descriptors
-                            .iter()
-                            .find(|d| d.set == set_num && d.binding == binding_num)
-                        {
-                            Some(d) => {
-                                let desc_ty = &d.desc_ty;
-                                let array_count = d.array_count as u32;
-                                let readonly = d.readonly;
-                                quote! {
-                                    Some(DescriptorDesc {
-                                        ty: #desc_ty,
-                                        array_count: #array_count,
-                                        stages: #stages,
-                                        readonly: #readonly,
-                                    }),
-                                }
-                            }
-                            None => quote! {
-                                None,
-                            },
-                        }
-                    })
-                    .collect();
-
-                quote! {
-                    vec![
-                        #( #bindings )*
-                    ],
-                }
-            })
-            .collect();
-
+    if push_constants_size == 0 {
         quote! {
-            vec![
-                #( #sets )*
-            ]
-        }
-    };
-
-    let push_constants = if push_constants_size == 0 {
-        quote! {
-            vec![]
+            []
         }
     } else {
         quote! {
-            vec![
-                PipelineLayoutDescPcRange {
+            [
+                PipelineLayoutPcRange {
                     offset: 0,                   // FIXME: not necessarily true
                     size: #push_constants_size,
                     stages: ShaderStages::all(), // FIXME: wrong
                 }
             ]
-        }
-    };
-
-    quote! {
-        #[allow(unsafe_code)]
-        unsafe {
-            ::vulkano::pipeline::layout::PipelineLayoutDesc::new_unchecked(
-                #descriptor_sets,
-                #push_constants,
-            )
         }
     }
 }

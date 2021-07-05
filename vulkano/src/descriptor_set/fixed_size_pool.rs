@@ -24,7 +24,7 @@
 //! // use vulkano::pipeline::GraphicsPipelineAbstract;
 //! // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
 //!
-//! let layout = graphics_pipeline.layout().descriptor_set_layout(0).unwrap();
+//! let layout = graphics_pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 //! let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
 //! ```
 //!
@@ -47,7 +47,6 @@
 
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
-use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::persistent::*;
 use crate::descriptor_set::pool::DescriptorPool;
@@ -55,7 +54,6 @@ use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPoolAllocError;
 use crate::descriptor_set::pool::UnsafeDescriptorPool;
 use crate::descriptor_set::DescriptorSet;
-use crate::descriptor_set::DescriptorSetDesc;
 use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -119,6 +117,11 @@ where
     }
 
     #[inline]
+    fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        self.inner.layout()
+    }
+
+    #[inline]
     fn num_buffers(&self) -> usize {
         self.inner.num_buffers()
     }
@@ -136,18 +139,6 @@ where
     #[inline]
     fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
         self.inner.image(index)
-    }
-}
-
-unsafe impl<R> DescriptorSetDesc for FixedSizeDescriptorSet<R> {
-    #[inline]
-    fn num_bindings(&self) -> usize {
-        self.inner.num_bindings()
-    }
-
-    #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        self.inner.descriptor(binding)
     }
 }
 

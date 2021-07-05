@@ -47,33 +47,192 @@ use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::shader::ShaderStagesSupersetError;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
-use crate::SafeDeref;
+use smallvec::SmallVec;
 use std::cmp;
 use std::error;
 use std::fmt;
 
-/// Trait for objects that describe the layout of the descriptors of a set.
-pub unsafe trait DescriptorSetDesc {
-    /// Returns the number of binding slots in the set.
-    fn num_bindings(&self) -> usize;
-
-    /// Returns a description of a descriptor, or `None` if out of range.
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc>;
+#[derive(Clone, Debug, Default)]
+pub struct DescriptorSetDesc {
+    descriptors: SmallVec<[Option<DescriptorDesc>; 32]>,
 }
 
-unsafe impl<T> DescriptorSetDesc for T
-where
-    T: SafeDeref,
-    T::Target: DescriptorSetDesc,
-{
+impl DescriptorSetDesc {
+    /// Builds a new `DescriptorSetDesc` with the given descriptors.
+    ///
+    /// The descriptors must be passed in the order of the bindings. In order words, descriptor
+    /// at bind point 0 first, then descriptor at bind point 1, and so on. If a binding must remain
+    /// empty, you can make the iterator yield `None` for an element.
     #[inline]
-    fn num_bindings(&self) -> usize {
-        (**self).num_bindings()
+    pub fn new<I>(descriptors: I) -> DescriptorSetDesc
+    where
+        I: IntoIterator<Item = Option<DescriptorDesc>>,
+    {
+        DescriptorSetDesc {
+            descriptors: descriptors.into_iter().collect(),
+        }
     }
 
+    /// Builds a new empty `DescriptorSetDesc`.
     #[inline]
-    fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        (**self).descriptor(binding)
+    pub fn empty() -> DescriptorSetDesc {
+        DescriptorSetDesc {
+            descriptors: SmallVec::new(),
+        }
+    }
+
+    /// Returns the descriptors in the set.
+    pub fn bindings(&self) -> &[Option<DescriptorDesc>] {
+        &self.descriptors
+    }
+
+    /// Returns the descriptor with the given binding number, or `None` if the binding is empty.
+    #[inline]
+    pub fn descriptor(&self, num: usize) -> Option<&DescriptorDesc> {
+        self.descriptors.get(num).and_then(|b| b.as_ref())
+    }
+
+    /// Builds the union of this layout description and another.
+    #[inline]
+    pub fn union(
+        first: &DescriptorSetDesc,
+        second: &DescriptorSetDesc,
+    ) -> Result<DescriptorSetDesc, ()> {
+        let num_bindings = cmp::max(first.descriptors.len(), second.descriptors.len());
+        let descriptors = (0..num_bindings)
+            .map(|binding_num| {
+                DescriptorDesc::union(
+                    first
+                        .descriptors
+                        .get(binding_num)
+                        .map(|desc| desc.as_ref())
+                        .flatten(),
+                    second
+                        .descriptors
+                        .get(binding_num)
+                        .map(|desc| desc.as_ref())
+                        .flatten(),
+                )
+            })
+            .collect::<Result<_, ()>>()?;
+        Ok(DescriptorSetDesc { descriptors })
+    }
+
+    /// Builds the union of multiple descriptor sets.
+    pub fn union_multiple(
+        first: &[DescriptorSetDesc],
+        second: &[DescriptorSetDesc],
+    ) -> Result<Vec<DescriptorSetDesc>, ()> {
+        // Ewwwwwww
+        let empty = DescriptorSetDesc::empty();
+        let num_sets = cmp::max(first.len(), second.len());
+
+        (0..num_sets)
+            .map(|set_num| {
+                Ok(DescriptorSetDesc::union(
+                    first.get(set_num).unwrap_or_else(|| &empty),
+                    second.get(set_num).unwrap_or_else(|| &empty),
+                )?)
+            })
+            .collect()
+    }
+
+    /// Transforms a `DescriptorSetDesc`.
+    ///
+    /// Used to adjust automatically inferred `DescriptorSetDesc`s with information that cannot be inferred.
+    pub fn tweak<I>(&mut self, dynamic_buffers: I)
+    where
+        I: IntoIterator<Item = usize>,
+    {
+        for binding_num in dynamic_buffers {
+            debug_assert!(
+                self.descriptor(binding_num)
+                    .map_or(false, |desc| match desc.ty {
+                        DescriptorDescTy::Buffer(_) => true,
+                        _ => false,
+                    }),
+                "tried to make the non-buffer descriptor at binding {} a dynamic buffer",
+                binding_num
+            );
+
+            let binding = self
+                .descriptors
+                .get_mut(binding_num)
+                .and_then(|b| b.as_mut());
+
+            if let Some(desc) = binding {
+                if let DescriptorDescTy::Buffer(ref buffer_desc) = desc.ty {
+                    desc.ty = DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                        dynamic: Some(true),
+                        ..*buffer_desc
+                    });
+                }
+            }
+        }
+    }
+
+    pub fn tweak_multiple<I>(sets: &mut [DescriptorSetDesc], dynamic_buffers: I)
+    where
+        I: IntoIterator<Item = (usize, usize)>,
+    {
+        for (set_num, binding_num) in dynamic_buffers {
+            debug_assert!(
+                set_num < sets.len(),
+                "tried to make a dynamic buffer in the nonexistent set {}",
+                set_num,
+            );
+
+            sets.get_mut(set_num).map(|set| set.tweak([binding_num]));
+        }
+    }
+
+    /// Returns whether `self` is a superset of `other`.
+    pub fn ensure_superset_of(
+        &self,
+        other: &DescriptorSetDesc,
+    ) -> Result<(), DescriptorSetDescSupersetError> {
+        if self.descriptors.len() < other.descriptors.len() {
+            return Err(DescriptorSetDescSupersetError::DescriptorsCountMismatch {
+                self_num: self.descriptors.len() as u32,
+                other_num: other.descriptors.len() as u32,
+            });
+        }
+
+        for binding_num in 0..other.descriptors.len() {
+            let self_desc = self.descriptor(binding_num);
+            let other_desc = self.descriptor(binding_num);
+
+            match (self_desc, other_desc) {
+                (Some(mine), Some(other)) => {
+                    if let Err(err) = mine.ensure_superset_of(&other) {
+                        return Err(DescriptorSetDescSupersetError::IncompatibleDescriptors {
+                            error: err,
+                            binding_num: binding_num as u32,
+                        });
+                    }
+                }
+                (None, Some(_)) => {
+                    return Err(DescriptorSetDescSupersetError::ExpectedEmptyDescriptor {
+                        binding_num: binding_num as u32,
+                    })
+                }
+                _ => (),
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<I> From<I> for DescriptorSetDesc
+where
+    I: IntoIterator<Item = Option<DescriptorDesc>>,
+{
+    #[inline]
+    fn from(val: I) -> Self {
+        DescriptorSetDesc {
+            descriptors: val.into_iter().collect(),
+        }
     }
 }
 
@@ -128,16 +287,16 @@ impl DescriptorDesc {
     ///  compute: false
     ///}, readonly: true };
     ///
-    ///assert_eq!(desc_super.is_superset_of(&desc_sub).unwrap(), ());
+    ///assert_eq!(desc_super.ensure_superset_of(&desc_sub).unwrap(), ());
     ///
     ///```
     #[inline]
-    pub fn is_superset_of(
+    pub fn ensure_superset_of(
         &self,
         other: &DescriptorDesc,
     ) -> Result<(), DescriptorDescSupersetError> {
-        self.ty.is_superset_of(&other.ty)?;
-        self.stages.is_superset_of(&other.stages)?;
+        self.ty.ensure_superset_of(&other.ty)?;
+        self.stages.ensure_superset_of(&other.stages)?;
 
         if self.array_count < other.array_count {
             return Err(DescriptorDescSupersetError::ArrayTooSmall {
@@ -155,7 +314,10 @@ impl DescriptorDesc {
 
     /// Builds a `DescriptorDesc` that is the union of `self` and `other`, if possible.
     ///
-    /// The returned value will be a superset of both `self` and `other`.
+    /// The returned value will be a superset of both `self` and `other`, or `None` if both were
+    /// `None`.
+    ///
+    /// `Err` is returned if the descriptors are not compatible.
     ///
     ///# Example
     ///```
@@ -190,21 +352,27 @@ impl DescriptorDesc {
     ///  compute: true
     ///}, readonly: false };
     ///
-    ///assert_eq!(desc_part1.union(&desc_part2), Some(desc_union));
+    ///assert_eq!(DescriptorDesc::union(Some(&desc_part1), Some(&desc_part2)), Ok(Some(desc_union)));
     ///```
-    // TODO: Result instead of Option
     #[inline]
-    pub fn union(&self, other: &DescriptorDesc) -> Option<DescriptorDesc> {
-        if self.ty != other.ty {
-            return None;
-        }
+    pub fn union(
+        first: Option<&DescriptorDesc>,
+        second: Option<&DescriptorDesc>,
+    ) -> Result<Option<DescriptorDesc>, ()> {
+        if let (Some(first), Some(second)) = (first, second) {
+            if first.ty != second.ty {
+                return Err(());
+            }
 
-        Some(DescriptorDesc {
-            ty: self.ty.clone(),
-            array_count: cmp::max(self.array_count, other.array_count),
-            stages: self.stages | other.stages,
-            readonly: self.readonly && other.readonly,
-        })
+            Ok(Some(DescriptorDesc {
+                ty: first.ty.clone(),
+                array_count: cmp::max(first.array_count, second.array_count),
+                stages: first.stages | second.stages,
+                readonly: first.readonly && second.readonly,
+            }))
+        } else {
+            Ok(first.or(second).cloned())
+        }
     }
 
     /// Returns the pipeline stages and access flags corresponding to the usage of this descriptor.
@@ -313,7 +481,7 @@ impl DescriptorDescTy {
     /// Checks whether we are a superset of another descriptor type.
     // TODO: add example
     #[inline]
-    pub fn is_superset_of(
+    pub fn ensure_superset_of(
         &self,
         other: &DescriptorDescTy,
     ) -> Result<(), DescriptorDescSupersetError> {
@@ -323,10 +491,10 @@ impl DescriptorDescTy {
             (
                 &DescriptorDescTy::CombinedImageSampler(ref me),
                 &DescriptorDescTy::CombinedImageSampler(ref other),
-            ) => me.is_superset_of(other),
+            ) => me.ensure_superset_of(other),
 
             (&DescriptorDescTy::Image(ref me), &DescriptorDescTy::Image(ref other)) => {
-                me.is_superset_of(other)
+                me.ensure_superset_of(other)
             }
 
             (
@@ -436,7 +604,7 @@ impl DescriptorImageDesc {
     /// Checks whether we are a superset of another image.
     // TODO: add example
     #[inline]
-    pub fn is_superset_of(
+    pub fn ensure_superset_of(
         &self,
         other: &DescriptorImageDesc,
     ) -> Result<(), DescriptorDescSupersetError> {
@@ -583,6 +751,55 @@ impl From<DescriptorType> for ash::vk::DescriptorType {
     }
 }
 
+/// Error when checking whether a descriptor set is a superset of another one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DescriptorSetDescSupersetError {
+    /// There are more descriptors in the child than in the parent layout.
+    DescriptorsCountMismatch { self_num: u32, other_num: u32 },
+
+    /// Expected an empty descriptor, but got something instead.
+    ExpectedEmptyDescriptor { binding_num: u32 },
+
+    /// Two descriptors are incompatible.
+    IncompatibleDescriptors {
+        error: DescriptorDescSupersetError,
+        binding_num: u32,
+    },
+}
+
+impl error::Error for DescriptorSetDescSupersetError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            DescriptorSetDescSupersetError::IncompatibleDescriptors { ref error, .. } => {
+                Some(error)
+            }
+            _ => None,
+        }
+    }
+}
+
+impl fmt::Display for DescriptorSetDescSupersetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                DescriptorSetDescSupersetError::DescriptorsCountMismatch { .. } => {
+                    "there are more descriptors in the child than in the parent layout"
+                }
+                DescriptorSetDescSupersetError::ExpectedEmptyDescriptor { .. } => {
+                    "expected an empty descriptor, but got something instead"
+                }
+                DescriptorSetDescSupersetError::IncompatibleDescriptors { .. } => {
+                    "two descriptors are incompatible"
+                }
+            }
+        )
+    }
+}
+
 /// Error when checking whether a descriptor is a superset of another one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescriptorDescSupersetError {
@@ -591,15 +808,6 @@ pub enum DescriptorDescSupersetError {
         len: u32,
         required: u32,
     },
-
-    /// The descriptor type doesn't match the type of the other descriptor.
-    TypeMismatch,
-
-    /// The descriptor is marked as read-only, but the other is not.
-    MutabilityRequired,
-
-    /// The shader stages are not a superset of one another.
-    ShaderStagesNotSuperset,
 
     DimensionsMismatch {
         provided: DescriptorImageDescDimensions,
@@ -611,15 +819,24 @@ pub enum DescriptorDescSupersetError {
         expected: Format,
     },
 
+    IncompatibleArrayLayers {
+        provided: DescriptorImageDescArray,
+        required: DescriptorImageDescArray,
+    },
+
     MultisampledMismatch {
         provided: bool,
         expected: bool,
     },
 
-    IncompatibleArrayLayers {
-        provided: DescriptorImageDescArray,
-        required: DescriptorImageDescArray,
-    },
+    /// The descriptor is marked as read-only, but the other is not.
+    MutabilityRequired,
+
+    /// The shader stages are not a superset of one another.
+    ShaderStagesNotSuperset,
+
+    /// The descriptor type doesn't match the type of the other descriptor.
+    TypeMismatch,
 }
 
 impl error::Error for DescriptorDescSupersetError {}

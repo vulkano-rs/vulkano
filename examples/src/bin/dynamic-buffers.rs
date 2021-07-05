@@ -18,6 +18,7 @@ use std::mem;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -28,6 +29,7 @@ use vulkano::pipeline::ComputePipeline;
 use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
+use vulkano::OomError;
 use vulkano::Version;
 
 fn main() {
@@ -111,9 +113,39 @@ fn main() {
             &shader.main_entry_point(),
             &(),
             {
-                let mut layout_desc = shader.main_entry_point().layout_desc().clone();
-                layout_desc.tweak(vec![(0, 0)]); // The dynamic uniform buffer is at set 0, descriptor 0
-                Arc::new(PipelineLayout::new(device.clone(), layout_desc).unwrap())
+                let mut descriptor_set_layout_descs: Vec<_> = shader
+                    .main_entry_point()
+                    .descriptor_set_layout_descs()
+                    .iter()
+                    .cloned()
+                    .collect();
+                DescriptorSetDesc::tweak_multiple(
+                    &mut descriptor_set_layout_descs,
+                    [(0, 0)], // The dynamic uniform buffer is at set 0, descriptor 0
+                );
+                let descriptor_set_layouts = descriptor_set_layout_descs
+                    .into_iter()
+                    .map(|desc| {
+                        Ok(Arc::new(DescriptorSetLayout::new(
+                            device.clone(),
+                            desc.clone(),
+                        )?))
+                    })
+                    .collect::<Result<Vec<_>, OomError>>()
+                    .unwrap();
+
+                Arc::new(
+                    PipelineLayout::new(
+                        device.clone(),
+                        descriptor_set_layouts,
+                        shader
+                            .main_entry_point()
+                            .push_constant_ranges()
+                            .iter()
+                            .cloned(),
+                    )
+                    .unwrap(),
+                )
             },
             None,
         )
@@ -168,7 +200,7 @@ fn main() {
     )
     .unwrap();
 
-    let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+    let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let set = Arc::new(
         PersistentDescriptorSet::start(layout.clone())
             .add_buffer(input_buffer.clone())

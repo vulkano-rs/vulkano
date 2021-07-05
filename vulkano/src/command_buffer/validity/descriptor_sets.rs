@@ -12,11 +12,11 @@ use std::fmt;
 
 use crate::descriptor_set::layout::DescriptorDescSupersetError;
 use crate::descriptor_set::DescriptorSetsCollection;
-use crate::pipeline::layout::PipelineLayoutDesc;
+use crate::pipeline::layout::PipelineLayout;
 
 /// Checks whether descriptor sets are compatible with the pipeline.
 pub fn check_descriptor_sets_validity<D>(
-    pipeline_layout_desc: &PipelineLayoutDesc,
+    pipeline_layout: &PipelineLayout,
     descriptor_sets: &D,
 ) -> Result<(), CheckDescriptorSetsValidityError>
 where
@@ -26,23 +26,23 @@ where
     // what's important is that the descriptor sets are a superset of the pipeline layout. It's not
     // a problem if the descriptor sets provide more elements than expected.
 
-    for (set_num, set) in pipeline_layout_desc.descriptor_sets().iter().enumerate() {
-        for (binding_num, pipeline_desc) in set.iter().enumerate() {
+    for (set_num, set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
+        for (binding_num, pipeline_desc) in
+            (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| (i, d)))
+        {
             let set_desc = descriptor_sets.descriptor(set_num, binding_num);
 
-            let (set_desc, pipeline_desc) = match (set_desc, pipeline_desc) {
-                (Some(s), Some(p)) => (s, p),
-                (None, Some(_)) => {
+            let set_desc = match set_desc {
+                Some(s) => s,
+                None => {
                     return Err(CheckDescriptorSetsValidityError::MissingDescriptor {
                         set_num: set_num,
                         binding_num: binding_num,
                     })
                 }
-                (Some(_), None) => continue,
-                (None, None) => continue,
             };
 
-            if let Err(err) = set_desc.is_superset_of(&pipeline_desc) {
+            if let Err(err) = set_desc.ensure_superset_of(&pipeline_desc) {
                 return Err(CheckDescriptorSetsValidityError::IncompatibleDescriptor {
                     error: err,
                     set_num: set_num,

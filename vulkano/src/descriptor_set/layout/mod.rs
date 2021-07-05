@@ -21,6 +21,7 @@ pub use self::desc::DescriptorImageDesc;
 pub use self::desc::DescriptorImageDescArray;
 pub use self::desc::DescriptorImageDescDimensions;
 pub use self::desc::DescriptorSetDesc;
+pub use self::desc::DescriptorSetDescSupersetError;
 pub use self::desc::DescriptorType;
 pub use self::sys::DescriptorSetLayout;
 

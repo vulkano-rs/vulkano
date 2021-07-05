@@ -337,6 +337,8 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorImageDescArray;
         #[allow(unused_imports)]
+        use vulkano::descriptor_set::layout::DescriptorSetDesc;
+        #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorSetLayout;
         #[allow(unused_imports)]
         use vulkano::descriptor_set::DescriptorSet;
@@ -345,7 +347,7 @@ where
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]
-        use vulkano::pipeline::layout::PipelineLayoutDescPcRange;
+        use vulkano::pipeline::layout::PipelineLayoutPcRange;
         #[allow(unused_imports)]
         use vulkano::pipeline::shader::ShaderStages;
         #[allow(unused_imports)]

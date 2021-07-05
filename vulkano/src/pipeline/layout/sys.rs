@@ -7,18 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::limits_check;
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetDesc;
+use crate::descriptor_set::layout::DescriptorSetDescSupersetError;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::pipeline::layout::PipelineLayoutDesc;
-use crate::pipeline::layout::PipelineLayoutDescPcRange;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
 use crate::pipeline::shader::ShaderStages;
 use crate::Error;
 use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
+use std::cmp;
 use std::error;
 use std::fmt;
 use std::mem::MaybeUninit;
@@ -28,36 +30,57 @@ use std::sync::Arc;
 /// Wrapper around the `PipelineLayout` Vulkan object. Describes to the Vulkan implementation the
 /// descriptor sets and push constants available to your shaders.
 pub struct PipelineLayout {
+    handle: ash::vk::PipelineLayout,
     device: Arc<Device>,
-    layout: ash::vk::PipelineLayout,
     descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]>,
-    desc: PipelineLayoutDesc,
+    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]>,
 }
 
 impl PipelineLayout {
     /// Creates a new `PipelineLayout`.
     #[inline]
-    pub fn new(
+    pub fn new<D, P>(
         device: Arc<Device>,
-        desc: PipelineLayoutDesc,
-    ) -> Result<PipelineLayout, PipelineLayoutCreationError> {
+        descriptor_set_layouts: D,
+        push_constant_ranges: P,
+    ) -> Result<PipelineLayout, PipelineLayoutCreationError>
+    where
+        D: IntoIterator<Item = Arc<DescriptorSetLayout>>,
+        P: IntoIterator<Item = PipelineLayoutPcRange>,
+    {
         let fns = device.fns();
+        let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]> =
+            descriptor_set_layouts.into_iter().collect();
+        let push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
+            push_constant_ranges.into_iter().collect();
 
-        desc.check_against_limits(&device)?;
+        // Check for overlapping ranges
+        for (a_id, a) in push_constant_ranges.iter().enumerate() {
+            for b in push_constant_ranges.iter().skip(a_id + 1) {
+                if a.offset <= b.offset && a.offset + a.size > b.offset {
+                    return Err(PipelineLayoutCreationError::PushConstantsConflict {
+                        first_offset: a.offset,
+                        first_size: a.size,
+                        second_offset: b.offset,
+                    });
+                }
 
-        // Building the list of `DescriptorSetLayout` objects.
-        let descriptor_set_layouts = {
-            let mut layouts: SmallVec<[_; 16]> = SmallVec::new();
-            for set in desc.descriptor_sets() {
-                layouts.push({
-                    Arc::new(DescriptorSetLayout::new(
-                        device.clone(),
-                        set.iter().map(|s| s.clone()),
-                    )?)
-                });
+                if b.offset <= a.offset && b.offset + b.size > a.offset {
+                    return Err(PipelineLayoutCreationError::PushConstantsConflict {
+                        first_offset: b.offset,
+                        first_size: b.size,
+                        second_offset: a.offset,
+                    });
+                }
             }
-            layouts
-        };
+        }
+
+        // Check against device limits
+        limits_check::check_desc_against_limits(
+            device.physical_device().properties(),
+            &descriptor_set_layouts,
+            &push_constant_ranges,
+        )?;
 
         // Grab the list of `vkDescriptorSetLayout` objects from `layouts`.
         let layouts_ids = descriptor_set_layouts
@@ -69,11 +92,11 @@ impl PipelineLayout {
         let push_constants = {
             let mut out: SmallVec<[_; 8]> = SmallVec::new();
 
-            for &PipelineLayoutDescPcRange {
+            for &PipelineLayoutPcRange {
                 offset,
                 size,
                 stages,
-            } in desc.push_constants()
+            } in &push_constant_ranges
             {
                 if stages == ShaderStages::none() || size == 0 || (size % 4) != 0 {
                     return Err(PipelineLayoutCreationError::InvalidPushConstant);
@@ -109,7 +132,7 @@ impl PipelineLayout {
         //        have tess shaders enabled
 
         // Build the final object.
-        let layout = unsafe {
+        let handle = unsafe {
             let infos = ash::vk::PipelineLayoutCreateInfo {
                 flags: ash::vk::PipelineLayoutCreateFlags::empty(),
                 set_layout_count: layouts_ids.len() as u32,
@@ -130,27 +153,62 @@ impl PipelineLayout {
         };
 
         Ok(PipelineLayout {
+            handle,
             device: device.clone(),
-            layout,
             descriptor_set_layouts,
-            desc,
+            push_constant_ranges,
         })
     }
 }
 
 impl PipelineLayout {
-    /// Returns the description of the pipeline layout.
+    /// Returns the descriptor set layouts this pipeline layout was created from.
     #[inline]
-    pub fn desc(&self) -> &PipelineLayoutDesc {
-        &self.desc
+    pub fn descriptor_set_layouts(&self) -> &[Arc<DescriptorSetLayout>] {
+        &self.descriptor_set_layouts
     }
 
-    /// Returns the `DescriptorSetLayout` object of the specified set index.
-    ///
-    /// Returns `None` if out of range or if the set is empty for this index.
+    /// Returns a slice containing the push constant ranges this pipeline layout was created from.
     #[inline]
-    pub fn descriptor_set_layout(&self, index: usize) -> Option<&Arc<DescriptorSetLayout>> {
-        self.descriptor_set_layouts.get(index)
+    pub fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
+        &self.push_constant_ranges
+    }
+
+    /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
+    /// constant ranges. Returns an `Err` if this is not the case.
+    pub fn ensure_superset_of(
+        &self,
+        descriptor_set_layout_descs: &[DescriptorSetDesc],
+        push_constant_ranges: &[PipelineLayoutPcRange],
+    ) -> Result<(), PipelineLayoutSupersetError> {
+        // Ewwwwwww
+        let empty = DescriptorSetDesc::empty();
+        let num_sets = cmp::max(
+            self.descriptor_set_layouts.len(),
+            descriptor_set_layout_descs.len(),
+        );
+
+        for set_num in 0..num_sets {
+            let first = self
+                .descriptor_set_layouts
+                .get(set_num)
+                .map(|set| set.desc())
+                .unwrap_or_else(|| &empty);
+            let second = descriptor_set_layout_descs
+                .get(set_num)
+                .unwrap_or_else(|| &empty);
+
+            if let Err(error) = first.ensure_superset_of(second) {
+                return Err(PipelineLayoutSupersetError::DescriptorSet {
+                    error,
+                    set_num: set_num as u32,
+                });
+            }
+        }
+
+        // FIXME: check push constants
+
+        Ok(())
     }
 }
 
@@ -165,16 +223,17 @@ unsafe impl VulkanObject for PipelineLayout {
     type Object = ash::vk::PipelineLayout;
 
     fn internal_object(&self) -> Self::Object {
-        self.layout
+        self.handle
     }
 }
 
 impl fmt::Debug for PipelineLayout {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("PipelineLayout")
-            .field("raw", &self.layout)
+            .field("raw", &self.handle)
             .field("device", &self.device)
-            .field("desc", &self.desc)
+            .field("descriptor_set_layouts", &self.descriptor_set_layouts)
+            .field("push_constant_ranges", &self.push_constant_ranges)
             .finish()
     }
 }
@@ -186,7 +245,7 @@ impl Drop for PipelineLayout {
             let fns = self.device.fns();
             fns.v1_0.destroy_pipeline_layout(
                 self.device.internal_object(),
-                self.layout,
+                self.handle,
                 ptr::null(),
             );
         }
@@ -203,6 +262,12 @@ pub enum PipelineLayoutCreationError {
     /// One of the push constants range didn't obey the rules. The list of stages must not be
     /// empty, the size must not be 0, and the size must be a multiple or 4.
     InvalidPushConstant,
+    /// Conflict between different push constants ranges.
+    PushConstantsConflict {
+        first_offset: usize,
+        first_size: usize,
+        second_offset: usize,
+    },
 }
 
 impl error::Error for PipelineLayoutCreationError {
@@ -229,6 +294,9 @@ impl fmt::Display for PipelineLayoutCreationError {
                 }
                 PipelineLayoutCreationError::InvalidPushConstant => {
                     "one of the push constants range didn't obey the rules"
+                }
+                PipelineLayoutCreationError::PushConstantsConflict { .. } => {
+                    "conflict between different push constants ranges"
                 }
             }
         )
@@ -261,6 +329,97 @@ impl From<Error> for PipelineLayoutCreationError {
             }
             _ => panic!("unexpected error: {:?}", err),
         }
+    }
+}
+
+/// Error when checking whether a pipeline layout is a superset of another one.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum PipelineLayoutSupersetError {
+    DescriptorSet {
+        error: DescriptorSetDescSupersetError,
+        set_num: u32,
+    },
+}
+
+impl error::Error for PipelineLayoutSupersetError {
+    #[inline]
+    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
+        match *self {
+            PipelineLayoutSupersetError::DescriptorSet { ref error, .. } => Some(error),
+        }
+    }
+}
+
+impl fmt::Display for PipelineLayoutSupersetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                PipelineLayoutSupersetError::DescriptorSet { .. } => {
+                    "the descriptor set was not a superset of the other"
+                }
+            }
+        )
+    }
+}
+
+/// Description of a range of the push constants of a pipeline layout.
+// TODO: should contain the layout as well
+#[derive(Debug, Copy, Clone)]
+pub struct PipelineLayoutPcRange {
+    /// Offset in bytes from the start of the push constants to this range.
+    pub offset: usize,
+    /// Size in bytes of the range.
+    pub size: usize,
+    /// The stages which can access this range. Note that the same shader stage can't access two
+    /// different ranges.
+    pub stages: ShaderStages,
+}
+
+impl PipelineLayoutPcRange {
+    pub fn union_multiple(
+        first: &[PipelineLayoutPcRange],
+        second: &[PipelineLayoutPcRange],
+    ) -> Vec<PipelineLayoutPcRange> {
+        first
+            .iter()
+            .map(|&(mut new_range)| {
+                // Find the ranges in `second` that share the same stages as `first_range`.
+                // If there is a range with a similar stage in `second`, then adjust the offset
+                // and size to include it.
+                for second_range in second {
+                    if !second_range.stages.intersects(&new_range.stages) {
+                        continue;
+                    }
+
+                    if second_range.offset < new_range.offset {
+                        new_range.size += new_range.offset - second_range.offset;
+                        new_range.size = cmp::max(new_range.size, second_range.size);
+                        new_range.offset = second_range.offset;
+                    } else if second_range.offset > new_range.offset {
+                        new_range.size = cmp::max(
+                            new_range.size,
+                            second_range.size + (second_range.offset - new_range.offset),
+                        );
+                    }
+                }
+
+                new_range
+            })
+            .chain(
+                // Add the ones from `second` that were filtered out previously.
+                second
+                    .iter()
+                    .filter(|second_range| {
+                        first
+                            .iter()
+                            .all(|first_range| !second_range.stages.intersects(&first_range.stages))
+                    })
+                    .map(|range| *range),
+            )
+            .collect()
     }
 }
 

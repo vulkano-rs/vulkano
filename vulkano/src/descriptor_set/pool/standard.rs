@@ -179,6 +179,7 @@ impl Drop for StdDescriptorPoolAlloc {
 mod tests {
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
     use crate::descriptor_set::pool::DescriptorPool;
     use crate::descriptor_set::pool::StdDescriptorPool;
@@ -197,7 +198,11 @@ mod tests {
             stages: ShaderStages::all(),
             readonly: false,
         };
-        let layout = DescriptorSetLayout::new(device.clone(), iter::once(Some(desc))).unwrap();
+        let layout = DescriptorSetLayout::new(
+            device.clone(),
+            DescriptorSetDesc::new(iter::once(Some(desc))),
+        )
+        .unwrap();
 
         let mut pool = Arc::new(StdDescriptorPool::new(device));
         let pool_weak = Arc::downgrade(&pool);

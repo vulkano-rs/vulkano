@@ -376,6 +376,7 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::layout::DescriptorSetLayout;
     use crate::descriptor_set::pool::DescriptorsCount;
     use crate::descriptor_set::pool::UnsafeDescriptorPool;
@@ -429,8 +430,11 @@ mod tests {
             readonly: true,
         };
 
-        let set_layout =
-            DescriptorSetLayout::new(device.clone(), iter::once(Some(layout))).unwrap();
+        let set_layout = DescriptorSetLayout::new(
+            device.clone(),
+            DescriptorSetDesc::new(iter::once(Some(layout))),
+        )
+        .unwrap();
 
         let desc = DescriptorsCount {
             uniform_buffer: 10,
@@ -459,7 +463,9 @@ mod tests {
             readonly: true,
         };
 
-        let set_layout = DescriptorSetLayout::new(device1, iter::once(Some(layout))).unwrap();
+        let set_layout =
+            DescriptorSetLayout::new(device1, DescriptorSetDesc::new(iter::once(Some(layout))))
+                .unwrap();
 
         let desc = DescriptorsCount {
             uniform_buffer: 10,

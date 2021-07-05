@@ -35,7 +35,6 @@ use vulkano::format::Format;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::layout::PipelineLayoutDesc;
 use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
     SpecializationConstants,
@@ -192,15 +191,6 @@ fn main() {
         }])
     };
 
-    // This definition describes the layout of this stage.
-    let vertex_layout = PipelineLayoutDesc::new(
-        // No descriptor sets.
-        vec![],
-        // No push constants.
-        vec![],
-    )
-    .unwrap();
-
     // Same as with our vertex shader, but for fragment one instead.
     let fragment_input = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
@@ -220,15 +210,6 @@ fn main() {
         }])
     };
 
-    // Layout same as with vertex shader.
-    let fragment_layout = PipelineLayoutDesc::new(
-        // No descriptor sets.
-        vec![],
-        // No push constants.
-        vec![],
-    )
-    .unwrap();
-
     // NOTE: ShaderModule::*_shader_entry_point calls do not do any error
     // checking and you have to verify correctness of what you are doing by
     // yourself.
@@ -239,7 +220,8 @@ fn main() {
     let vert_main = unsafe {
         vs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            vertex_layout,
+            [], // No descriptor sets.
+            [], // No push constants.
             <()>::descriptors(),
             vertex_input,
             vertex_output,
@@ -250,7 +232,8 @@ fn main() {
     let frag_main = unsafe {
         fs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            fragment_layout,
+            [], // No descriptor sets.
+            [], // No push constants.
             <()>::descriptors(),
             fragment_input,
             fragment_output,

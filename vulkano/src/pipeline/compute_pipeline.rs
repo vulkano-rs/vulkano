@@ -8,12 +8,13 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::cache::PipelineCache;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::layout::PipelineLayoutCreationError;
-use crate::pipeline::layout::PipelineLayoutNotSupersetError;
+use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::Error;
@@ -62,9 +63,20 @@ impl ComputePipeline {
         Css: SpecializationConstants,
     {
         unsafe {
+            let descriptor_set_layouts = shader
+                .descriptor_set_layout_descs()
+                .iter()
+                .map(|desc| {
+                    Ok(Arc::new(DescriptorSetLayout::new(
+                        device.clone(),
+                        desc.clone(),
+                    )?))
+                })
+                .collect::<Result<Vec<_>, OomError>>()?;
             let pipeline_layout = Arc::new(PipelineLayout::new(
                 device.clone(),
-                shader.layout_desc().clone(),
+                descriptor_set_layouts,
+                shader.push_constant_ranges().iter().cloned(),
             )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
@@ -96,9 +108,10 @@ impl ComputePipeline {
         }
 
         unsafe {
-            pipeline_layout
-                .desc()
-                .ensure_superset_of(shader.layout_desc())?;
+            pipeline_layout.ensure_superset_of(
+                shader.descriptor_set_layout_descs(),
+                shader.push_constant_ranges(),
+            )?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -283,7 +296,7 @@ pub enum ComputePipelineCreationError {
     /// Error while creating the pipeline layout object.
     PipelineLayoutCreationError(PipelineLayoutCreationError),
     /// The pipeline layout is not compatible with what the shader expects.
-    IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
+    IncompatiblePipelineLayout(PipelineLayoutSupersetError),
     /// The provided specialization constants are not compatible with what the shader expects.
     IncompatibleSpecializationConstants,
 }
@@ -336,9 +349,9 @@ impl From<PipelineLayoutCreationError> for ComputePipelineCreationError {
     }
 }
 
-impl From<PipelineLayoutNotSupersetError> for ComputePipelineCreationError {
+impl From<PipelineLayoutSupersetError> for ComputePipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutNotSupersetError) -> ComputePipelineCreationError {
+    fn from(err: PipelineLayoutSupersetError) -> ComputePipelineCreationError {
         ComputePipelineCreationError::IncompatiblePipelineLayout(err)
     }
 }
@@ -367,8 +380,8 @@ mod tests {
     use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetDesc;
     use crate::descriptor_set::PersistentDescriptorSet;
-    use crate::pipeline::layout::PipelineLayoutDesc;
     use crate::pipeline::shader::ShaderModule;
     use crate::pipeline::shader::ShaderStages;
     use crate::pipeline::shader::SpecializationConstants;
@@ -435,21 +448,19 @@ mod tests {
             static NAME: [u8; 5] = [109, 97, 105, 110, 0]; // "main"
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
-                PipelineLayoutDesc::new_unchecked(
-                    vec![vec![Some(DescriptorDesc {
-                        ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: Some(false),
-                            storage: true,
-                        }),
-                        array_count: 1,
-                        stages: ShaderStages {
-                            compute: true,
-                            ..ShaderStages::none()
-                        },
-                        readonly: true,
-                    })]],
-                    vec![],
-                ),
+                [DescriptorSetDesc::new([Some(DescriptorDesc {
+                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                        dynamic: Some(false),
+                        storage: true,
+                    }),
+                    array_count: 1,
+                    stages: ShaderStages {
+                        compute: true,
+                        ..ShaderStages::none()
+                    },
+                    readonly: true,
+                })])],
+                [],
                 SpecConsts::descriptors(),
             )
         };
@@ -483,7 +494,7 @@ mod tests {
 
         let data_buffer =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
-        let layout = pipeline.layout().descriptor_set_layout(0).unwrap();
+        let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
         let set = PersistentDescriptorSet::start(layout.clone())
             .add_buffer(data_buffer.clone())
             .unwrap()

@@ -333,7 +333,7 @@ impl UnsafeCommandBufferBuilder {
 
         let num_bindings = sets.len() as u32;
         debug_assert!(
-            first_binding + num_bindings <= pipeline_layout.desc().descriptor_sets().len() as u32
+            first_binding + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
         );
 
         let bind_point = if graphics {

@@ -75,7 +75,7 @@
 
 pub use self::collection::DescriptorSetsCollection;
 pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
-use self::layout::DescriptorSetDesc;
+use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
 pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetError;
@@ -87,6 +87,7 @@ use crate::SafeDeref;
 use crate::VulkanObject;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::sync::Arc;
 
 mod collection;
 pub mod fixed_size_pool;
@@ -98,9 +99,12 @@ pub mod sys;
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
 /// Objects of this type can be passed when submitting a draw command.
-pub unsafe trait DescriptorSet: DescriptorSetDesc + DeviceOwned {
+pub unsafe trait DescriptorSet: DeviceOwned {
     /// Returns the inner `UnsafeDescriptorSet`.
     fn inner(&self) -> &UnsafeDescriptorSet;
+
+    /// Returns the layout of this descriptor set.
+    fn layout(&self) -> &Arc<DescriptorSetLayout>;
 
     /// Returns the number of buffers within this descriptor set.
     fn num_buffers(&self) -> usize;
@@ -129,6 +133,11 @@ where
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         (**self).inner()
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        (**self).layout()
     }
 
     #[inline]

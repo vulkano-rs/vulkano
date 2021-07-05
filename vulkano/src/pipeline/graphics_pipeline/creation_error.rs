@@ -7,16 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-use std::u32;
-
 use crate::pipeline::input_assembly::PrimitiveTopology;
-use crate::pipeline::layout::PipelineLayoutNotSupersetError;
+use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::ShaderInterfaceMismatchError;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::Error;
 use crate::OomError;
+use std::error;
+use std::fmt;
+use std::u32;
 
 /// Error that can happen when creating a graphics pipeline.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +24,7 @@ pub enum GraphicsPipelineCreationError {
     OomError(OomError),
 
     /// The pipeline layout is not compatible with what the shaders expect.
-    IncompatiblePipelineLayout(PipelineLayoutNotSupersetError),
+    IncompatiblePipelineLayout(PipelineLayoutSupersetError),
 
     /// The provided specialization constants are not compatible with what the shader expects.
     IncompatibleSpecializationConstants,
@@ -351,9 +350,9 @@ impl From<OomError> for GraphicsPipelineCreationError {
     }
 }
 
-impl From<PipelineLayoutNotSupersetError> for GraphicsPipelineCreationError {
+impl From<PipelineLayoutSupersetError> for GraphicsPipelineCreationError {
     #[inline]
-    fn from(err: PipelineLayoutNotSupersetError) -> GraphicsPipelineCreationError {
+    fn from(err: PipelineLayoutSupersetError) -> GraphicsPipelineCreationError {
         GraphicsPipelineCreationError::IncompatiblePipelineLayout(err)
     }
 }

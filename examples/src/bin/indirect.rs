@@ -327,7 +327,11 @@ fn main() {
                     .unwrap();
 
                 // Pass the two buffers to the compute shader
-                let layout = compute_pipeline.layout().descriptor_set_layout(0).unwrap();
+                let layout = compute_pipeline
+                    .layout()
+                    .descriptor_set_layouts()
+                    .get(0)
+                    .unwrap();
                 let cs_desciptor_set = Arc::new(
                     PersistentDescriptorSet::start(layout.clone())
                         .add_buffer(vertices.clone())
