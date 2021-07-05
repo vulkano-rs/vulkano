@@ -162,7 +162,9 @@ impl UnsafeBuffer {
                     ..Default::default()
                 };
 
-                let mut output2 = if device.enabled_extensions().khr_dedicated_allocation {
+                let mut output2 = if device.api_version() >= Version::V1_1
+                    || device.enabled_extensions().khr_dedicated_allocation
+                {
                     Some(ash::vk::MemoryDedicatedRequirementsKHR::default())
                 } else {
                     None
