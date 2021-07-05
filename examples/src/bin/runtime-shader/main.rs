@@ -40,7 +40,6 @@ use vulkano::pipeline::shader::{
     GraphicsShaderType, ShaderInterface, ShaderInterfaceEntry, ShaderModule,
     SpecializationConstants,
 };
-use vulkano::pipeline::vertex::SingleBufferDefinition;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -261,7 +260,7 @@ fn main() {
 
     let graphics_pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input(SingleBufferDefinition::<Vertex>::new())
+            .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vert_main, ())
             .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)

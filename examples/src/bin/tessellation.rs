@@ -205,51 +205,49 @@ fn main() {
             .unwrap()
     };
 
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 2],
-        }
-        vulkano::impl_vertex!(Vertex, position);
+    #[derive(Default, Debug, Clone)]
+    struct Vertex {
+        position: [f32; 2],
+    }
+    vulkano::impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            [
-                Vertex {
-                    position: [-0.5, -0.25],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                },
-                Vertex {
-                    position: [0.25, -0.1],
-                },
-                Vertex {
-                    position: [0.9, 0.9],
-                },
-                Vertex {
-                    position: [0.9, 0.8],
-                },
-                Vertex {
-                    position: [0.8, 0.8],
-                },
-                Vertex {
-                    position: [-0.9, 0.9],
-                },
-                Vertex {
-                    position: [-0.7, 0.6],
-                },
-                Vertex {
-                    position: [-0.5, 0.9],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap()
-    };
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        [
+            Vertex {
+                position: [-0.5, -0.25],
+            },
+            Vertex {
+                position: [0.0, 0.5],
+            },
+            Vertex {
+                position: [0.25, -0.1],
+            },
+            Vertex {
+                position: [0.9, 0.9],
+            },
+            Vertex {
+                position: [0.9, 0.8],
+            },
+            Vertex {
+                position: [0.8, 0.8],
+            },
+            Vertex {
+                position: [-0.9, 0.9],
+            },
+            Vertex {
+                position: [-0.7, 0.6],
+            },
+            Vertex {
+                position: [-0.5, 0.9],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
 
     let vs = vs::Shader::load(device.clone()).unwrap();
     let tcs = tcs::Shader::load(device.clone()).unwrap();
@@ -277,7 +275,7 @@ fn main() {
 
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input_single_buffer()
+            .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
             // Actually use the tessellation shaders.
             .tessellation_shaders(tcs.main_entry_point(), (), tes.main_entry_point(), ())

@@ -38,8 +38,10 @@ use crate::pipeline::shader::GraphicsEntryPoint;
 use crate::pipeline::shader::GraphicsShaderType;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::pipeline::vertex::BufferlessDefinition;
-use crate::pipeline::vertex::SingleBufferDefinition;
+use crate::pipeline::vertex::BuffersDefinition;
+use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::viewport::ViewportsState;
@@ -430,118 +432,179 @@ where
         };
 
         // Vertex bindings.
-        let (binding_descriptions, attribute_descriptions) = {
-            let (buffers_iter, attribs_iter) = self
+        let (binding_descriptions, binding_divisor_descriptions, attribute_descriptions) = {
+            let bindings = self
                 .vertex_input
                 .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
 
+            if bindings.len()
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_vertex_input_bindings
+                    .unwrap() as usize
+            {
+                return Err(
+                    GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                        max: device
+                            .physical_device()
+                            .properties()
+                            .max_vertex_input_bindings
+                            .unwrap(),
+                        obtained: bindings.len(),
+                    },
+                );
+            }
+
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
-            for (num, stride, rate) in buffers_iter {
-                if stride
+            let mut binding_divisor_descriptions = SmallVec::<[_; 8]>::new();
+            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
+
+            for (binding, binding_desc) in bindings.into_iter().enumerate() {
+                let binding = binding as u32;
+
+                if binding_desc.stride
                     > device
                         .physical_device()
                         .properties()
                         .max_vertex_input_binding_stride
-                        .unwrap() as usize
+                        .unwrap()
                 {
                     return Err(
                         GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
-                            binding: num as usize,
+                            binding,
                             max: device
                                 .physical_device()
                                 .properties()
                                 .max_vertex_input_binding_stride
-                                .unwrap() as usize,
-                            obtained: stride,
+                                .unwrap(),
+                            obtained: binding_desc.stride,
                         },
                     );
                 }
 
                 binding_descriptions.push(ash::vk::VertexInputBindingDescription {
-                    binding: num as u32,
-                    stride: stride as u32,
-                    input_rate: rate.into(),
+                    binding,
+                    stride: binding_desc.stride,
+                    input_rate: binding_desc.input_rate.into(),
                 });
-            }
 
-            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
-            for (loc, binding, info) in attribs_iter {
-                // TODO: check attribute format support
+                if let VertexInputRate::Instance { divisor } = binding_desc.input_rate {
+                    if divisor != 1 {
+                        if !device
+                            .enabled_features()
+                            .vertex_attribute_instance_rate_divisor
+                        {
+                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateDivisorFeatureNotEnabled);
+                        }
 
-                if info.offset
-                    > device
-                        .physical_device()
-                        .properties()
-                        .max_vertex_input_attribute_offset
-                        .unwrap() as usize
-                {
-                    return Err(
-                        GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
-                            max: device
+                        if divisor == 0
+                            && !device
+                                .enabled_features()
+                                .vertex_attribute_instance_rate_zero_divisor
+                        {
+                            return Err(GraphicsPipelineCreationError::VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled);
+                        }
+
+                        if divisor
+                            > device
                                 .physical_device()
                                 .properties()
-                                .max_vertex_input_attribute_offset
-                                .unwrap() as usize,
-                            obtained: info.offset,
-                        },
-                    );
+                                .max_vertex_attrib_divisor
+                                .unwrap()
+                        {
+                            return Err(
+                                GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded {
+                                    binding,
+                                    max: device
+                                        .physical_device()
+                                        .properties()
+                                        .max_vertex_attrib_divisor
+                                        .unwrap(),
+                                    obtained: divisor,
+                                },
+                            );
+                        }
+
+                        binding_divisor_descriptions.push(
+                            ash::vk::VertexInputBindingDivisorDescriptionEXT { binding, divisor },
+                        )
+                    }
                 }
 
-                debug_assert!(binding_descriptions
-                    .iter()
-                    .find(|b| b.binding == binding)
-                    .is_some());
+                for attribute_desc in binding_desc.attributes {
+                    // TODO: check attribute format support
 
-                attribute_descriptions.push(ash::vk::VertexInputAttributeDescription {
-                    location: loc as u32,
-                    binding: binding as u32,
-                    format: info.format.into(),
-                    offset: info.offset as u32,
-                });
+                    if attribute_desc.offset
+                        > device
+                            .physical_device()
+                            .properties()
+                            .max_vertex_input_attribute_offset
+                            .unwrap()
+                    {
+                        return Err(
+                            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                                max: device
+                                    .physical_device()
+                                    .properties()
+                                    .max_vertex_input_attribute_offset
+                                    .unwrap(),
+                                obtained: attribute_desc.offset,
+                            },
+                        );
+                    }
+
+                    attribute_descriptions.push(ash::vk::VertexInputAttributeDescription {
+                        location: attribute_desc.location,
+                        binding,
+                        format: attribute_desc.format.into(),
+                        offset: attribute_desc.offset,
+                    });
+                }
             }
 
-            (binding_descriptions, attribute_descriptions)
+            if attribute_descriptions.len()
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_vertex_input_attributes
+                    .unwrap() as usize
+            {
+                return Err(
+                    GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
+                        max: device
+                            .physical_device()
+                            .properties()
+                            .max_vertex_input_attributes
+                            .unwrap(),
+                        obtained: attribute_descriptions.len(),
+                    },
+                );
+            }
+
+            (
+                binding_descriptions,
+                binding_divisor_descriptions,
+                attribute_descriptions,
+            )
         };
 
-        if binding_descriptions.len()
-            > device
-                .physical_device()
-                .properties()
-                .max_vertex_input_bindings
-                .unwrap() as usize
-        {
-            return Err(
-                GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
-                    max: device
-                        .physical_device()
-                        .properties()
-                        .max_vertex_input_bindings
-                        .unwrap() as usize,
-                    obtained: binding_descriptions.len(),
-                },
-            );
-        }
-
-        if attribute_descriptions.len()
-            > device
-                .physical_device()
-                .properties()
-                .max_vertex_input_attributes
-                .unwrap() as usize
-        {
-            return Err(
-                GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
-                    max: device
-                        .physical_device()
-                        .properties()
-                        .max_vertex_input_attributes
-                        .unwrap() as usize,
-                    obtained: attribute_descriptions.len(),
-                },
-            );
-        }
+        let vertex_input_divisor_state = if !binding_divisor_descriptions.is_empty() {
+            Some(ash::vk::PipelineVertexInputDivisorStateCreateInfoEXT {
+                vertex_binding_divisor_count: binding_divisor_descriptions.len() as u32,
+                p_vertex_binding_divisors: binding_divisor_descriptions.as_ptr(),
+                ..Default::default()
+            })
+        } else {
+            None
+        };
 
         let vertex_input_state = ash::vk::PipelineVertexInputStateCreateInfo {
+            p_next: if let Some(next) = vertex_input_divisor_state.as_ref() {
+                next as *const _ as *const _
+            } else {
+                ptr::null()
+            },
             flags: ash::vk::PipelineVertexInputStateCreateFlags::empty(),
             vertex_binding_description_count: binding_descriptions.len() as u32,
             p_vertex_binding_descriptions: binding_descriptions.as_ptr(),
@@ -1144,7 +1207,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     /// You will most likely need to explicitly specify the template parameter to the type of a
     /// vertex.
     #[inline]
-    pub fn vertex_input_single_buffer<V>(
+    pub fn vertex_input_single_buffer<V: Vertex>(
         self,
     ) -> GraphicsPipelineBuilder<
         'vs,
@@ -1152,14 +1215,14 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         'tes,
         'gs,
         'fs,
-        SingleBufferDefinition<V>,
+        BuffersDefinition,
         Vss,
         Tcss,
         Tess,
         Gss,
         Fss,
     > {
-        self.vertex_input(SingleBufferDefinition::<V>::new())
+        self.vertex_input(BuffersDefinition::new().vertex::<V>())
     }
 
     /// Sets the vertex shader to use.

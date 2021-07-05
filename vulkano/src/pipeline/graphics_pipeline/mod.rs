@@ -17,6 +17,7 @@ use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
@@ -415,14 +416,11 @@ unsafe impl<Mv> VertexDefinition for GraphicsPipeline<Mv>
 where
     Mv: VertexDefinition,
 {
-    type BuffersIter = <Mv as VertexDefinition>::BuffersIter;
-    type AttribsIter = <Mv as VertexDefinition>::AttribsIter;
-
     #[inline]
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<(Self::BuffersIter, Self::AttribsIter), IncompatibleVertexDefinitionError> {
+    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
         self.vertex_definition.definition(interface)
     }
 }

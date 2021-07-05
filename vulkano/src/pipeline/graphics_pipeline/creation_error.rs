@@ -44,17 +44,17 @@ pub enum GraphicsPipelineCreationError {
     /// has been exceeded.
     MaxVertexInputBindingStrideExceeded {
         /// Index of the faulty binding.
-        binding: usize,
+        binding: u32,
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
-        obtained: usize,
+        obtained: u32,
     },
 
     /// The maximum number of vertex sources has been exceeded.
     MaxVertexInputBindingsExceeded {
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
         obtained: usize,
     },
@@ -63,17 +63,35 @@ pub enum GraphicsPipelineCreationError {
     /// struct is too large.
     MaxVertexInputAttributeOffsetExceeded {
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
-        obtained: usize,
+        obtained: u32,
     },
 
     /// The maximum number of vertex attributes has been exceeded.
     MaxVertexInputAttributesExceeded {
         /// Maximum allowed value.
-        max: usize,
+        max: u32,
         /// Value that was passed.
         obtained: usize,
+    },
+
+    /// The `vertex_attribute_instance_rate_divisor` feature must be enabled in order to use
+    /// instance rate divisors.
+    VertexAttributeInstanceRateDivisorFeatureNotEnabled,
+
+    /// The `vertex_attribute_instance_rate_zero_divisor` feature must be enabled in order to use
+    /// an instance rate divisor of zero.
+    VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled,
+
+    /// The maximum value for the instance rate divisor has been exceeded.
+    MaxVertexAttribDivisorExceeded {
+        /// Index of the faulty binding.
+        binding: u32,
+        /// Maximum allowed value.
+        max: u32,
+        /// Value that was passed.
+        obtained: u32,
     },
 
     /// The user requested to use primitive restart, but the primitive topology doesn't support it.
@@ -222,6 +240,15 @@ impl fmt::Display for GraphicsPipelineCreationError {
                 }
                 GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded { .. } => {
                     "the maximum number of vertex attributes has been exceeded"
+                }
+                GraphicsPipelineCreationError::VertexAttributeInstanceRateDivisorFeatureNotEnabled => {
+                    "the `vertex_attribute_instance_rate_divisor` feature must be enabled in order to use instance rate divisors"
+                }
+                GraphicsPipelineCreationError::VertexAttributeInstanceRateZeroDivisorFeatureNotEnabled => {
+                    "the `vertex_attribute_instance_rate_zero_divisor` feature must be enabled in order to use an instance rate divisor of zero"
+                }
+                GraphicsPipelineCreationError::MaxVertexAttribDivisorExceeded { .. } => {
+                    "the maximum value for the instance rate divisor has been exceeded"
                 }
                 GraphicsPipelineCreationError::PrimitiveDoesntSupportPrimitiveRestart {
                     ..

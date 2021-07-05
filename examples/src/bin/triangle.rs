@@ -211,33 +211,31 @@ fn main() {
     };
 
     // We now create a buffer that will store the shape of our triangle.
-    let vertex_buffer = {
-        #[derive(Default, Debug, Clone)]
-        struct Vertex {
-            position: [f32; 2],
-        }
-        vulkano::impl_vertex!(Vertex, position);
+    #[derive(Default, Debug, Clone)]
+    struct Vertex {
+        position: [f32; 2],
+    }
+    vulkano::impl_vertex!(Vertex, position);
 
-        CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::all(),
-            false,
-            [
-                Vertex {
-                    position: [-0.5, -0.25],
-                },
-                Vertex {
-                    position: [0.0, 0.5],
-                },
-                Vertex {
-                    position: [0.25, -0.1],
-                },
-            ]
-            .iter()
-            .cloned(),
-        )
-        .unwrap()
-    };
+    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+        device.clone(),
+        BufferUsage::all(),
+        false,
+        [
+            Vertex {
+                position: [-0.5, -0.25],
+            },
+            Vertex {
+                position: [0.0, 0.5],
+            },
+            Vertex {
+                position: [0.25, -0.1],
+            },
+        ]
+        .iter()
+        .cloned(),
+    )
+    .unwrap();
 
     // The next step is to create the shaders.
     //
@@ -325,7 +323,7 @@ fn main() {
             // We need to indicate the layout of the vertices.
             // The type `SingleBufferDefinition` actually contains a template parameter corresponding
             // to the type of each vertex. But in this code it is automatically inferred.
-            .vertex_input_single_buffer()
+            .vertex_input_single_buffer::<Vertex>()
             // A Vulkan shader can in theory contain multiple entry points, so we have to specify
             // which one. The `main` word of `main_entry_point` actually corresponds to the name of
             // the entry point.

@@ -65,25 +65,21 @@
 
 pub use self::bufferless::BufferlessDefinition;
 pub use self::bufferless::BufferlessVertices;
+pub use self::buffers::BuffersDefinition;
 pub use self::definition::AttributeInfo;
 pub use self::definition::IncompatibleVertexDefinitionError;
-pub use self::definition::InputRate;
 pub use self::definition::VertexDefinition;
+pub use self::definition::VertexInputAttribute;
+pub use self::definition::VertexInputBinding;
+pub use self::definition::VertexInputRate;
 pub use self::definition::VertexSource;
 pub use self::impl_vertex::VertexMember;
-pub use self::instance_buffer::SingleInstanceBufferDefinition;
-pub use self::one_one::OneVertexOneInstanceDefinition;
-pub use self::single::SingleBufferDefinition;
-pub use self::two::TwoBuffersDefinition;
 pub use self::vertex::Vertex;
 pub use self::vertex::VertexMemberInfo;
 pub use self::vertex::VertexMemberTy;
 
 mod bufferless;
+mod buffers;
 mod definition;
 mod impl_vertex;
-mod instance_buffer;
-mod one_one;
-mod single;
-mod two;
 mod vertex;
