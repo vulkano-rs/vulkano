@@ -31,6 +31,12 @@
 - **Breaking** The `VertexDefinition` trait no longer has `AttribsIter` and `BuffersIter` as associated types. It instead returns a `Vec<VertexInputBinding>`.
 - **Breaking** The various types for vertex definitions (except `BufferlessDefinition`) have been replaced with the new `BuffersDefinition` type, which can handle any number of vertex and instance buffers. Examples of how it's used can be seen in the "instancing" and "teapot" examples.
 - **Breaking** `InputRate` has been renamed to `VertexInputRate` to match the Vulkan name. The `Instance` variant now has a `divisor` member.
+- **Breaking** `DescriptorSetDesc` is converted from a trait to a struct. `DescriptorSetLayout` can take this struct in its constructor, as alternative to the iterator which was already possible previously.
+- **Breaking** `PipelineLayout` is now built from a list of descriptor set layouts and push constant ranges, like in plain Vulkan. It no longer constructs its own descriptor set layouts internally.
+- **Breaking** `PipelineLayoutDescPcRange` is renamed to `PipelineLayoutPcRange`.
+- **Breaking** `PipelineLayoutDesc` is no longer needed and is removed. Its functionality has been moved to `DescriptorSetDesc` and `PipelineLayoutPcRange`. This also applies to `ComputeEntryPoint`, `GraphicsEntryPoint` and `EntryPointAbstract`.
+- **Breaking** `PipelineLayout` now has a `descriptor_set_layouts` method which returns a slice of all the layouts, replacing the previous `descriptor_set_layout` which only returned one at a time.
+- **Breaking** Vulkano is now relaying on features from **Rustc >= 1.53.0**.
 - Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
