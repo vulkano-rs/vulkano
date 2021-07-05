@@ -28,6 +28,10 @@
   - `descriptor_set::{DescriptorWrite, UnsafeDescriptorSet}` > `descriptor_set::sys`.
   - `descriptor_set::collection` is now private.
 - **Breaking** `Features::superset_of` is renamed to `is_superset_of`.
+- **Breaking** The `VertexDefinition` trait no longer has `AttribsIter` and `BuffersIter` as associated types. It instead returns a `Vec<VertexInputBinding>`.
+- **Breaking** The various types for vertex definitions (except `BufferlessDefinition`) have been replaced with the new `BuffersDefinition` type, which can handle any number of vertex and instance buffers. Examples of how it's used can be seen in the "instancing" and "teapot" examples.
+- **Breaking** `InputRate` has been renamed to `VertexInputRate` to match the Vulkan name. The `Instance` variant now has a `divisor` member.
+- Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
 - Examples have much smarter device selection logic. In the triangle example this is supplied with comments.
