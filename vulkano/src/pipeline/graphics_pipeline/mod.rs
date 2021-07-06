@@ -40,7 +40,7 @@ pub struct GraphicsPipeline {
     inner: Inner,
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
-    vertex_definition: VertexInput,
+    vertex_input: VertexInput,
 
     dynamic_line_width: bool,
     dynamic_viewport: bool,
@@ -72,12 +72,6 @@ impl GraphicsPipeline {
 }
 
 impl GraphicsPipeline {
-    /// Returns the vertex definition used in the constructor.
-    #[inline]
-    pub fn vertex_definition(&self) -> &VertexInput {
-        &self.vertex_definition
-    }
-
     /// Returns the device used to create this pipeline.
     #[inline]
     pub fn device(&self) -> &Arc<Device> {
@@ -189,11 +183,14 @@ pub unsafe trait GraphicsPipelineAbstract:
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
-    /// Returns the pipeline layout used in the constructor.
+    /// Returns the pipeline layout this graphics pipeline was constructed from.
     fn layout(&self) -> &Arc<PipelineLayout>;
 
     /// Returns the subpass this graphics pipeline is rendering to.
     fn subpass(&self) -> &Subpass;
+
+    /// Returns the vertex input this graphics pipeline was constructed from.
+    fn vertex_input(&self) -> &VertexInput;
 
     /// Returns true if the line width used by this pipeline is dynamic.
     fn has_dynamic_line_width(&self) -> bool;
@@ -226,7 +223,6 @@ unsafe impl GraphicsPipelineAbstract for GraphicsPipeline {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
     }
 
-    /// Returns the pipeline layout used in the constructor.
     #[inline]
     fn layout(&self) -> &Arc<PipelineLayout> {
         &self.layout
@@ -235,6 +231,11 @@ unsafe impl GraphicsPipelineAbstract for GraphicsPipeline {
     #[inline]
     fn subpass(&self) -> &Subpass {
         &self.subpass
+    }
+
+    #[inline]
+    fn vertex_input(&self) -> &VertexInput {
+        &self.vertex_input
     }
 
     #[inline]
@@ -296,6 +297,11 @@ where
     #[inline]
     fn subpass(&self) -> &Subpass {
         (**self).subpass()
+    }
+
+    #[inline]
+    fn vertex_input(&self) -> &VertexInput {
+        (**self).vertex_input()
     }
 
     #[inline]
@@ -392,6 +398,6 @@ where
 {
     #[inline]
     fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        self.vertex_definition.decode(s)
+        self.vertex_input.decode(s)
     }
 }

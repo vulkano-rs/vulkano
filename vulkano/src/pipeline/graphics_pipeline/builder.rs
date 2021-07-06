@@ -1175,9 +1175,7 @@ where
                 pipeline,
             },
             layout: pipeline_layout,
-
-            vertex_definition: self.vertex_input,
-
+            vertex_input: self.vertex_input,
             subpass: self.subpass.take().unwrap(),
 
             dynamic_line_width: self.raster.line_width.is_none(),
