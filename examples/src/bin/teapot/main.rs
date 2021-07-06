@@ -25,7 +25,7 @@ use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::vertex::BuffersDefinition;
+use vulkano::pipeline::vertex::VertexInput;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -344,11 +344,7 @@ fn window_size_dependent_setup(
     // https://computergraphics.stackexchange.com/questions/5742/vulkan-best-way-of-updating-pipeline-viewport
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            .vertex_input(
-                BuffersDefinition::new()
-                    .vertex::<Vertex>()
-                    .vertex::<Normal>(),
-            )
+            .vertex_input(VertexInput::new().vertex::<Vertex>().vertex::<Normal>())
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)

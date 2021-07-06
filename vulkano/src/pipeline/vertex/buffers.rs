@@ -19,9 +19,9 @@ use crate::pipeline::vertex::VertexSource;
 use std::mem;
 use std::sync::Arc;
 
-/// A vertex definition for any number of vertex and instance buffers.
+/// A definition for the vertex input of a graphics pipeline.
 #[derive(Clone, Default)]
-pub struct BuffersDefinition(Vec<VertexBuffer>);
+pub struct VertexInput(Vec<VertexBuffer>);
 
 #[derive(Clone, Copy)]
 struct VertexBuffer {
@@ -42,19 +42,16 @@ impl From<VertexBuffer> for VertexInputBinding {
 }
 
 /// Value to be passed as the vertex source for bufferless draw commands.
-///
-/// Note that the concrete type of the graphics pipeline using `BufferlessDefinition` must be
-/// visible to the command buffer builder for this to be usable.
 #[derive(Copy, Clone)]
 pub struct BufferlessVertices {
     pub vertices: usize,
     pub instances: usize,
 }
 
-impl BuffersDefinition {
+impl VertexInput {
     /// Constructs a new definition.
     pub fn new() -> Self {
-        BuffersDefinition(Vec::new())
+        VertexInput(Vec::new())
     }
 
     /// Adds a new vertex buffer containing elements of type `V` to the definition.
@@ -97,6 +94,8 @@ impl BuffersDefinition {
         self
     }
 
+    /// Returns a list of vertex input bindings that link this definition to a vertex shader's input
+    /// interface.
     pub fn definition(
         &self,
         interface: &ShaderInterface,
@@ -147,7 +146,7 @@ impl BuffersDefinition {
     }
 }
 
-unsafe impl VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> for BuffersDefinition {
+unsafe impl VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> for VertexInput {
     #[inline]
     fn decode(
         &self,
@@ -162,7 +161,7 @@ unsafe impl VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> for BuffersDe
     }
 }
 
-unsafe impl<B> VertexSource<B> for BuffersDefinition
+unsafe impl<B> VertexSource<B> for VertexInput
 where
     B: BufferAccess + Send + Sync + 'static,
 {
@@ -174,7 +173,7 @@ where
     }
 }
 
-unsafe impl<B1, B2> VertexSource<(B1, B2)> for BuffersDefinition
+unsafe impl<B1, B2> VertexSource<(B1, B2)> for VertexInput
 where
     B1: BufferAccess + Send + Sync + 'static,
     B2: BufferAccess + Send + Sync + 'static,
@@ -187,7 +186,7 @@ where
     }
 }
 
-unsafe impl VertexSource<BufferlessVertices> for BuffersDefinition {
+unsafe impl VertexSource<BufferlessVertices> for VertexInput {
     fn decode(
         &self,
         n: BufferlessVertices,
@@ -201,7 +200,7 @@ unsafe impl VertexSource<BufferlessVertices> for BuffersDefinition {
     }
 }
 
-impl BuffersDefinition {
+impl VertexInput {
     fn vertices_instances(&self, source: &[Box<dyn BufferAccess + Send + Sync>]) -> (usize, usize) {
         assert_eq!(source.len(), self.0.len());
         let mut vertices = None;

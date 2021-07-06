@@ -39,8 +39,8 @@ use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::GraphicsEntryPoint;
 use crate::pipeline::shader::GraphicsShaderType;
 use crate::pipeline::shader::SpecializationConstants;
-use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::Vertex;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
@@ -58,7 +58,7 @@ use std::u32;
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
 pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> {
-    vertex_input: BuffersDefinition,
+    vertex_input: VertexInput,
     vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
     input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo,
     // Note: the `input_assembly_topology` member is temporary in order to not lose information
@@ -87,7 +87,7 @@ impl GraphicsPipelineBuilder<'static, 'static, 'static, 'static, 'static, (), ()
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            vertex_input: BuffersDefinition::new(),
+            vertex_input: VertexInput::new(),
             vertex_shader: None,
             input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
                 topology: PrimitiveTopology::TriangleList.into(),
@@ -1206,7 +1206,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn vertex_input(
         self,
-        vertex_input: BuffersDefinition,
+        vertex_input: VertexInput,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> {
         GraphicsPipelineBuilder {
             vertex_input,
@@ -1234,7 +1234,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
     pub fn vertex_input_single_buffer<V: Vertex>(
         self,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> {
-        self.vertex_input(BuffersDefinition::new().vertex::<V>())
+        self.vertex_input(VertexInput::new().vertex::<V>())
     }
 
     /// Sets the vertex shader to use.

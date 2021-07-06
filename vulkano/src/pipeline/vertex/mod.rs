@@ -64,7 +64,7 @@
 //! ```
 
 pub use self::buffers::BufferlessVertices;
-pub use self::buffers::BuffersDefinition;
+pub use self::buffers::VertexInput;
 pub use self::definition::AttributeInfo;
 pub use self::definition::IncompatibleVertexDefinitionError;
 pub use self::definition::VertexInputAttribute;

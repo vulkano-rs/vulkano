@@ -13,7 +13,7 @@ use crate::buffer::BufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::vertex::BuffersDefinition;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
@@ -40,7 +40,7 @@ pub struct GraphicsPipeline {
     inner: Inner,
     layout: Arc<PipelineLayout>,
     subpass: Subpass,
-    vertex_definition: BuffersDefinition,
+    vertex_definition: VertexInput,
 
     dynamic_line_width: bool,
     dynamic_viewport: bool,
@@ -74,7 +74,7 @@ impl GraphicsPipeline {
 impl GraphicsPipeline {
     /// Returns the vertex definition used in the constructor.
     #[inline]
-    pub fn vertex_definition(&self) -> &BuffersDefinition {
+    pub fn vertex_definition(&self) -> &VertexInput {
         &self.vertex_definition
     }
 
@@ -388,7 +388,7 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
 
 unsafe impl<S> VertexSource<S> for GraphicsPipeline
 where
-    BuffersDefinition: VertexSource<S>,
+    VertexInput: VertexSource<S>,
 {
     #[inline]
     fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
