@@ -39,10 +39,8 @@ use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::GraphicsEntryPoint;
 use crate::pipeline::shader::GraphicsShaderType;
 use crate::pipeline::shader::SpecializationConstants;
-use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::Vertex;
-use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
@@ -59,8 +57,8 @@ use std::u32;
 
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
-pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> {
-    vertex_input: Vdef,
+pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> {
+    vertex_input: BuffersDefinition,
     vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
     input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo,
     // Note: the `input_assembly_topology` member is temporary in order to not lose information
@@ -85,25 +83,11 @@ struct TessInfo<'tcs, 'tes, Tcss, Tess> {
     tessellation_evaluation_shader: (GraphicsEntryPoint<'tes>, Tess),
 }
 
-impl
-    GraphicsPipelineBuilder<
-        'static,
-        'static,
-        'static,
-        'static,
-        'static,
-        BufferlessDefinition,
-        (),
-        (),
-        (),
-        (),
-        (),
-    >
-{
+impl GraphicsPipelineBuilder<'static, 'static, 'static, 'static, 'static, (), (), (), (), ()> {
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            vertex_input: BufferlessDefinition,
+            vertex_input: BuffersDefinition::new(),
             vertex_shader: None,
             input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
                 topology: PrimitiveTopology::TriangleList.into(),
@@ -124,10 +108,9 @@ impl
     }
 }
 
-impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
-    GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
+impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
+    GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
 where
-    Vdef: VertexDefinition,
     Vss: SpecializationConstants,
     Tcss: SpecializationConstants,
     Tess: SpecializationConstants,
@@ -138,7 +121,7 @@ where
     pub fn build(
         self,
         device: Arc<Device>,
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         self.with_auto_layout(device, &[])
     }
 
@@ -150,7 +133,7 @@ where
         self,
         device: Arc<Device>,
         dynamic_buffers: &[(usize, usize)],
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         let (descriptor_set_layout_descs, push_constant_ranges) = {
             let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
@@ -210,7 +193,7 @@ where
         mut self,
         device: Arc<Device>,
         pipeline_layout: Arc<PipelineLayout>,
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
 
         let fns = device.fns();
@@ -1214,17 +1197,17 @@ where
     // TODO: add build_with_cache method
 }
 
-impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
-    GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
+impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
+    GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
 {
     // TODO: add pipeline derivate system
 
     /// Sets the vertex input.
     #[inline]
-    pub fn vertex_input<T>(
+    pub fn vertex_input(
         self,
-        vertex_input: T,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, T, Vss, Tcss, Tess, Gss, Fss> {
+        vertex_input: BuffersDefinition,
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> {
         GraphicsPipelineBuilder {
             vertex_input,
             vertex_shader: self.vertex_shader,
@@ -1250,19 +1233,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn vertex_input_single_buffer<V: Vertex>(
         self,
-    ) -> GraphicsPipelineBuilder<
-        'vs,
-        'tcs,
-        'tes,
-        'gs,
-        'fs,
-        BuffersDefinition,
-        Vss,
-        Tcss,
-        Tess,
-        Gss,
-        Fss,
-    > {
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> {
         self.vertex_input(BuffersDefinition::new().vertex::<V>())
     }
 
@@ -1273,7 +1244,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self,
         shader: GraphicsEntryPoint<'vs2>,
         specialization_constants: Vss2,
-    ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss2, Tcss, Tess, Gss, Fss>
+    ) -> GraphicsPipelineBuilder<'vs2, 'tcs, 'tes, 'gs, 'fs, Vss2, Tcss, Tess, Gss, Fss>
     where
         Vss2: SpecializationConstants,
     {
@@ -1424,7 +1395,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         tessellation_control_shader_spec_constants: Tcss2,
         tessellation_evaluation_shader: GraphicsEntryPoint<'tes2>,
         tessellation_evaluation_shader_spec_constants: Tess2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vdef, Vss, Tcss2, Tess2, Gss, Fss>
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs2, 'tes2, 'gs, 'fs, Vss, Tcss2, Tess2, Gss, Fss>
     where
         Tcss2: SpecializationConstants,
         Tess2: SpecializationConstants,
@@ -1470,7 +1441,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self,
         shader: GraphicsEntryPoint<'gs2>,
         specialization_constants: Gss2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vdef, Vss, Tcss, Tess, Gss2, Fss>
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs2, 'fs, Vss, Tcss, Tess, Gss2, Fss>
     where
         Gss2: SpecializationConstants,
     {
@@ -1752,7 +1723,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         self,
         shader: GraphicsEntryPoint<'fs2>,
         specialization_constants: Fss2,
-    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vdef, Vss, Tcss, Tess, Gss, Fss2>
+    ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs2, Vss, Tcss, Tess, Gss, Fss2>
     where
         Fss2: SpecializationConstants,
     {
@@ -1901,10 +1872,9 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     }
 }
 
-impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> Clone
-    for GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
+impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss> Clone
+    for GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vss, Tcss, Tess, Gss, Fss>
 where
-    Vdef: Clone,
     Vss: Clone,
     Tcss: Clone,
     Tess: Clone,

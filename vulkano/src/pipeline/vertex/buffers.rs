@@ -12,7 +12,6 @@ use crate::buffer::BufferAccess;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::Vertex;
-use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexInputAttribute;
 use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexInputRate;
@@ -40,6 +39,16 @@ impl From<VertexBuffer> for VertexInputBinding {
             input_rate: val.input_rate,
         }
     }
+}
+
+/// Value to be passed as the vertex source for bufferless draw commands.
+///
+/// Note that the concrete type of the graphics pipeline using `BufferlessDefinition` must be
+/// visible to the command buffer builder for this to be usable.
+#[derive(Copy, Clone)]
+pub struct BufferlessVertices {
+    pub vertices: usize,
+    pub instances: usize,
 }
 
 impl BuffersDefinition {
@@ -87,10 +96,8 @@ impl BuffersDefinition {
         });
         self
     }
-}
 
-unsafe impl VertexDefinition for BuffersDefinition {
-    fn definition(
+    pub fn definition(
         &self,
         interface: &ShaderInterface,
     ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
@@ -177,6 +184,20 @@ where
         let result = vec![Box::new(source.0) as Box<_>, Box::new(source.1) as Box<_>];
         let (vertices, instances) = self.vertices_instances(&result);
         (result, vertices, instances)
+    }
+}
+
+unsafe impl VertexSource<BufferlessVertices> for BuffersDefinition {
+    fn decode(
+        &self,
+        n: BufferlessVertices,
+    ) -> (
+        Vec<Box<dyn BufferAccess + Sync + Send + 'static>>,
+        usize,
+        usize,
+    ) {
+        assert!(self.0.is_empty());
+        (Vec::new(), n.vertices, n.instances)
     }
 }
 

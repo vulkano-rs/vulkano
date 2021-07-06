@@ -9,40 +9,10 @@
 
 use crate::buffer::BufferAccess;
 use crate::format::Format;
-use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::VertexMemberTy;
 use crate::SafeDeref;
 use std::error;
 use std::fmt;
-use std::sync::Arc;
-
-/// Trait for types that describe the definition of the vertex input used by a graphics pipeline.
-pub unsafe trait VertexDefinition:
-    VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
-{
-    /// Builds the vertex definition to use to link this definition to a vertex shader's input
-    /// interface.
-    ///
-    /// Returns a list of vertex input binding descriptions.
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError>;
-}
-
-unsafe impl<T> VertexDefinition for T
-where
-    T: SafeDeref,
-    T::Target: VertexDefinition,
-{
-    #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
-        (**self).definition(interface)
-    }
-}
 
 /// How the vertex source should be unrolled.
 #[derive(Copy, Clone, Debug)]

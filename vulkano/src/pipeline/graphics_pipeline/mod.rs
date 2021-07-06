@@ -13,11 +13,7 @@ use crate::buffer::BufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::shader::ShaderInterface;
-use crate::pipeline::vertex::BufferlessDefinition;
-use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
-use crate::pipeline::vertex::VertexDefinition;
-use crate::pipeline::vertex::VertexInputBinding;
+use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
@@ -40,13 +36,11 @@ mod creation_error;
 ///
 /// This object contains the shaders and the various fixed states that describe how the
 /// implementation should perform the various operations needed by a draw command.
-pub struct GraphicsPipeline<VertexDefinition> {
+pub struct GraphicsPipeline {
     inner: Inner,
     layout: Arc<PipelineLayout>,
-
     subpass: Subpass,
-
-    vertex_definition: VertexDefinition,
+    vertex_definition: BuffersDefinition,
 
     dynamic_line_width: bool,
     dynamic_viewport: bool,
@@ -67,30 +61,20 @@ struct Inner {
     device: Arc<Device>,
 }
 
-impl GraphicsPipeline<()> {
+impl GraphicsPipeline {
     /// Starts the building process of a graphics pipeline. Returns a builder object that you can
     /// fill with the various parameters.
-    pub fn start<'a>() -> GraphicsPipelineBuilder<
-        'static,
-        'static,
-        'static,
-        'static,
-        'static,
-        BufferlessDefinition,
-        (),
-        (),
-        (),
-        (),
-        (),
-    > {
+    pub fn start<'a>(
+    ) -> GraphicsPipelineBuilder<'static, 'static, 'static, 'static, 'static, (), (), (), (), ()>
+    {
         GraphicsPipelineBuilder::new()
     }
 }
 
-impl<Mv> GraphicsPipeline<Mv> {
+impl GraphicsPipeline {
     /// Returns the vertex definition used in the constructor.
     #[inline]
-    pub fn vertex_definition(&self) -> &Mv {
+    pub fn vertex_definition(&self) -> &BuffersDefinition {
         &self.vertex_definition
     }
 
@@ -161,21 +145,21 @@ impl<Mv> GraphicsPipeline<Mv> {
     }
 }
 
-unsafe impl<Mv> DeviceOwned for GraphicsPipeline<Mv> {
+unsafe impl DeviceOwned for GraphicsPipeline {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         &self.inner.device
     }
 }
 
-impl<Mv> fmt::Debug for GraphicsPipeline<Mv> {
+impl fmt::Debug for GraphicsPipeline {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan graphics pipeline {:?}>", self.inner.pipeline)
     }
 }
 
-unsafe impl<Mv> VulkanObject for GraphicsPipeline<Mv> {
+unsafe impl VulkanObject for GraphicsPipeline {
     type Object = ash::vk::Pipeline;
 
     #[inline]
@@ -236,10 +220,7 @@ pub unsafe trait GraphicsPipelineAbstract:
     fn has_dynamic_stencil_reference(&self) -> bool;
 }
 
-unsafe impl<Mv> GraphicsPipelineAbstract for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
+unsafe impl GraphicsPipelineAbstract for GraphicsPipeline {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
@@ -358,23 +339,16 @@ where
     }
 }
 
-impl<Mv> PartialEq for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
+impl PartialEq for GraphicsPipeline {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 }
 
-impl<Mv> Eq for GraphicsPipeline<Mv> where Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
-{}
+impl Eq for GraphicsPipeline {}
 
-impl<Mv> Hash for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
+impl Hash for GraphicsPipeline {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
@@ -412,22 +386,9 @@ unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
     }
 }
 
-unsafe impl<Mv> VertexDefinition for GraphicsPipeline<Mv>
+unsafe impl<S> VertexSource<S> for GraphicsPipeline
 where
-    Mv: VertexDefinition,
-{
-    #[inline]
-    fn definition(
-        &self,
-        interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
-        self.vertex_definition.definition(interface)
-    }
-}
-
-unsafe impl<Mv, S> VertexSource<S> for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<S>,
+    BuffersDefinition: VertexSource<S>,
 {
     #[inline]
     fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
