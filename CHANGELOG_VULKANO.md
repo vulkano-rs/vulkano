@@ -37,6 +37,7 @@
 - **Breaking** `PipelineLayoutDesc` is no longer needed and is removed. Its functionality has been moved to `DescriptorSetDesc` and `PipelineLayoutPcRange`. This also applies to `ComputeEntryPoint`, `GraphicsEntryPoint` and `EntryPointAbstract`.
 - **Breaking** `PipelineLayout` now has a `descriptor_set_layouts` method which returns a slice of all the layouts, replacing the previous `descriptor_set_layout` which only returned one at a time.
 - **Breaking** Vulkano is now relaying on features from **Rustc >= 1.53.0**.
+- **Breaking** The boolean `graphics` parameter on the `bind_descriptor_sets` method of `SyncCommandBufferBuilder`, `UnsafeCommandBufferBuilder` and `StateCacher` has been replaced with a new enum `PipelineBindPoint`.
 - Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
