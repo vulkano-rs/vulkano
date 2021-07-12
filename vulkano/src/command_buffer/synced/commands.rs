@@ -39,6 +39,7 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
@@ -2627,7 +2628,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
     #[inline]
     pub unsafe fn submit<I>(
         self,
-        graphics: bool,
+        pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         first_binding: u32,
         dynamic_offsets: I,
@@ -2641,7 +2642,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
         struct Cmd<I> {
             inner: SmallVec<[Box<dyn DescriptorSet + Send + Sync>; 12]>,
-            graphics: bool,
+            pipeline_bind_point: PipelineBindPoint,
             pipeline_layout: Arc<PipelineLayout>,
             first_binding: u32,
             dynamic_offsets: Option<I>,
@@ -2657,7 +2658,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_descriptor_sets(
-                    self.graphics,
+                    self.pipeline_bind_point,
                     &self.pipeline_layout,
                     self.first_binding,
                     self.inner.iter().map(|s| s.inner()),
@@ -2841,7 +2842,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
         self.builder.append_command(
             Cmd {
                 inner: self.inner,
-                graphics,
+                pipeline_bind_point,
                 pipeline_layout,
                 first_binding,
                 dynamic_offsets: Some(dynamic_offsets),

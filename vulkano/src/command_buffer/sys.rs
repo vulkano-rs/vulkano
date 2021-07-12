@@ -35,6 +35,7 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::PipelineBindPoint;
 use crate::query::QueriesRange;
 use crate::query::Query;
 use crate::query::QueryControlFlags;
@@ -313,7 +314,7 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn bind_descriptor_sets<'s, S, I>(
         &mut self,
-        graphics: bool,
+        pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
         first_binding: u32,
         sets: S,
@@ -336,15 +337,9 @@ impl UnsafeCommandBufferBuilder {
             first_binding + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
         );
 
-        let bind_point = if graphics {
-            ash::vk::PipelineBindPoint::GRAPHICS
-        } else {
-            ash::vk::PipelineBindPoint::COMPUTE
-        };
-
         fns.v1_0.cmd_bind_descriptor_sets(
             cmd,
-            bind_point,
+            pipeline_bind_point.into(),
             pipeline_layout.internal_object(),
             first_binding,
             num_bindings,
