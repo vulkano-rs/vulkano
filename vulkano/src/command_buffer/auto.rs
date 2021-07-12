@@ -55,6 +55,7 @@ use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::vertex::VertexSource;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
 use crate::query::QueryPool;
@@ -1084,7 +1085,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
-                false,
+                PipelineBindPoint::Compute,
                 pipeline.layout(),
                 sets,
                 dynamic_offsets,
@@ -1137,7 +1138,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
-                false,
+                PipelineBindPoint::Compute,
                 pipeline.layout(),
                 sets,
                 dynamic_offsets,
@@ -1192,7 +1193,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
-                true,
+                PipelineBindPoint::Graphics,
                 pipeline.layout(),
                 sets,
                 dynamic_offsets,
@@ -1292,7 +1293,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
-                true,
+                PipelineBindPoint::Graphics,
                 pipeline.layout(),
                 sets,
                 dynamic_offsets,
@@ -1370,7 +1371,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
-                true,
+                PipelineBindPoint::Graphics,
                 pipeline.layout(),
                 sets,
                 dynamic_offsets,
@@ -1483,7 +1484,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
-                true,
+                PipelineBindPoint::Graphics,
                 pipeline.layout(),
                 sets,
                 dynamic_offsets,
@@ -2184,7 +2185,7 @@ unsafe fn vertex_buffers(
 unsafe fn descriptor_sets<S, Do, Doi>(
     destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
-    gfx: bool,
+    pipeline_bind_point: PipelineBindPoint,
     pipeline_layout: &Arc<PipelineLayout>,
     sets: S,
     dynamic_offsets: Do,
@@ -2248,7 +2249,7 @@ where
     );
 
     let first_binding = {
-        let mut compare = state_cacher.bind_descriptor_sets(gfx);
+        let mut compare = state_cacher.bind_descriptor_sets(pipeline_bind_point);
         for set in sets.iter() {
             compare.add(set, &dynamic_offsets);
         }
@@ -2265,7 +2266,7 @@ where
         sets_binder.add(set);
     }
     sets_binder.submit(
-        gfx,
+        pipeline_bind_point,
         pipeline_layout.clone(),
         first_binding,
         dynamic_offsets.into_iter(),

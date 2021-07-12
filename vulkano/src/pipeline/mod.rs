@@ -97,3 +97,17 @@ pub mod raster;
 pub mod shader;
 pub mod vertex;
 pub mod viewport;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(i32)]
+pub enum PipelineBindPoint {
+    Compute = ash::vk::PipelineBindPoint::COMPUTE.as_raw(),
+    Graphics = ash::vk::PipelineBindPoint::GRAPHICS.as_raw(),
+}
+
+impl From<PipelineBindPoint> for ash::vk::PipelineBindPoint {
+    #[inline]
+    fn from(val: PipelineBindPoint) -> Self {
+        Self::from_raw(val as i32)
+    }
+}
