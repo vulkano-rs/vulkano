@@ -49,6 +49,7 @@
 - Vulkano-shaders now provides the image format for descriptors, if the shader requires a specific format.
 - Vulkano-shaders now uses the `spirv_headers` crate for some of its types.
 - Large allocations now use dedicated allocations which improves memory efficiency.
+- Add `Clone` interface for `LayerProperties`.
 
 # Version 0.24.0 (2021-06-20)
 
