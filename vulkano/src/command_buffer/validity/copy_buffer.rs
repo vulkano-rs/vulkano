@@ -51,10 +51,10 @@ where
 
     let copy_size = cmp::min(source.size(), destination.size());
 
-    if source.conflicts_buffer(&destination) {
+    if source.conflict_key() == destination.conflict_key() {
         return Err(CheckCopyBufferError::OverlappingRanges);
     } else {
-        debug_assert!(!destination.conflicts_buffer(&source));
+        debug_assert!(destination.conflict_key() != source.conflict_key());
     }
 
     Ok(CheckCopyBuffer { copy_size })

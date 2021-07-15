@@ -310,31 +310,30 @@ impl BuilderKey {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, commands_lock: &Commands, buf: &dyn BufferAccess) -> bool {
+    fn conflicts_buffer(&self, commands_lock: &Commands, buffer: &dyn BufferAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
             KeyTy::Buffer => self.command_ids.borrow().iter().any(|command_id| {
                 let c = &commands_lock.commands[*command_id];
-                c.buffer(self.resource_index).conflicts_buffer(buf)
+                let other = c.buffer(self.resource_index);
+                buffer.conflict_key() == other.conflict_key()
             }),
-            KeyTy::Image => self.command_ids.borrow().iter().any(|command_id| {
-                let c = &commands_lock.commands[*command_id];
-                c.image(self.resource_index).conflicts_buffer(buf)
-            }),
+            KeyTy::Image => false,
         }
     }
 
     #[inline]
-    fn conflicts_image(&self, commands_lock: &Commands, img: &dyn ImageAccess) -> bool {
+    fn conflicts_image(&self, commands_lock: &Commands, image: &dyn ImageAccess) -> bool {
         // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
         match self.resource_ty {
-            KeyTy::Buffer => self.command_ids.borrow().iter().any(|command_id| {
-                let c = &commands_lock.commands[*command_id];
-                c.buffer(self.resource_index).conflicts_image(img)
-            }),
+            KeyTy::Buffer => false,
             KeyTy::Image => self.command_ids.borrow().iter().any(|command_id| {
                 let c = &commands_lock.commands[*command_id];
-                c.image(self.resource_index).conflicts_image(img)
+                let other = c.image(self.resource_index);
+
+                image.conflict_key() == other.conflict_key()
+                    && image.current_miplevels_access() == other.current_miplevels_access()
+                    && image.current_layer_levels_access() == other.current_layer_levels_access()
             }),
         }
     }
@@ -1399,7 +1398,7 @@ impl<'a> CbKey<'a> {
     fn conflicts_buffer(
         &self,
         commands_external: Option<&Vec<Box<dyn FinalCommand + Send + Sync>>>,
-        buf: &dyn BufferAccess,
+        buffer: &dyn BufferAccess,
     ) -> bool {
         match *self {
             CbKey::Command {
@@ -1414,17 +1413,15 @@ impl<'a> CbKey<'a> {
                 match resource_ty {
                     KeyTy::Buffer => command_ids.iter().any(|command_id| {
                         let c = &commands[*command_id];
-                        c.buffer(resource_index).conflicts_buffer(buf)
+                        let other = c.buffer(resource_index);
+                        buffer.conflict_key() == other.conflict_key()
                     }),
-                    KeyTy::Image => command_ids.iter().any(|command_id| {
-                        let c = &commands[*command_id];
-                        c.image(resource_index).conflicts_buffer(buf)
-                    }),
+                    KeyTy::Image => false,
                 }
             }
 
-            CbKey::BufferRef(b) => b.conflicts_buffer(buf),
-            CbKey::ImageRef(i) => i.conflicts_buffer(buf),
+            CbKey::BufferRef(other) => buffer.conflict_key() == other.conflict_key(),
+            CbKey::ImageRef(_) => false,
         }
     }
 
@@ -1432,7 +1429,7 @@ impl<'a> CbKey<'a> {
     fn conflicts_image(
         &self,
         commands_external: Option<&Vec<Box<dyn FinalCommand + Send + Sync>>>,
-        img: &dyn ImageAccess,
+        image: &dyn ImageAccess,
     ) -> bool {
         match *self {
             CbKey::Command {
@@ -1445,19 +1442,25 @@ impl<'a> CbKey<'a> {
 
                 // TODO: put the conflicts_* methods directly on the Command trait to avoid an indirect call?
                 match resource_ty {
-                    KeyTy::Buffer => command_ids.iter().any(|command_id| {
-                        let c = &commands[*command_id];
-                        c.buffer(resource_index).conflicts_image(img)
-                    }),
+                    KeyTy::Buffer => false,
                     KeyTy::Image => command_ids.iter().any(|command_id| {
                         let c = &commands[*command_id];
-                        c.image(resource_index).conflicts_image(img)
+                        let other = c.image(resource_index);
+
+                        image.conflict_key() == other.conflict_key()
+                            && image.current_miplevels_access() == other.current_miplevels_access()
+                            && image.current_layer_levels_access()
+                                == other.current_layer_levels_access()
                     }),
                 }
             }
 
-            CbKey::BufferRef(b) => b.conflicts_image(img),
-            CbKey::ImageRef(i) => i.conflicts_image(img),
+            CbKey::BufferRef(_) => false,
+            CbKey::ImageRef(other) => {
+                image.conflict_key() == other.conflict_key()
+                    && image.current_miplevels_access() == other.current_miplevels_access()
+                    && image.current_layer_levels_access() == other.current_layer_levels_access()
+            }
         }
     }
 }

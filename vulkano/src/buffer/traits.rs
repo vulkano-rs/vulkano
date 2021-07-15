@@ -11,7 +11,6 @@ use crate::buffer::sys::{DeviceAddressUsageNotEnabledError, UnsafeBuffer};
 use crate::buffer::BufferSlice;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::image::ImageAccess;
 use crate::memory::Content;
 use crate::sync::AccessError;
 use crate::{SafeDeref, VulkanObject};
@@ -80,28 +79,6 @@ pub unsafe trait BufferAccess: DeviceOwned {
     {
         self.slice(index..(index + 1))
     }
-
-    /// Returns true if an access to `self` potentially overlaps the same memory as an access to
-    /// `other`.
-    ///
-    /// If this function returns `false`, this means that we are allowed to mutably access the
-    /// content of `self` at the same time as the content of `other` without causing a data
-    /// race.
-    ///
-    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
-    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool;
-
-    /// Returns true if an access to `self` potentially overlaps the same memory as an access to
-    /// `other`.
-    ///
-    /// If this function returns `false`, this means that we are allowed to mutably access the
-    /// content of `self` at the same time as the content of `other` without causing a data
-    /// race.
-    ///
-    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
-    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool;
 
     /// Returns a key that uniquely identifies the buffer. Two buffers or images that potentially
     /// overlap in memory must return the same key.
@@ -199,16 +176,6 @@ where
     #[inline]
     fn size(&self) -> usize {
         (**self).size()
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        (**self).conflicts_buffer(other)
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        (**self).conflicts_image(other)
     }
 
     #[inline]

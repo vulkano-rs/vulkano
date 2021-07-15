@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
 use crate::format::ClearValue;
 use crate::image::traits::ImageAccess;
 use crate::image::traits::ImageClearValue;
@@ -113,16 +112,6 @@ unsafe impl<W> ImageAccess for SwapchainImage<W> {
             sampled_image: ImageLayout::ShaderReadOnlyOptimal,
             input_attachment: ImageLayout::ShaderReadOnlyOptimal,
         })
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        false
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.my_image().image.key() == other.conflict_key() // TODO:
     }
 
     #[inline]

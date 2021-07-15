@@ -475,16 +475,6 @@ unsafe impl<A> ImageAccess for ImmutableImage<A> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        false
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.conflict_key() == other.conflict_key() // TODO:
-    }
-
-    #[inline]
     fn conflict_key(&self) -> u64 {
         self.image.key()
     }
@@ -559,18 +549,6 @@ unsafe impl ImageAccess for SubImage {
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         None
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        false
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.conflict_key() == other.conflict_key()
-            && self.current_miplevels_access() == other.current_miplevels_access()
-            && self.current_layer_levels_access() == other.current_layer_levels_access()
     }
 
     fn current_miplevels_access(&self) -> std::ops::Range<u32> {
@@ -649,16 +627,6 @@ unsafe impl<A> ImageAccess for ImmutableImageInitialization<A> {
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         None
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        false
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]
