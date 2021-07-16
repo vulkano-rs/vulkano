@@ -7,9 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::FinalCommand;
+use super::ResourceFinalState;
+use super::ResourceKey;
+use super::ResourceLocation;
+use super::SyncCommandBuffer;
 use crate::buffer::BufferAccess;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
-use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
 use crate::command_buffer::CommandBufferExecError;
@@ -18,14 +22,10 @@ use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
 use crate::render_pass::FramebufferAbstract;
-use crate::sync::AccessCheckError;
-use crate::sync::AccessError;
 use crate::sync::AccessFlags;
-use crate::sync::GpuFuture;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::OomError;
@@ -34,8 +34,6 @@ use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
-use std::hash::Hash;
-use std::ops::Range;
 use std::sync::Arc;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
@@ -101,193 +99,6 @@ pub struct SyncCommandBufferBuilder {
 
     // True if we're a secondary command buffer.
     is_secondary: bool,
-}
-
-impl fmt::Debug for SyncCommandBufferBuilder {
-    #[inline]
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        fmt::Debug::fmt(&self.inner, f)
-    }
-}
-
-/// Error returned if the builder detects that there's an unsolvable conflict.
-#[derive(Debug, Clone)]
-pub enum SyncCommandBufferBuilderError {
-    /// Unsolvable conflict.
-    Conflict {
-        command1_name: &'static str,
-        command1_param: Cow<'static, str>,
-        command1_offset: usize,
-
-        command2_name: &'static str,
-        command2_param: Cow<'static, str>,
-        command2_offset: usize,
-    },
-
-    ExecError(CommandBufferExecError),
-}
-
-impl error::Error for SyncCommandBufferBuilderError {}
-
-impl fmt::Display for SyncCommandBufferBuilderError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            SyncCommandBufferBuilderError::Conflict { .. } => write!(fmt, "unsolvable conflict"),
-            SyncCommandBufferBuilderError::ExecError(err) => err.fmt(fmt),
-        }
-    }
-}
-
-impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
-    #[inline]
-    fn from(val: CommandBufferExecError) -> Self {
-        SyncCommandBufferBuilderError::ExecError(val)
-    }
-}
-
-// List of commands stored inside a `SyncCommandBufferBuilder`.
-
-// Trait for single commands within the list of commands.
-pub trait Command {
-    // Returns a user-friendly name for the command, for error reporting purposes.
-    fn name(&self) -> &'static str;
-
-    // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
-    // object will likely lead to a panic.
-    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder);
-
-    // Turns this command into a `FinalCommand`.
-    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync>;
-
-    // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, _num: usize) -> &dyn BufferAccess {
-        panic!()
-    }
-
-    // Gives access to the `num`th image used by the command.
-    fn image(&self, _num: usize) -> &dyn ImageAccess {
-        panic!()
-    }
-
-    // Returns a user-friendly name for the `num`th buffer used by the command, for error
-    // reporting purposes.
-    fn buffer_name(&self, _num: usize) -> Cow<'static, str> {
-        panic!()
-    }
-
-    // Returns a user-friendly name for the `num`th image used by the command, for error
-    // reporting purposes.
-    fn image_name(&self, _num: usize) -> Cow<'static, str> {
-        panic!()
-    }
-}
-
-struct CmdPipelineBarrier;
-
-impl Command for CmdPipelineBarrier {
-    fn name(&self) -> &'static str {
-        "vkCmdPipelineBarrier"
-    }
-
-    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {}
-
-    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-        struct Fin;
-        impl FinalCommand for Fin {
-            fn name(&self) -> &'static str {
-                "vkCmdPipelineBarrier"
-            }
-        }
-        Box::new(Fin)
-    }
-}
-
-/// Type of resource whose state is to be tracked.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum KeyTy {
-    Buffer,
-    Image,
-}
-
-// Identifies a resource within the list of commands.
-#[derive(Clone, Copy, Debug)]
-struct ResourceLocation {
-    // Index of the command that holds the resource.
-    command_id: usize,
-    // Index of the resource within the command.
-    resource_index: usize,
-}
-
-// Key that identifies a resource. Implements `PartialEq`, `Eq` and `Hash` so that two resources
-// that conflict with each other compare equal.
-#[derive(Debug, PartialEq, Eq, Hash)]
-enum ResourceKey {
-    Buffer((u64, usize)),
-    Image(u64, Range<u32>, Range<u32>),
-}
-
-impl From<&dyn BufferAccess> for ResourceKey {
-    #[inline]
-    fn from(buffer: &dyn BufferAccess) -> Self {
-        Self::Buffer(buffer.conflict_key())
-    }
-}
-
-impl From<&dyn ImageAccess> for ResourceKey {
-    #[inline]
-    fn from(image: &dyn ImageAccess) -> Self {
-        Self::Image(
-            image.conflict_key(),
-            image.current_miplevels_access(),
-            image.current_layer_levels_access(),
-        )
-    }
-}
-
-// State of a resource during the building of the command buffer.
-#[derive(Debug, Clone)]
-struct ResourceState {
-    // Indices of the commands that contain the resource.
-    command_ids: Vec<usize>,
-
-    // Index of the resource within the first command in `command_ids`.
-    resource_index: usize,
-
-    // Memory access of the command that last used this resource.
-    memory: PipelineMemoryAccess,
-
-    // True if the resource was used in exclusive mode at any point during the building of the
-    // command buffer. Also true if an image layout transition or queue transfer has been performed.
-    exclusive_any: bool,
-
-    // Layout at the first use of the resource by the command buffer. Can be `Undefined` if we
-    // don't care.
-    initial_layout: ImageLayout,
-
-    // Current layout at this stage of the building.
-    current_layout: ImageLayout,
-
-    // Extra context of how the image will be used
-    image_uninitialized_safe: ImageUninitializedSafe,
-}
-
-impl ResourceState {
-    // Turns this `ResourceState` into a `ResourceFinalState`. Called when the command buffer is
-    // being built.
-    #[inline]
-    fn finalize(self) -> ResourceFinalState {
-        ResourceFinalState {
-            command_ids: self.command_ids,
-            resource_index: self.resource_index,
-            final_stages: self.memory.stages,
-            final_access: self.memory.access,
-            exclusive: self.exclusive_any,
-            initial_layout: self.initial_layout,
-            final_layout: self.current_layout,
-            image_uninitialized_safe: self.image_uninitialized_safe,
-        }
-    }
 }
 
 impl SyncCommandBufferBuilder {
@@ -786,7 +597,19 @@ impl SyncCommandBufferBuilder {
         let final_resources_states: FnvHashMap<_, _> = {
             self.resources
                 .into_iter()
-                .map(|(resource, state)| (resource, state.finalize()))
+                .map(|(resource, state)| {
+                    let final_state = ResourceFinalState {
+                        command_ids: state.command_ids,
+                        resource_index: state.resource_index,
+                        final_stages: state.memory.stages,
+                        final_access: state.memory.access,
+                        exclusive: state.exclusive_any,
+                        initial_layout: state.initial_layout,
+                        final_layout: state.current_layout,
+                        image_uninitialized_safe: state.image_uninitialized_safe,
+                    };
+                    (resource, final_state)
+                })
                 .collect()
         };
 
@@ -808,339 +631,60 @@ unsafe impl DeviceOwned for SyncCommandBufferBuilder {
     }
 }
 
-/// Command buffer built from a `SyncCommandBufferBuilder` that provides utilities to handle
-/// synchronization.
-pub struct SyncCommandBuffer {
-    // The actual Vulkan command buffer.
-    inner: UnsafeCommandBuffer,
-
-    // List of commands used by the command buffer. Used to hold the various resources that are
-    // being used.
-    commands: Vec<Box<dyn FinalCommand + Send + Sync>>,
-
-    // Locations within commands that pipeline barriers were inserted. For debugging purposes.
-    // TODO: present only in cfg(debug_assertions)?
-    barriers: Vec<usize>,
-
-    // State of all the resources used by this command buffer.
-    resources: FnvHashMap<ResourceKey, ResourceFinalState>,
-
-    // Resources and their accesses. Used for executing secondary command buffers in a primary.
-    buffers: Vec<(ResourceLocation, PipelineMemoryAccess)>,
-    images: Vec<(
-        ResourceLocation,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-        ImageUninitializedSafe,
-    )>,
-}
-
-impl SyncCommandBuffer {
-    /// Tries to lock the resources used by the command buffer.
-    ///
-    /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
-    pub fn lock_submit(
-        &self,
-        future: &dyn GpuFuture,
-        queue: &Queue,
-    ) -> Result<(), CommandBufferExecError> {
-        // Number of resources in `self.resources` that have been successfully locked.
-        let mut locked_resources = 0;
-        // Final return value of this function.
-        let mut ret_value = Ok(());
-
-        // Try locking resources. Updates `locked_resources` and `ret_value`, and break if an error
-        // happens.
-        for (key, state) in self.resources.iter() {
-            let command = &self.commands[state.command_ids[0]];
-
-            match key {
-                ResourceKey::Buffer(..) => {
-                    let buf = command.buffer(state.resource_index);
-
-                    // Because try_gpu_lock needs to be called first,
-                    // this should never return Ok without first returning Err
-                    let prev_err = match future.check_buffer_access(&buf, state.exclusive, queue) {
-                        Ok(_) => {
-                            unsafe {
-                                buf.increase_gpu_lock();
-                            }
-                            locked_resources += 1;
-                            continue;
-                        }
-                        Err(err) => err,
-                    };
-
-                    match (buf.try_gpu_lock(state.exclusive, queue), prev_err) {
-                        (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown)
-                        | (_, AccessCheckError::Denied(err)) => {
-                            ret_value = Err(CommandBufferExecError::AccessError {
-                                error: err,
-                                command_name: command.name().into(),
-                                command_param: command.buffer_name(state.resource_index),
-                                command_offset: state.command_ids[0],
-                            });
-                            break;
-                        }
-                    };
-                }
-
-                ResourceKey::Image(..) => {
-                    let img = command.image(state.resource_index);
-
-                    let prev_err = match future.check_image_access(
-                        img,
-                        state.initial_layout,
-                        state.exclusive,
-                        queue,
-                    ) {
-                        Ok(_) => {
-                            unsafe {
-                                img.increase_gpu_lock();
-                            }
-                            locked_resources += 1;
-                            continue;
-                        }
-                        Err(err) => err,
-                    };
-
-                    match (
-                        img.try_gpu_lock(
-                            state.exclusive,
-                            state.image_uninitialized_safe.is_safe(),
-                            state.initial_layout,
-                        ),
-                        prev_err,
-                    ) {
-                        (Ok(_), _) => (),
-                        (Err(err), AccessCheckError::Unknown)
-                        | (_, AccessCheckError::Denied(err)) => {
-                            ret_value = Err(CommandBufferExecError::AccessError {
-                                error: err,
-                                command_name: command.name().into(),
-                                command_param: command.image_name(state.resource_index),
-                                command_offset: state.command_ids[0],
-                            });
-                            break;
-                        }
-                    };
-                }
-            }
-
-            locked_resources += 1;
-        }
-
-        // If we are going to return an error, we have to unlock all the resources we locked above.
-        if let Err(_) = ret_value {
-            for (key, state) in self.resources.iter().take(locked_resources) {
-                let command = &self.commands[state.command_ids[0]];
-
-                match key {
-                    ResourceKey::Buffer(..) => {
-                        let buf = command.buffer(state.resource_index);
-                        unsafe {
-                            buf.unlock();
-                        }
-                    }
-
-                    ResourceKey::Image(..) => {
-                        let command = &self.commands[state.command_ids[0]];
-                        let img = command.image(state.resource_index);
-                        let trans = if state.final_layout != state.initial_layout {
-                            Some(state.final_layout)
-                        } else {
-                            None
-                        };
-                        unsafe {
-                            img.unlock(trans);
-                        }
-                    }
-                }
-            }
-        }
-
-        // TODO: pipeline barriers if necessary?
-
-        ret_value
-    }
-
-    /// Unlocks the resources used by the command buffer.
-    ///
-    /// > **Note**: You should call this in the implementation of the `CommandBuffer` trait.
-    ///
-    /// # Safety
-    ///
-    /// The command buffer must have been successfully locked with `lock_submit()`.
-    ///
-    pub unsafe fn unlock(&self) {
-        for (key, state) in self.resources.iter() {
-            let command = &self.commands[state.command_ids[0]];
-
-            match key {
-                ResourceKey::Buffer(..) => {
-                    let buf = command.buffer(state.resource_index);
-                    buf.unlock();
-                }
-
-                ResourceKey::Image(..) => {
-                    let img = command.image(state.resource_index);
-                    let trans = if state.final_layout != state.initial_layout {
-                        Some(state.final_layout)
-                    } else {
-                        None
-                    };
-                    img.unlock(trans);
-                }
-            }
-        }
-    }
-
-    /// Checks whether this command buffer has access to a buffer.
-    ///
-    /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
+impl fmt::Debug for SyncCommandBufferBuilder {
     #[inline]
-    pub fn check_buffer_access(
-        &self,
-        buffer: &dyn BufferAccess,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        // TODO: check the queue family
-        if let Some(value) = self.resources.get(&buffer.into()) {
-            if !value.exclusive && exclusive {
-                return Err(AccessCheckError::Unknown);
-            }
-
-            return Ok(Some((value.final_stages, value.final_access)));
-        }
-
-        Err(AccessCheckError::Unknown)
-    }
-
-    /// Checks whether this command buffer has access to an image.
-    ///
-    /// > **Note**: Suitable when implementing the `CommandBuffer` trait.
-    #[inline]
-    pub fn check_image_access(
-        &self,
-        image: &dyn ImageAccess,
-        layout: ImageLayout,
-        exclusive: bool,
-        queue: &Queue,
-    ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
-        // TODO: check the queue family
-        if let Some(value) = self.resources.get(&image.into()) {
-            if layout != ImageLayout::Undefined && value.final_layout != layout {
-                return Err(AccessCheckError::Denied(
-                    AccessError::UnexpectedImageLayout {
-                        allowed: value.final_layout,
-                        requested: layout,
-                    },
-                ));
-            }
-
-            if !value.exclusive && exclusive {
-                return Err(AccessCheckError::Unknown);
-            }
-
-            return Ok(Some((value.final_stages, value.final_access)));
-        }
-
-        Err(AccessCheckError::Unknown)
-    }
-
-    #[inline]
-    pub fn num_buffers(&self) -> usize {
-        self.buffers.len()
-    }
-
-    #[inline]
-    pub fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, PipelineMemoryAccess)> {
-        self.buffers.get(index).map(|(location, memory)| {
-            let cmd = &self.commands[location.command_id];
-            (cmd.buffer(location.resource_index), *memory)
-        })
-    }
-
-    #[inline]
-    pub fn num_images(&self) -> usize {
-        self.images.len()
-    }
-
-    #[inline]
-    pub fn image(
-        &self,
-        index: usize,
-    ) -> Option<(
-        &dyn ImageAccess,
-        PipelineMemoryAccess,
-        ImageLayout,
-        ImageLayout,
-        ImageUninitializedSafe,
-    )> {
-        self.images.get(index).map(
-            |(location, memory, start_layout, end_layout, image_uninitialized_safe)| {
-                let cmd = &self.commands[location.command_id];
-                (
-                    cmd.image(location.resource_index),
-                    *memory,
-                    *start_layout,
-                    *end_layout,
-                    *image_uninitialized_safe,
-                )
-            },
-        )
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&self.inner, f)
     }
 }
 
-impl AsRef<UnsafeCommandBuffer> for SyncCommandBuffer {
-    #[inline]
-    fn as_ref(&self) -> &UnsafeCommandBuffer {
-        &self.inner
-    }
-}
-
-unsafe impl DeviceOwned for SyncCommandBuffer {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        self.inner.device()
-    }
-}
-
-// Usage of a resource in a finished command buffer.
+/// Error returned if the builder detects that there's an unsolvable conflict.
 #[derive(Debug, Clone)]
-struct ResourceFinalState {
-    // Indices of the commands that contain the resource.
-    command_ids: Vec<usize>,
+pub enum SyncCommandBufferBuilderError {
+    /// Unsolvable conflict.
+    Conflict {
+        command1_name: &'static str,
+        command1_param: Cow<'static, str>,
+        command1_offset: usize,
 
-    // Index of the resource within the first command in `command_ids`.
-    resource_index: usize,
+        command2_name: &'static str,
+        command2_param: Cow<'static, str>,
+        command2_offset: usize,
+    },
 
-    // Stages of the last command that uses the resource.
-    final_stages: PipelineStages,
-    // Access for the last command that uses the resource.
-    final_access: AccessFlags,
-
-    // True if the resource is used in exclusive mode.
-    exclusive: bool,
-
-    // Layout that an image must be in at the start of the command buffer. Can be `Undefined` if we
-    // don't care.
-    initial_layout: ImageLayout,
-
-    // Layout the image will be in at the end of the command buffer.
-    final_layout: ImageLayout, // TODO: maybe wrap in an Option to mean that the layout doesn't change? because of buffers?
-
-    image_uninitialized_safe: ImageUninitializedSafe,
+    ExecError(CommandBufferExecError),
 }
 
-/// Equivalent to `Command`, but with less methods. Typically contains less things than the
-/// `Command` it comes from.
-pub trait FinalCommand {
+impl error::Error for SyncCommandBufferBuilderError {}
+
+impl fmt::Display for SyncCommandBufferBuilderError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            SyncCommandBufferBuilderError::Conflict { .. } => write!(fmt, "unsolvable conflict"),
+            SyncCommandBufferBuilderError::ExecError(err) => err.fmt(fmt),
+        }
+    }
+}
+
+impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
+    #[inline]
+    fn from(val: CommandBufferExecError) -> Self {
+        SyncCommandBufferBuilderError::ExecError(val)
+    }
+}
+
+// Trait for single commands within the list of commands.
+pub(super) trait Command {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
+
+    // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
+    // object will likely lead to a panic.
+    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder);
+
+    // Turns this command into a `FinalCommand`.
+    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync>;
 
     // Gives access to the `num`th buffer used by the command.
     fn buffer(&self, _num: usize) -> &dyn BufferAccess {
@@ -1165,154 +709,56 @@ pub trait FinalCommand {
     }
 }
 
-impl FinalCommand for &'static str {
+struct CmdPipelineBarrier;
+
+impl Command for CmdPipelineBarrier {
     fn name(&self) -> &'static str {
-        *self
+        "vkCmdPipelineBarrier"
+    }
+
+    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {}
+
+    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+        struct Fin;
+        impl FinalCommand for Fin {
+            fn name(&self) -> &'static str {
+                "vkCmdPipelineBarrier"
+            }
+        }
+        Box::new(Fin)
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::SyncCommandBufferBuilder;
-    use super::SyncCommandBufferBuilderError;
-    use crate::buffer::BufferUsage;
-    use crate::buffer::CpuAccessibleBuffer;
-    use crate::buffer::ImmutableBuffer;
-    use crate::command_buffer::pool::CommandPool;
-    use crate::command_buffer::pool::CommandPoolBuilderAlloc;
-    use crate::command_buffer::AutoCommandBufferBuilder;
-    use crate::command_buffer::CommandBufferLevel;
-    use crate::command_buffer::CommandBufferUsage;
-    use crate::device::Device;
-    use crate::sync::GpuFuture;
-    use std::sync::Arc;
+/// Type of resource whose state is to be tracked.
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub(super) enum KeyTy {
+    Buffer,
+    Image,
+}
 
-    #[test]
-    fn basic_creation() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
-            let pool = Device::standard_command_pool(&device, queue.family());
-            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+// State of a resource during the building of the command buffer.
+#[derive(Debug, Clone)]
+struct ResourceState {
+    // Indices of the commands that contain the resource.
+    command_ids: Vec<usize>,
 
-            assert!(matches!(
-                SyncCommandBufferBuilder::new(
-                    &pool_builder_alloc.inner(),
-                    CommandBufferLevel::primary(),
-                    CommandBufferUsage::MultipleSubmit,
-                ),
-                Ok(_)
-            ));
-        }
-    }
+    // Index of the resource within the first command in `command_ids`.
+    resource_index: usize,
 
-    #[test]
-    fn basic_conflict() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+    // Memory access of the command that last used this resource.
+    memory: PipelineMemoryAccess,
 
-            let pool = Device::standard_command_pool(&device, queue.family());
-            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
-            let mut sync = SyncCommandBufferBuilder::new(
-                &pool_builder_alloc.inner(),
-                CommandBufferLevel::primary(),
-                CommandBufferUsage::MultipleSubmit,
-            )
-            .unwrap();
-            let buf =
-                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
+    // True if the resource was used in exclusive mode at any point during the building of the
+    // command buffer. Also true if an image layout transition or queue transfer has been performed.
+    exclusive_any: bool,
 
-            assert!(matches!(
-                sync.copy_buffer(buf.clone(), buf.clone(), std::iter::once((0, 0, 4))),
-                Err(SyncCommandBufferBuilderError::Conflict { .. })
-            ));
-        }
-    }
+    // Layout at the first use of the resource by the command buffer. Can be `Undefined` if we
+    // don't care.
+    initial_layout: ImageLayout,
 
-    #[test]
-    fn secondary_conflicting_writes() {
-        unsafe {
-            let (device, queue) = gfx_dev_and_queue!();
+    // Current layout at this stage of the building.
+    current_layout: ImageLayout,
 
-            // Create a tiny test buffer
-            let (buf, future) = ImmutableBuffer::from_data(
-                0u32,
-                BufferUsage::transfer_destination(),
-                queue.clone(),
-            )
-            .unwrap();
-            future
-                .then_signal_fence_and_flush()
-                .unwrap()
-                .wait(None)
-                .unwrap();
-
-            // Two secondary command buffers that both write to the buffer
-            let secondary = (0..2)
-                .map(|_| {
-                    let mut builder = AutoCommandBufferBuilder::secondary_compute(
-                        device.clone(),
-                        queue.family(),
-                        CommandBufferUsage::SimultaneousUse,
-                    )
-                    .unwrap();
-                    builder.fill_buffer(buf.clone(), 42u32).unwrap();
-                    Arc::new(builder.build().unwrap())
-                })
-                .collect::<Vec<_>>();
-
-            let pool = Device::standard_command_pool(&device, queue.family());
-            let allocs = pool.alloc(false, 2).unwrap().collect::<Vec<_>>();
-
-            {
-                let mut builder = SyncCommandBufferBuilder::new(
-                    allocs[0].inner(),
-                    CommandBufferLevel::primary(),
-                    CommandBufferUsage::SimultaneousUse,
-                )
-                .unwrap();
-
-                // Add both secondary command buffers using separate execute_commands calls.
-                secondary.iter().cloned().for_each(|secondary| {
-                    let mut ec = builder.execute_commands();
-                    ec.add(secondary);
-                    ec.submit().unwrap();
-                });
-
-                let primary = builder.build().unwrap();
-                let names = primary
-                    .commands
-                    .iter()
-                    .map(|c| c.name())
-                    .collect::<Vec<_>>();
-
-                // Ensure that the builder added a barrier between the two writes
-                assert_eq!(&names, &["vkCmdExecuteCommands", "vkCmdExecuteCommands"]);
-                assert_eq!(&primary.barriers, &[0, 1]);
-            }
-
-            {
-                let mut builder = SyncCommandBufferBuilder::new(
-                    allocs[1].inner(),
-                    CommandBufferLevel::primary(),
-                    CommandBufferUsage::SimultaneousUse,
-                )
-                .unwrap();
-
-                // Add a single execute_commands for all secondary command buffers at once
-                let mut ec = builder.execute_commands();
-                secondary.into_iter().for_each(|secondary| {
-                    ec.add(secondary);
-                });
-
-                // The two writes can't be split up by a barrier because they are part of the same
-                // command. Therefore an error.
-                // TODO: Would be nice if SyncCommandBufferBuilder would split the commands
-                // automatically in order to insert a barrier.
-                assert!(matches!(
-                    ec.submit(),
-                    Err(SyncCommandBufferBuilderError::Conflict { .. })
-                ));
-            }
-        }
-    }
+    // Extra context of how the image will be used
+    image_uninitialized_safe: ImageUninitializedSafe,
 }
