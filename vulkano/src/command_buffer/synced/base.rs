@@ -227,6 +227,24 @@ enum ResourceKey {
     Image(u64, Range<u32>, Range<u32>),
 }
 
+impl From<&dyn BufferAccess> for ResourceKey {
+    #[inline]
+    fn from(buffer: &dyn BufferAccess) -> Self {
+        Self::Buffer(buffer.conflict_key())
+    }
+}
+
+impl From<&dyn ImageAccess> for ResourceKey {
+    #[inline]
+    fn from(image: &dyn ImageAccess) -> Self {
+        Self::Image(
+            image.conflict_key(),
+            image.current_miplevels_access(),
+            image.current_layer_levels_access(),
+        )
+    }
+}
+
 // State of a resource during the building of the command buffer.
 #[derive(Debug, Clone)]
 struct ResourceState {
@@ -393,18 +411,11 @@ impl SyncCommandBufferBuilder {
                 let (resource_key, resource_index) = match resource_ty {
                     KeyTy::Buffer => {
                         let buffer = self.commands[latest_command_id].buffer(last_cmd_buffer);
-                        (ResourceKey::Buffer(buffer.conflict_key()), last_cmd_buffer)
+                        (ResourceKey::from(buffer), last_cmd_buffer)
                     }
                     KeyTy::Image => {
                         let image = self.commands[latest_command_id].image(last_cmd_image);
-                        (
-                            ResourceKey::Image(
-                                image.conflict_key(),
-                                image.current_miplevels_access(),
-                                image.current_layer_levels_access(),
-                            ),
-                            last_cmd_image,
-                        )
+                        (ResourceKey::from(image), last_cmd_image)
                     }
                 };
 
@@ -997,9 +1008,7 @@ impl SyncCommandBuffer {
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         // TODO: check the queue family
-        let key = ResourceKey::Buffer(buffer.conflict_key());
-
-        if let Some(value) = self.resources.get(&key) {
+        if let Some(value) = self.resources.get(&buffer.into()) {
             if !value.exclusive && exclusive {
                 return Err(AccessCheckError::Unknown);
             }
@@ -1022,13 +1031,7 @@ impl SyncCommandBuffer {
         queue: &Queue,
     ) -> Result<Option<(PipelineStages, AccessFlags)>, AccessCheckError> {
         // TODO: check the queue family
-        let key = ResourceKey::Image(
-            image.conflict_key(),
-            image.current_miplevels_access(),
-            image.current_layer_levels_access(),
-        );
-
-        if let Some(value) = self.resources.get(&key) {
+        if let Some(value) = self.resources.get(&image.into()) {
             if layout != ImageLayout::Undefined && value.final_layout != layout {
                 return Err(AccessCheckError::Denied(
                     AccessError::UnexpectedImageLayout {
