@@ -65,10 +65,10 @@
 //! queue with a fresh new barrier prototype.
 
 pub use self::builder::SyncCommandBufferBuilder;
+pub use self::builder::SyncCommandBufferBuilderBindDescriptorSets;
+pub use self::builder::SyncCommandBufferBuilderBindVertexBuffer;
 pub use self::builder::SyncCommandBufferBuilderError;
-pub use self::commands::SyncCommandBufferBuilderBindDescriptorSets;
-pub use self::commands::SyncCommandBufferBuilderBindVertexBuffer;
-pub use self::commands::SyncCommandBufferBuilderExecuteCommands;
+pub use self::builder::SyncCommandBufferBuilderExecuteCommands;
 use crate::buffer::BufferAccess;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
 use crate::command_buffer::CommandBufferExecError;
@@ -90,7 +90,6 @@ use std::ops::Range;
 use std::sync::Arc;
 
 mod builder;
-mod commands;
 
 /// Command buffer built from a `SyncCommandBufferBuilder` that provides utilities to handle
 /// synchronization.

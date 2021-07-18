@@ -7,6 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub use self::commands::SyncCommandBufferBuilderBindDescriptorSets;
+pub use self::commands::SyncCommandBufferBuilderBindVertexBuffer;
+pub use self::commands::SyncCommandBufferBuilderExecuteCommands;
 use super::FinalCommand;
 use super::ResourceFinalState;
 use super::ResourceKey;
@@ -35,6 +38,9 @@ use std::collections::hash_map::Entry;
 use std::error;
 use std::fmt;
 use std::sync::Arc;
+
+#[path = "commands.rs"]
+mod commands;
 
 /// Wrapper around `UnsafeCommandBufferBuilder` that handles synchronization for you.
 ///
@@ -175,7 +181,7 @@ impl SyncCommandBufferBuilder {
     //   in when the command starts, and the image layout that the image will be transitioned to
     //   during the command. When it comes to buffers, you should pass `Undefined` for both.
     #[inline]
-    pub(super) fn append_command<C>(
+    fn append_command<C>(
         &mut self,
         command: C,
         resources: &[(
@@ -498,31 +504,6 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
-    // Call this when the previous command entered a render pass.
-    #[inline]
-    pub(super) fn prev_cmd_entered_render_pass(&mut self) {
-        // TODO: see comment for the `is_poisoned` member in the struct
-        assert!(
-            !self.is_poisoned,
-            "The builder has been put in an inconsistent state by a previous error"
-        );
-
-        self.latest_render_pass_enter = Some(self.commands.len() - 1);
-    }
-
-    // Call this when the previous command left a render pass.
-    #[inline]
-    pub(super) fn prev_cmd_left_render_pass(&mut self) {
-        // TODO: see comment for the `is_poisoned` member in the struct
-        assert!(
-            !self.is_poisoned,
-            "The builder has been put in an inconsistent state by a previous error"
-        );
-
-        debug_assert!(self.latest_render_pass_enter.is_some());
-        self.latest_render_pass_enter = None;
-    }
-
     /// Builds the command buffer and turns it into a `SyncCommandBuffer`.
     #[inline]
     pub fn build(mut self) -> Result<SyncCommandBuffer, OomError> {
@@ -675,7 +656,7 @@ impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
 }
 
 // Trait for single commands within the list of commands.
-pub(super) trait Command {
+trait Command {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
 
@@ -731,7 +712,7 @@ impl Command for CmdPipelineBarrier {
 
 /// Type of resource whose state is to be tracked.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub(super) enum KeyTy {
+enum KeyTy {
     Buffer,
     Image,
 }
