@@ -77,7 +77,6 @@ use crate::sync::PipelineStages;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
 use fnv::FnvHashMap;
-use smallvec::SmallVec;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -2190,26 +2189,11 @@ unsafe fn bind_descriptor_sets(
         Some(fb) => fb,
     };
 
-    let dynamic_offsets: SmallVec<[u32; 32]> = descriptor_sets
-        .iter()
-        .map(|x| x.as_ref().1.into_iter().copied())
-        .flatten()
-        .collect();
-    let descriptor_sets: SmallVec<[_; 32]> = descriptor_sets
-        .into_iter()
-        .map(|x| x.into_tuple().0)
-        .collect();
-
     let mut sets_binder = destination.bind_descriptor_sets();
     for set in descriptor_sets.into_iter().skip(first_binding as usize) {
         sets_binder.add(set);
     }
-    sets_binder.submit(
-        pipeline_bind_point,
-        pipeline_layout.clone(),
-        first_binding,
-        dynamic_offsets.into_iter(),
-    )?;
+    sets_binder.submit(pipeline_bind_point, pipeline_layout.clone(), first_binding)?;
     Ok(())
 }
 
