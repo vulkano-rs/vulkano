@@ -85,6 +85,7 @@ use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use smallvec::SmallVec;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -105,6 +106,15 @@ pub unsafe trait DescriptorSet: DeviceOwned {
 
     /// Returns the layout of this descriptor set.
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
+
+    /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
+    fn offsets<I>(self, dynamic_offsets: I) -> DescriptorSetWithOffsets
+    where
+        Self: Sized + Send + Sync + 'static,
+        I: IntoIterator<Item = u32>,
+    {
+        DescriptorSetWithOffsets::new(self, dynamic_offsets)
+    }
 
     /// Returns the number of buffers within this descriptor set.
     fn num_buffers(&self) -> usize;
@@ -176,5 +186,49 @@ impl Hash for dyn DescriptorSet + Send + Sync {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
+    }
+}
+
+pub struct DescriptorSetWithOffsets {
+    descriptor_set: Box<dyn DescriptorSet + Send + Sync>,
+    dynamic_offsets: SmallVec<[u32; 4]>,
+}
+
+impl DescriptorSetWithOffsets {
+    #[inline]
+    pub fn new<S, O>(descriptor_set: S, dynamic_offsets: O) -> Self
+    where
+        S: DescriptorSet + Send + Sync + 'static,
+        O: IntoIterator<Item = u32>,
+    {
+        DescriptorSetWithOffsets {
+            descriptor_set: Box::new(descriptor_set),
+            dynamic_offsets: dynamic_offsets.into_iter().collect(),
+        }
+    }
+
+    #[inline]
+    pub fn as_ref(&self) -> (&dyn DescriptorSet, &[u32]) {
+        (&self.descriptor_set, &self.dynamic_offsets)
+    }
+
+    #[inline]
+    pub fn into_tuple(
+        self,
+    ) -> (
+        Box<dyn DescriptorSet + Send + Sync>,
+        impl ExactSizeIterator<Item = u32>,
+    ) {
+        (self.descriptor_set, self.dynamic_offsets.into_iter())
+    }
+}
+
+impl<S> From<S> for DescriptorSetWithOffsets
+where
+    S: DescriptorSet + Send + Sync + 'static,
+{
+    #[inline]
+    fn from(descriptor_set: S) -> Self {
+        Self::new(descriptor_set, std::iter::empty())
     }
 }

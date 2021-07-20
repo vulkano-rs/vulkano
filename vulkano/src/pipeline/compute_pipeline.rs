@@ -507,8 +507,7 @@ mod tests {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-        cbb.dispatch([1, 1, 1], pipeline.clone(), set, (), vec![])
-            .unwrap();
+        cbb.dispatch([1, 1, 1], pipeline.clone(), set, ()).unwrap();
         let cb = cbb.build().unwrap();
 
         let future = now(device.clone())

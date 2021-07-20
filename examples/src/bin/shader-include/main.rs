@@ -115,7 +115,7 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), (), vec![])
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
         .unwrap();
     let command_buffer = builder.build().unwrap();
     let future = sync::now(device.clone())

@@ -11,17 +11,14 @@ use std::error;
 use std::fmt;
 
 use crate::descriptor_set::layout::DescriptorDescSupersetError;
-use crate::descriptor_set::DescriptorSetsCollection;
+use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::pipeline::layout::PipelineLayout;
 
 /// Checks whether descriptor sets are compatible with the pipeline.
-pub fn check_descriptor_sets_validity<D>(
+pub fn check_descriptor_sets_validity(
     pipeline_layout: &PipelineLayout,
-    descriptor_sets: &D,
-) -> Result<(), CheckDescriptorSetsValidityError>
-where
-    D: ?Sized + DescriptorSetsCollection,
-{
+    descriptor_sets: &[DescriptorSetWithOffsets],
+) -> Result<(), CheckDescriptorSetsValidityError> {
     // What's important is not that the pipeline layout and the descriptor sets *match*. Instead
     // what's important is that the descriptor sets are a superset of the pipeline layout. It's not
     // a problem if the descriptor sets provide more elements than expected.
@@ -30,7 +27,9 @@ where
         for (binding_num, pipeline_desc) in
             (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| (i, d)))
         {
-            let set_desc = descriptor_sets.descriptor(set_num, binding_num);
+            let set_desc = descriptor_sets
+                .get(set_num)
+                .and_then(|so| so.as_ref().0.layout().descriptor(binding_num));
 
             let set_desc = match set_desc {
                 Some(s) => s,

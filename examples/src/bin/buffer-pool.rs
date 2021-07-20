@@ -291,7 +291,7 @@ fn main() {
                     )
                     .unwrap()
                     // Draw our buffer
-                    .draw(pipeline.clone(), &dynamic_state, buffer, (), (), vec![])
+                    .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
