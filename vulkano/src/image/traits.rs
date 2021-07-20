@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
 use crate::format::ClearValue;
 use crate::format::Format;
 use crate::format::FormatTy;
@@ -155,26 +154,6 @@ pub unsafe trait ImageAccess {
     /// This must return `Some` if the image is to be used to create an image view.
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts>;
 
-    /// Returns true if an access to `self` potentially overlaps the same memory as an
-    /// access to `other`.
-    ///
-    /// If this function returns `false`, this means that we are allowed to access the content
-    /// of `self` at the same time as the content of `other` without causing a data race.
-    ///
-    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
-    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool;
-
-    /// Returns true if an access to `self` potentially overlaps the same memory as an
-    /// access to `other`.
-    ///
-    /// If this function returns `false`, this means that we are allowed to access the content
-    /// of `self` at the same time as the content of `other` without causing a data race.
-    ///
-    /// Note that the function must be transitive. In other words if `conflicts(a, b)` is true and
-    /// `conflicts(b, c)` is true, then `conflicts(a, c)` must be true as well.
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool;
-
     /// Returns a key that uniquely identifies the memory content of the image.
     /// Two ranges that potentially overlap in memory must return the same key.
     ///
@@ -294,16 +273,6 @@ where
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        (**self).conflicts_buffer(other)
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        (**self).conflicts_image(other)
-    }
-
-    #[inline]
     fn conflict_key(&self) -> u64 {
         (**self).conflict_key()
     }
@@ -397,16 +366,6 @@ where
     #[inline]
     fn descriptor_layouts(&self) -> Option<ImageDescriptorLayouts> {
         self.image.descriptor_layouts()
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        self.image.conflicts_buffer(other)
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.image.conflicts_image(other)
     }
 
     #[inline]

@@ -7,6 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::traits::BufferAccess;
+use crate::buffer::traits::BufferInner;
+use crate::buffer::traits::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
+use crate::sync::AccessError;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
@@ -14,15 +21,6 @@ use std::mem;
 use std::mem::MaybeUninit;
 use std::ops::Range;
 use std::sync::Arc;
-
-use crate::buffer::traits::BufferAccess;
-use crate::buffer::traits::BufferInner;
-use crate::buffer::traits::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::device::Queue;
-use crate::image::ImageAccess;
-use crate::sync::AccessError;
 
 /// A subpart of a buffer.
 ///
@@ -230,16 +228,6 @@ where
     #[inline]
     fn size(&self) -> usize {
         self.size
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        self.resource.conflicts_buffer(other)
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.resource.conflicts_image(other)
     }
 
     #[inline]

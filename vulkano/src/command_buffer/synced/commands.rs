@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::Command;
+use super::FinalCommand;
 use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::synced::base::Command;
-use crate::command_buffer::synced::base::FinalCommand;
-use crate::command_buffer::synced::base::KeyTy;
-use crate::command_buffer::synced::base::SyncCommandBufferBuilder;
-use crate::command_buffer::synced::base::SyncCommandBufferBuilderError;
+use crate::command_buffer::synced::builder::KeyTy;
+use crate::command_buffer::synced::builder::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::builder::SyncCommandBufferBuilderError;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
@@ -220,7 +220,7 @@ impl SyncCommandBufferBuilder {
             &resources,
         )?;
 
-        self.prev_cmd_entered_render_pass();
+        self.latest_render_pass_enter = Some(self.commands.len() - 1);
         Ok(())
     }
 
@@ -1911,7 +1911,8 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd, &[]).unwrap();
-        self.prev_cmd_left_render_pass();
+        debug_assert!(self.latest_render_pass_enter.is_some());
+        self.latest_render_pass_enter = None;
     }
 
     /// Starts the process of executing secondary command buffers. Returns an intermediate struct
