@@ -37,7 +37,6 @@ use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
 use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy};
 use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::physical::QueueFamily;
@@ -2178,6 +2177,19 @@ unsafe fn bind_descriptor_sets(
     pipeline_layout: &Arc<PipelineLayout>,
     descriptor_sets: Vec<DescriptorSetWithOffsets>,
 ) -> Result<(), SyncCommandBufferBuilderError> {
+    let first_binding = {
+        let mut compare = state_cacher.bind_descriptor_sets(pipeline_bind_point);
+        for descriptor_set in descriptor_sets.iter() {
+            compare.add(descriptor_set);
+        }
+        compare.compare()
+    };
+
+    let first_binding = match first_binding {
+        None => return Ok(()),
+        Some(fb) => fb,
+    };
+
     let dynamic_offsets: SmallVec<[u32; 32]> = descriptor_sets
         .iter()
         .map(|x| x.as_ref().1.into_iter().copied())
@@ -2187,69 +2199,6 @@ unsafe fn bind_descriptor_sets(
         .into_iter()
         .map(|x| x.into_tuple().0)
         .collect();
-
-    // Ensure that the number of dynamic_offsets is correct and that each
-    // dynamic offset is a multiple of the minimum offset alignment specified
-    // by the physical device.
-    let properties = pipeline_layout.device().physical_device().properties();
-    let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment.unwrap() as u32;
-    let min_storage_off_align = properties.min_storage_buffer_offset_alignment.unwrap() as u32;
-    let mut dynamic_offset_index = 0;
-    for set in &descriptor_sets {
-        for desc_index in 0..set.layout().num_bindings() {
-            let desc = set.layout().descriptor(desc_index).unwrap();
-            if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(true),
-                storage,
-            }) = desc.ty
-            {
-                // Don't check alignment if there are not enough offsets anyway
-                if dynamic_offsets.len() > dynamic_offset_index {
-                    if storage {
-                        assert!(
-                            dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
-                            "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
-                            dynamic_offsets[dynamic_offset_index],
-                            min_storage_off_align
-                        );
-                    } else {
-                        assert!(
-                            dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
-                            "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
-                            dynamic_offsets[dynamic_offset_index],
-                            min_uniform_off_align
-                        );
-                    }
-                }
-                dynamic_offset_index += 1;
-            }
-        }
-    }
-    assert!(
-        !(dynamic_offsets.len() < dynamic_offset_index),
-        "Too few dynamic offsets: got {}, expected {}",
-        dynamic_offsets.len(),
-        dynamic_offset_index
-    );
-    assert!(
-        !(dynamic_offsets.len() > dynamic_offset_index),
-        "Too many dynamic offsets: got {}, expected {}",
-        dynamic_offsets.len(),
-        dynamic_offset_index
-    );
-
-    let first_binding = {
-        let mut compare = state_cacher.bind_descriptor_sets(pipeline_bind_point);
-        for set in descriptor_sets.iter() {
-            compare.add(set, &dynamic_offsets);
-        }
-        compare.compare()
-    };
-
-    let first_binding = match first_binding {
-        None => return Ok(()),
-        Some(fb) => fb,
-    };
 
     let mut sets_binder = destination.bind_descriptor_sets();
     for set in descriptor_sets.into_iter().skip(first_binding as usize) {

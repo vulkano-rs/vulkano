@@ -9,7 +9,7 @@
 
 use crate::buffer::BufferAccess;
 use crate::command_buffer::DynamicState;
-use crate::descriptor_set::DescriptorSet;
+use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
@@ -253,21 +253,20 @@ pub struct StateCacherDescriptorSets<'s> {
 impl<'s> StateCacherDescriptorSets<'s> {
     /// Adds a descriptor set to the list to compare.
     #[inline]
-    pub fn add<S>(&mut self, set: &S, dynamic_offsets: &SmallVec<[u32; 32]>)
-    where
-        S: ?Sized + DescriptorSet,
-    {
-        let raw = set.inner().internal_object();
+    pub fn add(&mut self, descriptor_set: &DescriptorSetWithOffsets) {
+        let (descriptor_set, dynamic_offsets) = descriptor_set.as_ref();
+        let raw = descriptor_set.inner().internal_object();
+        let dynamic_offsets = dynamic_offsets.iter().copied().collect();
 
-        if self.offset < self.state.len() {
-            if (&self.state[self.offset].0, &self.state[self.offset].1) == (&raw, dynamic_offsets) {
+        if let Some(state) = self.state.get_mut(self.offset) {
+            if (&state.0, &state.1) == (&raw, &dynamic_offsets) {
                 self.offset += 1;
                 return;
             }
 
-            self.state[self.offset] = (raw, dynamic_offsets.clone());
+            *state = (raw, dynamic_offsets);
         } else {
-            self.state.push((raw, dynamic_offsets.clone()));
+            self.state.push((raw, dynamic_offsets));
         }
 
         if self.found_diff.is_none() {
