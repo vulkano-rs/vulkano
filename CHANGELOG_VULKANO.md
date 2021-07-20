@@ -80,6 +80,7 @@
   - The `api_version` method remains, but there is now a semantic difference between it and the version reported by `properties`: The raw property gives the maximum supported version that the driver itself reports, while the method on `PhysicalDevice` returns the version a logical device would support if it were created from this physical device (that is, restricted by the instance's `max_api_version`).
 - **Breaking** `ImageAccess` trait method `try_gpu_lock()` now has an additional argument to allow locking the image in an uninitialized state.`
 - **Breaking** The `conflicts_buffer` and `conflicts_image` methods on the `BufferAccess` and `ImageAccess` traits are removed.
+- **Breaking** Draw and dispatch calls on `AutoCommandBufferBuilder` no longer have a parameter for dynamic offsets. Instead, they are provided as part of the descriptor sets parameter. They are added to each descriptor set individually using the new `offsets` method on the `DescriptorSet` trait. `SyncCommandBufferBuilder` and `StateCacher` likewise take dynamic offsets as part of the descriptor set.
 - Improve `ImageLayout` checks to prevent `AccessError::ImageNotInitialized` from occurring where the image is safe to use uninitialized.
 - Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan 1.1.
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
