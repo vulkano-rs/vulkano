@@ -129,13 +129,7 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch(
-            [1024, 1, 1],
-            pipeline.clone(),
-            set.clone(),
-            push_constants,
-            vec![],
-        )
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), push_constants)
         .unwrap();
     let command_buffer = builder.build().unwrap();
 

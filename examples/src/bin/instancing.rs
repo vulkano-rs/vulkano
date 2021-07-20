@@ -340,7 +340,6 @@ fn main() {
                         (triangle_vertex_buffer.clone(), instance_data_buffer.clone()),
                         (),
                         (),
-                        vec![],
                     )
                     .unwrap()
                     .end_render_pass()

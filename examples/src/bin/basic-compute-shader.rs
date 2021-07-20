@@ -166,7 +166,7 @@ fn main() {
         // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
         // cloneable anyway). In this example we would avoid cloning them since this is the last
         // time we use them, but in a real code you would probably need to clone them.
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), (), vec![])
+        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
         .unwrap();
     // Finish building the command buffer by calling `build`.
     let command_buffer = builder.build().unwrap();

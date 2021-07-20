@@ -19,7 +19,7 @@ use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
 use vulkano::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
-use vulkano::descriptor_set::PersistentDescriptorSet;
+use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
@@ -222,25 +222,22 @@ fn main() {
         .dispatch(
             [12, 1, 1],
             pipeline.clone(),
-            set.clone(),
+            set.clone().offsets([0 * align as u32]),
             (),
-            vec![0 * align as u32],
         )
         .unwrap()
         .dispatch(
             [12, 1, 1],
             pipeline.clone(),
-            set.clone(),
+            set.clone().offsets([1 * align as u32]),
             (),
-            vec![1 * align as u32],
         )
         .unwrap()
         .dispatch(
             [12, 1, 1],
             pipeline.clone(),
-            set.clone(),
+            set.clone().offsets([2 * align as u32]),
             (),
-            vec![2 * align as u32],
         )
         .unwrap();
     let command_buffer = builder.build().unwrap();

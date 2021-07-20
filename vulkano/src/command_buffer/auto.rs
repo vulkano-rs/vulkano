@@ -37,7 +37,7 @@ use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::StateCacher;
 use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy};
+use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
@@ -77,7 +77,6 @@ use crate::sync::PipelineStages;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
 use fnv::FnvHashMap;
-use smallvec::SmallVec;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -1051,28 +1050,27 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform a single compute operation using a compute pipeline.
     #[inline]
-    pub fn dispatch<Cp, S, Pc, Do, Doi>(
+    pub fn dispatch<Cp, S, Pc>(
         &mut self,
         group_counts: [u32; 3],
         pipeline: Cp,
-        sets: S,
-        constants: Pc,
-        dynamic_offsets: Do,
+        descriptor_sets: S,
+        push_constants: Pc,
     ) -> Result<&mut Self, DispatchError>
     where
         Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
-        Do: IntoIterator<Item = u32, IntoIter = Doi>,
-        Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
+        let descriptor_sets = descriptor_sets.into_vec();
+
         unsafe {
             if !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
             }
 
             self.ensure_outside_render_pass()?;
-            check_push_constants_validity(pipeline.layout(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &push_constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
             check_dispatch(pipeline.device(), group_counts)?;
 
             if let StateCacherOutcome::NeedChange =
@@ -1081,14 +1079,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.inner.bind_pipeline_compute(pipeline.clone());
             }
 
-            push_constants(&mut self.inner, pipeline.layout(), constants);
-            descriptor_sets(
+            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Compute,
                 pipeline.layout(),
-                sets,
-                dynamic_offsets,
+                descriptor_sets,
             )?;
 
             self.inner.dispatch(group_counts);
@@ -1099,13 +1096,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
     /// each `vulkano::command_buffer::DispatchIndirectCommand` struct in `indirect_buffer`.
     #[inline]
-    pub fn dispatch_indirect<Inb, Cp, S, Pc, Do, Doi>(
+    pub fn dispatch_indirect<Inb, Cp, S, Pc>(
         &mut self,
         indirect_buffer: Inb,
         pipeline: Cp,
-        sets: S,
-        constants: Pc,
-        dynamic_offsets: Do,
+        descriptor_sets: S,
+        push_constants: Pc,
     ) -> Result<&mut Self, DispatchIndirectError>
     where
         Inb: BufferAccess
@@ -1115,9 +1111,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + 'static,
         Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
-        Do: IntoIterator<Item = u32, IntoIter = Doi>,
-        Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
+        let descriptor_sets = descriptor_sets.into_vec();
+
         unsafe {
             if !self.queue_family().supports_compute() {
                 return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
@@ -1125,8 +1121,8 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             self.ensure_outside_render_pass()?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_push_constants_validity(pipeline.layout(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
+            check_push_constants_validity(pipeline.layout(), &push_constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
@@ -1134,14 +1130,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 self.inner.bind_pipeline_compute(pipeline.clone());
             }
 
-            push_constants(&mut self.inner, pipeline.layout(), constants);
-            descriptor_sets(
+            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Compute,
                 pipeline.layout(),
-                sets,
-                dynamic_offsets,
+                descriptor_sets,
             )?;
 
             self.inner.dispatch_indirect(indirect_buffer)?;
@@ -1156,29 +1151,28 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for the draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc, Do, Doi>(
+    pub fn draw<V, Gp, S, Pc>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
-        vertex_buffer: V,
-        sets: S,
-        constants: Pc,
-        dynamic_offsets: Do,
+        vertex_buffers: V,
+        descriptor_sets: S,
+        push_constants: Pc,
     ) -> Result<&mut Self, DrawError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
-        Do: IntoIterator<Item = u32, IntoIter = Doi>,
-        Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
+        let descriptor_sets = descriptor_sets.into_vec();
+
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
+            check_push_constants_validity(pipeline.layout(), &push_constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1188,17 +1182,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.layout(), constants);
+            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
             set_state(&mut self.inner, &dynamic);
-            descriptor_sets(
+            bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
                 pipeline.layout(),
-                sets,
-                dynamic_offsets,
+                descriptor_sets,
             )?;
-            vertex_buffers(
+            bind_vertex_buffers(
                 &mut self.inner,
                 &mut self.state_cacher,
                 vb_infos.vertex_buffers,
@@ -1231,15 +1224,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for every draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Inb, Do, Doi>(
+    pub fn draw_indirect<V, Gp, S, Pc, Inb>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
-        vertex_buffer: V,
+        vertex_buffers: V,
         indirect_buffer: Inb,
-        sets: S,
-        constants: Pc,
-        dynamic_offsets: Do,
+        descriptor_sets: S,
+        push_constants: Pc,
     ) -> Result<&mut Self, DrawIndirectError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1249,18 +1241,18 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Send
             + Sync
             + 'static,
-        Do: IntoIterator<Item = u32, IntoIter = Doi>,
-        Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
+        let descriptor_sets = descriptor_sets.into_vec();
+
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
+            check_push_constants_validity(pipeline.layout(), &push_constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
 
             let requested = indirect_buffer.len() as u32;
             let limit = self
@@ -1288,17 +1280,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.layout(), constants);
+            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
             set_state(&mut self.inner, &dynamic);
-            descriptor_sets(
+            bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
                 pipeline.layout(),
-                sets,
-                dynamic_offsets,
+                descriptor_sets,
             )?;
-            vertex_buffers(
+            bind_vertex_buffers(
                 &mut self.inner,
                 &mut self.state_cacher,
                 vb_infos.vertex_buffers,
@@ -1324,33 +1315,32 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for the draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I, Do, Doi>(
+    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
-        vertex_buffer: V,
+        vertex_buffers: V,
         index_buffer: Ib,
-        sets: S,
-        constants: Pc,
-        dynamic_offsets: Do,
+        descriptor_sets: S,
+        push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
-        Do: IntoIterator<Item = u32, IntoIter = Doi>,
-        Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
+        let descriptor_sets = descriptor_sets.into_vec();
+
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
+            check_push_constants_validity(pipeline.layout(), &push_constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1366,17 +1356,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.layout(), constants);
+            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
             set_state(&mut self.inner, &dynamic);
-            descriptor_sets(
+            bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
                 pipeline.layout(),
-                sets,
-                dynamic_offsets,
+                descriptor_sets,
             )?;
-            vertex_buffers(
+            bind_vertex_buffers(
                 &mut self.inner,
                 &mut self.state_cacher,
                 vb_infos.vertex_buffers,
@@ -1412,16 +1401,15 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for every draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I, Do, Doi>(
+    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
-        vertex_buffer: V,
+        vertex_buffers: V,
         index_buffer: Ib,
         indirect_buffer: Inb,
-        sets: S,
-        constants: Pc,
-        dynamic_offsets: Do,
+        descriptor_sets: S,
+        push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
         Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
@@ -1433,9 +1421,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Sync
             + 'static,
         I: Index + 'static,
-        Do: IntoIterator<Item = u32, IntoIter = Doi>,
-        Doi: Iterator<Item = u32> + Send + Sync + 'static,
     {
+        let descriptor_sets = descriptor_sets.into_vec();
+
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
@@ -1443,9 +1431,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffer)?;
+            check_push_constants_validity(pipeline.layout(), &push_constants)?;
+            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
+            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
 
             let requested = indirect_buffer.len() as u32;
             let limit = self
@@ -1479,17 +1467,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            push_constants(&mut self.inner, pipeline.layout(), constants);
+            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
             set_state(&mut self.inner, &dynamic);
-            descriptor_sets(
+            bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
                 pipeline.layout(),
-                sets,
-                dynamic_offsets,
+                descriptor_sets,
             )?;
-            vertex_buffers(
+            bind_vertex_buffers(
                 &mut self.inner,
                 &mut self.state_cacher,
                 vb_infos.vertex_buffers,
@@ -2097,7 +2084,7 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
 }
 
 // Shortcut function to set the push constants.
-unsafe fn push_constants<Pc>(
+unsafe fn set_push_constants<Pc>(
     destination: &mut SyncCommandBufferBuilder,
     pipeline_layout: &Arc<PipelineLayout>,
     push_constants: Pc,
@@ -2151,7 +2138,7 @@ unsafe fn set_state(destination: &mut SyncCommandBufferBuilder, dynamic: &Dynami
 }
 
 // Shortcut function to bind vertex buffers.
-unsafe fn vertex_buffers(
+unsafe fn bind_vertex_buffers(
     destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
     vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>,
@@ -2182,76 +2169,17 @@ unsafe fn vertex_buffers(
     Ok(())
 }
 
-unsafe fn descriptor_sets<S, Do, Doi>(
+unsafe fn bind_descriptor_sets(
     destination: &mut SyncCommandBufferBuilder,
     state_cacher: &mut StateCacher,
     pipeline_bind_point: PipelineBindPoint,
     pipeline_layout: &Arc<PipelineLayout>,
-    sets: S,
-    dynamic_offsets: Do,
-) -> Result<(), SyncCommandBufferBuilderError>
-where
-    S: DescriptorSetsCollection,
-    Do: IntoIterator<Item = u32, IntoIter = Doi>,
-    Doi: Iterator<Item = u32> + Send + Sync + 'static,
-{
-    let sets = sets.into_vec();
-    let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.into_iter().collect();
-
-    // Ensure that the number of dynamic_offsets is correct and that each
-    // dynamic offset is a multiple of the minimum offset alignment specified
-    // by the physical device.
-    let properties = pipeline_layout.device().physical_device().properties();
-    let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment.unwrap() as u32;
-    let min_storage_off_align = properties.min_storage_buffer_offset_alignment.unwrap() as u32;
-    let mut dynamic_offset_index = 0;
-    for set in &sets {
-        for desc_index in 0..set.layout().num_bindings() {
-            let desc = set.layout().descriptor(desc_index).unwrap();
-            if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(true),
-                storage,
-            }) = desc.ty
-            {
-                // Don't check alignment if there are not enough offsets anyway
-                if dynamic_offsets.len() > dynamic_offset_index {
-                    if storage {
-                        assert!(
-                            dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
-                            "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
-                            dynamic_offsets[dynamic_offset_index],
-                            min_storage_off_align
-                        );
-                    } else {
-                        assert!(
-                            dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
-                            "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
-                            dynamic_offsets[dynamic_offset_index],
-                            min_uniform_off_align
-                        );
-                    }
-                }
-                dynamic_offset_index += 1;
-            }
-        }
-    }
-    assert!(
-        !(dynamic_offsets.len() < dynamic_offset_index),
-        "Too few dynamic offsets: got {}, expected {}",
-        dynamic_offsets.len(),
-        dynamic_offset_index
-    );
-    assert!(
-        !(dynamic_offsets.len() > dynamic_offset_index),
-        "Too many dynamic offsets: got {}, expected {}",
-        dynamic_offsets.len(),
-        dynamic_offset_index
-    );
-
+    descriptor_sets: Vec<DescriptorSetWithOffsets>,
+) -> Result<(), SyncCommandBufferBuilderError> {
     let first_binding = {
         let mut compare = state_cacher.bind_descriptor_sets(pipeline_bind_point);
-        for set in sets.iter() {
-            compare.add(set, &dynamic_offsets);
+        for descriptor_set in descriptor_sets.iter() {
+            compare.add(descriptor_set);
         }
         compare.compare()
     };
@@ -2262,15 +2190,10 @@ where
     };
 
     let mut sets_binder = destination.bind_descriptor_sets();
-    for set in sets.into_iter().skip(first_binding as usize) {
+    for set in descriptor_sets.into_iter().skip(first_binding as usize) {
         sets_binder.add(set);
     }
-    sets_binder.submit(
-        pipeline_bind_point,
-        pipeline_layout.clone(),
-        first_binding,
-        dynamic_offsets.into_iter(),
-    )?;
+    sets_binder.submit(pipeline_bind_point, pipeline_layout.clone(), first_binding)?;
     Ok(())
 }
 
