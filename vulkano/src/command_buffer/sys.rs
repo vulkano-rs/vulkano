@@ -321,7 +321,7 @@ impl UnsafeCommandBufferBuilder {
         dynamic_offsets: I,
     ) where
         S: Iterator<Item = &'s UnsafeDescriptorSet>,
-        I: Iterator<Item = u32>,
+        I: IntoIterator<Item = u32>,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -330,7 +330,7 @@ impl UnsafeCommandBufferBuilder {
         if sets.is_empty() {
             return;
         }
-        let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.collect();
+        let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.into_iter().collect();
 
         let num_bindings = sets.len() as u32;
         debug_assert!(

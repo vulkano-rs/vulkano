@@ -501,7 +501,15 @@ mod tests {
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferLevel;
     use crate::command_buffer::CommandBufferUsage;
+    use crate::descriptor_set::layout::DescriptorDesc;
+    use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::PersistentDescriptorSet;
     use crate::device::Device;
+    use crate::pipeline::layout::PipelineLayout;
+    use crate::pipeline::shader::ShaderStages;
+    use crate::pipeline::PipelineBindPoint;
+    use crate::sampler::Sampler;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
 
@@ -631,6 +639,102 @@ mod tests {
                     Err(SyncCommandBufferBuilderError::Conflict { .. })
                 ));
             }
+        }
+    }
+
+    #[test]
+    fn vertex_buffer_binding() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let mut sync = SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
+                CommandBufferLevel::primary(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .unwrap();
+            let buf =
+                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
+            let mut buf_builder = sync.bind_vertex_buffers();
+            buf_builder.add(buf);
+            buf_builder.submit(1).unwrap();
+
+            assert!(sync.bound_vertex_buffer(0).is_none());
+            assert!(sync.bound_vertex_buffer(1).is_some());
+            assert!(sync.bound_vertex_buffer(2).is_none());
+        }
+    }
+
+    #[test]
+    fn descriptor_set_binding() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let mut sync = SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
+                CommandBufferLevel::primary(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .unwrap();
+            let set_layout = Arc::new(
+                DescriptorSetLayout::new(
+                    device.clone(),
+                    [Some(DescriptorDesc {
+                        ty: DescriptorDescTy::Sampler,
+                        array_count: 1,
+                        stages: ShaderStages::all(),
+                        readonly: true,
+                    })],
+                )
+                .unwrap(),
+            );
+            let pipeline_layout = Arc::new(
+                PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
+                    .unwrap(),
+            );
+            let set = Arc::new(
+                PersistentDescriptorSet::start(set_layout)
+                    .add_sampler(Sampler::simple_repeat_linear(device))
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            );
+
+            let mut set_builder = sync.bind_descriptor_sets();
+            set_builder.add(set.clone());
+            set_builder
+                .submit(PipelineBindPoint::Graphics, pipeline_layout.clone(), 1)
+                .unwrap();
+
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Compute, 0)
+                .is_none());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .is_none());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .is_some());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 2)
+                .is_none());
+
+            let mut set_builder = sync.bind_descriptor_sets();
+            set_builder.add(set);
+            set_builder
+                .submit(PipelineBindPoint::Graphics, pipeline_layout, 0)
+                .unwrap();
+
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .is_some());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .is_none());
         }
     }
 }

@@ -225,6 +225,16 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
+    /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
+    /// used to add the sets.
+    #[inline]
+    pub fn bind_descriptor_sets(&mut self) -> SyncCommandBufferBuilderBindDescriptorSets {
+        SyncCommandBufferBuilderBindDescriptorSets {
+            builder: self,
+            descriptor_sets: SmallVec::new(),
+        }
+    }
+
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
     pub unsafe fn bind_index_buffer<B>(
@@ -282,6 +292,10 @@ impl SyncCommandBufferBuilder {
                 assert_eq!(num, 0);
                 "index buffer".into()
             }
+
+            fn bound_index_buffer(&self) -> &dyn BufferAccess {
+                &self.buffer
+            }
         }
 
         self.append_command(
@@ -306,47 +320,9 @@ impl SyncCommandBufferBuilder {
                 )),
             )],
         )?;
+        self.bindings.index_buffer = Some(self.commands.len() - 1);
 
         Ok(())
-    }
-
-    /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
-    #[inline]
-    pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: Gp)
-    where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
-    {
-        struct Cmd<Gp> {
-            pipeline: Gp,
-        }
-
-        impl<Gp> Command for Cmd<Gp>
-        where
-            Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
-        {
-            fn name(&self) -> &'static str {
-                "vkCmdBindPipeline"
-            }
-
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_pipeline_graphics(&self.pipeline);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<Gp>(Gp);
-                impl<Gp> FinalCommand for Fin<Gp>
-                where
-                    Gp: Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBindPipeline"
-                    }
-                }
-                Box::new(Fin(self.pipeline))
-            }
-        }
-
-        self.append_command(Cmd { pipeline }, &[]).unwrap();
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -383,19 +359,58 @@ impl SyncCommandBufferBuilder {
                 }
                 Box::new(Fin(self.pipeline))
             }
+
+            fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
+                &self.pipeline
+            }
         }
 
         self.append_command(Cmd { pipeline }, &[]).unwrap();
+        self.bindings.pipeline_compute = Some(self.commands.len() - 1);
     }
 
-    /// Starts the process of binding descriptor sets. Returns an intermediate struct which can be
-    /// used to add the sets.
+    /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub fn bind_descriptor_sets(&mut self) -> SyncCommandBufferBuilderBindDescriptorSets {
-        SyncCommandBufferBuilderBindDescriptorSets {
-            builder: self,
-            descriptor_sets: SmallVec::new(),
+    pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: Gp)
+    where
+        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
+    {
+        struct Cmd<Gp> {
+            pipeline: Gp,
         }
+
+        impl<Gp> Command for Cmd<Gp>
+        where
+            Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
+        {
+            fn name(&self) -> &'static str {
+                "vkCmdBindPipeline"
+            }
+
+            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                out.bind_pipeline_graphics(&self.pipeline);
+            }
+
+            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
+                struct Fin<Gp>(Gp);
+                impl<Gp> FinalCommand for Fin<Gp>
+                where
+                    Gp: Send + Sync + 'static,
+                {
+                    fn name(&self) -> &'static str {
+                        "vkCmdBindPipeline"
+                    }
+                }
+                Box::new(Fin(self.pipeline))
+            }
+
+            fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
+                &self.pipeline
+            }
+        }
+
+        self.append_command(Cmd { pipeline }, &[]).unwrap();
+        self.bindings.pipeline_graphics = Some(self.commands.len() - 1);
     }
 
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
@@ -2777,6 +2792,11 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                 }
                 panic!()
             }
+
+            fn bound_descriptor_set(&self, set_num: u32) -> (&dyn DescriptorSet, &[u32]) {
+                let index = set_num.checked_sub(self.first_binding).unwrap() as usize;
+                self.descriptor_sets[index].as_ref()
+            }
         }
 
         let resources = {
@@ -2855,6 +2875,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             resources
         };
 
+        let num_descriptor_sets = self.descriptor_sets.len() as u32;
         self.builder.append_command(
             Cmd {
                 descriptor_sets: self.descriptor_sets,
@@ -2864,6 +2885,19 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             },
             &resources,
         )?;
+
+        let cmd_id = self.builder.commands.len() - 1;
+        let sets = self
+            .builder
+            .bindings
+            .descriptor_sets
+            .entry(pipeline_bind_point)
+            .or_default();
+        sets.retain(|&set_num, _| set_num < first_binding); // Remove all descriptor sets with a higher number
+
+        for i in 0..num_descriptor_sets {
+            sets.insert(first_binding + i, cmd_id);
+        }
 
         Ok(())
     }
@@ -2927,6 +2961,11 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             fn buffer_name(&self, num: usize) -> Cow<'static, str> {
                 format!("Buffer #{}", num).into()
             }
+
+            fn bound_vertex_buffer(&self, binding_num: u32) -> &dyn BufferAccess {
+                let index = binding_num.checked_sub(self.first_binding).unwrap() as usize;
+                &self.buffers[index]
+            }
         }
 
         let resources = self
@@ -2955,6 +2994,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             })
             .collect::<Vec<_>>();
 
+        let num_buffers = self.buffers.len() as u32;
         self.builder.append_command(
             Cmd {
                 first_binding,
@@ -2963,6 +3003,14 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             },
             &resources,
         )?;
+
+        let cmd_id = self.builder.commands.len() - 1;
+        for i in 0..num_buffers {
+            self.builder
+                .bindings
+                .vertex_buffers
+                .insert(first_binding + i, cmd_id);
+        }
 
         Ok(())
     }
