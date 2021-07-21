@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::command_buffer::{
@@ -20,16 +21,13 @@ use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
-
-use std::sync::Arc;
 
 /// Allows applying an ambient lighting to a scene.
 pub struct AmbientLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<GraphicsPipeline>,
 }
 
 impl AmbientLightingSystem {
@@ -155,7 +153,7 @@ impl AmbientLightingSystem {
             .draw(
                 self.pipeline.clone(),
                 &dynamic_state,
-                vec![self.vertex_buffer.clone()],
+                self.vertex_buffer.clone(),
                 descriptor_set,
                 push_constants,
             )

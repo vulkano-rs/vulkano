@@ -38,8 +38,8 @@ use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
@@ -310,34 +310,25 @@ impl SyncCommandBufferBuilder {
         Ok(())
     }
 
-    /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
+    /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: Gp)
-    where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
-    {
-        struct Cmd<Gp> {
-            pipeline: Gp,
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) {
+        struct Cmd {
+            pipeline: Arc<ComputePipeline>,
         }
 
-        impl<Gp> Command for Cmd<Gp>
-        where
-            Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBindPipeline"
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_pipeline_graphics(&self.pipeline);
+                out.bind_pipeline_compute(&self.pipeline);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<Gp>(Gp);
-                impl<Gp> FinalCommand for Fin<Gp>
-                where
-                    Gp: Send + Sync + 'static,
-                {
+                struct Fin(Arc<ComputePipeline>);
+                impl FinalCommand for Fin {
                     fn name(&self) -> &'static str {
                         "vkCmdBindPipeline"
                     }
@@ -349,34 +340,25 @@ impl SyncCommandBufferBuilder {
         self.append_command(Cmd { pipeline }, &[]).unwrap();
     }
 
-    /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
+    /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_compute<Cp>(&mut self, pipeline: Cp)
-    where
-        Cp: ComputePipelineAbstract + Send + Sync + 'static,
-    {
-        struct Cmd<Gp> {
-            pipeline: Gp,
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) {
+        struct Cmd {
+            pipeline: Arc<GraphicsPipeline>,
         }
 
-        impl<Gp> Command for Cmd<Gp>
-        where
-            Gp: ComputePipelineAbstract + Send + Sync + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBindPipeline"
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_pipeline_compute(&self.pipeline);
+                out.bind_pipeline_graphics(&self.pipeline);
             }
 
             fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<Cp>(Cp);
-                impl<Cp> FinalCommand for Fin<Cp>
-                where
-                    Cp: Send + Sync + 'static,
-                {
+                struct Fin(Arc<GraphicsPipeline>);
+                impl FinalCommand for Fin {
                     fn name(&self) -> &'static str {
                         "vkCmdBindPipeline"
                     }

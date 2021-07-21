@@ -28,7 +28,7 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
-use vulkano::pipeline::vertex::BuffersDefinition;
+use vulkano::pipeline::vertex::VertexInput;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -240,10 +240,10 @@ fn main() {
 
     let pipeline = Arc::new(
         GraphicsPipeline::start()
-            // Use the `BuffersDefinition` to describe to vulkano how the two vertex types
+            // Use the `VertexInput` to describe to vulkano how the two vertex types
             // are expected to be used.
             .vertex_input(
-                BuffersDefinition::new()
+                VertexInput::new()
                     .vertex::<Vertex>()
                     .instance::<InstanceData>(),
             )

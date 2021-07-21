@@ -27,7 +27,6 @@ use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::ComputePipeline;
-use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;

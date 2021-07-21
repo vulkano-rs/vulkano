@@ -7,20 +7,16 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::command_buffer::DynamicState;
+use crate::pipeline::GraphicsPipeline;
 use std::error;
 use std::fmt;
 
-use crate::command_buffer::DynamicState;
-use crate::pipeline::GraphicsPipelineAbstract;
-
 /// Checks whether states that are about to be set are correct.
-pub fn check_dynamic_state_validity<Pl>(
-    pipeline: &Pl,
+pub fn check_dynamic_state_validity(
+    pipeline: &GraphicsPipeline,
     state: &DynamicState,
-) -> Result<(), CheckDynamicStateValidityError>
-where
-    Pl: GraphicsPipelineAbstract,
-{
+) -> Result<(), CheckDynamicStateValidityError> {
     let device = pipeline.device();
 
     if pipeline.has_dynamic_line_width() {

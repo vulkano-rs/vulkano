@@ -18,11 +18,11 @@
 //!
 //! ```rust
 //! use vulkano::descriptor_set::FixedSizeDescriptorSetsPool;
-//! # use vulkano::pipeline::GraphicsPipelineAbstract;
+//! # use vulkano::pipeline::GraphicsPipeline;
 //! # use std::sync::Arc;
-//! # let graphics_pipeline: Arc<GraphicsPipelineAbstract> = return;
-//! // use vulkano::pipeline::GraphicsPipelineAbstract;
-//! // let graphics_pipeline: Arc<GraphicsPipelineAbstract> = ...;
+//! # let graphics_pipeline: Arc<GraphicsPipeline> = return;
+//! // use vulkano::pipeline::GraphicsPipeline;
+//! // let graphics_pipeline: Arc<GraphicsPipeline> = ...;
 //!
 //! let layout = graphics_pipeline.layout().descriptor_set_layouts().get(0).unwrap();
 //! let pool = FixedSizeDescriptorSetsPool::new(layout.clone());
@@ -34,7 +34,6 @@
 //! ```rust
 //! # use std::sync::Arc;
 //! # use vulkano::descriptor_set::FixedSizeDescriptorSetsPool;
-//! # use vulkano::pipeline::GraphicsPipelineAbstract;
 //! # let mut pool: FixedSizeDescriptorSetsPool = return;
 //! let descriptor_set = pool.next()
 //!     //.add_buffer(...)
