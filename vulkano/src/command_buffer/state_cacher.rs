@@ -11,8 +11,8 @@ use crate::buffer::BufferAccess;
 use crate::command_buffer::DynamicState;
 use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::pipeline::input_assembly::IndexType;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::VulkanObject;
 use smallvec::SmallVec;
@@ -153,11 +153,8 @@ impl StateCacher {
     ///
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
-    pub fn bind_graphics_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
-    where
-        P: GraphicsPipelineAbstract,
-    {
-        let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
+    pub fn bind_graphics_pipeline(&mut self, pipeline: &GraphicsPipeline) -> StateCacherOutcome {
+        let inner = pipeline.internal_object();
         if inner == self.graphics_pipeline {
             StateCacherOutcome::AlreadyOk
         } else {
@@ -172,11 +169,8 @@ impl StateCacher {
     ///
     /// This function also updates the state cacher. The state cacher assumes that the state
     /// changes are going to be performed after this function returns.
-    pub fn bind_compute_pipeline<P>(&mut self, pipeline: &P) -> StateCacherOutcome
-    where
-        P: ComputePipelineAbstract,
-    {
-        let inner = pipeline.inner().internal_object();
+    pub fn bind_compute_pipeline(&mut self, pipeline: &ComputePipeline) -> StateCacherOutcome {
+        let inner = pipeline.internal_object();
         if inner == self.compute_pipeline {
             StateCacherOutcome::AlreadyOk
         } else {

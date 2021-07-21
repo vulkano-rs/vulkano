@@ -27,7 +27,7 @@ use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::vertex::VertexInput;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
+use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
@@ -265,7 +265,7 @@ fn main() {
                     .draw_indexed(
                         pipeline.clone(),
                         &DynamicState::none(),
-                        vec![vertex_buffer.clone(), normals_buffer.clone()],
+                        (vertex_buffer.clone(), normals_buffer.clone()),
                         index_buffer.clone(),
                         set.clone(),
                         (),
@@ -311,7 +311,7 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
 ) -> (
-    Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    Arc<GraphicsPipeline>,
     Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
 ) {
     let dimensions = images[0].dimensions();

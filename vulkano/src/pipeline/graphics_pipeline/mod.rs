@@ -9,20 +9,16 @@
 
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
-use crate::buffer::BufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::vertex::VertexInput;
-use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
-use std::marker::PhantomData;
 use std::ptr;
 use std::sync::Arc;
 use std::u32;
@@ -38,7 +34,7 @@ mod creation_error;
 /// implementation should perform the various operations needed by a draw command.
 pub struct GraphicsPipeline {
     inner: Inner,
-    layout: Arc<PipelineLayout>,
+    pipeline_layout: Arc<PipelineLayout>,
     subpass: Subpass,
     vertex_input: VertexInput,
 
@@ -78,10 +74,20 @@ impl GraphicsPipeline {
         &self.inner.device
     }
 
-    /// Returns the pass used in the constructor.
+    /// Returns the pipeline layout this graphics pipeline was constructed from.
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.pipeline_layout
+    }
+
+    /// Returns the subpass this graphics pipeline is rendering to.
     #[inline]
-    pub fn subpass(&self) -> Subpass {
-        self.subpass.clone()
+    pub fn subpass(&self) -> &Subpass {
+        &self.subpass
+    }
+
+    /// Returns the vertex input this graphics pipeline was constructed from.
+    pub fn vertex_input(&self) -> &VertexInput {
+        &self.vertex_input
     }
 
     /// Returns the render pass used in the constructor.
@@ -173,178 +179,6 @@ impl Drop for Inner {
     }
 }
 
-/// Trait implemented on objects that reference a graphics pipeline. Can be made into a trait
-/// object.
-/// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
-/// wrapped in a `vec!()`.
-pub unsafe trait GraphicsPipelineAbstract:
-    VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> + DeviceOwned
-{
-    /// Returns an opaque object that represents the inside of the graphics pipeline.
-    fn inner(&self) -> GraphicsPipelineSys;
-
-    /// Returns the pipeline layout this graphics pipeline was constructed from.
-    fn layout(&self) -> &Arc<PipelineLayout>;
-
-    /// Returns the subpass this graphics pipeline is rendering to.
-    fn subpass(&self) -> &Subpass;
-
-    /// Returns the vertex input this graphics pipeline was constructed from.
-    fn vertex_input(&self) -> &VertexInput;
-
-    /// Returns true if the line width used by this pipeline is dynamic.
-    fn has_dynamic_line_width(&self) -> bool;
-
-    /// Returns the number of viewports and scissors of this pipeline.
-    fn num_viewports(&self) -> u32;
-
-    /// Returns true if the viewports used by this pipeline are dynamic.
-    fn has_dynamic_viewports(&self) -> bool;
-
-    /// Returns true if the scissors used by this pipeline are dynamic.
-    fn has_dynamic_scissors(&self) -> bool;
-
-    /// Returns true if the depth bounds used by this pipeline are dynamic.
-    fn has_dynamic_depth_bounds(&self) -> bool;
-
-    /// Returns true if the stencil compare masks used by this pipeline are dynamic.
-    fn has_dynamic_stencil_compare_mask(&self) -> bool;
-
-    /// Returns true if the stencil write masks used by this pipeline are dynamic.
-    fn has_dynamic_stencil_write_mask(&self) -> bool;
-
-    /// Returns true if the stencil references used by this pipeline are dynamic.
-    fn has_dynamic_stencil_reference(&self) -> bool;
-}
-
-unsafe impl GraphicsPipelineAbstract for GraphicsPipeline {
-    #[inline]
-    fn inner(&self) -> GraphicsPipelineSys {
-        GraphicsPipelineSys(self.inner.pipeline, PhantomData)
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
-        &self.layout
-    }
-
-    #[inline]
-    fn subpass(&self) -> &Subpass {
-        &self.subpass
-    }
-
-    #[inline]
-    fn vertex_input(&self) -> &VertexInput {
-        &self.vertex_input
-    }
-
-    #[inline]
-    fn has_dynamic_line_width(&self) -> bool {
-        self.dynamic_line_width
-    }
-
-    #[inline]
-    fn num_viewports(&self) -> u32 {
-        self.num_viewports
-    }
-
-    #[inline]
-    fn has_dynamic_viewports(&self) -> bool {
-        self.dynamic_viewport
-    }
-
-    #[inline]
-    fn has_dynamic_scissors(&self) -> bool {
-        self.dynamic_scissor
-    }
-
-    #[inline]
-    fn has_dynamic_depth_bounds(&self) -> bool {
-        self.dynamic_depth_bounds
-    }
-
-    #[inline]
-    fn has_dynamic_stencil_compare_mask(&self) -> bool {
-        self.dynamic_stencil_compare_mask
-    }
-
-    #[inline]
-    fn has_dynamic_stencil_write_mask(&self) -> bool {
-        self.dynamic_stencil_write_mask
-    }
-
-    #[inline]
-    fn has_dynamic_stencil_reference(&self) -> bool {
-        self.dynamic_stencil_reference
-    }
-}
-
-unsafe impl<T> GraphicsPipelineAbstract for T
-where
-    T: SafeDeref,
-    T::Target: GraphicsPipelineAbstract,
-{
-    #[inline]
-    fn inner(&self) -> GraphicsPipelineSys {
-        GraphicsPipelineAbstract::inner(&**self)
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
-        (**self).layout()
-    }
-
-    #[inline]
-    fn subpass(&self) -> &Subpass {
-        (**self).subpass()
-    }
-
-    #[inline]
-    fn vertex_input(&self) -> &VertexInput {
-        (**self).vertex_input()
-    }
-
-    #[inline]
-    fn has_dynamic_line_width(&self) -> bool {
-        (**self).has_dynamic_line_width()
-    }
-
-    #[inline]
-    fn num_viewports(&self) -> u32 {
-        (**self).num_viewports()
-    }
-
-    #[inline]
-    fn has_dynamic_viewports(&self) -> bool {
-        (**self).has_dynamic_viewports()
-    }
-
-    #[inline]
-    fn has_dynamic_scissors(&self) -> bool {
-        (**self).has_dynamic_scissors()
-    }
-
-    #[inline]
-    fn has_dynamic_depth_bounds(&self) -> bool {
-        (**self).has_dynamic_depth_bounds()
-    }
-
-    #[inline]
-    fn has_dynamic_stencil_compare_mask(&self) -> bool {
-        (**self).has_dynamic_stencil_compare_mask()
-    }
-
-    #[inline]
-    fn has_dynamic_stencil_write_mask(&self) -> bool {
-        (**self).has_dynamic_stencil_write_mask()
-    }
-
-    #[inline]
-    fn has_dynamic_stencil_reference(&self) -> bool {
-        (**self).has_dynamic_stencil_reference()
-    }
-}
-
 impl PartialEq for GraphicsPipeline {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -358,46 +192,5 @@ impl Hash for GraphicsPipeline {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
-    }
-}
-
-impl PartialEq for dyn GraphicsPipelineAbstract + Send + Sync {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        GraphicsPipelineAbstract::inner(self).0 == GraphicsPipelineAbstract::inner(other).0
-            && DeviceOwned::device(self) == DeviceOwned::device(other)
-    }
-}
-
-impl Eq for dyn GraphicsPipelineAbstract + Send + Sync {}
-
-impl Hash for dyn GraphicsPipelineAbstract + Send + Sync {
-    #[inline]
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        GraphicsPipelineAbstract::inner(self).0.hash(state);
-        DeviceOwned::device(self).hash(state);
-    }
-}
-
-/// Opaque object that represents the inside of the graphics pipeline.
-#[derive(Debug, Copy, Clone)]
-pub struct GraphicsPipelineSys<'a>(ash::vk::Pipeline, PhantomData<&'a ()>);
-
-unsafe impl<'a> VulkanObject for GraphicsPipelineSys<'a> {
-    type Object = ash::vk::Pipeline;
-
-    #[inline]
-    fn internal_object(&self) -> ash::vk::Pipeline {
-        self.0
-    }
-}
-
-unsafe impl<S> VertexSource<S> for GraphicsPipeline
-where
-    VertexInput: VertexSource<S>,
-{
-    #[inline]
-    fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        self.vertex_input.decode(s)
     }
 }

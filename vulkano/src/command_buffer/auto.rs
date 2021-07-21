@@ -52,9 +52,10 @@ use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::pipeline::input_assembly::Index;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexSource;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
@@ -454,13 +455,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     #[inline]
-    fn ensure_inside_render_pass_inline<Gp>(
+    fn ensure_inside_render_pass_inline(
         &self,
-        pipeline: &Gp,
-    ) -> Result<(), AutoCommandBufferBuilderContextError>
-    where
-        Gp: ?Sized + GraphicsPipelineAbstract,
-    {
+        pipeline: &Arc<GraphicsPipeline>,
+    ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
             .as_ref()
@@ -1050,15 +1048,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform a single compute operation using a compute pipeline.
     #[inline]
-    pub fn dispatch<Cp, S, Pc>(
+    pub fn dispatch<S, Pc>(
         &mut self,
         group_counts: [u32; 3],
-        pipeline: Cp,
+        pipeline: Arc<ComputePipeline>,
         descriptor_sets: S,
         push_constants: Pc,
     ) -> Result<&mut Self, DispatchError>
     where
-        Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1096,10 +1093,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
     /// each `vulkano::command_buffer::DispatchIndirectCommand` struct in `indirect_buffer`.
     #[inline]
-    pub fn dispatch_indirect<Inb, Cp, S, Pc>(
+    pub fn dispatch_indirect<Inb, S, Pc>(
         &mut self,
         indirect_buffer: Inb,
-        pipeline: Cp,
+        pipeline: Arc<ComputePipeline>,
         descriptor_sets: S,
         push_constants: Pc,
     ) -> Result<&mut Self, DispatchIndirectError>
@@ -1109,7 +1106,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Send
             + Sync
             + 'static,
-        Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1151,16 +1147,16 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for the draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(
+    pub fn draw<V, S, Pc>(
         &mut self,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         descriptor_sets: S,
         push_constants: Pc,
     ) -> Result<&mut Self, DrawError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        VertexInput: VertexSource<V>,
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1224,9 +1220,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for every draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Inb>(
+    pub fn draw_indirect<V, S, Pc, Inb>(
         &mut self,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         indirect_buffer: Inb,
@@ -1234,7 +1230,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        VertexInput: VertexSource<V>,
         S: DescriptorSetsCollection,
         Inb: BufferAccess
             + TypedBufferAccess<Content = [DrawIndirectCommand]>
@@ -1315,9 +1311,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for the draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
+    pub fn draw_indexed<V, S, Pc, Ib, I>(
         &mut self,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         index_buffer: Ib,
@@ -1325,7 +1321,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        VertexInput: VertexSource<V>,
         S: DescriptorSetsCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
@@ -1401,9 +1397,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for every draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(
+    pub fn draw_indexed_indirect<V, S, Pc, Ib, Inb, I>(
         &mut self,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         index_buffer: Ib,
@@ -1412,7 +1408,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        VertexInput: VertexSource<V>,
         S: DescriptorSetsCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         Inb: BufferAccess

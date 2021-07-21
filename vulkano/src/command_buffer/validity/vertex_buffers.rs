@@ -7,14 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::buffer::BufferAccess;
 use crate::device::DeviceOwned;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexSource;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::GraphicsPipeline;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
 
 /// Checks whether vertex buffers can be bound.
 ///
@@ -22,14 +22,15 @@ use crate::VulkanObject;
 ///
 /// - Panics if one of the vertex buffers was not created with the same device as `pipeline`.
 ///
-pub fn check_vertex_buffers<GP, V>(
-    pipeline: &GP,
+pub fn check_vertex_buffers<V>(
+    pipeline: &GraphicsPipeline,
     vertex_buffers: V,
 ) -> Result<CheckVertexBuffer, CheckVertexBufferError>
 where
-    GP: GraphicsPipelineAbstract + DeviceOwned + VertexSource<V>,
+    VertexInput: VertexSource<V>,
 {
-    let (vertex_buffers, vertex_count, instance_count) = pipeline.decode(vertex_buffers);
+    let (vertex_buffers, vertex_count, instance_count) =
+        pipeline.vertex_input().decode(vertex_buffers);
 
     for (num, buf) in vertex_buffers.iter().enumerate() {
         assert_eq!(

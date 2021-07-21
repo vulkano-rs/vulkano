@@ -1174,7 +1174,7 @@ where
                 device: device.clone(),
                 pipeline,
             },
-            layout: pipeline_layout,
+            pipeline_layout,
             vertex_input: self.vertex_input,
             subpass: self.subpass.take().unwrap(),
 
