@@ -387,7 +387,7 @@ fn descriptor_infos(
 
                     // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                     // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-                    let storage = pointer_storage == StorageClass::StorageBuffer;
+                    let storage = decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer;
 
                     // Determine whether all members have a NonWritable decoration.
                     let nonwritable = (0..member_types.len() as u32).all(|i| {
