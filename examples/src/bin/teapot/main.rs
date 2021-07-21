@@ -269,7 +269,6 @@ fn main() {
                         index_buffer.clone(),
                         set.clone(),
                         (),
-                        vec![],
                     )
                     .unwrap()
                     .end_render_pass()

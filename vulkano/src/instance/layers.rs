@@ -77,6 +77,7 @@ where
 }
 
 /// Properties of a layer.
+#[derive(Clone)]
 pub struct LayerProperties {
     props: ash::vk::LayerProperties,
 }

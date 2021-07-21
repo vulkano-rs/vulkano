@@ -81,10 +81,12 @@ pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetError;
 use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
+use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy};
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use smallvec::SmallVec;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -105,6 +107,15 @@ pub unsafe trait DescriptorSet: DeviceOwned {
 
     /// Returns the layout of this descriptor set.
     fn layout(&self) -> &Arc<DescriptorSetLayout>;
+
+    /// Creates a [`DescriptorSetWithOffsets`] with the given dynamic offsets.
+    fn offsets<I>(self, dynamic_offsets: I) -> DescriptorSetWithOffsets
+    where
+        Self: Sized + Send + Sync + 'static,
+        I: IntoIterator<Item = u32>,
+    {
+        DescriptorSetWithOffsets::new(self, dynamic_offsets)
+    }
 
     /// Returns the number of buffers within this descriptor set.
     fn num_buffers(&self) -> usize;
@@ -176,5 +187,101 @@ impl Hash for dyn DescriptorSet + Send + Sync {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
         self.device().hash(state);
+    }
+}
+
+pub struct DescriptorSetWithOffsets {
+    descriptor_set: Box<dyn DescriptorSet + Send + Sync>,
+    dynamic_offsets: SmallVec<[u32; 4]>,
+}
+
+impl DescriptorSetWithOffsets {
+    #[inline]
+    pub fn new<S, O>(descriptor_set: S, dynamic_offsets: O) -> Self
+    where
+        S: DescriptorSet + Send + Sync + 'static,
+        O: IntoIterator<Item = u32>,
+    {
+        let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
+        let layout = descriptor_set.layout();
+        let properties = layout.device().physical_device().properties();
+        let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment.unwrap() as u32;
+        let min_storage_off_align = properties.min_storage_buffer_offset_alignment.unwrap() as u32;
+        let mut dynamic_offset_index = 0;
+
+        // Ensure that the number of dynamic_offsets is correct and that each
+        // dynamic offset is a multiple of the minimum offset alignment specified
+        // by the physical device.
+        for desc in layout.desc().bindings() {
+            let desc = desc.as_ref().unwrap();
+            if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                dynamic: Some(true),
+                storage,
+            }) = desc.ty
+            {
+                // Don't check alignment if there are not enough offsets anyway
+                if dynamic_offsets.len() > dynamic_offset_index {
+                    if storage {
+                        assert!(
+                            dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
+                            "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            dynamic_offsets[dynamic_offset_index],
+                            min_storage_off_align
+                        );
+                    } else {
+                        assert!(
+                            dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
+                            "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
+                            dynamic_offsets[dynamic_offset_index],
+                            min_uniform_off_align
+                        );
+                    }
+                }
+                dynamic_offset_index += 1;
+            }
+        }
+
+        assert!(
+            !(dynamic_offsets.len() < dynamic_offset_index),
+            "Too few dynamic offsets: got {}, expected {}",
+            dynamic_offsets.len(),
+            dynamic_offset_index
+        );
+        assert!(
+            !(dynamic_offsets.len() > dynamic_offset_index),
+            "Too many dynamic offsets: got {}, expected {}",
+            dynamic_offsets.len(),
+            dynamic_offset_index
+        );
+
+        DescriptorSetWithOffsets {
+            descriptor_set: Box::new(descriptor_set),
+            dynamic_offsets,
+        }
+    }
+
+    #[inline]
+    pub fn as_ref(&self) -> (&dyn DescriptorSet, &[u32]) {
+        (&self.descriptor_set, &self.dynamic_offsets)
+    }
+
+    #[inline]
+    pub fn into_tuple(
+        self,
+    ) -> (
+        Box<dyn DescriptorSet + Send + Sync>,
+        impl ExactSizeIterator<Item = u32>,
+    ) {
+        (self.descriptor_set, self.dynamic_offsets.into_iter())
+    }
+}
+
+impl<S> From<S> for DescriptorSetWithOffsets
+where
+    S: DescriptorSet + Send + Sync + 'static,
+{
+    #[inline]
+    fn from(descriptor_set: S) -> Self {
+        Self::new(descriptor_set, std::iter::empty())
     }
 }

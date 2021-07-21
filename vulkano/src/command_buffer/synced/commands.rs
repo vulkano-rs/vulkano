@@ -7,13 +7,13 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::Command;
+use super::FinalCommand;
 use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
-use crate::command_buffer::synced::base::Command;
-use crate::command_buffer::synced::base::FinalCommand;
-use crate::command_buffer::synced::base::KeyTy;
-use crate::command_buffer::synced::base::SyncCommandBufferBuilder;
-use crate::command_buffer::synced::base::SyncCommandBufferBuilderError;
+use crate::command_buffer::synced::builder::KeyTy;
+use crate::command_buffer::synced::builder::SyncCommandBufferBuilder;
+use crate::command_buffer::synced::builder::SyncCommandBufferBuilderError;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBindVertexBuffer;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderBufferImageCopy;
@@ -27,6 +27,7 @@ use crate::command_buffer::SecondaryCommandBuffer;
 use crate::command_buffer::SubpassContents;
 use crate::descriptor_set::layout::DescriptorDescTy;
 use crate::descriptor_set::DescriptorSet;
+use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::format::ClearValue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
@@ -39,6 +40,7 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
 use crate::query::QueryResultElement;
@@ -219,7 +221,7 @@ impl SyncCommandBufferBuilder {
             &resources,
         )?;
 
-        self.prev_cmd_entered_render_pass();
+        self.latest_render_pass_enter = Some(self.commands.len() - 1);
         Ok(())
     }
 
@@ -392,7 +394,7 @@ impl SyncCommandBufferBuilder {
     pub fn bind_descriptor_sets(&mut self) -> SyncCommandBufferBuilderBindDescriptorSets {
         SyncCommandBufferBuilderBindDescriptorSets {
             builder: self,
-            inner: SmallVec::new(),
+            descriptor_sets: SmallVec::new(),
         }
     }
 
@@ -1910,7 +1912,8 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd, &[]).unwrap();
-        self.prev_cmd_left_render_pass();
+        debug_assert!(self.latest_render_pass_enter.is_some());
+        self.latest_render_pass_enter = None;
     }
 
     /// Starts the process of executing secondary command buffers. Returns an intermediate struct
@@ -2611,57 +2614,56 @@ impl SyncCommandBufferBuilder {
 
 pub struct SyncCommandBufferBuilderBindDescriptorSets<'b> {
     builder: &'b mut SyncCommandBufferBuilder,
-    inner: SmallVec<[Box<dyn DescriptorSet + Send + Sync>; 12]>,
+    descriptor_sets: SmallVec<[DescriptorSetWithOffsets; 12]>,
 }
 
 impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
     /// Adds a descriptor set to the list.
     #[inline]
-    pub fn add<S>(&mut self, set: S)
+    pub fn add<S>(&mut self, descriptor_set: S)
     where
-        S: DescriptorSet + Send + Sync + 'static,
+        S: Into<DescriptorSetWithOffsets>,
     {
-        self.inner.push(Box::new(set));
+        self.descriptor_sets.push(descriptor_set.into());
     }
 
     #[inline]
-    pub unsafe fn submit<I>(
+    pub unsafe fn submit(
         self,
-        graphics: bool,
+        pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
         first_binding: u32,
-        dynamic_offsets: I,
-    ) -> Result<(), SyncCommandBufferBuilderError>
-    where
-        I: Iterator<Item = u32> + Send + Sync + 'static,
-    {
-        if self.inner.is_empty() {
+    ) -> Result<(), SyncCommandBufferBuilderError> {
+        if self.descriptor_sets.is_empty() {
             return Ok(());
         }
 
-        struct Cmd<I> {
-            inner: SmallVec<[Box<dyn DescriptorSet + Send + Sync>; 12]>,
-            graphics: bool,
+        struct Cmd {
+            descriptor_sets: SmallVec<[DescriptorSetWithOffsets; 12]>,
+            pipeline_bind_point: PipelineBindPoint,
             pipeline_layout: Arc<PipelineLayout>,
             first_binding: u32,
-            dynamic_offsets: Option<I>,
         }
 
-        impl<I> Command for Cmd<I>
-        where
-            I: Iterator<Item = u32>,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBindDescriptorSets"
             }
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+                let descriptor_sets = self.descriptor_sets.iter().map(|x| x.as_ref().0.inner());
+                let dynamic_offsets = self
+                    .descriptor_sets
+                    .iter()
+                    .map(|x| x.as_ref().1.iter().copied())
+                    .flatten();
+
                 out.bind_descriptor_sets(
-                    self.graphics,
+                    self.pipeline_bind_point,
                     &self.pipeline_layout,
                     self.first_binding,
-                    self.inner.iter().map(|s| s.inner()),
-                    self.dynamic_offsets.take().unwrap(),
+                    descriptor_sets,
+                    dynamic_offsets,
                 );
             }
 
@@ -2716,11 +2718,16 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                         panic!()
                     }
                 }
-                Box::new(Fin(self.inner))
+
+                Box::new(Fin(self
+                    .descriptor_sets
+                    .into_iter()
+                    .map(|x| x.into_tuple().0)
+                    .collect()))
             }
 
             fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                for set in self.inner.iter() {
+                for set in self.descriptor_sets.iter().map(|so| so.as_ref().0) {
                     if let Some(buf) = set.buffer(num) {
                         return buf.0;
                     }
@@ -2730,7 +2737,12 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             }
 
             fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self.inner.iter().enumerate() {
+                for (set_num, set) in self
+                    .descriptor_sets
+                    .iter()
+                    .map(|so| so.as_ref().0)
+                    .enumerate()
+                {
                     if let Some(buf) = set.buffer(num) {
                         return format!("Buffer bound to descriptor {} of set {}", buf.1, set_num)
                             .into();
@@ -2741,7 +2753,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             }
 
             fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                for set in self.inner.iter() {
+                for set in self.descriptor_sets.iter().map(|so| so.as_ref().0) {
                     if let Some(img) = set.image(num) {
                         return img.0.image();
                     }
@@ -2751,7 +2763,12 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             }
 
             fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                for (set_num, set) in self.inner.iter().enumerate() {
+                for (set_num, set) in self
+                    .descriptor_sets
+                    .iter()
+                    .map(|so| so.as_ref().0)
+                    .enumerate()
+                {
                     if let Some(img) = set.image(num) {
                         return format!("Image bound to descriptor {} of set {}", img.1, set_num)
                             .into();
@@ -2764,7 +2781,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
         let resources = {
             let mut resources = Vec::new();
-            for ds in self.inner.iter() {
+            for ds in self.descriptor_sets.iter().map(|so| so.as_ref().0) {
                 for buf_num in 0..ds.num_buffers() {
                     let desc = ds
                         .layout()
@@ -2840,11 +2857,10 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 
         self.builder.append_command(
             Cmd {
-                inner: self.inner,
-                graphics,
+                descriptor_sets: self.descriptor_sets,
+                pipeline_bind_point,
                 pipeline_layout,
                 first_binding,
-                dynamic_offsets: Some(dynamic_offsets),
             },
             &resources,
         )?;

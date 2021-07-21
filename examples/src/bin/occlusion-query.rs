@@ -345,14 +345,7 @@ fn main() {
                     // the `occlusion_query_precise` feature to be enabled on the device.
                     .begin_query(query_pool.clone(), 0, QueryControlFlags { precise: false })
                     .unwrap()
-                    .draw(
-                        pipeline.clone(),
-                        &dynamic_state,
-                        triangle1.clone(),
-                        (),
-                        (),
-                        vec![],
-                    )
+                    .draw(pipeline.clone(), &dynamic_state, triangle1.clone(), (), ())
                     .unwrap()
                     // End query 0.
                     .end_query(query_pool.clone(), 0)
@@ -360,28 +353,14 @@ fn main() {
                     // Begin query 1 for the cyan triangle.
                     .begin_query(query_pool.clone(), 1, QueryControlFlags { precise: false })
                     .unwrap()
-                    .draw(
-                        pipeline.clone(),
-                        &dynamic_state,
-                        triangle2.clone(),
-                        (),
-                        (),
-                        vec![],
-                    )
+                    .draw(pipeline.clone(), &dynamic_state, triangle2.clone(), (), ())
                     .unwrap()
                     .end_query(query_pool.clone(), 1)
                     .unwrap()
                     // Finally, query 2 for the green triangle.
                     .begin_query(query_pool.clone(), 2, QueryControlFlags { precise: false })
                     .unwrap()
-                    .draw(
-                        pipeline.clone(),
-                        &dynamic_state,
-                        triangle3.clone(),
-                        (),
-                        (),
-                        vec![],
-                    )
+                    .draw(pipeline.clone(), &dynamic_state, triangle3.clone(), (), ())
                     .unwrap()
                     .end_query(query_pool.clone(), 2)
                     .unwrap()

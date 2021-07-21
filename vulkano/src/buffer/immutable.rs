@@ -34,7 +34,6 @@ use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::image::ImageAccess;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -368,16 +367,6 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        self.conflict_key() == other.conflict_key() // TODO:
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        false
-    }
-
-    #[inline]
     fn conflict_key(&self) -> (u64, usize) {
         (self.inner.key(), 0)
     }
@@ -449,16 +438,6 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     #[inline]
     fn size(&self) -> usize {
         self.buffer.size()
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        self.conflict_key() == other.conflict_key() // TODO:
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        false
     }
 
     #[inline]

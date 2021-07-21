@@ -27,6 +27,10 @@ mod host_visible;
 mod non_host_visible;
 mod pool;
 
+// If the allocation size goes beyond this, then we perform a dedicated allocation which bypasses
+// the pool. This prevents the pool from overallocating a significant amount of memory.
+const MAX_POOL_ALLOC: usize = 256 * 1024 * 1024;
+
 fn choose_allocation_memory_type<'s, F>(
     device: &'s Arc<Device>,
     requirements: &MemoryRequirements,
@@ -152,9 +156,7 @@ pub unsafe trait MemoryPool: DeviceOwned {
         let mem_ty = choose_allocation_memory_type(self.device(), requirements, filter, map);
 
         // Redirect to `self.alloc_generic` if we don't perform a dedicated allocation.
-        if !requirements.prefer_dedicated
-            || !self.device().enabled_extensions().khr_dedicated_allocation
-        {
+        if !requirements.prefer_dedicated && requirements.size <= MAX_POOL_ALLOC {
             let alloc = self.alloc_generic(
                 mem_ty,
                 requirements.size,

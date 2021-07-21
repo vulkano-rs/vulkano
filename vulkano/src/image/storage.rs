@@ -7,7 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::buffer::BufferAccess;
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::format::ClearValue;
@@ -215,16 +214,6 @@ where
             sampled_image: ImageLayout::General,
             input_attachment: ImageLayout::General,
         })
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        false
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        self.conflict_key() == other.conflict_key() // TODO:
     }
 
     #[inline]

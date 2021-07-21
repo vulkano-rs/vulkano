@@ -37,6 +37,7 @@
 - **Breaking** `PipelineLayoutDesc` is no longer needed and is removed. Its functionality has been moved to `DescriptorSetDesc` and `PipelineLayoutPcRange`. This also applies to `ComputeEntryPoint`, `GraphicsEntryPoint` and `EntryPointAbstract`.
 - **Breaking** `PipelineLayout` now has a `descriptor_set_layouts` method which returns a slice of all the layouts, replacing the previous `descriptor_set_layout` which only returned one at a time.
 - **Breaking** Vulkano is now relaying on features from **Rustc >= 1.53.0**.
+- **Breaking** The boolean `graphics` parameter on the `bind_descriptor_sets` method of `SyncCommandBufferBuilder`, `UnsafeCommandBufferBuilder` and `StateCacher` has been replaced with a new enum `PipelineBindPoint`.
 - Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
@@ -48,6 +49,8 @@
 - Add DisplayNative enum variant to ColorSpaceEnum (AMD-specific feature).
 - Vulkano-shaders now provides the image format for descriptors, if the shader requires a specific format.
 - Vulkano-shaders now uses the `spirv_headers` crate for some of its types.
+- Large allocations now use dedicated allocations which improves memory efficiency.
+- Add `Clone` interface for `LayerProperties`.
 
 # Version 0.24.0 (2021-06-20)
 
@@ -76,6 +79,8 @@
   - The previous methods for retrieving properties, `name`, `ty`, `limits`, `driver_version`, `pci_device_id`, `pci_vendor_id`, `uuid` and `extended_properties`, have been removed.
   - The `api_version` method remains, but there is now a semantic difference between it and the version reported by `properties`: The raw property gives the maximum supported version that the driver itself reports, while the method on `PhysicalDevice` returns the version a logical device would support if it were created from this physical device (that is, restricted by the instance's `max_api_version`).
 - **Breaking** `ImageAccess` trait method `try_gpu_lock()` now has an additional argument to allow locking the image in an uninitialized state.`
+- **Breaking** The `conflicts_buffer` and `conflicts_image` methods on the `BufferAccess` and `ImageAccess` traits are removed.
+- **Breaking** Draw and dispatch calls on `AutoCommandBufferBuilder` no longer have a parameter for dynamic offsets. Instead, they are provided as part of the descriptor sets parameter. They are added to each descriptor set individually using the new `offsets` method on the `DescriptorSet` trait. `SyncCommandBufferBuilder` and `StateCacher` likewise take dynamic offsets as part of the descriptor set.
 - Improve `ImageLayout` checks to prevent `AccessError::ImageNotInitialized` from occurring where the image is safe to use uninitialized.
 - Added `DeviceExtensions::khr_spirv_1_4`, which allows SPIR-V 1.4 shaders in Vulkan 1.1.
 - Added `FunctionPointers::api_version` to query the highest supported instance version.
@@ -98,6 +103,7 @@
 - All Vulkan features supported by Ash are now provided.
 - Implement fmt::Display for DisplayMode.
 - Clarify return value is in millihertz for DisplayMode.refresh_rate()
+- Reworked some of the internals of `SyncCommandBufferBuilder`, so that a mutex is no longer needed and resource conflict detection is simplified.
 
 # Version 0.23.0 (2021-04-10)
 

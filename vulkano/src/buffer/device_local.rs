@@ -23,7 +23,6 @@ use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
-use crate::image::ImageAccess;
 use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
@@ -279,16 +278,6 @@ where
     #[inline]
     fn size(&self) -> usize {
         self.inner.size()
-    }
-
-    #[inline]
-    fn conflicts_buffer(&self, other: &dyn BufferAccess) -> bool {
-        self.conflict_key() == other.conflict_key() // TODO:
-    }
-
-    #[inline]
-    fn conflicts_image(&self, other: &dyn ImageAccess) -> bool {
-        false
     }
 
     #[inline]
