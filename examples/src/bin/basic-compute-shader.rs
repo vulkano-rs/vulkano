@@ -125,7 +125,7 @@ fn main() {
         CpuAccessibleBuffer::from_iter(
             device.clone(),
             BufferUsage {
-                uniform_buffer: true,
+                storage_buffer: true,
                 ..BufferUsage::none()
             },
             false,
