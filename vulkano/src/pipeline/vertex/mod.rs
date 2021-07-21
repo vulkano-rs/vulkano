@@ -63,20 +63,19 @@
 //! # }
 //! ```
 
-pub use self::buffers::BufferlessVertices;
-pub use self::buffers::VertexInput;
-pub use self::definition::AttributeInfo;
-pub use self::definition::IncompatibleVertexDefinitionError;
-pub use self::definition::VertexInputAttribute;
-pub use self::definition::VertexInputBinding;
-pub use self::definition::VertexInputRate;
-pub use self::definition::VertexSource;
 pub use self::impl_vertex::VertexMember;
+pub use self::input::AttributeInfo;
+pub use self::input::BufferlessVertices;
+pub use self::input::IncompatibleVertexDefinitionError;
+pub use self::input::VertexInput;
+pub use self::input::VertexInputAttribute;
+pub use self::input::VertexInputBinding;
+pub use self::input::VertexInputRate;
+pub use self::input::VertexSource;
 pub use self::vertex::Vertex;
 pub use self::vertex::VertexMemberInfo;
 pub use self::vertex::VertexMemberTy;
 
-mod buffers;
-mod definition;
 mod impl_vertex;
+mod input;
 mod vertex;
