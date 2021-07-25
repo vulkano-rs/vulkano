@@ -60,7 +60,7 @@ use std::ffi::CStr;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
@@ -82,7 +82,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdBeginQuery"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.begin_query(self.query_pool.query(self.query).unwrap(), self.flags);
             }
         }
@@ -111,28 +111,28 @@ impl SyncCommandBufferBuilder {
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
         F: FramebufferAbstract + Send + Sync + 'static,
-        I: Iterator<Item = ClearValue> + Send + Sync + 'static,
+        I: IntoIterator<Item = ClearValue> + Send + Sync + 'static,
     {
         struct Cmd<F, I> {
             framebuffer: F,
             subpass_contents: SubpassContents,
-            clear_values: Option<I>,
+            clear_values: Mutex<Option<I>>,
         }
 
         impl<F, I> Command for Cmd<F, I>
         where
             F: FramebufferAbstract + Send + Sync + 'static,
-            I: Iterator<Item = ClearValue>,
+            I: IntoIterator<Item = ClearValue>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdBeginRenderPass"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.begin_render_pass(
                     &self.framebuffer,
                     self.subpass_contents,
-                    self.clear_values.take().unwrap(),
+                    self.clear_values.lock().unwrap().take().unwrap(),
                 );
             }
 
@@ -186,7 +186,7 @@ impl SyncCommandBufferBuilder {
             Cmd {
                 framebuffer,
                 subpass_contents,
-                clear_values: Some(clear_values),
+                clear_values: Mutex::new(Some(clear_values)),
             },
             &resources,
         )?;
@@ -228,7 +228,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdBindIndexBuffer"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_index_buffer(&self.buffer, self.index_ty);
             }
 
@@ -292,7 +292,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdBindPipeline"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_pipeline_compute(&self.pipeline);
             }
 
@@ -323,7 +323,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdBindPipeline"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_pipeline_graphics(&self.pipeline);
             }
 
@@ -363,41 +363,41 @@ impl SyncCommandBufferBuilder {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        R: Iterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync + 'static,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
-            source: Option<S>,
+            source: S,
             source_layout: ImageLayout,
-            destination: Option<D>,
+            destination: D,
             destination_layout: ImageLayout,
-            regions: Option<R>,
+            regions: Mutex<Option<R>>,
         }
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
             S: ImageAccess + Send + Sync + 'static,
             D: ImageAccess + Send + Sync + 'static,
-            R: Iterator<Item = UnsafeCommandBufferBuilderImageCopy>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyImage"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_image(
-                    self.source.as_ref().unwrap(),
+                    &self.source,
                     self.source_layout,
-                    self.destination.as_ref().unwrap(),
+                    &self.destination,
                     self.destination_layout,
-                    self.regions.take().unwrap(),
+                    self.regions.lock().unwrap().take().unwrap(),
                 );
             }
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 if num == 0 {
-                    self.source.as_ref().unwrap()
+                    &self.source
                 } else if num == 1 {
-                    self.destination.as_ref().unwrap()
+                    &self.destination
                 } else {
                     panic!()
                 }
@@ -416,11 +416,11 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                source: Some(source),
+                source,
                 source_layout,
-                destination: Some(destination),
+                destination,
                 destination_layout,
-                regions: Some(regions),
+                regions: Mutex::new(Some(regions)),
             },
             &[
                 (
@@ -484,14 +484,14 @@ impl SyncCommandBufferBuilder {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        R: Iterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync + 'static,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
-            source: Option<S>,
+            source: S,
             source_layout: ImageLayout,
-            destination: Option<D>,
+            destination: D,
             destination_layout: ImageLayout,
-            regions: Option<R>,
+            regions: Mutex<Option<R>>,
             filter: Filter,
         }
 
@@ -499,28 +499,28 @@ impl SyncCommandBufferBuilder {
         where
             S: ImageAccess + Send + Sync + 'static,
             D: ImageAccess + Send + Sync + 'static,
-            R: Iterator<Item = UnsafeCommandBufferBuilderImageBlit>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdBlitImage"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.blit_image(
-                    self.source.as_ref().unwrap(),
+                    &self.source,
                     self.source_layout,
-                    self.destination.as_ref().unwrap(),
+                    &self.destination,
                     self.destination_layout,
-                    self.regions.take().unwrap(),
+                    self.regions.lock().unwrap().take().unwrap(),
                     self.filter,
                 );
             }
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 if num == 0 {
-                    self.source.as_ref().unwrap()
+                    &self.source
                 } else if num == 1 {
-                    self.destination.as_ref().unwrap()
+                    &self.destination
                 } else {
                     panic!()
                 }
@@ -539,11 +539,11 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                source: Some(source),
+                source,
                 source_layout,
-                destination: Some(destination),
+                destination,
                 destination_layout,
-                regions: Some(regions),
+                regions: Mutex::new(Some(regions)),
                 filter,
             },
             &[
@@ -604,36 +604,39 @@ impl SyncCommandBufferBuilder {
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
         I: ImageAccess + Send + Sync + 'static,
-        R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static,
     {
         struct Cmd<I, R> {
-            image: Option<I>,
+            image: I,
             layout: ImageLayout,
             color: ClearValue,
-            regions: Option<R>,
+            regions: Mutex<Option<R>>,
         }
 
         impl<I, R> Command for Cmd<I, R>
         where
             I: ImageAccess + Send + Sync + 'static,
-            R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear> + Send + Sync + 'static,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>
+                + Send
+                + Sync
+                + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdClearColorImage"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.clear_color_image(
-                    self.image.as_ref().unwrap(),
+                    &self.image,
                     self.layout,
                     self.color,
-                    self.regions.take().unwrap(),
+                    self.regions.lock().unwrap().take().unwrap(),
                 );
             }
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 assert_eq!(num, 0);
-                self.image.as_ref().unwrap()
+                &self.image
             }
 
             fn image_name(&self, num: usize) -> Cow<'static, str> {
@@ -644,10 +647,10 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                image: Some(image),
+                image,
                 layout,
                 color,
-                regions: Some(regions),
+                regions: Mutex::new(Some(regions)),
             },
             &[(
                 KeyTy::Image,
@@ -687,36 +690,36 @@ impl SyncCommandBufferBuilder {
     where
         S: BufferAccess + Send + Sync + 'static,
         D: BufferAccess + Send + Sync + 'static,
-        R: Iterator<Item = (usize, usize, usize)> + Send + Sync + 'static,
+        R: IntoIterator<Item = (usize, usize, usize)> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
-            source: Option<S>,
-            destination: Option<D>,
-            regions: Option<R>,
+            source: S,
+            destination: D,
+            regions: Mutex<Option<R>>,
         }
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
             S: BufferAccess + Send + Sync + 'static,
             D: BufferAccess + Send + Sync + 'static,
-            R: Iterator<Item = (usize, usize, usize)>,
+            R: IntoIterator<Item = (usize, usize, usize)>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyBuffer"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_buffer(
-                    self.source.as_ref().unwrap(),
-                    self.destination.as_ref().unwrap(),
-                    self.regions.take().unwrap(),
+                    &self.source,
+                    &self.destination,
+                    self.regions.lock().unwrap().take().unwrap(),
                 );
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 match num {
-                    0 => self.source.as_ref().unwrap(),
-                    1 => self.destination.as_ref().unwrap(),
+                    0 => &self.source,
+                    1 => &self.destination,
                     _ => panic!(),
                 }
             }
@@ -732,9 +735,9 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                source: Some(source),
-                destination: Some(destination),
-                regions: Some(regions),
+                source,
+                destination,
+                regions: Mutex::new(Some(regions)),
             },
             &[
                 (
@@ -796,37 +799,37 @@ impl SyncCommandBufferBuilder {
     where
         S: BufferAccess + Send + Sync + 'static,
         D: ImageAccess + Send + Sync + 'static,
-        R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
-            source: Option<S>,
-            destination: Option<D>,
+            source: S,
+            destination: D,
             destination_layout: ImageLayout,
-            regions: Option<R>,
+            regions: Mutex<Option<R>>,
         }
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
             S: BufferAccess + Send + Sync + 'static,
             D: ImageAccess + Send + Sync + 'static,
-            R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyBufferToImage"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_buffer_to_image(
-                    self.source.as_ref().unwrap(),
-                    self.destination.as_ref().unwrap(),
+                    &self.source,
+                    &self.destination,
                     self.destination_layout,
-                    self.regions.take().unwrap(),
+                    self.regions.lock().unwrap().take().unwrap(),
                 );
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
-                self.source.as_ref().unwrap()
+                &self.source
             }
 
             fn buffer_name(&self, num: usize) -> Cow<'static, str> {
@@ -836,7 +839,7 @@ impl SyncCommandBufferBuilder {
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 assert_eq!(num, 0);
-                self.destination.as_ref().unwrap()
+                &self.destination
             }
 
             fn image_name(&self, num: usize) -> Cow<'static, str> {
@@ -847,10 +850,10 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                source: Some(source),
-                destination: Some(destination),
+                source,
+                destination,
                 destination_layout,
-                regions: Some(regions),
+                regions: Mutex::new(Some(regions)),
             },
             &[
                 (
@@ -912,37 +915,37 @@ impl SyncCommandBufferBuilder {
     where
         S: ImageAccess + Send + Sync + 'static,
         D: BufferAccess + Send + Sync + 'static,
-        R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
-            source: Option<S>,
+            source: S,
             source_layout: ImageLayout,
-            destination: Option<D>,
-            regions: Option<R>,
+            destination: D,
+            regions: Mutex<Option<R>>,
         }
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
             S: ImageAccess + Send + Sync + 'static,
             D: BufferAccess + Send + Sync + 'static,
-            R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+            R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyImageToBuffer"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_image_to_buffer(
-                    self.source.as_ref().unwrap(),
+                    &self.source,
                     self.source_layout,
-                    self.destination.as_ref().unwrap(),
-                    self.regions.take().unwrap(),
+                    &self.destination,
+                    self.regions.lock().unwrap().take().unwrap(),
                 );
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
-                self.destination.as_ref().unwrap()
+                &self.destination
             }
 
             fn buffer_name(&self, num: usize) -> Cow<'static, str> {
@@ -952,7 +955,7 @@ impl SyncCommandBufferBuilder {
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 assert_eq!(num, 0);
-                self.source.as_ref().unwrap()
+                &self.source
             }
 
             fn image_name(&self, num: usize) -> Cow<'static, str> {
@@ -963,10 +966,10 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                source: Some(source),
-                destination: Some(destination),
+                source,
+                destination,
                 source_layout,
-                regions: Some(regions),
+                regions: Mutex::new(Some(regions)),
             },
             &[
                 (
@@ -1032,7 +1035,7 @@ impl SyncCommandBufferBuilder {
         struct Cmd<D> {
             query_pool: Arc<QueryPool>,
             queries: Range<u32>,
-            destination: Option<D>,
+            destination: D,
             stride: usize,
             flags: QueryResultFlags,
         }
@@ -1046,10 +1049,10 @@ impl SyncCommandBufferBuilder {
                 "vkCmdCopyQueryPoolResults"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.copy_query_pool_results(
                     self.query_pool.queries_range(self.queries.clone()).unwrap(),
-                    self.destination.as_ref().unwrap(),
+                    &self.destination,
                     self.stride,
                     self.flags,
                 );
@@ -1057,7 +1060,7 @@ impl SyncCommandBufferBuilder {
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
-                self.destination.as_ref().unwrap()
+                &self.destination
             }
 
             fn buffer_name(&self, num: usize) -> Cow<'static, str> {
@@ -1070,7 +1073,7 @@ impl SyncCommandBufferBuilder {
             Cmd {
                 query_pool,
                 queries,
-                destination: Some(destination),
+                destination,
                 stride,
                 flags,
             },
@@ -1115,7 +1118,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdBeginDebugUtilsLabelEXT"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.debug_marker_begin(self.name, self.color);
             }
         }
@@ -1139,7 +1142,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdEndDebugUtilsLabelEXT"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.debug_marker_end();
             }
         }
@@ -1164,7 +1167,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdInsertDebugUtilsLabelEXT"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.debug_marker_insert(self.name, self.color);
             }
         }
@@ -1184,7 +1187,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdDispatch"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.dispatch(self.group_counts);
             }
         }
@@ -1213,7 +1216,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdDispatchIndirect"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.dispatch_indirect(&self.buffer);
             }
 
@@ -1275,7 +1278,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdDraw"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.draw(
                     self.vertex_count,
                     self.instance_count,
@@ -1320,7 +1323,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdDrawIndexed"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.draw_indexed(
                     self.index_count,
                     self.instance_count,
@@ -1369,7 +1372,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdDrawIndirect"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.draw_indirect(&self.buffer, self.draw_count, self.stride);
             }
 
@@ -1439,7 +1442,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdDrawIndexedIndirect"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.draw_indexed_indirect(&self.buffer, self.draw_count, self.stride);
             }
 
@@ -1497,7 +1500,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdEndQuery"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_query(self.query_pool.query(self.query).unwrap());
             }
         }
@@ -1515,7 +1518,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdEndRenderPass"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_render_pass();
             }
         }
@@ -1554,7 +1557,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdFillBuffer"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.fill_buffer(&self.buffer, self.data);
             }
 
@@ -1605,7 +1608,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdNextSubpass"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.next_subpass(self.subpass_contents);
             }
         }
@@ -1638,7 +1641,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdPushConstants"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.push_constants::<[u8]>(
                     &self.pipeline_layout,
                     self.stages,
@@ -1685,7 +1688,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdResetEvent"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.reset_event(&self.event, self.stages);
             }
         }
@@ -1706,7 +1709,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdResetQueryPool"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.reset_query_pool(self.query_pool.queries_range(self.queries.clone()).unwrap());
             }
         }
@@ -1733,7 +1736,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetBlendConstants"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_blend_constants(self.constants);
             }
         }
@@ -1755,7 +1758,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetDepthBias"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_depth_bias(self.constant_factor, self.clamp, self.slope_factor);
             }
         }
@@ -1784,7 +1787,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetDepthBounds"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_depth_bounds(self.min, self.max);
             }
         }
@@ -1805,7 +1808,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetEvent"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_event(&self.event, self.stages);
             }
         }
@@ -1825,7 +1828,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetLineWidth"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_line_width(self.line_width);
             }
         }
@@ -1846,7 +1849,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetStencilCompareMask"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_stencil_compare_mask(self.face_mask, self.compare_mask);
             }
         }
@@ -1874,7 +1877,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetStencilReference"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_stencil_reference(self.face_mask, self.reference);
             }
         }
@@ -1902,7 +1905,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdSetStencilWriteMask"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_stencil_write_mask(self.face_mask, self.write_mask);
             }
         }
@@ -1923,30 +1926,33 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I)
     where
-        I: Iterator<Item = Scissor> + Send + Sync + 'static,
+        I: IntoIterator<Item = Scissor> + Send + Sync + 'static,
     {
         struct Cmd<I> {
             first_scissor: u32,
-            scissors: Option<I>,
+            scissors: Mutex<Option<I>>,
         }
 
         impl<I> Command for Cmd<I>
         where
-            I: Iterator<Item = Scissor>,
+            I: IntoIterator<Item = Scissor>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdSetScissor"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_scissor(self.first_scissor, self.scissors.take().unwrap());
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_scissor(
+                    self.first_scissor,
+                    self.scissors.lock().unwrap().take().unwrap(),
+                );
             }
         }
 
         self.append_command(
             Cmd {
                 first_scissor,
-                scissors: Some(scissors),
+                scissors: Mutex::new(Some(scissors)),
             },
             &[],
         )
@@ -1959,30 +1965,33 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I)
     where
-        I: Iterator<Item = Viewport> + Send + Sync + 'static,
+        I: IntoIterator<Item = Viewport> + Send + Sync + 'static,
     {
         struct Cmd<I> {
             first_viewport: u32,
-            viewports: Option<I>,
+            viewports: Mutex<Option<I>>,
         }
 
         impl<I> Command for Cmd<I>
         where
-            I: Iterator<Item = Viewport>,
+            I: IntoIterator<Item = Viewport>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdSetViewport"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_viewport(self.first_viewport, self.viewports.take().unwrap());
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.set_viewport(
+                    self.first_viewport,
+                    self.viewports.lock().unwrap().take().unwrap(),
+                );
             }
         }
 
         self.append_command(
             Cmd {
                 first_viewport,
-                viewports: Some(viewports),
+                viewports: Mutex::new(Some(viewports)),
             },
             &[],
         )
@@ -2012,7 +2021,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdUpdateBuffer"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.update_buffer(&self.buffer, self.data.deref());
             }
 
@@ -2070,7 +2079,7 @@ impl SyncCommandBufferBuilder {
                 "vkCmdWriteTimestamp"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.write_timestamp(self.query_pool.query(self.query).unwrap(), self.stage);
             }
         }
@@ -2125,7 +2134,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                 "vkCmdBindDescriptorSets"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 let descriptor_sets = self.descriptor_sets.iter().map(|x| x.as_ref().0.inner());
                 let dynamic_offsets = self
                     .descriptor_sets
@@ -2326,7 +2335,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
     pub unsafe fn submit(self, first_binding: u32) -> Result<(), SyncCommandBufferBuilderError> {
         struct Cmd {
             first_binding: u32,
-            inner: Option<UnsafeCommandBufferBuilderBindVertexBuffer>,
+            inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
             buffers: Vec<Box<dyn BufferAccess + Send + Sync>>,
         }
 
@@ -2335,8 +2344,11 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
                 "vkCmdBindVertexBuffers"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_vertex_buffers(self.first_binding, self.inner.take().unwrap());
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
+                out.bind_vertex_buffers(
+                    self.first_binding,
+                    self.inner.lock().unwrap().take().unwrap(),
+                );
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -2383,7 +2395,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
         self.builder.append_command(
             Cmd {
                 first_binding,
-                inner: Some(self.inner),
+                inner: Mutex::new(Some(self.inner)),
                 buffers: self.buffers,
             },
             &resources,
@@ -2444,7 +2456,7 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                 "vkCmdExecuteCommands"
             }
 
-            unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
+            unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 let mut execute = UnsafeCommandBufferBuilderExecuteCommands::new();
                 self.0
                     .iter()

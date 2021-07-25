@@ -102,7 +102,7 @@ pub struct SyncCommandBuffer {
 
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used.
-    commands: Vec<Box<dyn Command + Send + Sync>>,
+    commands: Vec<Arc<dyn Command + Send + Sync>>,
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
@@ -464,7 +464,7 @@ trait Command {
 
     // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
     // object will likely lead to a panic.
-    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder);
+    unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder);
 
     // Gives access to the `num`th buffer used by the command.
     fn buffer(&self, _num: usize) -> &dyn BufferAccess {

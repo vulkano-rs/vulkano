@@ -66,7 +66,7 @@ pub struct SyncCommandBufferBuilder {
     // submitted to the inner builder yet.
     // Each command owns the resources it uses (buffers, images, pipelines, descriptor sets etc.),
     // references to any of these must be indirect in the form of a command index + resource id.
-    commands: Vec<Box<dyn Command + Send + Sync>>,
+    commands: Vec<Arc<dyn Command + Send + Sync>>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -210,7 +210,7 @@ impl SyncCommandBufferBuilder {
 
         // Note that we don't submit the command to the inner command buffer yet.
         let (latest_command_id, end) = {
-            self.commands.push(Box::new(command));
+            self.commands.push(Arc::new(command));
             let latest_command_id = self.commands.len() - 1;
             let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
             (latest_command_id, end)
