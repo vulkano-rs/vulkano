@@ -614,8 +614,7 @@ impl SyncCommandBufferBuilder {
             .get(&pipeline_bind_point)
             .and_then(|sets| {
                 sets.get(&set_num)
-                    .copied()
-                    .map(|cmd| self.commands[cmd].bound_descriptor_set(set_num))
+                    .map(|cmd| cmd.bound_descriptor_set(set_num))
             })
     }
 
@@ -623,21 +622,24 @@ impl SyncCommandBufferBuilder {
     pub(crate) fn bound_index_buffer(&self) -> Option<&dyn BufferAccess> {
         self.bindings
             .index_buffer
-            .map(|cmd| self.commands[cmd].bound_index_buffer())
+            .as_ref()
+            .map(|cmd| cmd.bound_index_buffer())
     }
 
     /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
     pub(crate) fn bound_pipeline_compute(&self) -> Option<&dyn ComputePipelineAbstract> {
         self.bindings
             .pipeline_compute
-            .map(|cmd| self.commands[cmd].bound_pipeline_compute())
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_compute())
     }
 
     /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
     pub(crate) fn bound_pipeline_graphics(&self) -> Option<&dyn GraphicsPipelineAbstract> {
         self.bindings
             .pipeline_graphics
-            .map(|cmd| self.commands[cmd].bound_pipeline_graphics())
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_graphics())
     }
 
     /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
@@ -646,8 +648,7 @@ impl SyncCommandBufferBuilder {
         self.bindings
             .vertex_buffers
             .get(&binding_num)
-            .copied()
-            .map(|cmd| self.commands[cmd].bound_vertex_buffer(binding_num))
+            .map(|cmd| cmd.bound_vertex_buffer(binding_num))
     }
 }
 
@@ -739,9 +740,9 @@ struct ResourceState {
 /// nothing has been bound yet.
 #[derive(Debug, Default)]
 struct BindingState {
-    descriptor_sets: FnvHashMap<PipelineBindPoint, FnvHashMap<u32, usize>>,
-    index_buffer: Option<usize>,
-    pipeline_compute: Option<usize>,
-    pipeline_graphics: Option<usize>,
-    vertex_buffers: FnvHashMap<u32, usize>,
+    descriptor_sets: FnvHashMap<PipelineBindPoint, FnvHashMap<u32, Arc<dyn Command + Send + Sync>>>,
+    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
+    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
+    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
+    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
 }

@@ -269,7 +269,7 @@ impl SyncCommandBufferBuilder {
                 )),
             )],
         )?;
-        self.bindings.index_buffer = Some(self.commands.len() - 1);
+        self.bindings.index_buffer = self.commands.last().cloned();
 
         Ok(())
     }
@@ -302,7 +302,7 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { pipeline }, &[]).unwrap();
-        self.bindings.pipeline_compute = Some(self.commands.len() - 1);
+        self.bindings.pipeline_compute = self.commands.last().cloned();
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
@@ -333,7 +333,7 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { pipeline }, &[]).unwrap();
-        self.bindings.pipeline_graphics = Some(self.commands.len() - 1);
+        self.bindings.pipeline_graphics = self.commands.last().cloned();
     }
 
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
@@ -2296,7 +2296,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
             &resources,
         )?;
 
-        let cmd_id = self.builder.commands.len() - 1;
+        let cmd = self.builder.commands.last().unwrap();
         let sets = self
             .builder
             .bindings
@@ -2306,7 +2306,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
         sets.retain(|&set_num, _| set_num < first_binding); // Remove all descriptor sets with a higher number
 
         for i in 0..num_descriptor_sets {
-            sets.insert(first_binding + i, cmd_id);
+            sets.insert(first_binding + i, cmd.clone());
         }
 
         Ok(())
@@ -2401,12 +2401,12 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             &resources,
         )?;
 
-        let cmd_id = self.builder.commands.len() - 1;
+        let cmd = self.builder.commands.last().unwrap();
         for i in 0..num_buffers {
             self.builder
                 .bindings
                 .vertex_buffers
-                .insert(first_binding + i, cmd_id);
+                .insert(first_binding + i, cmd.clone());
         }
 
         Ok(())

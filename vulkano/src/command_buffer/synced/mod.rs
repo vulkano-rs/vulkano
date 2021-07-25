@@ -509,6 +509,12 @@ trait Command {
     }
 }
 
+impl std::fmt::Debug for dyn Command + Send + Sync {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::SyncCommandBufferBuilder;
