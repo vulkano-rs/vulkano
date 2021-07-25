@@ -8,7 +8,6 @@
 // according to those terms.
 
 use super::Command;
-use super::FinalCommand;
 use crate::buffer::BufferAccess;
 use crate::buffer::TypedBufferAccess;
 use crate::command_buffer::synced::builder::KeyTy;
@@ -86,16 +85,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.begin_query(self.query_pool.query(self.query).unwrap(), self.flags);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Arc<QueryPool>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBeginQuery"
-                    }
-                }
-                Box::new(Fin(self.query_pool))
-            }
         }
 
         self.append_command(
@@ -145,25 +134,6 @@ impl SyncCommandBufferBuilder {
                     self.subpass_contents,
                     self.clear_values.take().unwrap(),
                 );
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<F>(F);
-                impl<F> FinalCommand for Fin<F>
-                where
-                    F: FramebufferAbstract + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBeginRenderPass"
-                    }
-                    fn image(&self, num: usize) -> &dyn ImageAccess {
-                        self.0.attached_image_view(num).unwrap().image()
-                    }
-                    fn image_name(&self, num: usize) -> Cow<'static, str> {
-                        format!("attachment {}", num).into()
-                    }
-                }
-                Box::new(Fin(self.framebuffer))
             }
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
@@ -262,27 +232,6 @@ impl SyncCommandBufferBuilder {
                 out.bind_index_buffer(&self.buffer, self.index_ty);
             }
 
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<B>(B);
-                impl<B> FinalCommand for Fin<B>
-                where
-                    B: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBindIndexBuffer"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "index buffer".into()
-                    }
-                }
-                Box::new(Fin(self.buffer))
-            }
-
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
                 &self.buffer
@@ -347,19 +296,6 @@ impl SyncCommandBufferBuilder {
                 out.bind_pipeline_compute(&self.pipeline);
             }
 
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<Cp>(Cp);
-                impl<Cp> FinalCommand for Fin<Cp>
-                where
-                    Cp: Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBindPipeline"
-                    }
-                }
-                Box::new(Fin(self.pipeline))
-            }
-
             fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
                 &self.pipeline
             }
@@ -389,19 +325,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.bind_pipeline_graphics(&self.pipeline);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<Gp>(Gp);
-                impl<Gp> FinalCommand for Fin<Gp>
-                where
-                    Gp: Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBindPipeline"
-                    }
-                }
-                Box::new(Fin(self.pipeline))
             }
 
             fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
@@ -468,44 +391,6 @@ impl SyncCommandBufferBuilder {
                     self.destination_layout,
                     self.regions.take().unwrap(),
                 );
-            }
-
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<S, D>(S, D);
-                impl<S, D> FinalCommand for Fin<S, D>
-                where
-                    S: ImageAccess + Send + Sync + 'static,
-                    D: ImageAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdCopyImage"
-                    }
-                    fn image(&self, num: usize) -> &dyn ImageAccess {
-                        if num == 0 {
-                            &self.0
-                        } else if num == 1 {
-                            &self.1
-                        } else {
-                            panic!()
-                        }
-                    }
-                    fn image_name(&self, num: usize) -> Cow<'static, str> {
-                        if num == 0 {
-                            "source".into()
-                        } else if num == 1 {
-                            "destination".into()
-                        } else {
-                            panic!()
-                        }
-                    }
-                }
-
-                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
-                // without using an Option.
-                Box::new(Fin(
-                    self.source.take().unwrap(),
-                    self.destination.take().unwrap(),
-                ))
             }
 
             fn image(&self, num: usize) -> &dyn ImageAccess {
@@ -631,44 +516,6 @@ impl SyncCommandBufferBuilder {
                 );
             }
 
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<S, D>(S, D);
-                impl<S, D> FinalCommand for Fin<S, D>
-                where
-                    S: ImageAccess + Send + Sync + 'static,
-                    D: ImageAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBlitImage"
-                    }
-                    fn image(&self, num: usize) -> &dyn ImageAccess {
-                        if num == 0 {
-                            &self.0
-                        } else if num == 1 {
-                            &self.1
-                        } else {
-                            panic!()
-                        }
-                    }
-                    fn image_name(&self, num: usize) -> Cow<'static, str> {
-                        if num == 0 {
-                            "source".into()
-                        } else if num == 1 {
-                            "destination".into()
-                        } else {
-                            panic!()
-                        }
-                    }
-                }
-
-                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
-                // without using an Option.
-                Box::new(Fin(
-                    self.source.take().unwrap(),
-                    self.destination.take().unwrap(),
-                ))
-            }
-
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 if num == 0 {
                     self.source.as_ref().unwrap()
@@ -784,29 +631,6 @@ impl SyncCommandBufferBuilder {
                 );
             }
 
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<I>(I);
-                impl<I> FinalCommand for Fin<I>
-                where
-                    I: ImageAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdClearColorImage"
-                    }
-                    fn image(&self, num: usize) -> &dyn ImageAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn image_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "target".into()
-                    }
-                }
-
-                // Note: borrow checker somehow doesn't accept `self.image` without using an Option.
-                Box::new(Fin(self.image.take().unwrap()))
-            }
-
             fn image(&self, num: usize) -> &dyn ImageAccess {
                 assert_eq!(num, 0);
                 self.image.as_ref().unwrap()
@@ -887,39 +711,6 @@ impl SyncCommandBufferBuilder {
                     self.destination.as_ref().unwrap(),
                     self.regions.take().unwrap(),
                 );
-            }
-
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<S, D>(S, D);
-                impl<S, D> FinalCommand for Fin<S, D>
-                where
-                    S: BufferAccess + Send + Sync + 'static,
-                    D: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdCopyBuffer"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        match num {
-                            0 => &self.0,
-                            1 => &self.1,
-                            _ => panic!(),
-                        }
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        match num {
-                            0 => "source".into(),
-                            1 => "destination".into(),
-                            _ => panic!(),
-                        }
-                    }
-                }
-                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
-                // without using an Option.
-                Box::new(Fin(
-                    self.source.take().unwrap(),
-                    self.destination.take().unwrap(),
-                ))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -1031,42 +822,6 @@ impl SyncCommandBufferBuilder {
                     self.destination_layout,
                     self.regions.take().unwrap(),
                 );
-            }
-
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<S, D>(S, D);
-                impl<S, D> FinalCommand for Fin<S, D>
-                where
-                    S: BufferAccess + Send + Sync + 'static,
-                    D: ImageAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdCopyBufferToImage"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "source".into()
-                    }
-                    fn image(&self, num: usize) -> &dyn ImageAccess {
-                        assert_eq!(num, 0);
-                        &self.1
-                    }
-                    fn image_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "destination".into()
-                    }
-                }
-
-                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
-                // without using an Option.
-                Box::new(Fin(
-                    self.source.take().unwrap(),
-                    self.destination.take().unwrap(),
-                ))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -1185,42 +940,6 @@ impl SyncCommandBufferBuilder {
                 );
             }
 
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<S, D>(S, D);
-                impl<S, D> FinalCommand for Fin<S, D>
-                where
-                    S: ImageAccess + Send + Sync + 'static,
-                    D: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdCopyImageToBuffer"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.1
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "destination".into()
-                    }
-                    fn image(&self, num: usize) -> &dyn ImageAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn image_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "source".into()
-                    }
-                }
-
-                // Note: borrow checker somehow doesn't accept `self.source` and `self.destination`
-                // without using an Option.
-                Box::new(Fin(
-                    self.source.take().unwrap(),
-                    self.destination.take().unwrap(),
-                ))
-            }
-
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
                 self.destination.as_ref().unwrap()
@@ -1336,30 +1055,6 @@ impl SyncCommandBufferBuilder {
                 );
             }
 
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<D>(Arc<QueryPool>, D);
-                impl<D> FinalCommand for Fin<D>
-                where
-                    D: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdCopyQueryPoolResults"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.1
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "destination".into()
-                    }
-                }
-
-                // Note: borrow checker somehow doesn't accept `self.destination`
-                // without using an Option.
-                Box::new(Fin(self.query_pool, self.destination.take().unwrap()))
-            }
-
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
                 self.destination.as_ref().unwrap()
@@ -1423,10 +1118,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.debug_marker_begin(self.name, self.color);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdBeginDebugUtilsLabelEXT")
-            }
         }
 
         self.append_command(Cmd { name, color }, &[]).unwrap();
@@ -1450,10 +1141,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.debug_marker_end();
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdEndDebugUtilsLabelEXT")
             }
         }
 
@@ -1480,10 +1167,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.debug_marker_insert(self.name, self.color);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdInsertDebugUtilsLabelEXT")
-            }
         }
 
         self.append_command(Cmd { name, color }, &[]).unwrap();
@@ -1503,10 +1186,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.dispatch(self.group_counts);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdDispatch")
             }
         }
 
@@ -1536,27 +1215,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.dispatch_indirect(&self.buffer);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<B>(B);
-                impl<B> FinalCommand for Fin<B>
-                where
-                    B: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdDispatchIndirect"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "indirect buffer".into()
-                    }
-                }
-                Box::new(Fin(self.buffer))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -1625,10 +1283,6 @@ impl SyncCommandBufferBuilder {
                     self.first_instance,
                 );
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdDraw")
-            }
         }
 
         self.append_command(
@@ -1675,10 +1329,6 @@ impl SyncCommandBufferBuilder {
                     self.first_instance,
                 );
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdDrawIndexed")
-            }
         }
 
         self.append_command(
@@ -1721,27 +1371,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.draw_indirect(&self.buffer, self.draw_count, self.stride);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<B>(B);
-                impl<B> FinalCommand for Fin<B>
-                where
-                    B: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdDrawIndirect"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "indirect buffer".into()
-                    }
-                }
-                Box::new(Fin(self.buffer))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -1814,27 +1443,6 @@ impl SyncCommandBufferBuilder {
                 out.draw_indexed_indirect(&self.buffer, self.draw_count, self.stride);
             }
 
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<B>(B);
-                impl<B> FinalCommand for Fin<B>
-                where
-                    B: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdDrawIndexedIndirect"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        assert_eq!(num, 0);
-                        "indirect buffer".into()
-                    }
-                }
-                Box::new(Fin(self.buffer))
-            }
-
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 assert_eq!(num, 0);
                 &self.buffer
@@ -1892,16 +1500,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_query(self.query_pool.query(self.query).unwrap());
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Arc<QueryPool>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdEndQuery"
-                    }
-                }
-                Box::new(Fin(self.query_pool))
-            }
         }
 
         self.append_command(Cmd { query_pool, query }, &[]).unwrap();
@@ -1919,10 +1517,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.end_render_pass();
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdEndRenderPass")
             }
         }
 
@@ -1962,26 +1556,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.fill_buffer(&self.buffer, self.data);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<B>(B);
-                impl<B> FinalCommand for Fin<B>
-                where
-                    B: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdFillBuffer"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, _: usize) -> Cow<'static, str> {
-                        "destination".into()
-                    }
-                }
-                Box::new(Fin(self.buffer))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -2034,10 +1608,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.next_subpass(self.subpass_contents);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdNextSubpass")
-            }
         }
 
         self.append_command(Cmd { subpass_contents }, &[]).unwrap();
@@ -2076,19 +1646,6 @@ impl SyncCommandBufferBuilder {
                     self.size,
                     &self.data,
                 );
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<Pl>(Pl);
-                impl<Pl> FinalCommand for Fin<Pl>
-                where
-                    Pl: Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdPushConstants"
-                    }
-                }
-                Box::new(Fin(self.pipeline_layout))
             }
         }
 
@@ -2131,16 +1688,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.reset_event(&self.event, self.stages);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Arc<Event>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdResetEvent"
-                    }
-                }
-                Box::new(Fin(self.event))
-            }
         }
 
         self.append_command(Cmd { event, stages }, &[]).unwrap();
@@ -2161,17 +1708,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.reset_query_pool(self.query_pool.queries_range(self.queries.clone()).unwrap());
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Arc<QueryPool>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdResetQueryPool"
-                    }
-                }
-
-                Box::new(Fin(self.query_pool))
             }
         }
 
@@ -2200,10 +1736,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_blend_constants(self.constants);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetBlendConstants")
-            }
         }
 
         self.append_command(Cmd { constants }, &[]).unwrap();
@@ -2225,10 +1757,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_depth_bias(self.constant_factor, self.clamp, self.slope_factor);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetDepthBias")
             }
         }
 
@@ -2259,10 +1787,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_depth_bounds(self.min, self.max);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetDepthBounds")
-            }
         }
 
         self.append_command(Cmd { min, max }, &[]).unwrap();
@@ -2284,16 +1808,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_event(&self.event, self.stages);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Arc<Event>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdSetEvent"
-                    }
-                }
-                Box::new(Fin(self.event))
-            }
         }
 
         self.append_command(Cmd { event, stages }, &[]).unwrap();
@@ -2313,10 +1827,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_line_width(self.line_width);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetLineWidth")
             }
         }
 
@@ -2338,10 +1848,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_stencil_compare_mask(self.face_mask, self.compare_mask);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetStencilCompareMask")
             }
         }
 
@@ -2371,10 +1877,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_stencil_reference(self.face_mask, self.reference);
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetStencilReference")
-            }
         }
 
         self.append_command(
@@ -2402,10 +1904,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_stencil_write_mask(self.face_mask, self.write_mask);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetStencilWriteMask")
             }
         }
 
@@ -2443,10 +1941,6 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_scissor(self.first_scissor, self.scissors.take().unwrap());
             }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetScissor")
-            }
         }
 
         self.append_command(
@@ -2482,10 +1976,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_viewport(self.first_viewport, self.viewports.take().unwrap());
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                Box::new("vkCmdSetViewport")
             }
         }
 
@@ -2524,26 +2014,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.update_buffer(&self.buffer, self.data.deref());
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin<B>(B);
-                impl<B> FinalCommand for Fin<B>
-                where
-                    B: BufferAccess + Send + Sync + 'static,
-                {
-                    fn name(&self) -> &'static str {
-                        "vkCmdUpdateBuffer"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        assert_eq!(num, 0);
-                        &self.0
-                    }
-                    fn buffer_name(&self, _: usize) -> Cow<'static, str> {
-                        "destination".into()
-                    }
-                }
-                Box::new(Fin(self.buffer))
             }
 
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
@@ -2602,16 +2072,6 @@ impl SyncCommandBufferBuilder {
 
             unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {
                 out.write_timestamp(self.query_pool.query(self.query).unwrap(), self.stage);
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Arc<QueryPool>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdWriteTimestamp"
-                    }
-                }
-                Box::new(Fin(self.query_pool))
             }
         }
 
@@ -2680,65 +2140,6 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                     descriptor_sets,
                     dynamic_offsets,
                 );
-            }
-
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(SmallVec<[Box<dyn DescriptorSet + Send + Sync>; 12]>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBindDescriptorSets"
-                    }
-                    fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                        for set in self.0.iter() {
-                            if let Some(buf) = set.buffer(num) {
-                                return buf.0;
-                            }
-                            num -= set.num_buffers();
-                        }
-                        panic!()
-                    }
-                    fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                        for (set_num, set) in self.0.iter().enumerate() {
-                            if let Some(buf) = set.buffer(num) {
-                                return format!(
-                                    "Buffer bound to descriptor {} of set {}",
-                                    buf.1, set_num
-                                )
-                                .into();
-                            }
-                            num -= set.num_buffers();
-                        }
-                        panic!()
-                    }
-                    fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                        for set in self.0.iter() {
-                            if let Some(img) = set.image(num) {
-                                return img.0.image();
-                            }
-                            num -= set.num_images();
-                        }
-                        panic!()
-                    }
-                    fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                        for (set_num, set) in self.0.iter().enumerate() {
-                            if let Some(img) = set.image(num) {
-                                return format!(
-                                    "Image bound to descriptor {} of set {}",
-                                    img.1, set_num
-                                )
-                                .into();
-                            }
-                            num -= set.num_images();
-                        }
-                        panic!()
-                    }
-                }
-
-                Box::new(Fin(self
-                    .descriptor_sets
-                    .into_iter()
-                    .map(|x| x.into_tuple().0)
-                    .collect()))
             }
 
             fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
@@ -2938,22 +2339,6 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
                 out.bind_vertex_buffers(self.first_binding, self.inner.take().unwrap());
             }
 
-            fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Vec<Box<dyn BufferAccess + Send + Sync>>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdBindVertexBuffers"
-                    }
-                    fn buffer(&self, num: usize) -> &dyn BufferAccess {
-                        &self.0[num]
-                    }
-                    fn buffer_name(&self, num: usize) -> Cow<'static, str> {
-                        format!("Buffer #{}", num).into()
-                    }
-                }
-                Box::new(Fin(self.buffers))
-            }
-
             fn buffer(&self, num: usize) -> &dyn BufferAccess {
                 &self.buffers[num]
             }
@@ -3065,64 +2450,6 @@ impl<'a> SyncCommandBufferBuilderExecuteCommands<'a> {
                     .iter()
                     .for_each(|cbuf| execute.add_raw(cbuf.inner().internal_object()));
                 out.execute_commands(execute);
-            }
-
-            fn into_final_command(mut self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-                struct Fin(Vec<DropUnlock>);
-                impl FinalCommand for Fin {
-                    fn name(&self) -> &'static str {
-                        "vkCmdExecuteCommands"
-                    }
-
-                    fn buffer(&self, mut num: usize) -> &dyn BufferAccess {
-                        for cbuf in self.0.iter() {
-                            if let Some(buf) = cbuf.buffer(num) {
-                                return buf.0;
-                            }
-                            num -= cbuf.num_buffers();
-                        }
-                        panic!()
-                    }
-
-                    fn buffer_name(&self, mut num: usize) -> Cow<'static, str> {
-                        for (cbuf_num, cbuf) in self.0.iter().enumerate() {
-                            if let Some(buf) = cbuf.buffer(num) {
-                                return format!(
-                                    "Buffer bound to secondary command buffer {}",
-                                    cbuf_num
-                                )
-                                .into();
-                            }
-                            num -= cbuf.num_buffers();
-                        }
-                        panic!()
-                    }
-
-                    fn image(&self, mut num: usize) -> &dyn ImageAccess {
-                        for cbuf in self.0.iter() {
-                            if let Some(img) = cbuf.image(num) {
-                                return img.0;
-                            }
-                            num -= cbuf.num_images();
-                        }
-                        panic!()
-                    }
-
-                    fn image_name(&self, mut num: usize) -> Cow<'static, str> {
-                        for (cbuf_num, cbuf) in self.0.iter().enumerate() {
-                            if let Some(img) = cbuf.image(num) {
-                                return format!(
-                                    "Image bound to secondary command buffer {}",
-                                    cbuf_num
-                                )
-                                .into();
-                            }
-                            num -= cbuf.num_images();
-                        }
-                        panic!()
-                    }
-                }
-                Box::new(Fin(std::mem::take(&mut self.0)))
             }
 
             fn buffer(&self, mut num: usize) -> &dyn BufferAccess {

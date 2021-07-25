@@ -71,13 +71,16 @@ pub use self::builder::SyncCommandBufferBuilderError;
 pub use self::builder::SyncCommandBufferBuilderExecuteCommands;
 use crate::buffer::BufferAccess;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::ImageUninitializedSafe;
+use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
+use crate::pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract};
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlags;
@@ -99,7 +102,7 @@ pub struct SyncCommandBuffer {
 
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used.
-    commands: Vec<Box<dyn FinalCommand + Send + Sync>>,
+    commands: Vec<Box<dyn Command + Send + Sync>>,
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
@@ -454,11 +457,14 @@ struct ResourceLocation {
     resource_index: usize,
 }
 
-/// Equivalent to `Command`, but with less methods. Typically contains less things than the
-/// `Command` it comes from.
-trait FinalCommand {
+// Trait for single commands within the list of commands.
+trait Command {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
+
+    // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
+    // object will likely lead to a panic.
+    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder);
 
     // Gives access to the `num`th buffer used by the command.
     fn buffer(&self, _num: usize) -> &dyn BufferAccess {
@@ -481,11 +487,25 @@ trait FinalCommand {
     fn image_name(&self, _num: usize) -> Cow<'static, str> {
         panic!()
     }
-}
 
-impl FinalCommand for &'static str {
-    fn name(&self) -> &'static str {
-        *self
+    fn bound_descriptor_set(&self, set_num: u32) -> (&dyn DescriptorSet, &[u32]) {
+        panic!()
+    }
+
+    fn bound_index_buffer(&self) -> &dyn BufferAccess {
+        panic!()
+    }
+
+    fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
+        panic!()
+    }
+
+    fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
+        panic!()
+    }
+
+    fn bound_vertex_buffer(&self, binding_num: u32) -> &dyn BufferAccess {
+        panic!()
     }
 }
 
