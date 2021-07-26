@@ -51,6 +51,7 @@
 - Vulkano-shaders now uses the `spirv_headers` crate for some of its types.
 - Large allocations now use dedicated allocations which improves memory efficiency.
 - Add `Clone` interface for `LayerProperties`.
+- Fixed detection of storage buffers in SPIR-V so that it works for all SPIR-V versions.
 
 # Version 0.24.0 (2021-06-20)
 
