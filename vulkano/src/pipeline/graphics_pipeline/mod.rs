@@ -17,7 +17,7 @@ use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
-use crate::pipeline::vertex::VertexInputBinding;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
@@ -420,7 +420,7 @@ where
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
+    ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
         self.vertex_definition.definition(interface)
     }
 }

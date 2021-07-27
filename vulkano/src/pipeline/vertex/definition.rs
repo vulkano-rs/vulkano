@@ -10,6 +10,7 @@
 use crate::buffer::BufferAccess;
 use crate::format::Format;
 use crate::pipeline::shader::ShaderInterface;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexMemberTy;
 use crate::SafeDeref;
 use std::error;
@@ -22,12 +23,11 @@ pub unsafe trait VertexDefinition:
 {
     /// Builds the vertex definition to use to link this definition to a vertex shader's input
     /// interface.
-    ///
-    /// Returns a list of vertex input binding descriptions.
+    // TODO: remove error return, move checks to GraphicsPipelineBuilder
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError>;
+    ) -> Result<VertexInput, IncompatibleVertexDefinitionError>;
 }
 
 unsafe impl<T> VertexDefinition for T
@@ -39,71 +39,9 @@ where
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
+    ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
         (**self).definition(interface)
     }
-}
-
-/// How the vertex source should be unrolled.
-#[derive(Copy, Clone, Debug)]
-pub enum VertexInputRate {
-    /// Each element of the source corresponds to a vertex.
-    Vertex,
-
-    /// Each element of the source corresponds to an instance.
-    ///
-    /// `divisor` indicates how many consecutive instances will use the same instance buffer data.
-    /// This value must be 1, unless the
-    /// [`vertex_attribute_instance_rate_divisor`](crate::device::Features::vertex_attribute_instance_rate_divisor)
-    /// feature has been enabled on the device.
-    ///
-    /// `divisor` can be 0 if the
-    /// [`vertex_attribute_instance_rate_zero_divisor`](crate::device::Features::vertex_attribute_instance_rate_zero_divisor)
-    /// feature is also enabled. This means that every vertex will use the same vertex and instance
-    /// data.
-    Instance { divisor: u32 },
-}
-
-impl From<VertexInputRate> for ash::vk::VertexInputRate {
-    #[inline]
-    fn from(val: VertexInputRate) -> Self {
-        match val {
-            VertexInputRate::Vertex => ash::vk::VertexInputRate::VERTEX,
-            VertexInputRate::Instance { .. } => ash::vk::VertexInputRate::INSTANCE,
-        }
-    }
-}
-
-/// Information about a single attribute within a vertex buffer element.
-/// TODO: change that API
-#[derive(Copy, Clone, Debug)]
-pub struct AttributeInfo {
-    /// Number of bytes between the start of an element and the location of attribute.
-    pub offset: u32,
-    /// VertexMember type of the attribute.
-    pub format: Format,
-}
-
-/// Describes a vertex input binding that serves as input to a graphics pipeline.
-#[derive(Clone, Debug)]
-pub struct VertexInputBinding {
-    /// The input attributes that are to be taken from this binding.
-    pub attributes: Vec<VertexInputAttribute>,
-    /// The size of each element in the vertex buffer.
-    pub stride: u32,
-    /// How often the vertex input should advance to the next element.
-    pub input_rate: VertexInputRate,
-}
-
-/// Describes a vertex input attribute that is read from an input binding in a graphics pipeline.
-#[derive(Clone, Copy, Debug)]
-pub struct VertexInputAttribute {
-    /// The location in the shader interface that this attribute is to be bound to.
-    pub location: u32,
-    /// VertexMember type of the attribute.
-    pub format: Format,
-    /// Number of bytes between the start of an element and the location of attribute.
-    pub offset: u32,
 }
 
 /// Error that can happen when the vertex definition doesn't match the input of the vertex shader.

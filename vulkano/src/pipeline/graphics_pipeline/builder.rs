@@ -474,36 +474,15 @@ where
 
         // Vertex bindings.
         let (binding_descriptions, binding_divisor_descriptions, attribute_descriptions) = {
-            let bindings = self
+            let vertex_input = self
                 .vertex_input
                 .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
-
-            if bindings.len()
-                > device
-                    .physical_device()
-                    .properties()
-                    .max_vertex_input_bindings
-                    .unwrap() as usize
-            {
-                return Err(
-                    GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
-                        max: device
-                            .physical_device()
-                            .properties()
-                            .max_vertex_input_bindings
-                            .unwrap(),
-                        obtained: bindings.len(),
-                    },
-                );
-            }
 
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
             let mut binding_divisor_descriptions = SmallVec::<[_; 8]>::new();
             let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
 
-            for (binding, binding_desc) in bindings.into_iter().enumerate() {
-                let binding = binding as u32;
-
+            for (binding, binding_desc) in vertex_input.bindings() {
                 if binding_desc.stride
                     > device
                         .physical_device()
@@ -572,36 +551,55 @@ where
                         )
                     }
                 }
+            }
 
-                for attribute_desc in binding_desc.attributes {
-                    // TODO: check attribute format support
-
-                    if attribute_desc.offset
-                        > device
+            if binding_descriptions.len()
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_vertex_input_bindings
+                    .unwrap() as usize
+            {
+                return Err(
+                    GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                        max: device
                             .physical_device()
                             .properties()
-                            .max_vertex_input_attribute_offset
-                            .unwrap()
-                    {
-                        return Err(
-                            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
-                                max: device
-                                    .physical_device()
-                                    .properties()
-                                    .max_vertex_input_attribute_offset
-                                    .unwrap(),
-                                obtained: attribute_desc.offset,
-                            },
-                        );
-                    }
+                            .max_vertex_input_bindings
+                            .unwrap(),
+                        obtained: binding_descriptions.len(),
+                    },
+                );
+            }
 
-                    attribute_descriptions.push(ash::vk::VertexInputAttributeDescription {
-                        location: attribute_desc.location,
-                        binding,
-                        format: attribute_desc.format.into(),
-                        offset: attribute_desc.offset,
-                    });
+            for (location, attribute_desc) in vertex_input.attributes() {
+                // TODO: check attribute format support
+
+                if attribute_desc.offset
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_vertex_input_attribute_offset
+                        .unwrap()
+                {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                            max: device
+                                .physical_device()
+                                .properties()
+                                .max_vertex_input_attribute_offset
+                                .unwrap(),
+                            obtained: attribute_desc.offset,
+                        },
+                    );
                 }
+
+                attribute_descriptions.push(ash::vk::VertexInputAttributeDescription {
+                    location,
+                    binding: attribute_desc.binding,
+                    format: attribute_desc.format.into(),
+                    offset: attribute_desc.offset,
+                });
             }
 
             if attribute_descriptions.len()
