@@ -17,7 +17,7 @@ use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
-use crate::pipeline::vertex::VertexInputBinding;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
@@ -43,10 +43,9 @@ mod creation_error;
 pub struct GraphicsPipeline<VertexDefinition> {
     inner: Inner,
     layout: Arc<PipelineLayout>,
-
     subpass: Subpass,
-
     vertex_definition: VertexDefinition,
+    vertex_input: VertexInput,
 
     dynamic_line_width: bool,
     dynamic_viewport: bool,
@@ -211,6 +210,9 @@ pub unsafe trait GraphicsPipelineAbstract:
     /// Returns the subpass this graphics pipeline is rendering to.
     fn subpass(&self) -> &Subpass;
 
+    /// Returns the vertex input description of the graphics pipeline.
+    fn vertex_input(&self) -> &VertexInput;
+
     /// Returns true if the line width used by this pipeline is dynamic.
     fn has_dynamic_line_width(&self) -> bool;
 
@@ -254,6 +256,11 @@ where
     #[inline]
     fn subpass(&self) -> &Subpass {
         &self.subpass
+    }
+
+    #[inline]
+    fn vertex_input(&self) -> &VertexInput {
+        &self.vertex_input
     }
 
     #[inline]
@@ -315,6 +322,11 @@ where
     #[inline]
     fn subpass(&self) -> &Subpass {
         (**self).subpass()
+    }
+
+    #[inline]
+    fn vertex_input(&self) -> &VertexInput {
+        (**self).vertex_input()
     }
 
     #[inline]
@@ -420,7 +432,7 @@ where
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
+    ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
         self.vertex_definition.definition(interface)
     }
 }
