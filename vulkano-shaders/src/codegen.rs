@@ -543,7 +543,9 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::AtomicStorageOps => todo!(),
         Capability::SampleMaskPostDepthCoverage => todo!(),
         Capability::StorageBuffer8BitAccess => todo!(),
-        Capability::UniformAndStorageBuffer8BitAccess => todo!(),
+        Capability::UniformAndStorageBuffer8BitAccess => {
+            DeviceRequirement::Extensions(&["khr_8bit_storage"])
+        }
         Capability::DenormPreserve => todo!(),
         Capability::DenormFlushToZero => todo!(),
         Capability::SignedZeroInfNanPreserve => todo!(),

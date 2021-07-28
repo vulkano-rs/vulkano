@@ -13,6 +13,7 @@ use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexInputAttribute;
 use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexInputRate;
@@ -35,7 +36,6 @@ impl From<VertexBuffer> for VertexInputBinding {
     #[inline]
     fn from(val: VertexBuffer) -> Self {
         Self {
-            attributes: Vec::new(),
             stride: val.stride,
             input_rate: val.input_rate,
         }
@@ -93,9 +93,13 @@ unsafe impl VertexDefinition for BuffersDefinition {
     fn definition(
         &self,
         interface: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
-        let mut bindings: Vec<VertexInputBinding> =
-            self.0.iter().map(|&buffer| buffer.into()).collect();
+    ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
+        let bindings = self
+            .0
+            .iter()
+            .enumerate()
+            .map(|(binding, &buffer)| (binding as u32, buffer.into()));
+        let mut attributes: Vec<(u32, VertexInputAttribute)> = Vec::new();
 
         for element in interface.elements() {
             let name = element.name.as_ref().unwrap();
@@ -104,17 +108,21 @@ unsafe impl VertexDefinition for BuffersDefinition {
                 .0
                 .iter()
                 .enumerate()
-                .find_map(|(binding, buffer)| (buffer.info_fn)(name).map(|infos| (infos, binding)))
-                .ok_or_else(|| IncompatibleVertexDefinitionError::MissingAttribute {
-                    attribute: name.clone().into_owned(),
-                })?;
-            let attributes = &mut bindings[binding].attributes;
+                .find_map(|(binding, buffer)| {
+                    (buffer.info_fn)(name).map(|infos| (infos, binding as u32))
+                })
+                .ok_or_else(||
+                    // TODO: move this check to GraphicsPipelineBuilder
+                    IncompatibleVertexDefinitionError::MissingAttribute {
+                        attribute: name.clone().into_owned(),
+                    })?;
 
             if !infos.ty.matches(
                 infos.array_size,
                 element.format,
                 element.location.end - element.location.start,
             ) {
+                // TODO: move this check to GraphicsPipelineBuilder
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
                     attribute: name.clone().into_owned(),
                     shader: (
@@ -127,16 +135,19 @@ unsafe impl VertexDefinition for BuffersDefinition {
 
             let mut offset = infos.offset;
             for location in element.location.clone() {
-                attributes.push(VertexInputAttribute {
+                attributes.push((
                     location,
-                    format: element.format,
-                    offset: offset as u32,
-                });
+                    VertexInputAttribute {
+                        binding,
+                        format: element.format,
+                        offset: offset as u32,
+                    },
+                ));
                 offset += element.format.size().unwrap();
             }
         }
 
-        Ok(bindings)
+        Ok(VertexInput::new(bindings, attributes))
     }
 }
 

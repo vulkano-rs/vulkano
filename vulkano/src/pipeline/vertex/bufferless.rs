@@ -11,7 +11,7 @@ use crate::buffer::BufferAccess;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
-use crate::pipeline::vertex::VertexInputBinding;
+use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexSource;
 
 /// Implementation of `VertexDefinition` for drawing with no buffers at all.
@@ -61,7 +61,7 @@ unsafe impl VertexDefinition for BufferlessDefinition {
     fn definition(
         &self,
         _: &ShaderInterface,
-    ) -> Result<Vec<VertexInputBinding>, IncompatibleVertexDefinitionError> {
-        Ok(vec![])
+    ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
+        Ok(VertexInput::empty())
     }
 }
