@@ -53,6 +53,7 @@
 - Fixed detection of storage buffers in SPIR-V so that it works for all SPIR-V versions.
 - Added `VertexInput` type, which contains the binding and attribute descriptions.
 - Added a `vertex_input` method to `GraphicsPipelineAbstract`, which returns a reference to the vertex input.
+- Add support for 8bit uniform storage.
 
 # Version 0.24.0 (2021-06-20)
 
