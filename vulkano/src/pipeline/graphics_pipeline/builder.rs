@@ -482,6 +482,25 @@ where
             let mut binding_divisor_descriptions = SmallVec::<[_; 8]>::new();
 
             for (binding, binding_desc) in vertex_input.bindings() {
+                if binding
+                    >= device
+                        .physical_device()
+                        .properties()
+                        .max_vertex_input_bindings
+                        .unwrap()
+                {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                            max: device
+                                .physical_device()
+                                .properties()
+                                .max_vertex_input_bindings
+                                .unwrap(),
+                            obtained: binding,
+                        },
+                    );
+                }
+
                 if binding_desc.stride
                     > device
                         .physical_device()
@@ -566,7 +585,7 @@ where
                             .properties()
                             .max_vertex_input_bindings
                             .unwrap(),
-                        obtained: binding_descriptions.len(),
+                        obtained: binding_descriptions.len() as u32,
                     },
                 );
             }
