@@ -71,13 +71,16 @@ pub use self::builder::SyncCommandBufferBuilderError;
 pub use self::builder::SyncCommandBufferBuilderExecuteCommands;
 use crate::buffer::BufferAccess;
 use crate::command_buffer::sys::UnsafeCommandBuffer;
+use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::ImageUninitializedSafe;
+use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
+use crate::pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract};
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlags;
@@ -99,7 +102,7 @@ pub struct SyncCommandBuffer {
 
     // List of commands used by the command buffer. Used to hold the various resources that are
     // being used.
-    commands: Vec<Box<dyn FinalCommand + Send + Sync>>,
+    commands: Vec<Arc<dyn Command + Send + Sync>>,
 
     // Locations within commands that pipeline barriers were inserted. For debugging purposes.
     // TODO: present only in cfg(debug_assertions)?
@@ -454,11 +457,14 @@ struct ResourceLocation {
     resource_index: usize,
 }
 
-/// Equivalent to `Command`, but with less methods. Typically contains less things than the
-/// `Command` it comes from.
-trait FinalCommand {
+// Trait for single commands within the list of commands.
+trait Command {
     // Returns a user-friendly name for the command, for error reporting purposes.
     fn name(&self) -> &'static str;
+
+    // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
+    // object will likely lead to a panic.
+    unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder);
 
     // Gives access to the `num`th buffer used by the command.
     fn buffer(&self, _num: usize) -> &dyn BufferAccess {
@@ -481,11 +487,31 @@ trait FinalCommand {
     fn image_name(&self, _num: usize) -> Cow<'static, str> {
         panic!()
     }
+
+    fn bound_descriptor_set(&self, set_num: u32) -> (&dyn DescriptorSet, &[u32]) {
+        panic!()
+    }
+
+    fn bound_index_buffer(&self) -> &dyn BufferAccess {
+        panic!()
+    }
+
+    fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
+        panic!()
+    }
+
+    fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
+        panic!()
+    }
+
+    fn bound_vertex_buffer(&self, binding_num: u32) -> &dyn BufferAccess {
+        panic!()
+    }
 }
 
-impl FinalCommand for &'static str {
-    fn name(&self) -> &'static str {
-        *self
+impl std::fmt::Debug for dyn Command + Send + Sync {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.name())
     }
 }
 
@@ -501,7 +527,15 @@ mod tests {
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferLevel;
     use crate::command_buffer::CommandBufferUsage;
+    use crate::descriptor_set::layout::DescriptorDesc;
+    use crate::descriptor_set::layout::DescriptorDescTy;
+    use crate::descriptor_set::layout::DescriptorSetLayout;
+    use crate::descriptor_set::PersistentDescriptorSet;
     use crate::device::Device;
+    use crate::pipeline::layout::PipelineLayout;
+    use crate::pipeline::shader::ShaderStages;
+    use crate::pipeline::PipelineBindPoint;
+    use crate::sampler::Sampler;
     use crate::sync::GpuFuture;
     use std::sync::Arc;
 
@@ -631,6 +665,102 @@ mod tests {
                     Err(SyncCommandBufferBuilderError::Conflict { .. })
                 ));
             }
+        }
+    }
+
+    #[test]
+    fn vertex_buffer_binding() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let mut sync = SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
+                CommandBufferLevel::primary(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .unwrap();
+            let buf =
+                CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
+            let mut buf_builder = sync.bind_vertex_buffers();
+            buf_builder.add(buf);
+            buf_builder.submit(1).unwrap();
+
+            assert!(sync.bound_vertex_buffer(0).is_none());
+            assert!(sync.bound_vertex_buffer(1).is_some());
+            assert!(sync.bound_vertex_buffer(2).is_none());
+        }
+    }
+
+    #[test]
+    fn descriptor_set_binding() {
+        unsafe {
+            let (device, queue) = gfx_dev_and_queue!();
+
+            let pool = Device::standard_command_pool(&device, queue.family());
+            let pool_builder_alloc = pool.alloc(false, 1).unwrap().next().unwrap();
+            let mut sync = SyncCommandBufferBuilder::new(
+                &pool_builder_alloc.inner(),
+                CommandBufferLevel::primary(),
+                CommandBufferUsage::MultipleSubmit,
+            )
+            .unwrap();
+            let set_layout = Arc::new(
+                DescriptorSetLayout::new(
+                    device.clone(),
+                    [Some(DescriptorDesc {
+                        ty: DescriptorDescTy::Sampler,
+                        array_count: 1,
+                        stages: ShaderStages::all(),
+                        readonly: true,
+                    })],
+                )
+                .unwrap(),
+            );
+            let pipeline_layout = Arc::new(
+                PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
+                    .unwrap(),
+            );
+            let set = Arc::new(
+                PersistentDescriptorSet::start(set_layout)
+                    .add_sampler(Sampler::simple_repeat_linear(device))
+                    .unwrap()
+                    .build()
+                    .unwrap(),
+            );
+
+            let mut set_builder = sync.bind_descriptor_sets();
+            set_builder.add(set.clone());
+            set_builder
+                .submit(PipelineBindPoint::Graphics, pipeline_layout.clone(), 1)
+                .unwrap();
+
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Compute, 0)
+                .is_none());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .is_none());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .is_some());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 2)
+                .is_none());
+
+            let mut set_builder = sync.bind_descriptor_sets();
+            set_builder.add(set);
+            set_builder
+                .submit(PipelineBindPoint::Graphics, pipeline_layout, 0)
+                .unwrap();
+
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
+                .is_some());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .is_none());
         }
     }
 }

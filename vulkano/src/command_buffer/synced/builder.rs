@@ -10,7 +10,7 @@
 pub use self::commands::SyncCommandBufferBuilderBindDescriptorSets;
 pub use self::commands::SyncCommandBufferBuilderBindVertexBuffer;
 pub use self::commands::SyncCommandBufferBuilderExecuteCommands;
-use super::FinalCommand;
+use super::Command;
 use super::ResourceFinalState;
 use super::ResourceKey;
 use super::ResourceLocation;
@@ -23,10 +23,11 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
+use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::image::ImageAccess;
 use crate::image::ImageLayout;
+use crate::pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineBindPoint};
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
@@ -65,7 +66,7 @@ pub struct SyncCommandBufferBuilder {
     // submitted to the inner builder yet.
     // Each command owns the resources it uses (buffers, images, pipelines, descriptor sets etc.),
     // references to any of these must be indirect in the form of a command index + resource id.
-    commands: Vec<Box<dyn Command + Send + Sync>>,
+    commands: Vec<Arc<dyn Command + Send + Sync>>,
 
     // Prototype for the pipeline barrier that must be submitted before flushing the commands
     // in `commands`.
@@ -95,6 +96,9 @@ pub struct SyncCommandBufferBuilder {
         ImageLayout,
         ImageUninitializedSafe,
     )>,
+
+    // State of bindings.
+    bindings: BindingState,
 
     // `true` if the builder has been put in an inconsistent state. This happens when
     // `append_command` throws an error, because some changes to the internal state have already
@@ -161,9 +165,10 @@ impl SyncCommandBufferBuilder {
             barriers: Vec::new(),
             first_unflushed: 0,
             latest_render_pass_enter,
+            resources: FnvHashMap::default(),
             buffers: Vec::new(),
             images: Vec::new(),
-            resources: FnvHashMap::default(),
+            bindings: Default::default(),
             is_poisoned: false,
             is_secondary,
         }
@@ -205,7 +210,7 @@ impl SyncCommandBufferBuilder {
 
         // Note that we don't submit the command to the inner command buffer yet.
         let (latest_command_id, end) = {
-            self.commands.push(Box::new(command));
+            self.commands.push(Arc::new(command));
             let latest_command_id = self.commands.len() - 1;
             let end = self.latest_render_pass_enter.unwrap_or(latest_command_id);
             (latest_command_id, end)
@@ -567,13 +572,6 @@ impl SyncCommandBufferBuilder {
             }
         }
 
-        // Turns the commands into a list of "final commands" that are slimmer.
-        let final_commands = self
-            .commands
-            .into_iter()
-            .map(|command| command.into_final_command())
-            .collect();
-
         // Build the final resources states.
         let final_resources_states: FnvHashMap<_, _> = {
             self.resources
@@ -599,9 +597,58 @@ impl SyncCommandBufferBuilder {
             buffers: self.buffers,
             images: self.images,
             resources: final_resources_states,
-            commands: final_commands,
+            commands: self.commands,
             barriers: self.barriers,
         })
+    }
+
+    /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
+    /// been bound yet.
+    pub(crate) fn bound_descriptor_set(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        set_num: u32,
+    ) -> Option<(&dyn DescriptorSet, &[u32])> {
+        self.bindings
+            .descriptor_sets
+            .get(&pipeline_bind_point)
+            .and_then(|sets| {
+                sets.get(&set_num)
+                    .map(|cmd| cmd.bound_descriptor_set(set_num))
+            })
+    }
+
+    /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
+    pub(crate) fn bound_index_buffer(&self) -> Option<&dyn BufferAccess> {
+        self.bindings
+            .index_buffer
+            .as_ref()
+            .map(|cmd| cmd.bound_index_buffer())
+    }
+
+    /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
+    pub(crate) fn bound_pipeline_compute(&self) -> Option<&dyn ComputePipelineAbstract> {
+        self.bindings
+            .pipeline_compute
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_compute())
+    }
+
+    /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
+    pub(crate) fn bound_pipeline_graphics(&self) -> Option<&dyn GraphicsPipelineAbstract> {
+        self.bindings
+            .pipeline_graphics
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_graphics())
+    }
+
+    /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
+    /// nothing has been bound yet.
+    pub(crate) fn bound_vertex_buffer(&self, binding_num: u32) -> Option<&dyn BufferAccess> {
+        self.bindings
+            .vertex_buffers
+            .get(&binding_num)
+            .map(|cmd| cmd.bound_vertex_buffer(binding_num))
     }
 }
 
@@ -655,61 +702,6 @@ impl From<CommandBufferExecError> for SyncCommandBufferBuilderError {
     }
 }
 
-// Trait for single commands within the list of commands.
-trait Command {
-    // Returns a user-friendly name for the command, for error reporting purposes.
-    fn name(&self) -> &'static str;
-
-    // Sends the command to the `UnsafeCommandBufferBuilder`. Calling this method twice on the same
-    // object will likely lead to a panic.
-    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder);
-
-    // Turns this command into a `FinalCommand`.
-    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync>;
-
-    // Gives access to the `num`th buffer used by the command.
-    fn buffer(&self, _num: usize) -> &dyn BufferAccess {
-        panic!()
-    }
-
-    // Gives access to the `num`th image used by the command.
-    fn image(&self, _num: usize) -> &dyn ImageAccess {
-        panic!()
-    }
-
-    // Returns a user-friendly name for the `num`th buffer used by the command, for error
-    // reporting purposes.
-    fn buffer_name(&self, _num: usize) -> Cow<'static, str> {
-        panic!()
-    }
-
-    // Returns a user-friendly name for the `num`th image used by the command, for error
-    // reporting purposes.
-    fn image_name(&self, _num: usize) -> Cow<'static, str> {
-        panic!()
-    }
-}
-
-struct CmdPipelineBarrier;
-
-impl Command for CmdPipelineBarrier {
-    fn name(&self) -> &'static str {
-        "vkCmdPipelineBarrier"
-    }
-
-    unsafe fn send(&mut self, out: &mut UnsafeCommandBufferBuilder) {}
-
-    fn into_final_command(self: Box<Self>) -> Box<dyn FinalCommand + Send + Sync> {
-        struct Fin;
-        impl FinalCommand for Fin {
-            fn name(&self) -> &'static str {
-                "vkCmdPipelineBarrier"
-            }
-        }
-        Box::new(Fin)
-    }
-}
-
 /// Type of resource whose state is to be tracked.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum KeyTy {
@@ -742,4 +734,15 @@ struct ResourceState {
 
     // Extra context of how the image will be used
     image_uninitialized_safe: ImageUninitializedSafe,
+}
+
+/// Holds the index of the most recent command that binds a particular resource, or `None` if
+/// nothing has been bound yet.
+#[derive(Debug, Default)]
+struct BindingState {
+    descriptor_sets: FnvHashMap<PipelineBindPoint, FnvHashMap<u32, Arc<dyn Command + Send + Sync>>>,
+    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
+    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
+    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
+    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
 }
