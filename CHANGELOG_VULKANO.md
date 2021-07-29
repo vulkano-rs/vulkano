@@ -56,6 +56,8 @@
 - Added a `vertex_input` method to `GraphicsPipelineAbstract`, which returns a reference to the vertex input.
 - Add support for 8bit uniform storage.
 - Added limits check for vertex buffer binding numbers.
+- Fixed synchronization bug where pipeline barriers were placed based on the binding of resources instead of the draw/dispatch calls that use them.
+- `SyncCommandBufferBuilder` and `UnsafeCommandBufferBuilder` accept any `IntoIterator` where they previously only accepted `Iterator`.
 
 # Version 0.24.0 (2021-06-20)
 
