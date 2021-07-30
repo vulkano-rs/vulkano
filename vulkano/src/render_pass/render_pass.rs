@@ -857,7 +857,6 @@ mod tests {
             .physical_device()
             .properties()
             .max_color_attachments
-            .unwrap()
             >= 10
         {
             return; // test ignored

@@ -73,7 +73,6 @@ mod tests {
             .physical_device()
             .properties()
             .max_compute_work_group_count
-            .unwrap()
             == attempted
         {
             return;
