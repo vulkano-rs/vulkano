@@ -60,7 +60,7 @@ use std::u32;
 /// Prototype for a `GraphicsPipeline`.
 // TODO: we can optimize this by filling directly the raw vk structs
 pub struct GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss> {
-    vertex_input: Vdef,
+    vertex_definition: Vdef,
     vertex_shader: Option<(GraphicsEntryPoint<'vs>, Vss)>,
     input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo,
     // Note: the `input_assembly_topology` member is temporary in order to not lose information
@@ -103,7 +103,7 @@ impl
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            vertex_input: BufferlessDefinition,
+            vertex_definition: BufferlessDefinition,
             vertex_shader: None,
             input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
                 topology: PrimitiveTopology::TriangleList.into(),
@@ -472,35 +472,32 @@ where
             stages
         };
 
-        // Vertex bindings.
-        let (binding_descriptions, binding_divisor_descriptions, attribute_descriptions) = {
-            let bindings = self
-                .vertex_input
-                .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
+        // Vertex input.
+        let vertex_input = self
+            .vertex_definition
+            .definition(self.vertex_shader.as_ref().unwrap().0.input())?;
 
-            if bindings.len()
-                > device
-                    .physical_device()
-                    .properties()
-                    .max_vertex_input_bindings as usize
-            {
-                return Err(
-                    GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
-                        max: device
-                            .physical_device()
-                            .properties()
-                            .max_vertex_input_bindings,
-                        obtained: bindings.len(),
-                    },
-                );
-            }
-
+        let (binding_descriptions, binding_divisor_descriptions) = {
             let mut binding_descriptions = SmallVec::<[_; 8]>::new();
             let mut binding_divisor_descriptions = SmallVec::<[_; 8]>::new();
-            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
 
-            for (binding, binding_desc) in bindings.into_iter().enumerate() {
-                let binding = binding as u32;
+            for (binding, binding_desc) in vertex_input.bindings() {
+                if binding
+                    >= device
+                        .physical_device()
+                        .properties()
+                        .max_vertex_input_bindings
+                {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                            max: device
+                                .physical_device()
+                                .properties()
+                                .max_vertex_input_bindings,
+                            obtained: binding,
+                        },
+                    );
+                }
 
                 if binding_desc.stride
                     > device
@@ -568,34 +565,57 @@ where
                         )
                     }
                 }
+            }
 
-                for attribute_desc in binding_desc.attributes {
-                    // TODO: check attribute format support
-
-                    if attribute_desc.offset
-                        > device
+            if binding_descriptions.len()
+                > device
+                    .physical_device()
+                    .properties()
+                    .max_vertex_input_bindings as usize
+            {
+                return Err(
+                    GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
+                        max: device
                             .physical_device()
                             .properties()
-                            .max_vertex_input_attribute_offset
-                    {
-                        return Err(
-                            GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
-                                max: device
-                                    .physical_device()
-                                    .properties()
-                                    .max_vertex_input_attribute_offset,
-                                obtained: attribute_desc.offset,
-                            },
-                        );
-                    }
+                            .max_vertex_input_bindings,
+                        obtained: binding_descriptions.len() as u32,
+                    },
+                );
+            }
 
-                    attribute_descriptions.push(ash::vk::VertexInputAttributeDescription {
-                        location: attribute_desc.location,
-                        binding,
-                        format: attribute_desc.format.into(),
-                        offset: attribute_desc.offset,
-                    });
+            (binding_descriptions, binding_divisor_descriptions)
+        };
+
+        let attribute_descriptions = {
+            let mut attribute_descriptions = SmallVec::<[_; 8]>::new();
+
+            for (location, attribute_desc) in vertex_input.attributes() {
+                // TODO: check attribute format support
+
+                if attribute_desc.offset
+                    > device
+                        .physical_device()
+                        .properties()
+                        .max_vertex_input_attribute_offset
+                {
+                    return Err(
+                        GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
+                            max: device
+                                .physical_device()
+                                .properties()
+                                .max_vertex_input_attribute_offset,
+                            obtained: attribute_desc.offset,
+                        },
+                    );
                 }
+
+                attribute_descriptions.push(ash::vk::VertexInputAttributeDescription {
+                    location,
+                    binding: attribute_desc.binding,
+                    format: attribute_desc.format.into(),
+                    offset: attribute_desc.offset,
+                });
             }
 
             if attribute_descriptions.len()
@@ -615,11 +635,7 @@ where
                 );
             }
 
-            (
-                binding_descriptions,
-                binding_divisor_descriptions,
-                attribute_descriptions,
-            )
+            attribute_descriptions
         };
 
         let vertex_input_divisor_state = if !binding_divisor_descriptions.is_empty() {
@@ -1177,10 +1193,9 @@ where
                 pipeline,
             },
             layout: pipeline_layout,
-
-            vertex_definition: self.vertex_input,
-
             subpass: self.subpass.take().unwrap(),
+            vertex_definition: self.vertex_definition,
+            vertex_input,
 
             dynamic_line_width: self.raster.line_width.is_none(),
             dynamic_viewport: self.viewport.as_ref().unwrap().dynamic_viewports(),
@@ -1208,10 +1223,10 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn vertex_input<T>(
         self,
-        vertex_input: T,
+        vertex_definition: T,
     ) -> GraphicsPipelineBuilder<'vs, 'tcs, 'tes, 'gs, 'fs, T, Vss, Tcss, Tess, Gss, Fss> {
         GraphicsPipelineBuilder {
-            vertex_input,
+            vertex_definition,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1263,7 +1278,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Vss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            vertex_input: self.vertex_input,
+            vertex_definition: self.vertex_definition,
             vertex_shader: Some((shader, specialization_constants)),
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1415,7 +1430,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Tess2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            vertex_input: self.vertex_input,
+            vertex_definition: self.vertex_definition,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1460,7 +1475,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Gss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            vertex_input: self.vertex_input,
+            vertex_definition: self.vertex_definition,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1742,7 +1757,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
         Fss2: SpecializationConstants,
     {
         GraphicsPipelineBuilder {
-            vertex_input: self.vertex_input,
+            vertex_definition: self.vertex_definition,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1857,7 +1872,7 @@ impl<'vs, 'tcs, 'tes, 'gs, 'fs, Vdef, Vss, Tcss, Tess, Gss, Fss>
     #[inline]
     pub fn render_pass(self, subpass: Subpass) -> Self {
         GraphicsPipelineBuilder {
-            vertex_input: self.vertex_input,
+            vertex_definition: self.vertex_definition,
             vertex_shader: self.vertex_shader,
             input_assembly: self.input_assembly,
             input_assembly_topology: self.input_assembly_topology,
@@ -1898,7 +1913,7 @@ where
 {
     fn clone(&self) -> Self {
         GraphicsPipelineBuilder {
-            vertex_input: self.vertex_input.clone(),
+            vertex_definition: self.vertex_definition.clone(),
             vertex_shader: self.vertex_shader.clone(),
             input_assembly: unsafe { ptr::read(&self.input_assembly) },
             input_assembly_topology: self.input_assembly_topology,

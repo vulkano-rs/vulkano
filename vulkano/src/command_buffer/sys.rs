@@ -238,7 +238,7 @@ impl UnsafeCommandBufferBuilder {
         clear_values: I,
     ) where
         F: ?Sized + FramebufferAbstract,
-        I: Iterator<Item = ClearValue>,
+        I: IntoIterator<Item = ClearValue>,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -248,6 +248,7 @@ impl UnsafeCommandBufferBuilder {
         let raw_framebuffer = framebuffer.inner().internal_object();
 
         let raw_clear_values: SmallVec<[_; 12]> = clear_values
+            .into_iter()
             .map(|clear_value| match clear_value {
                 ClearValue::None => ash::vk::ClearValue {
                     color: ash::vk::ClearColorValue { float32: [0.0; 4] },
@@ -320,17 +321,17 @@ impl UnsafeCommandBufferBuilder {
         sets: S,
         dynamic_offsets: I,
     ) where
-        S: Iterator<Item = &'s UnsafeDescriptorSet>,
-        I: Iterator<Item = u32>,
+        S: IntoIterator<Item = &'s UnsafeDescriptorSet>,
+        I: IntoIterator<Item = u32>,
     {
         let fns = self.device().fns();
         let cmd = self.internal_object();
 
-        let sets: SmallVec<[_; 12]> = sets.map(|s| s.internal_object()).collect();
+        let sets: SmallVec<[_; 12]> = sets.into_iter().map(|s| s.internal_object()).collect();
         if sets.is_empty() {
             return;
         }
-        let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.collect();
+        let dynamic_offsets: SmallVec<[u32; 32]> = dynamic_offsets.into_iter().collect();
 
         let num_bindings = sets.len() as u32;
         debug_assert!(
@@ -452,7 +453,7 @@ impl UnsafeCommandBufferBuilder {
     ) where
         S: ?Sized + ImageAccess,
         D: ?Sized + ImageAccess,
-        R: Iterator<Item = UnsafeCommandBufferBuilderImageCopy>,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageCopy>,
     {
         // TODO: The correct check here is that the uncompressed element size of the source is
         // equal to the compressed element size of the destination.
@@ -486,6 +487,7 @@ impl UnsafeCommandBufferBuilder {
         );
 
         let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
             .filter_map(|copy| {
                 // TODO: not everything is checked here
                 debug_assert!(
@@ -568,7 +570,7 @@ impl UnsafeCommandBufferBuilder {
     ) where
         S: ?Sized + ImageAccess,
         D: ?Sized + ImageAccess,
-        R: Iterator<Item = UnsafeCommandBufferBuilderImageBlit>,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
     {
         debug_assert!(
             filter == Filter::Nearest
@@ -612,6 +614,7 @@ impl UnsafeCommandBufferBuilder {
         );
 
         let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
             .filter_map(|blit| {
                 // TODO: not everything is checked here
                 debug_assert!(
@@ -695,8 +698,8 @@ impl UnsafeCommandBufferBuilder {
     /// no-op and isn't a valid usage of the command anyway.
     #[inline]
     pub unsafe fn clear_attachments<A, R>(&mut self, attachments: A, rects: R)
-        where A: Iterator<Item = >,
-              R: Iterator<Item = >
+        where A: IntoIterator<Item = >,
+              R: IntoIterator<Item = >
     {
         let attachments: SmallVec<[_; 16]> = attachments.map().collect();
         let rects: SmallVec<[_; 4]> = rects.map().collect();
@@ -724,7 +727,7 @@ impl UnsafeCommandBufferBuilder {
         regions: R,
     ) where
         I: ?Sized + ImageAccess,
-        R: Iterator<Item = UnsafeCommandBufferBuilderColorImageClear>,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>,
     {
         debug_assert!(
             image.format().ty() == FormatTy::Float
@@ -744,6 +747,7 @@ impl UnsafeCommandBufferBuilder {
         };
 
         let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
             .filter_map(|region| {
                 debug_assert!(
                     region.layer_count + region.base_array_layer <= image.num_layers as u32
@@ -791,7 +795,7 @@ impl UnsafeCommandBufferBuilder {
     where
         S: ?Sized + BufferAccess,
         D: ?Sized + BufferAccess,
-        R: Iterator<Item = (usize, usize, usize)>,
+        R: IntoIterator<Item = (usize, usize, usize)>,
     {
         // TODO: debug assert that there's no overlap in the destinations?
 
@@ -804,6 +808,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(destination.buffer.usage().transfer_destination);
 
         let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
             .map(|(sr, de, sz)| ash::vk::BufferCopy {
                 src_offset: (sr + source.offset) as ash::vk::DeviceSize,
                 dst_offset: (de + destination.offset) as ash::vk::DeviceSize,
@@ -840,7 +845,7 @@ impl UnsafeCommandBufferBuilder {
     ) where
         S: ?Sized + BufferAccess,
         D: ?Sized + ImageAccess,
-        R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
     {
         let source = source.inner();
         debug_assert!(source.offset < source.buffer.size());
@@ -855,6 +860,7 @@ impl UnsafeCommandBufferBuilder {
         );
 
         let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
             .map(|copy| {
                 debug_assert!(copy.image_layer_count <= destination.num_layers as u32);
                 debug_assert!(copy.image_mip_level < destination.num_mipmap_levels as u32);
@@ -914,7 +920,7 @@ impl UnsafeCommandBufferBuilder {
     ) where
         S: ?Sized + ImageAccess,
         D: ?Sized + BufferAccess,
-        R: Iterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
+        R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
     {
         debug_assert_eq!(source.samples(), SampleCount::Sample1);
         let source = source.inner();
@@ -929,6 +935,7 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(destination.buffer.usage().transfer_destination);
 
         let regions: SmallVec<[_; 8]> = regions
+            .into_iter()
             .map(|copy| {
                 debug_assert!(copy.image_layer_count <= source.num_layers as u32);
                 debug_assert!(copy.image_mip_level < source.num_mipmap_levels as u32);
@@ -1386,9 +1393,10 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I)
     where
-        I: Iterator<Item = Scissor>,
+        I: IntoIterator<Item = Scissor>,
     {
         let scissors = scissors
+            .into_iter()
             .map(|v| ash::vk::Rect2D::from(v.clone()))
             .collect::<SmallVec<[_; 16]>>();
         if scissors.is_empty() {
@@ -1427,9 +1435,10 @@ impl UnsafeCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I)
     where
-        I: Iterator<Item = Viewport>,
+        I: IntoIterator<Item = Viewport>,
     {
         let viewports = viewports
+            .into_iter()
             .map(|v| v.clone().into())
             .collect::<SmallVec<[_; 16]>>();
         if viewports.is_empty() {

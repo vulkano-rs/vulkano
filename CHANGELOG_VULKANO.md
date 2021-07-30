@@ -28,7 +28,7 @@
   - `descriptor_set::{DescriptorWrite, UnsafeDescriptorSet}` > `descriptor_set::sys`.
   - `descriptor_set::collection` is now private.
 - **Breaking** `Features::superset_of` is renamed to `is_superset_of`.
-- **Breaking** The `VertexDefinition` trait no longer has `AttribsIter` and `BuffersIter` as associated types. It instead returns a `Vec<VertexInputBinding>`.
+- **Breaking** The `VertexDefinition` trait no longer has `AttribsIter` and `BuffersIter` as associated types. It instead returns a `VertexInput`.
 - **Breaking** The various types for vertex definitions (except `BufferlessDefinition`) have been replaced with the new `BuffersDefinition` type, which can handle any number of vertex and instance buffers. Examples of how it's used can be seen in the "instancing" and "teapot" examples.
 - **Breaking** `InputRate` has been renamed to `VertexInputRate` to match the Vulkan name. The `Instance` variant now has a `divisor` member.
 - **Breaking** `DescriptorSetDesc` is converted from a trait to a struct. `DescriptorSetLayout` can take this struct in its constructor, as alternative to the iterator which was already possible previously.
@@ -52,6 +52,12 @@
 - Large allocations now use dedicated allocations which improves memory efficiency.
 - Add `Clone` interface for `LayerProperties`.
 - Fixed detection of storage buffers in SPIR-V so that it works for all SPIR-V versions.
+- Added `VertexInput` type, which contains the binding and attribute descriptions.
+- Added a `vertex_input` method to `GraphicsPipelineAbstract`, which returns a reference to the vertex input.
+- Add support for 8bit uniform storage.
+- Added limits check for vertex buffer binding numbers.
+- Fixed synchronization bug where pipeline barriers were placed based on the binding of resources instead of the draw/dispatch calls that use them.
+- `SyncCommandBufferBuilder` and `UnsafeCommandBufferBuilder` accept any `IntoIterator` where they previously only accepted `Iterator`.
 
 # Version 0.24.0 (2021-06-20)
 

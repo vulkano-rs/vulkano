@@ -55,7 +55,7 @@ pub enum GraphicsPipelineCreationError {
         /// Maximum allowed value.
         max: u32,
         /// Value that was passed.
-        obtained: usize,
+        obtained: u32,
     },
 
     /// The maximum offset for a vertex attribute has been exceeded. This means that your vertex

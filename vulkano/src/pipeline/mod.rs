@@ -98,7 +98,7 @@ pub mod shader;
 pub mod vertex;
 pub mod viewport;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 #[repr(i32)]
 pub enum PipelineBindPoint {
     Compute = ash::vk::PipelineBindPoint::COMPUTE.as_raw(),
