@@ -17,8 +17,7 @@ pub fn check_dispatch(device: &Device, dimensions: [u32; 3]) -> Result<(), Check
     let max = device
         .physical_device()
         .properties()
-        .max_compute_work_group_count
-        .unwrap();
+        .max_compute_work_group_count;
 
     if dimensions[0] > max[0] || dimensions[1] > max[1] || dimensions[2] > max[2] {
         return Err(CheckDispatchError::UnsupportedDimensions {

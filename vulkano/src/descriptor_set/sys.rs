@@ -405,8 +405,7 @@ impl DescriptorWrite {
                     .device()
                     .physical_device()
                     .properties()
-                    .min_uniform_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .min_uniform_buffer_offset_alignment as usize,
             0
         );
         debug_assert!(
@@ -414,8 +413,7 @@ impl DescriptorWrite {
                 .device()
                 .physical_device()
                 .properties()
-                .max_uniform_buffer_range
-                .unwrap() as usize
+                .max_uniform_buffer_range as usize
         );
 
         DescriptorWrite {
@@ -441,8 +439,7 @@ impl DescriptorWrite {
                     .device()
                     .physical_device()
                     .properties()
-                    .min_storage_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .min_storage_buffer_offset_alignment as usize,
             0
         );
         debug_assert!(
@@ -450,8 +447,7 @@ impl DescriptorWrite {
                 .device()
                 .physical_device()
                 .properties()
-                .max_storage_buffer_range
-                .unwrap() as usize
+                .max_storage_buffer_range as usize
         );
 
         DescriptorWrite {
@@ -481,8 +477,7 @@ impl DescriptorWrite {
                     .device()
                     .physical_device()
                     .properties()
-                    .min_uniform_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .min_uniform_buffer_offset_alignment as usize,
             0
         );
         debug_assert!(
@@ -490,8 +485,7 @@ impl DescriptorWrite {
                 .device()
                 .physical_device()
                 .properties()
-                .max_uniform_buffer_range
-                .unwrap() as usize
+                .max_uniform_buffer_range as usize
         );
 
         DescriptorWrite {
@@ -523,8 +517,7 @@ impl DescriptorWrite {
                     .device()
                     .physical_device()
                     .properties()
-                    .min_storage_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .min_storage_buffer_offset_alignment as usize,
             0
         );
         debug_assert!(
@@ -532,8 +525,7 @@ impl DescriptorWrite {
                 .device()
                 .physical_device()
                 .properties()
-                .max_storage_buffer_range
-                .unwrap() as usize
+                .max_storage_buffer_range as usize
         );
 
         DescriptorWrite {

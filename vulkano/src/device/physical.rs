@@ -536,6 +536,13 @@ pub enum PhysicalDeviceType {
     Other = ash::vk::PhysicalDeviceType::OTHER.as_raw(),
 }
 
+/// VkPhysicalDeviceType::Other is represented as 0
+impl Default for PhysicalDeviceType {
+  fn default() -> Self {
+    PhysicalDeviceType::Other
+  }
+}
+
 impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
     type Error = ();
 

@@ -9,13 +9,42 @@ use crate::Version;
 use std::convert::TryInto;
 use std::ffi::CStr;
 
+/// this is a macro that outputs either T or Option<T> depending on the 2nd argument
+macro_rules! property_type {
+    ($ty:ty, true) => {
+        $ty
+    };
+    ($ty:ty, false) => {
+        Option<$ty>
+    };
+}
+
+pub(crate) use property_type;
+
+/// this is a macro that executes the correct from_vulkan call depending on whether or not the type is Option<T>
+macro_rules! property_from_vulkan {
+    ($ty:ty, [$($ffi_struct:ident $(.$ffi_struct_field:ident)*),+], $ffi_field:ident, true, $properties:ident) => {
+        std::array::IntoIter::new([
+            $($properties.$ffi_struct$(.$ffi_struct_field)*.$ffi_field),+
+        ]).next().and_then(|x| <$ty>::from_vulkan(x)).expect(concat!("expected good ", stringify!($ffi_field)))
+    };
+    ($ty:ty, [$($ffi_struct:ident $(.$ffi_struct_field:ident)*),+], $ffi_field:ident, false, $properties:ident) => {
+        std::array::IntoIter::new([
+            $($properties.$ffi_struct.map(|s| s$(.$ffi_struct_field)*.$ffi_field)),+
+        ]).flatten().next().and_then(|x| <$ty>::from_vulkan(x))
+    };
+}
+
+pub(crate) use property_from_vulkan;
+
 macro_rules! properties {
     {
         $($member:ident => {
             doc: $doc:expr,
-			ty: $ty:ty,
-			ffi_name: $ffi_field:ident,
+            ty: $ty:ty,
+            ffi_name: $ffi_field:ident,
             ffi_members: [$($ffi_struct:ident $(.$ffi_struct_field:ident)*),+],
+            required: $required:tt,
         },)*
     } => {
         /// Represents all the properties of a physical device.
@@ -28,7 +57,7 @@ macro_rules! properties {
         pub struct Properties {
             $(
                 #[doc = $doc]
-                pub $member: Option<$ty>,
+                pub $member: $crate::device::properties::property_type!($ty, $required),
             )*
         }
 
@@ -38,9 +67,7 @@ macro_rules! properties {
 
                 Properties {
                     $(
-                        $member: std::array::IntoIter::new([
-                            $(properties_ffi.$ffi_struct.map(|s| s$(.$ffi_struct_field)*.$ffi_field)),+
-                        ]).flatten().next().and_then(|x| <$ty>::from_vulkan(x)),
+                        $member: crate::device::properties::property_from_vulkan!($ty, [ $($ffi_struct$(.$ffi_struct_field)*),+ ], $ffi_field, $required, properties_ffi),
                     )*
                 }
             }
@@ -55,7 +82,7 @@ macro_rules! properties_ffi {
     {
         $api_version:ident,
         $device_extensions:ident,
-		$instance_extensions:ident,
+        $instance_extensions:ident,
         $($member:ident => {
             ty: $ty:ident,
             provided_by: [$($provided_by:expr),+],
@@ -64,7 +91,7 @@ macro_rules! properties_ffi {
     } => {
         #[derive(Default)]
         pub(crate) struct PropertiesFfi {
-            properties_vulkan10: Option<ash::vk::PhysicalDeviceProperties2KHR>,
+            properties_vulkan10: ash::vk::PhysicalDeviceProperties2KHR,
 
             $(
                 $member: Option<ash::vk::$ty>,
@@ -78,8 +105,8 @@ macro_rules! properties_ffi {
 				$device_extensions: &crate::device::DeviceExtensions,
 				$instance_extensions: &crate::instance::InstanceExtensions,
 			) {
-                self.properties_vulkan10 = Some(Default::default());
-                let head = self.properties_vulkan10.as_mut().unwrap();
+                self.properties_vulkan10 = Default::default();
+                let head = &mut self.properties_vulkan10;
 
                 $(
                     if std::array::IntoIter::new([$($provided_by),+]).any(|x| x) &&
@@ -93,11 +120,11 @@ macro_rules! properties_ffi {
             }
 
             pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceProperties2KHR {
-                self.properties_vulkan10.as_ref().unwrap()
+                &self.properties_vulkan10
             }
 
             pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceProperties2KHR {
-                self.properties_vulkan10.as_mut().unwrap()
+                &mut self.properties_vulkan10
             }
         }
     };

@@ -34,6 +34,7 @@ pub fn write<W: Write>(
             feat.ffi_members.join(", ")
         )
         .unwrap();
+        write!(writer, "\n\t\trequired: {},", feat.required).unwrap();
         write!(writer, "\n\t}},").unwrap();
     }
 
@@ -66,6 +67,7 @@ struct VulkanoProperty {
     vulkan_doc: String,
     ffi_name: String,
     ffi_members: Vec<String>,
+    required: bool,
 }
 
 fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<VulkanoProperty> {
@@ -85,6 +87,10 @@ fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Vul
     })
     .for_each(|(ty, _)| {
         let vulkan_ty_name = ty.name.as_ref().unwrap();
+        let required = vulkan_ty_name == "VkPhysicalDeviceProperties"
+            || vulkan_ty_name == "VkPhysicalDeviceLimits"
+            || vulkan_ty_name == "VkPhysicalDeviceSparseProperties"
+        ;
 
         let ty_name = if vulkan_ty_name == "VkPhysicalDeviceProperties" {
             "properties_vulkan10.properties".to_owned()
@@ -116,6 +122,7 @@ fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Vul
                             vulkan_doc: format!("{}.html#limits-{}", vulkan_ty_name, name),
                             ffi_name: vulkano_member,
                             ffi_members: vec![ty_name.to_owned()],
+                            required: required,
                         });
                     }
                     Entry::Occupied(entry) => {

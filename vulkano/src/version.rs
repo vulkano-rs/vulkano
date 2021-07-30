@@ -39,6 +39,12 @@ impl Version {
     }
 }
 
+impl Default for Version {
+  fn default() -> Self {
+    Self::V1_0
+  }
+}
+
 impl From<u32> for Version {
     #[inline]
     fn from(val: u32) -> Self {

@@ -1259,8 +1259,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 .device()
                 .physical_device()
                 .properties()
-                .max_draw_indirect_count
-                .unwrap();
+                .max_draw_indirect_count;
 
             if requested > limit {
                 return Err(
@@ -1440,8 +1439,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 .device()
                 .physical_device()
                 .properties()
-                .max_draw_indirect_count
-                .unwrap();
+                .max_draw_indirect_count;
 
             if requested > limit {
                 return Err(

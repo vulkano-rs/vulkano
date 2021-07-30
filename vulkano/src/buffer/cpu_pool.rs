@@ -468,8 +468,7 @@ where
                         self.device()
                             .physical_device()
                             .properties()
-                            .min_uniform_buffer_offset_alignment
-                            .unwrap() as usize
+                            .min_uniform_buffer_offset_alignment as usize
                     } else {
                         1
                     },
@@ -477,8 +476,7 @@ where
                         self.device()
                             .physical_device()
                             .properties()
-                            .min_storage_buffer_offset_alignment
-                            .unwrap() as usize
+                            .min_storage_buffer_offset_alignment as usize
                     } else {
                         1
                     },
