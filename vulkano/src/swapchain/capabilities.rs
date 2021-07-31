@@ -643,7 +643,9 @@ impl From<ash::vk::ColorSpaceKHR> for ColorSpace {
             ash::vk::ColorSpaceKHR::SRGB_NONLINEAR => ColorSpace::SrgbNonLinear,
             ash::vk::ColorSpaceKHR::DISPLAY_P3_NONLINEAR_EXT => ColorSpace::DisplayP3NonLinear,
             ash::vk::ColorSpaceKHR::EXTENDED_SRGB_LINEAR_EXT => ColorSpace::ExtendedSrgbLinear,
-            ash::vk::ColorSpaceKHR::EXTENDED_SRGB_NONLINEAR_EXT => ColorSpace::ExtendedSrgbNonLinear,
+            ash::vk::ColorSpaceKHR::EXTENDED_SRGB_NONLINEAR_EXT => {
+                ColorSpace::ExtendedSrgbNonLinear
+            }
             ash::vk::ColorSpaceKHR::DCI_P3_LINEAR_EXT => ColorSpace::DciP3Linear,
             ash::vk::ColorSpaceKHR::DCI_P3_NONLINEAR_EXT => ColorSpace::DciP3NonLinear,
             ash::vk::ColorSpaceKHR::BT709_LINEAR_EXT => ColorSpace::Bt709Linear,
