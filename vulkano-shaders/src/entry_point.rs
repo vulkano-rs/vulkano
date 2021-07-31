@@ -317,7 +317,7 @@ fn write_interface(attributes: &[Element]) -> TokenStream {
                 ::vulkano::pipeline::shader::ShaderInterfaceEntry {
                     location: #loc .. #loc_end,
                     format: ::vulkano::format::Format::#format,
-                    name: Some(::std::borrow::Cow::Borrowed(#name))
+                    name: Some(#name.into())
                 },
             }
         })

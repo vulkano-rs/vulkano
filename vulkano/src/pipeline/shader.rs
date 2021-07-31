@@ -27,7 +27,6 @@ use crate::sync::PipelineStages;
 use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
-use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -466,7 +465,7 @@ pub struct ShaderInterfaceEntry {
     /// Format of a each location of the element.
     pub format: Format,
     /// Name of the element, or `None` if the name is unknown.
-    pub name: Option<Cow<'static, str>>,
+    pub name: Option<String>,
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.
