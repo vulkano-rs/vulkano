@@ -19,6 +19,7 @@
 // $ glslangValidator frag.glsl -V -S frag -o frag.spv
 // Vulkano uses glslangValidator to build your shaders internally.
 
+use std::borrow::Cow;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read;
@@ -170,12 +171,12 @@ fn main() {
             ShaderInterfaceEntry {
                 location: 1..2,
                 format: Format::R32G32B32Sfloat,
-                name: Some("color".into()),
+                name: Some(Cow::Borrowed("color")),
             },
             ShaderInterfaceEntry {
                 location: 0..1,
                 format: Format::R32G32Sfloat,
-                name: Some("position".into()),
+                name: Some(Cow::Borrowed("position")),
             },
         ])
     };
@@ -186,7 +187,7 @@ fn main() {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
             format: Format::R32G32B32Sfloat,
-            name: Some("v_color".into()),
+            name: Some(Cow::Borrowed("v_color")),
         }])
     };
 
@@ -195,7 +196,7 @@ fn main() {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
             format: Format::R32G32B32Sfloat,
-            name: Some("v_color".into()),
+            name: Some(Cow::Borrowed("v_color")),
         }])
     };
 
@@ -205,7 +206,7 @@ fn main() {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
             format: Format::R32G32B32A32Sfloat,
-            name: Some("f_color".into()),
+            name: Some(Cow::Borrowed("f_color")),
         }])
     };
 

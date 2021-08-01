@@ -114,7 +114,7 @@ unsafe impl VertexDefinition for BuffersDefinition {
                 .ok_or_else(||
                     // TODO: move this check to GraphicsPipelineBuilder
                     IncompatibleVertexDefinitionError::MissingAttribute {
-                        attribute: name.clone(),
+                        attribute: name.clone().into_owned(),
                     })?;
 
             if !infos.ty.matches(
@@ -124,7 +124,7 @@ unsafe impl VertexDefinition for BuffersDefinition {
             ) {
                 // TODO: move this check to GraphicsPipelineBuilder
                 return Err(IncompatibleVertexDefinitionError::FormatMismatch {
-                    attribute: name.clone(),
+                    attribute: name.clone().into_owned(),
                     shader: (
                         element.format,
                         (element.location.end - element.location.start) as usize,
