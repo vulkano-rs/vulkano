@@ -40,9 +40,9 @@ impl Version {
 }
 
 impl Default for Version {
-  fn default() -> Self {
-    Self::V1_0
-  }
+    fn default() -> Self {
+        Self::V1_0
+    }
 }
 
 impl From<u32> for Version {
