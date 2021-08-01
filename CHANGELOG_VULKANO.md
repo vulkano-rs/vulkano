@@ -59,6 +59,8 @@
 - Fixed synchronization bug where pipeline barriers were placed based on the binding of resources instead of the draw/dispatch calls that use them.
 - `SyncCommandBufferBuilder` and `UnsafeCommandBufferBuilder` accept any `IntoIterator` where they previously only accepted `Iterator`.
 - Updated ash to 0.33.0, vk.xml to 1.2.185, and ran `cargo update` to update other dependencies' patch versions.
+- Add support for EXTENDED_SRGB_NONLINEAR_EXT color space.
+- Better error message for wrong color space value
 
 # Version 0.24.0 (2021-06-20)
 
