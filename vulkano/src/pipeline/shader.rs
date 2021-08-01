@@ -135,8 +135,8 @@ impl ShaderModule {
         descriptor_set_layout_descs: D,
         push_constant_ranges: P,
         spec_constants: &'static [SpecializationMapEntry],
-        input: ShaderInterface,
-        output: ShaderInterface,
+        input: ShaderInterface<'a>,
+        output: ShaderInterface<'a>,
         ty: GraphicsShaderType,
     ) -> GraphicsEntryPoint<'a>
     where
@@ -236,8 +236,8 @@ pub struct GraphicsEntryPoint<'a> {
     descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
     push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]>,
     spec_constants: &'static [SpecializationMapEntry],
-    input: ShaderInterface,
-    output: ShaderInterface,
+    input: ShaderInterface<'a>,
+    output: ShaderInterface<'a>,
     ty: GraphicsShaderType,
 }
 
@@ -381,11 +381,11 @@ unsafe impl<'a> EntryPointAbstract for ComputeEntryPoint<'a> {
 /// Type that contains the definition of an interface between two shader stages, or between
 /// the outside and a shader stage.
 #[derive(Clone, Debug)]
-pub struct ShaderInterface {
-    elements: Vec<ShaderInterfaceEntry>,
+pub struct ShaderInterface<'a> {
+    elements: Vec<ShaderInterfaceEntry<'a>>,
 }
 
-impl ShaderInterface {
+impl<'a> ShaderInterface<'a> {
     /// Constructs a new `ShaderInterface`.
     ///
     /// # Safety
@@ -394,12 +394,12 @@ impl ShaderInterface {
     /// - The format of each element must not be larger than 128 bits.
     // TODO: could this be made safe?
     #[inline]
-    pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry>) -> ShaderInterface {
+    pub unsafe fn new_unchecked(elements: Vec<ShaderInterfaceEntry<'a>>) -> Self {
         ShaderInterface { elements }
     }
 
     /// Creates a description of an empty shader interface.
-    pub const fn empty() -> ShaderInterface {
+    pub const fn empty() -> Self {
         ShaderInterface {
             elements: Vec::new(),
         }
@@ -460,13 +460,13 @@ impl ShaderInterface {
 
 /// Entry of a shader interface definition.
 #[derive(Debug, Clone)]
-pub struct ShaderInterfaceEntry {
+pub struct ShaderInterfaceEntry<'a> {
     /// Range of locations covered by the element.
     pub location: Range<u32>,
     /// Format of a each location of the element.
     pub format: Format,
     /// Name of the element, or `None` if the name is unknown.
-    pub name: Option<Cow<'static, str>>,
+    pub name: Option<Cow<'a, str>>,
 }
 
 /// Error that can happen when the interface mismatches between two shader stages.
