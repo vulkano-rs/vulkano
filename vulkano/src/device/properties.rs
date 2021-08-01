@@ -162,6 +162,13 @@ impl FromVulkan<i32> for i32 {
     }
 }
 
+impl FromVulkan<i64> for i64 {
+    #[inline]
+    fn from_vulkan(val: i64) -> Option<Self> {
+        Some(val)
+    }
+}
+
 impl FromVulkan<f32> for f32 {
     #[inline]
     fn from_vulkan(val: f32) -> Option<Self> {

@@ -323,6 +323,7 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> &'static str {
         match ty {
             "float" => "f32",
             "int32_t" => "i32",
+            "int64_t" => "i64",
             "size_t" => "usize",
             "uint8_t" => "u8",
             "uint32_t" => "u32",

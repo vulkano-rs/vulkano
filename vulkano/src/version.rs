@@ -43,9 +43,9 @@ impl From<u32> for Version {
     #[inline]
     fn from(val: u32) -> Self {
         Version {
-            major: ash::vk::version_major(val),
-            minor: ash::vk::version_minor(val),
-            patch: ash::vk::version_patch(val),
+            major: ash::vk::api_version_major(val),
+            minor: ash::vk::api_version_minor(val),
+            patch: ash::vk::api_version_patch(val),
         }
     }
 }
@@ -56,7 +56,9 @@ impl TryFrom<Version> for u32 {
     #[inline]
     fn try_from(val: Version) -> Result<Self, Self::Error> {
         if val.major <= 0x3ff && val.minor <= 0x3ff && val.patch <= 0xfff {
-            Ok(ash::vk::make_version(val.major, val.minor, val.patch))
+            Ok(ash::vk::make_api_version(
+                0, val.major, val.minor, val.patch,
+            ))
         } else {
             Err(())
         }
