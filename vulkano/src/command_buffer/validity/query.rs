@@ -18,6 +18,7 @@ use crate::query::QueryResultElement;
 use crate::query::QueryResultFlags;
 use crate::query::QueryType;
 use crate::sync::PipelineStage;
+use crate::DeviceSize;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -254,7 +255,7 @@ pub fn check_copy_query_pool_results<D, T>(
     queries: Range<u32>,
     destination: &D,
     flags: QueryResultFlags,
-) -> Result<usize, CheckCopyQueryPoolResultsError>
+) -> Result<DeviceSize, CheckCopyQueryPoolResultsError>
 where
     D: ?Sized + TypedBufferAccess<Content = [T]>,
     T: QueryResultElement,
@@ -290,9 +291,9 @@ pub enum CheckCopyQueryPoolResultsError {
     /// The buffer is too small for the copy operation.
     BufferTooSmall {
         /// Required number of elements in the buffer.
-        required_len: usize,
+        required_len: DeviceSize,
         /// Actual number of elements in the buffer.
-        actual_len: usize,
+        actual_len: DeviceSize,
     },
     /// The destination buffer is missing the transfer destination usage.
     DestinationMissingTransferUsage,

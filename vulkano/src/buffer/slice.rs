@@ -14,6 +14,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::sync::AccessError;
+use crate::DeviceSize;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
@@ -47,8 +48,8 @@ use std::sync::Arc;
 pub struct BufferSlice<T: ?Sized, B> {
     marker: PhantomData<T>,
     resource: B,
-    offset: usize,
-    size: usize,
+    offset: DeviceSize,
+    size: DeviceSize,
 }
 
 // We need to implement `Clone` manually, otherwise the derive adds a `T: Clone` requirement.
@@ -90,13 +91,13 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
 
     /// Returns the offset of that slice within the buffer.
     #[inline]
-    pub fn offset(&self) -> usize {
+    pub fn offset(&self) -> DeviceSize {
         self.offset
     }
 
     /// Returns the size of that slice in bytes.
     #[inline]
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> DeviceSize {
         self.size
     }
 
@@ -123,8 +124,8 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
     {
         let data: MaybeUninit<&T> = MaybeUninit::zeroed();
         let result = f(data.assume_init());
-        let size = mem::size_of_val(result);
-        let result = result as *const R as *const () as usize;
+        let size = mem::size_of_val(result) as DeviceSize;
+        let result = result as *const R as *const () as DeviceSize;
 
         assert!(result <= self.size());
         assert!(result + size <= self.size());
@@ -133,7 +134,7 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
             marker: PhantomData,
             resource: self.resource,
             offset: self.offset + result,
-            size: size,
+            size,
         }
     }
 
@@ -172,16 +173,16 @@ impl<T: ?Sized, B> BufferSlice<T, B> {
 impl<T, B> BufferSlice<[T], B> {
     /// Returns the number of elements in this slice.
     #[inline]
-    pub fn len(&self) -> usize {
-        debug_assert_eq!(self.size() % mem::size_of::<T>(), 0);
-        self.size() / mem::size_of::<T>()
+    pub fn len(&self) -> DeviceSize {
+        debug_assert_eq!(self.size() % mem::size_of::<T>() as DeviceSize, 0);
+        self.size() / mem::size_of::<T>() as DeviceSize
     }
 
     /// Reduces the slice to just one element of the array.
     ///
     /// Returns `None` if out of range.
     #[inline]
-    pub fn index(self, index: usize) -> Option<BufferSlice<T, B>> {
+    pub fn index(self, index: DeviceSize) -> Option<BufferSlice<T, B>> {
         if index >= self.len() {
             return None;
         }
@@ -189,8 +190,8 @@ impl<T, B> BufferSlice<[T], B> {
         Some(BufferSlice {
             marker: PhantomData,
             resource: self.resource,
-            offset: self.offset + index * mem::size_of::<T>(),
-            size: mem::size_of::<T>(),
+            offset: self.offset + index * mem::size_of::<T>() as DeviceSize,
+            size: mem::size_of::<T>() as DeviceSize,
         })
     }
 
@@ -198,7 +199,7 @@ impl<T, B> BufferSlice<[T], B> {
     ///
     /// Returns `None` if out of range.
     #[inline]
-    pub fn slice(self, range: Range<usize>) -> Option<BufferSlice<[T], B>> {
+    pub fn slice(self, range: Range<DeviceSize>) -> Option<BufferSlice<[T], B>> {
         if range.end > self.len() {
             return None;
         }
@@ -206,8 +207,8 @@ impl<T, B> BufferSlice<[T], B> {
         Some(BufferSlice {
             marker: PhantomData,
             resource: self.resource,
-            offset: self.offset + range.start * mem::size_of::<T>(),
-            size: (range.end - range.start) * mem::size_of::<T>(),
+            offset: self.offset + range.start * mem::size_of::<T>() as DeviceSize,
+            size: (range.end - range.start) * mem::size_of::<T>() as DeviceSize,
         })
     }
 }
@@ -226,12 +227,12 @@ where
     }
 
     #[inline]
-    fn size(&self) -> usize {
+    fn size(&self) -> DeviceSize {
         self.size
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         self.resource.conflict_key()
     }
 

@@ -15,6 +15,7 @@ use crate::format::IncompatiblePixelsType;
 use crate::format::Pixel;
 use crate::image::ImageAccess;
 use crate::image::SampleCount;
+use crate::DeviceSize;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -125,7 +126,11 @@ where
 
 /// Computes the minimum required len in elements for buffer with image data in specified
 /// format of specified size.
-fn required_len_for_format<Px>(format: Format, image_size: [u32; 3], image_num_layers: u32) -> usize
+fn required_len_for_format<Px>(
+    format: Format,
+    image_size: [u32; 3],
+    image_num_layers: u32,
+) -> DeviceSize
 where
     Px: Pixel,
 {
@@ -134,7 +139,7 @@ where
         * ((image_size[1] + block_height - 1) / block_height)
         * image_size[2]
         * image_num_layers;
-    let required_len = num_blocks as usize * Px::rate(format) as usize;
+    let required_len = num_blocks as DeviceSize * Px::rate(format) as DeviceSize;
 
     return required_len;
 }
@@ -205,9 +210,9 @@ pub enum CheckCopyBufferImageError {
     /// The buffer is too small for the copy operation.
     BufferTooSmall {
         /// Required number of elements in the buffer.
-        required_len: usize,
+        required_len: DeviceSize,
         /// Actual number of elements in the buffer.
-        actual_len: usize,
+        actual_len: DeviceSize,
     },
 }
 

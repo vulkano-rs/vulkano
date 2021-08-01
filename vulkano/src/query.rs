@@ -16,6 +16,7 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::Success;
@@ -270,8 +271,8 @@ impl<'a> QueriesRange<'a> {
         T: QueryResultElement,
     {
         let stride = self.check_query_pool_results::<T>(
-            destination.as_ptr() as usize,
-            destination.len(),
+            destination.as_ptr() as DeviceSize,
+            destination.len() as DeviceSize,
             flags,
         )?;
 
@@ -284,7 +285,7 @@ impl<'a> QueriesRange<'a> {
                 self.range.end - self.range.start,
                 std::mem::size_of_val(destination),
                 destination.as_mut_ptr() as *mut c_void,
-                stride as ash::vk::DeviceSize,
+                stride,
                 ash::vk::QueryResultFlags::from(flags) | T::FLAG,
             ))?
         };
@@ -298,24 +299,24 @@ impl<'a> QueriesRange<'a> {
 
     pub(crate) fn check_query_pool_results<T>(
         &self,
-        buffer_start: usize,
-        buffer_len: usize,
+        buffer_start: DeviceSize,
+        buffer_len: DeviceSize,
         flags: QueryResultFlags,
-    ) -> Result<usize, GetResultsError>
+    ) -> Result<DeviceSize, GetResultsError>
     where
         T: QueryResultElement,
     {
         assert!(buffer_len > 0);
-        debug_assert!(buffer_start % std::mem::size_of::<T>() == 0);
+        debug_assert!(buffer_start % std::mem::size_of::<T>() as DeviceSize == 0);
 
         let count = self.range.end - self.range.start;
-        let per_query_len = self.pool.ty.result_size() + flags.with_availability as usize;
-        let required_len = per_query_len * count as usize;
+        let per_query_len = self.pool.ty.result_size() + flags.with_availability as DeviceSize;
+        let required_len = per_query_len * count as DeviceSize;
 
         if buffer_len < required_len {
             return Err(GetResultsError::BufferTooSmall {
-                required_len,
-                actual_len: buffer_len,
+                required_len: required_len as DeviceSize,
+                actual_len: buffer_len as DeviceSize,
             });
         }
 
@@ -329,7 +330,7 @@ impl<'a> QueriesRange<'a> {
             }
         }
 
-        Ok(per_query_len * std::mem::size_of::<T>())
+        Ok(per_query_len * std::mem::size_of::<T>() as DeviceSize)
     }
 }
 
@@ -339,9 +340,9 @@ pub enum GetResultsError {
     /// The buffer is too small for the operation.
     BufferTooSmall {
         /// Required number of elements in the buffer.
-        required_len: usize,
+        required_len: DeviceSize,
         /// Actual number of elements in the buffer.
-        actual_len: usize,
+        actual_len: DeviceSize,
     },
     /// The connection to the device has been lost.
     DeviceLost,
@@ -439,7 +440,7 @@ impl QueryType {
     /// If the results are retrieved with [`QueryResultFlags::with_availability`] enabled, then
     /// an additional element is required per query.
     #[inline]
-    pub const fn result_size(&self) -> usize {
+    pub const fn result_size(&self) -> DeviceSize {
         match self {
             Self::Occlusion | Self::Timestamp => 1,
             Self::PipelineStatistics(flags) => flags.count(),
@@ -525,7 +526,7 @@ impl QueryPipelineStatisticFlags {
 
     /// Returns the number of flags that are set to `true`.
     #[inline]
-    pub const fn count(&self) -> usize {
+    pub const fn count(&self) -> DeviceSize {
         let &Self {
             input_assembly_vertices,
             input_assembly_primitives,
@@ -539,17 +540,17 @@ impl QueryPipelineStatisticFlags {
             tessellation_evaluation_shader_invocations,
             compute_shader_invocations,
         } = self;
-        input_assembly_vertices as usize
-            + input_assembly_primitives as usize
-            + vertex_shader_invocations as usize
-            + geometry_shader_invocations as usize
-            + geometry_shader_primitives as usize
-            + clipping_invocations as usize
-            + clipping_primitives as usize
-            + fragment_shader_invocations as usize
-            + tessellation_control_shader_patches as usize
-            + tessellation_evaluation_shader_invocations as usize
-            + compute_shader_invocations as usize
+        input_assembly_vertices as DeviceSize
+            + input_assembly_primitives as DeviceSize
+            + vertex_shader_invocations as DeviceSize
+            + geometry_shader_invocations as DeviceSize
+            + geometry_shader_primitives as DeviceSize
+            + clipping_invocations as DeviceSize
+            + clipping_primitives as DeviceSize
+            + fragment_shader_invocations as DeviceSize
+            + tessellation_control_shader_patches as DeviceSize
+            + tessellation_evaluation_shader_invocations as DeviceSize
+            + compute_shader_invocations as DeviceSize
     }
 
     /// Returns `true` if any flags referring to compute operations are set to `true`.

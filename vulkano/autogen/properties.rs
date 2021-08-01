@@ -330,7 +330,7 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> &'static str {
             "uint64_t" => "u64",
             "VkBool32" => "bool",
             "VkConformanceVersion" => "crate::device::physical::ConformanceVersion",
-            "VkDeviceSize" => "u64",
+            "VkDeviceSize" => "crate::DeviceSize",
             "VkDriverId" => "crate::device::physical::DriverId",
             "VkExtent2D" => "[u32; 2]",
             "VkPhysicalDeviceType" => "crate::device::physical::PhysicalDeviceType",

@@ -7,15 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::buffer::TypedBufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::DeviceSize;
+use crate::VulkanObject;
 use std::cmp;
 use std::error;
 use std::fmt;
 use std::mem;
-
-use crate::buffer::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::VulkanObject;
 
 /// Checks whether an update buffer command is valid.
 ///
@@ -45,7 +45,7 @@ where
         return Err(CheckUpdateBufferError::WrongAlignment);
     }
 
-    let size = cmp::min(buffer.size(), mem::size_of_val(data));
+    let size = cmp::min(buffer.size(), mem::size_of_val(data) as DeviceSize);
 
     if size % 4 != 0 {
         return Err(CheckUpdateBufferError::WrongAlignment);

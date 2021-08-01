@@ -67,7 +67,7 @@ mod tests {
     fn max_checked() {
         let (device, _) = gfx_dev_and_queue!();
 
-        let attempted = [u32::max_value(), u32::max_value(), u32::max_value()];
+        let attempted = [u32::MAX, u32::MAX, u32::MAX];
 
         // Just in case the device is some kind of software implementation.
         if device

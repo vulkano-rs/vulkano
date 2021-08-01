@@ -46,14 +46,14 @@ where
     // TODO: full_draw_index_uint32 feature
 
     Ok(CheckIndexBuffer {
-        num_indices: buffer.len(),
+        num_indices: buffer.len() as u32,
     })
 }
 
 /// Information returned if `check_index_buffer` succeeds.
 pub struct CheckIndexBuffer {
     /// Number of indices in the index buffer.
-    pub num_indices: usize,
+    pub num_indices: u32,
 }
 
 /// Error that can happen when checking whether binding an index buffer is valid.

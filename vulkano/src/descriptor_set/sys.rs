@@ -17,6 +17,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::sampler::Sampler;
+use crate::DeviceSize;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::fmt;
@@ -132,16 +133,16 @@ impl UnsafeDescriptorSet {
                     | DescriptorWriteInner::DynamicUniformBuffer(buffer, offset, size) => {
                         buffer_descriptors.push(ash::vk::DescriptorBufferInfo {
                             buffer,
-                            offset: offset as u64,
-                            range: size as u64,
+                            offset,
+                            range: size,
                         });
                     }
                     DescriptorWriteInner::StorageBuffer(buffer, offset, size)
                     | DescriptorWriteInner::DynamicStorageBuffer(buffer, offset, size) => {
                         buffer_descriptors.push(ash::vk::DescriptorBufferInfo {
                             buffer,
-                            offset: offset as u64,
-                            range: size as u64,
+                            offset,
+                            range: size,
                         });
                     }
                     DescriptorWriteInner::Sampler(sampler) => {
@@ -254,10 +255,10 @@ enum DescriptorWriteInner {
     CombinedImageSampler(ash::vk::Sampler, ash::vk::ImageView, ash::vk::ImageLayout),
     UniformTexelBuffer(ash::vk::BufferView),
     StorageTexelBuffer(ash::vk::BufferView),
-    UniformBuffer(ash::vk::Buffer, usize, usize),
-    StorageBuffer(ash::vk::Buffer, usize, usize),
-    DynamicUniformBuffer(ash::vk::Buffer, usize, usize),
-    DynamicStorageBuffer(ash::vk::Buffer, usize, usize),
+    UniformBuffer(ash::vk::Buffer, DeviceSize, DeviceSize),
+    StorageBuffer(ash::vk::Buffer, DeviceSize, DeviceSize),
+    DynamicUniformBuffer(ash::vk::Buffer, DeviceSize, DeviceSize),
+    DynamicStorageBuffer(ash::vk::Buffer, DeviceSize, DeviceSize),
     InputAttachment(ash::vk::ImageView, ash::vk::ImageLayout),
 }
 
@@ -406,7 +407,7 @@ impl DescriptorWrite {
                     .physical_device()
                     .properties()
                     .min_uniform_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .unwrap(),
             0
         );
         debug_assert!(
@@ -415,7 +416,7 @@ impl DescriptorWrite {
                 .physical_device()
                 .properties()
                 .max_uniform_buffer_range
-                .unwrap() as usize
+                .unwrap() as DeviceSize
         );
 
         DescriptorWrite {
@@ -442,7 +443,7 @@ impl DescriptorWrite {
                     .physical_device()
                     .properties()
                     .min_storage_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .unwrap(),
             0
         );
         debug_assert!(
@@ -451,7 +452,7 @@ impl DescriptorWrite {
                 .physical_device()
                 .properties()
                 .max_storage_buffer_range
-                .unwrap() as usize
+                .unwrap() as DeviceSize
         );
 
         DescriptorWrite {
@@ -482,7 +483,7 @@ impl DescriptorWrite {
                     .physical_device()
                     .properties()
                     .min_uniform_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .unwrap(),
             0
         );
         debug_assert!(
@@ -491,7 +492,7 @@ impl DescriptorWrite {
                 .physical_device()
                 .properties()
                 .max_uniform_buffer_range
-                .unwrap() as usize
+                .unwrap() as DeviceSize
         );
 
         DescriptorWrite {
@@ -524,7 +525,7 @@ impl DescriptorWrite {
                     .physical_device()
                     .properties()
                     .min_storage_buffer_offset_alignment
-                    .unwrap() as usize,
+                    .unwrap(),
             0
         );
         debug_assert!(
@@ -533,7 +534,7 @@ impl DescriptorWrite {
                 .physical_device()
                 .properties()
                 .max_storage_buffer_range
-                .unwrap() as usize
+                .unwrap() as DeviceSize
         );
 
         DescriptorWrite {
