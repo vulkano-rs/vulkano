@@ -257,9 +257,36 @@ pub struct MessageSeverity {
 impl MessageSeverity {
     /// Builds a `MessageSeverity` with all fields set to `false` expect `error`.
     #[inline]
-    pub fn errors() -> MessageSeverity {
+    pub const fn errors() -> MessageSeverity {
         MessageSeverity {
             error: true,
+            ..MessageSeverity::none()
+        }
+    }
+
+    /// Builds a `MessageSeverity` with all fields set to `false` expect `warning`.
+    #[inline]
+    pub const fn warnings() -> MessageSeverity {
+        MessageSeverity {
+            warning: true,
+            ..MessageSeverity::none()
+        }
+    }
+
+    /// Builds a `MessageSeverity` with all fields set to `false` expect `information`.
+    #[inline]
+    pub const fn information() -> MessageSeverity {
+        MessageSeverity {
+            information: true,
+            ..MessageSeverity::none()
+        }
+    }
+
+    /// Builds a `MessageSeverity` with all fields set to `false` expect `verbose`.
+    #[inline]
+    pub const fn verbose() -> MessageSeverity {
+        MessageSeverity {
+            verbose: true,
             ..MessageSeverity::none()
         }
     }
@@ -267,7 +294,7 @@ impl MessageSeverity {
     /// Builds a `MessageSeverity` with all fields set to `false` expect `error`, `warning`
     /// and `performance_warning`.
     #[inline]
-    pub fn errors_and_warnings() -> MessageSeverity {
+    pub const fn errors_and_warnings() -> MessageSeverity {
         MessageSeverity {
             error: true,
             warning: true,
@@ -277,12 +304,35 @@ impl MessageSeverity {
 
     /// Builds a `MessageSeverity` with all fields set to `false`.
     #[inline]
-    pub fn none() -> MessageSeverity {
+    pub const fn none() -> MessageSeverity {
         MessageSeverity {
             error: false,
             warning: false,
             information: false,
             verbose: false,
+        }
+    }
+
+    /// Builds a `MessageSeverity` with all fields set to `true`.
+    #[inline]
+    pub const fn all() -> MessageSeverity {
+        MessageSeverity {
+            error: true,
+            warning: true,
+            information: true,
+            verbose: true,
+        }
+    }
+}
+
+impl std::ops::BitOr for MessageSeverity {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        MessageSeverity {
+            error: self.error | rhs.error,
+            warning: self.warning | rhs.warning,
+            information: self.information | rhs.information,
+            verbose: self.verbose | rhs.verbose,
         }
     }
 }
@@ -301,7 +351,7 @@ pub struct MessageType {
 impl MessageType {
     /// Builds a `MessageType` with general field set to `true`.
     #[inline]
-    pub fn general() -> MessageType {
+    pub const fn general() -> MessageType {
         MessageType {
             general: true,
             validation: false,
@@ -309,9 +359,29 @@ impl MessageType {
         }
     }
 
+    /// Builds a `MessageType` with validation field set to `true`.
+    #[inline]
+    pub const fn validation() -> MessageType {
+        MessageType {
+            general: false,
+            validation: true,
+            performance: false,
+        }
+    }
+
+    /// Builds a `MessageType` with performance field set to `true`.
+    #[inline]
+    pub const fn performance() -> MessageType {
+        MessageType {
+            general: false,
+            validation: false,
+            performance: true,
+        }
+    }
+
     /// Builds a `MessageType` with all fields set to `true`.
     #[inline]
-    pub fn all() -> MessageType {
+    pub const fn all() -> MessageType {
         MessageType {
             general: true,
             validation: true,
@@ -321,7 +391,7 @@ impl MessageType {
 
     /// Builds a `MessageType` with all fields set to `false`.
     #[inline]
-    pub fn none() -> MessageType {
+    pub const fn none() -> MessageType {
         MessageType {
             general: false,
             validation: false,
@@ -330,10 +400,21 @@ impl MessageType {
     }
 }
 
+impl std::ops::BitOr for MessageType {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self::Output {
+        MessageType {
+            general: self.general | rhs.general,
+            validation: self.validation | rhs.validation,
+            performance: self.performance | rhs.performance,
+        }
+    }
+}
+
 /// Error that can happen when creating a debug callback.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum DebugCallbackCreationError {
-    /// The `EXT_debug_report` extension was not enabled.
+    /// The `EXT_debug_utils` extension was not enabled.
     MissingExtension,
 }
 
@@ -347,7 +428,7 @@ impl fmt::Display for DebugCallbackCreationError {
             "{}",
             match *self {
                 DebugCallbackCreationError::MissingExtension => {
-                    "the `EXT_debug_report` extension was not enabled"
+                    "the `EXT_debug_utils` extension was not enabled"
                 }
             }
         )
