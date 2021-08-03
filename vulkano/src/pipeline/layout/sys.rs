@@ -170,7 +170,7 @@ impl PipelineLayout {
     pub fn ensure_superset_of(
         &self,
         descriptor_set_layout_descs: &[DescriptorSetDesc],
-        push_constant_ranges: &Option<PipelineLayoutPcRange>,
+        push_constant_range: &Option<PipelineLayoutPcRange>,
     ) -> Result<(), PipelineLayoutSupersetError> {
         // Ewwwwwww
         let empty = DescriptorSetDesc::empty();
@@ -198,6 +198,18 @@ impl PipelineLayout {
         }
 
         // FIXME: check push constants
+        if let Some(range) = push_constant_range {
+            for own_range in self.push_constant_ranges.as_ref().into_iter() {
+                if range.stages.intersects(&own_range.stages) &&       // check if it shares any stages
+                    (range.offset < own_range.offset || // our range must start before and end after the given range
+                        own_range.offset + own_range.size < range.offset + range.size) {
+                    return Err(PipelineLayoutSupersetError::PushConstantRange {
+                        first_range: *own_range,
+                        second_range: *range,
+                    });
+                }
+            }
+        }
 
         Ok(())
     }
@@ -329,6 +341,10 @@ pub enum PipelineLayoutSupersetError {
         error: DescriptorSetDescSupersetError,
         set_num: u32,
     },
+    PushConstantRange {
+        first_range: PipelineLayoutPcRange,
+        second_range: PipelineLayoutPcRange,
+    },
 }
 
 impl error::Error for PipelineLayoutSupersetError {
@@ -336,6 +352,7 @@ impl error::Error for PipelineLayoutSupersetError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             PipelineLayoutSupersetError::DescriptorSet { ref error, .. } => Some(error),
+            ref error @ PipelineLayoutSupersetError::PushConstantRange { .. } => Some(error),
         }
     }
 }
@@ -343,15 +360,30 @@ impl error::Error for PipelineLayoutSupersetError {
 impl fmt::Display for PipelineLayoutSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                PipelineLayoutSupersetError::DescriptorSet { .. } => {
+        match *self {
+            PipelineLayoutSupersetError::DescriptorSet { .. } => {
+                write!(
+                    fmt,
                     "the descriptor set was not a superset of the other"
-                }
-            }
-        )
+                )
+            },
+            PipelineLayoutSupersetError::PushConstantRange { first_range, second_range } => {
+                writeln!(fmt, "our range did not completely encompass the other range")?;
+                writeln!(fmt, "    our stages: {:?}", first_range.stages)?;
+                writeln!(
+                    fmt,
+                    "    our range: {} - {}",
+                    first_range.offset,
+                    first_range.offset + first_range.size
+                )?;
+                writeln!(fmt, "    other stages: {:?}", second_range.stages)?;
+                write!(fmt,
+                    "    other range: {} - {}",
+                    second_range.offset,
+                    second_range.offset + second_range.size
+                )
+            },
+        }
     }
 }
 
