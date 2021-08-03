@@ -140,7 +140,7 @@ fn main() {
                         descriptor_set_layouts,
                         shader
                             .main_entry_point()
-                            .push_constant_ranges()
+                            .push_constant_range()
                             .iter()
                             .cloned(),
                     )

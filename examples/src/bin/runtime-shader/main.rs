@@ -221,7 +221,7 @@ fn main() {
         vs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
             [], // No descriptor sets.
-            [], // No push constants.
+            None, // No push constants.
             <()>::descriptors(),
             vertex_input,
             vertex_output,
@@ -233,7 +233,7 @@ fn main() {
         fs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
             [], // No descriptor sets.
-            [], // No push constants.
+            None, // No push constants.
             <()>::descriptors(),
             fragment_input,
             fragment_output,
