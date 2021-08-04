@@ -39,7 +39,6 @@ use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::GraphicsEntryPoint;
 use crate::pipeline::shader::GraphicsShaderType;
 use crate::pipeline::shader::SpecializationConstants;
-use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
@@ -92,7 +91,7 @@ impl
         'static,
         'static,
         'static,
-        BufferlessDefinition,
+        BuffersDefinition,
         (),
         (),
         (),
@@ -103,7 +102,7 @@ impl
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            vertex_definition: BufferlessDefinition,
+            vertex_definition: BuffersDefinition::new(),
             vertex_shader: None,
             input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
                 topology: PrimitiveTopology::TriangleList.into(),

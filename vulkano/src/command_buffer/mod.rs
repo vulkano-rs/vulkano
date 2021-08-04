@@ -123,7 +123,7 @@ pub mod submit;
 pub mod synced;
 pub mod sys;
 mod traits;
-mod validity;
+pub mod validity;
 
 #[derive(Debug, Clone, Copy)]
 pub enum ImageUninitializedSafe {

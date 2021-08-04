@@ -14,7 +14,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderInterface;
-use crate::pipeline::vertex::BufferlessDefinition;
+use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexInput;
@@ -75,7 +75,7 @@ impl GraphicsPipeline<()> {
         'static,
         'static,
         'static,
-        BufferlessDefinition,
+        BuffersDefinition,
         (),
         (),
         (),
