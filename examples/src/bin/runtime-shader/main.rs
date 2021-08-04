@@ -25,7 +25,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
-use vulkano::buffer::BufferUsage;
+use vulkano::buffer::{BufferUsage, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
@@ -360,6 +360,10 @@ fn main() {
                 )
                 .unwrap()
                 .draw(
+                    vertex_buffer.len() as u32,
+                    1,
+                    0,
+                    0,
                     graphics_pipeline.clone(),
                     &dynamic_state,
                     vertex_buffer.clone(),

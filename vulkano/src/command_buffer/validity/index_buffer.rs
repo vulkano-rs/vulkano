@@ -23,10 +23,7 @@ use crate::VulkanObject;
 ///
 /// - Panics if the buffer was not created with `device`.
 ///
-pub fn check_index_buffer<B, I>(
-    device: &Device,
-    buffer: &B,
-) -> Result<CheckIndexBuffer, CheckIndexBufferError>
+pub fn check_index_buffer<B, I>(device: &Device, buffer: &B) -> Result<(), CheckIndexBufferError>
 where
     B: ?Sized + BufferAccess + TypedBufferAccess<Content = [I]>,
     I: Index,
@@ -45,15 +42,7 @@ where
 
     // TODO: full_draw_index_uint32 feature
 
-    Ok(CheckIndexBuffer {
-        num_indices: buffer.len(),
-    })
-}
-
-/// Information returned if `check_index_buffer` succeeds.
-pub struct CheckIndexBuffer {
-    /// Number of indices in the index buffer.
-    pub num_indices: usize,
+    Ok(())
 }
 
 /// Error that can happen when checking whether binding an index buffer is valid.
@@ -96,25 +85,6 @@ mod tests {
     use super::*;
     use crate::buffer::BufferUsage;
     use crate::buffer::CpuAccessibleBuffer;
-
-    #[test]
-    fn num_indices() {
-        let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::index_buffer(),
-            false,
-            0..500u32,
-        )
-        .unwrap();
-
-        match check_index_buffer(&device, &buffer) {
-            Ok(CheckIndexBuffer { num_indices }) => {
-                assert_eq!(num_indices, 500);
-            }
-            _ => panic!(),
-        }
-    }
 
     #[test]
     fn missing_usage() {

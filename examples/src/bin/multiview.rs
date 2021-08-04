@@ -19,7 +19,7 @@ use std::iter;
 use std::path::Path;
 use std::sync::Arc;
 
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
@@ -289,6 +289,10 @@ fn main() {
         .begin_render_pass(framebuffer.clone(), SubpassContents::Inline, clear_values)
         .unwrap()
         .draw(
+            vertex_buffer.len() as u32,
+            1,
+            0,
+            0,
             pipeline.clone(),
             &dynamic_state,
             vertex_buffer.clone(),

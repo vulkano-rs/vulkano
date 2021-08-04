@@ -21,7 +21,7 @@
 
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use vulkano::buffer::CpuBufferPool;
+use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
@@ -291,7 +291,17 @@ fn main() {
                     )
                     .unwrap()
                     // Draw our buffer
-                    .draw(pipeline.clone(), &dynamic_state, buffer, (), ())
+                    .draw(
+                        buffer.len() as u32,
+                        1,
+                        0,
+                        0,
+                        pipeline.clone(),
+                        &dynamic_state,
+                        buffer,
+                        (),
+                        (),
+                    )
                     .unwrap()
                     .end_render_pass()
                     .unwrap();

@@ -25,6 +25,7 @@ use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
+use vulkano::buffer::TypedBufferAccess;
 
 /// Allows applying a directional light source to a scene.
 pub struct DirectionalLightingSystem {
@@ -167,6 +168,10 @@ impl DirectionalLightingSystem {
         .unwrap();
         builder
             .draw(
+                self.vertex_buffer.len() as u32,
+                1,
+                0,
+                0,
                 self.pipeline.clone(),
                 &dynamic_state,
                 vec![self.vertex_buffer.clone()],

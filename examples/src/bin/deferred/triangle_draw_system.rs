@@ -19,6 +19,7 @@ use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
+use vulkano::buffer::TypedBufferAccess;
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
@@ -89,6 +90,10 @@ impl TriangleDrawSystem {
         .unwrap();
         builder
             .draw(
+                self.vertex_buffer.len() as u32,
+                1,
+                0,
+                0,
                 self.pipeline.clone(),
                 &DynamicState {
                     viewports: Some(vec![Viewport {

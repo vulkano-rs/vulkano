@@ -7,14 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::error;
-use std::fmt;
-
 use crate::buffer::BufferAccess;
 use crate::device::DeviceOwned;
-use crate::pipeline::vertex::VertexSource;
 use crate::pipeline::GraphicsPipelineAbstract;
 use crate::VulkanObject;
+use std::error;
+use std::fmt;
 
 /// Checks whether vertex buffers can be bound.
 ///
@@ -22,15 +20,13 @@ use crate::VulkanObject;
 ///
 /// - Panics if one of the vertex buffers was not created with the same device as `pipeline`.
 ///
-pub fn check_vertex_buffers<GP, V>(
+pub fn check_vertex_buffers<GP>(
     pipeline: &GP,
-    vertex_buffers: V,
-) -> Result<CheckVertexBuffer, CheckVertexBufferError>
+    vertex_buffers: &[Box<dyn BufferAccess + Send + Sync>],
+) -> Result<(), CheckVertexBufferError>
 where
-    GP: GraphicsPipelineAbstract + DeviceOwned + VertexSource<V>,
+    GP: GraphicsPipelineAbstract,
 {
-    let (vertex_buffers, vertex_count, instance_count) = pipeline.decode(vertex_buffers);
-
     for (num, buf) in vertex_buffers.iter().enumerate() {
         assert_eq!(
             buf.inner().buffer.device().internal_object(),
@@ -42,39 +38,7 @@ where
         }
     }
 
-    if let Some(multiview) = pipeline.subpass().render_pass().desc().multiview() {
-        let max_instance_index = pipeline
-            .device()
-            .physical_device()
-            .properties()
-            .max_multiview_instance_index
-            .unwrap_or(0) as usize;
-
-        // vulkano currently always uses `0` as the first instance which means the highest
-        // used index will just be `instance_count - 1`
-        if instance_count > max_instance_index + 1 {
-            return Err(CheckVertexBufferError::TooManyInstances {
-                instance_count,
-                max_instance_count: max_instance_index + 1,
-            });
-        }
-    }
-
-    Ok(CheckVertexBuffer {
-        vertex_buffers,
-        vertex_count: vertex_count as u32,
-        instance_count: instance_count as u32,
-    })
-}
-
-/// Information returned if `check_vertex_buffer` succeeds.
-pub struct CheckVertexBuffer {
-    /// The list of vertex buffers.
-    pub vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>,
-    /// Number of vertices available in the intersection of the buffers.
-    pub vertex_count: u32,
-    /// Number of instances available in the intersection of the buffers.
-    pub instance_count: u32,
+    Ok(())
 }
 
 /// Error that can happen when checking whether the vertex buffers are valid.
@@ -86,14 +50,31 @@ pub enum CheckVertexBufferError {
         num_buffer: usize,
     },
 
-    /// The vertex buffer has too many instances.
+    /// A draw command requested too many vertices.
+    TooManyVertices {
+        /// The used amount of vertices.
+        vertex_count: u32,
+        /// The allowed amount of vertices.
+        max_vertex_count: u32,
+    },
+
+    /// A draw command requested too many instances.
+    ///
     /// When the `multiview` feature is used the maximum amount of instances may be reduced
     /// because the implementation may use instancing internally to implement `multiview`.
     TooManyInstances {
         /// The used amount of instances.
-        instance_count: usize,
+        instance_count: u32,
         /// The allowed amount of instances.
-        max_instance_count: usize,
+        max_instance_count: u32,
+    },
+
+    /// A draw command requested too many indices.
+    TooManyIndices {
+        /// The used amount of indices.
+        index_count: u32,
+        /// The allowed amount of indices.
+        max_index_count: u32,
     },
 }
 
@@ -109,8 +90,14 @@ impl fmt::Display for CheckVertexBufferError {
                 CheckVertexBufferError::BufferMissingUsage { .. } => {
                     "the vertex buffer usage is missing on a vertex buffer"
                 }
+                CheckVertexBufferError::TooManyVertices { .. } => {
+                    "the draw command requested too many vertices"
+                }
                 CheckVertexBufferError::TooManyInstances { .. } => {
-                    "the vertex buffer has too many instances"
+                    "the draw command requested too many instances"
+                }
+                CheckVertexBufferError::TooManyIndices { .. } => {
+                    "the draw command requested too many indices"
                 }
             }
         )

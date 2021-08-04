@@ -26,6 +26,7 @@ use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
+use vulkano::buffer::TypedBufferAccess;
 
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,
@@ -182,6 +183,10 @@ impl PointLightingSystem {
         .unwrap();
         builder
             .draw(
+                self.vertex_buffer.len() as u32,
+                1,
+                0,
+                0,
                 self.pipeline.clone(),
                 &dynamic_state,
                 vec![self.vertex_buffer.clone()],
