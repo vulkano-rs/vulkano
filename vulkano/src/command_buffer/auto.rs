@@ -50,6 +50,7 @@ use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
+use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::input_assembly::Index;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::vertex::VertexSource;
@@ -2125,15 +2126,18 @@ unsafe fn set_state(destination: &mut SyncCommandBufferBuilder, dynamic: &Dynami
     }
 
     if let Some(compare_mask) = dynamic.compare_mask {
-        destination.set_stencil_compare_mask(compare_mask);
+        destination.set_stencil_compare_mask(StencilFaces::Front, compare_mask.front);
+        destination.set_stencil_compare_mask(StencilFaces::Back, compare_mask.back);
     }
 
     if let Some(write_mask) = dynamic.write_mask {
-        destination.set_stencil_write_mask(write_mask);
+        destination.set_stencil_write_mask(StencilFaces::Front, write_mask.front);
+        destination.set_stencil_write_mask(StencilFaces::Back, write_mask.back);
     }
 
     if let Some(reference) = dynamic.reference {
-        destination.set_stencil_reference(reference);
+        destination.set_stencil_reference(StencilFaces::Front, reference.front);
+        destination.set_stencil_reference(StencilFaces::Back, reference.back);
     }
 }
 

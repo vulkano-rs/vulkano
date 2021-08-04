@@ -182,27 +182,27 @@ impl From<StencilOp> for ash::vk::StencilOp {
     }
 }
 
-/// Enum to specify which stencil state to use
+/// Specifies a face for stencil operations.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 #[repr(u32)]
-pub enum StencilFaceFlags {
-    StencilFaceFrontBit = ash::vk::StencilFaceFlags::FRONT.as_raw(),
-    StencilFaceBackBit = ash::vk::StencilFaceFlags::BACK.as_raw(),
-    StencilFrontAndBack = ash::vk::StencilFaceFlags::FRONT_AND_BACK.as_raw(),
+pub enum StencilFaces {
+    Front = ash::vk::StencilFaceFlags::FRONT.as_raw(),
+    Back = ash::vk::StencilFaceFlags::BACK.as_raw(),
+    FrontAndBack = ash::vk::StencilFaceFlags::FRONT_AND_BACK.as_raw(),
 }
 
-impl From<StencilFaceFlags> for ash::vk::StencilFaceFlags {
+impl From<StencilFaces> for ash::vk::StencilFaceFlags {
     #[inline]
-    fn from(val: StencilFaceFlags) -> Self {
+    fn from(val: StencilFaces) -> Self {
         Self::from_raw(val as u32)
     }
 }
 
-/// Container for dynamic StencilFaceFlags and value
+/// Specifies a dynamic state value for the front and back faces.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct DynamicStencilValue {
-    pub face: StencilFaceFlags,
-    pub value: u32,
+    pub front: u32,
+    pub back: u32,
 }
 
 /// Allows you to ask the GPU to exclude fragments that are outside of a certain range.

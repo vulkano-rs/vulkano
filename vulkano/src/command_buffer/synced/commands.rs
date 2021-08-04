@@ -30,8 +30,7 @@ use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::format::ClearValue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
-use crate::pipeline::depth_stencil::DynamicStencilValue;
-use crate::pipeline::depth_stencil::StencilFaceFlags;
+use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderStages;
@@ -2355,9 +2354,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_compare_mask(&mut self, compare_mask: DynamicStencilValue) {
+    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: StencilFaces, compare_mask: u32) {
         struct Cmd {
-            face_mask: StencilFaceFlags,
+            face_mask: StencilFaces,
             compare_mask: u32,
         }
 
@@ -2373,8 +2372,8 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                face_mask: compare_mask.face,
-                compare_mask: compare_mask.value,
+                face_mask,
+                compare_mask,
             },
             &[],
         )
@@ -2383,9 +2382,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, reference: DynamicStencilValue) {
+    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaces, reference: u32) {
         struct Cmd {
-            face_mask: StencilFaceFlags,
+            face_mask: StencilFaces,
             reference: u32,
         }
 
@@ -2401,8 +2400,8 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                face_mask: reference.face,
-                reference: reference.value,
+                face_mask,
+                reference,
             },
             &[],
         )
@@ -2411,9 +2410,9 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, write_mask: DynamicStencilValue) {
+    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaces, write_mask: u32) {
         struct Cmd {
-            face_mask: StencilFaceFlags,
+            face_mask: StencilFaces,
             write_mask: u32,
         }
 
@@ -2429,8 +2428,8 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                face_mask: write_mask.face,
-                write_mask: write_mask.value,
+                face_mask,
+                write_mask,
             },
             &[],
         )
