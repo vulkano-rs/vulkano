@@ -295,7 +295,7 @@ where
         let messages = messages.join(", ");
 
         cap_checks.push(quote! {
-            if !std::array::IntoIter::new([#(#conditions),*]).any(|x| x) {
+            if !std::array::IntoIter::new([#(#conditions),*]).all(|x| x) {
                 panic!("One of the following must be enabled on the device: {}", #messages);
             }
         });
@@ -438,30 +438,54 @@ impl From<ParseError> for Error {
 }
 
 /// Returns the Vulkan device requirement for a SPIR-V `OpCapability`.
-// TODO: this function is a draft, as the actual names may not be the same
+#[rustfmt::skip]
 fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
     match *cap {
         Capability::Matrix => &[],
         Capability::Shader => &[],
+        Capability::InputAttachment => &[],
+        Capability::Sampled1D => &[],
+        Capability::Image1D => &[],
+        Capability::SampledBuffer => &[],
+        Capability::ImageBuffer => &[],
+        Capability::ImageQuery => &[],
+        Capability::DerivativeControl => &[],
         Capability::Geometry => &[DeviceRequirement::Feature("geometry_shader")],
         Capability::Tessellation => &[DeviceRequirement::Feature("tessellation_shader")],
-        Capability::Addresses => panic!(),     // not supported
-        Capability::Linkage => panic!(),       // not supported
-        Capability::Kernel => panic!(),        // not supported
-        Capability::Vector16 => panic!(),      // not supported
-        Capability::Float16Buffer => panic!(), // not supported
-        Capability::Float16 => panic!(),       // not supported
         Capability::Float64 => &[DeviceRequirement::Feature("shader_float64")],
         Capability::Int64 => &[DeviceRequirement::Feature("shader_int64")],
-        Capability::Int64Atomics => panic!(),   // not supported
-        Capability::ImageBasic => panic!(),     // not supported
-        Capability::ImageReadWrite => panic!(), // not supported
-        Capability::ImageMipmap => panic!(),    // not supported
-        Capability::Pipes => panic!(),          // not supported
-        Capability::Groups => panic!(),         // not supported
-        Capability::DeviceEnqueue => panic!(),  // not supported
-        Capability::LiteralSampler => panic!(), // not supported
-        Capability::AtomicStorage => panic!(),  // not supported
+        Capability::Int64Atomics => &[
+            DeviceRequirement::Feature("shader_buffer_int64_atomics"),
+            DeviceRequirement::Feature("shader_shared_int64_atomics"),
+            DeviceRequirement::Feature("shader_image_int64_atomics"),
+        ],
+        /* Capability::AtomicFloat16AddEXT => &[
+            DeviceRequirement::Feature("shader_buffer_float16_atomic_add"),
+            DeviceRequirement::Feature("shader_shared_float16_atomic_add"),
+        ], */
+        /* Capability::AtomicFloat32AddEXT => &[
+            DeviceRequirement::Feature("shader_buffer_float32_atomic_add"),
+            DeviceRequirement::Feature("shader_shared_float32_atomic_add"),
+            DeviceRequirement::Feature("shader_image_float32_atomic_add"),
+        ], */
+        /* Capability::AtomicFloat64AddEXT => &[
+            DeviceRequirement::Feature("shader_buffer_float64_atomic_add"),
+            DeviceRequirement::Feature("shader_shared_float64_atomic_add"),
+        ], */
+        /* Capability::AtomicFloat16MinMaxEXT => &[
+            DeviceRequirement::Feature("shader_buffer_float16_atomic_min_max"),
+            DeviceRequirement::Feature("shader_shared_float16_atomic_min_max"),
+        ], */
+        /* Capability::AtomicFloat32MinMaxEXT => &[
+            DeviceRequirement::Feature("shader_buffer_float32_atomic_min_max"),
+            DeviceRequirement::Feature("shader_shared_float32_atomic_min_max"),
+            DeviceRequirement::Feature("shader_image_float32_atomic_min_max"),
+        ], */
+        /* Capability::AtomicFloat64MinMaxEXT => &[
+            DeviceRequirement::Feature("shader_buffer_float64_atomic_min_max"),
+            DeviceRequirement::Feature("shader_shared_float64_atomic_min_max"),
+        ], */
+        // Capability::Int64ImageEXT => &[DeviceRequirement::Feature("shader_image_int64_atomics")],
         Capability::Int16 => &[DeviceRequirement::Feature("shader_int16")],
         Capability::TessellationPointSize => &[DeviceRequirement::Feature(
             "shader_tessellation_and_geometry_point_size",
@@ -491,29 +515,14 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
         Capability::CullDistance => &[DeviceRequirement::Feature("shader_cull_distance")],
         Capability::ImageCubeArray => &[DeviceRequirement::Feature("image_cube_array")],
         Capability::SampleRateShading => &[DeviceRequirement::Feature("sample_rate_shading")],
-        Capability::ImageRect => panic!(),      // not supported
-        Capability::SampledRect => panic!(),    // not supported
-        Capability::GenericPointer => panic!(), // not supported
-        Capability::Int8 => &[DeviceRequirement::Extension("khr_8bit_storage")],
-        Capability::InputAttachment => &[],
         Capability::SparseResidency => &[DeviceRequirement::Feature("shader_resource_residency")],
         Capability::MinLod => &[DeviceRequirement::Feature("shader_resource_min_lod")],
-        Capability::Sampled1D => &[],
-        Capability::Image1D => &[],
         Capability::SampledCubeArray => &[DeviceRequirement::Feature("image_cube_array")],
-        Capability::SampledBuffer => &[],
-        Capability::ImageBuffer => &[],
         Capability::ImageMSArray => &[DeviceRequirement::Feature(
             "shader_storage_image_multisample",
         )],
-        Capability::StorageImageExtendedFormats => &[DeviceRequirement::Feature(
-            "shader_storage_image_extended_formats",
-        )],
-        Capability::ImageQuery => &[],
-        Capability::DerivativeControl => &[],
+        Capability::StorageImageExtendedFormats => &[],
         Capability::InterpolationFunction => &[DeviceRequirement::Feature("sample_rate_shading")],
-        Capability::TransformFeedback => panic!(), // not supported
-        Capability::GeometryStreams => panic!(),   // not supported
         Capability::StorageImageReadWithoutFormat => &[DeviceRequirement::Feature(
             "shader_storage_image_read_without_format",
         )],
@@ -521,20 +530,62 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
             "shader_storage_image_write_without_format",
         )],
         Capability::MultiViewport => &[DeviceRequirement::Feature("multi_viewport")],
-        Capability::DrawParameters => &[DeviceRequirement::Feature("shader_draw_parameters")],
-        Capability::StorageBuffer16BitAccess => {
-            &[DeviceRequirement::Extension("khr_16bit_storage")]
-        }
-        Capability::UniformAndStorageBuffer16BitAccess => {
-            &[DeviceRequirement::Extension("khr_16bit_storage")]
-        }
-        Capability::StoragePushConstant16 => &[DeviceRequirement::Extension("khr_16bit_storage")],
-        Capability::StorageInputOutput16 => &[DeviceRequirement::Extension("khr_16bit_storage")],
+        Capability::DrawParameters => &[
+            DeviceRequirement::Feature("shader_draw_parameters"),
+            DeviceRequirement::Extension("khr_shader_draw_parameters"),
+        ],
         Capability::MultiView => &[DeviceRequirement::Feature("multiview")],
-        Capability::StoragePushConstant8 => &[DeviceRequirement::Extension("khr_8bit_storage")],
-        Capability::SubgroupDispatch => todo!(),
-        Capability::NamedBarrier => todo!(),
-        Capability::PipeStorage => todo!(),
+        Capability::DeviceGroup => &[
+            DeviceRequirement::Version(1, 1),
+            DeviceRequirement::Extension("khr_device_group"),
+        ],
+        Capability::VariablePointersStorageBuffer => &[DeviceRequirement::Feature(
+            "variable_pointers_storage_buffer",
+        )],
+        Capability::VariablePointers => &[DeviceRequirement::Feature("variable_pointers")],
+        Capability::ShaderClockKHR => &[DeviceRequirement::Extension("khr_shader_clock")],
+        Capability::StencilExportEXT => {
+            &[DeviceRequirement::Extension("ext_shader_stencil_export")]
+        }
+        Capability::SubgroupBallotKHR => {
+            &[DeviceRequirement::Extension("ext_shader_subgroup_ballot")]
+        }
+        Capability::SubgroupVoteKHR => &[DeviceRequirement::Extension("ext_shader_subgroup_vote")],
+        Capability::ImageReadWriteLodAMD => &[DeviceRequirement::Extension(
+            "amd_shader_image_load_store_lod",
+        )],
+        Capability::ImageGatherBiasLodAMD => {
+            &[DeviceRequirement::Extension("amd_texture_gather_bias_lod")]
+        }
+        Capability::FragmentMaskAMD => &[DeviceRequirement::Extension("amd_shader_fragment_mask")],
+        Capability::SampleMaskOverrideCoverageNV => &[DeviceRequirement::Extension(
+            "nv_sample_mask_override_coverage",
+        )],
+        Capability::GeometryShaderPassthroughNV => &[DeviceRequirement::Extension(
+            "nv_geometry_shader_passthrough",
+        )],
+        Capability::ShaderViewportIndex => {
+            &[DeviceRequirement::Feature("shader_output_viewport_index")]
+        }
+        Capability::ShaderLayer => &[DeviceRequirement::Feature("shader_output_layer")],
+        Capability::ShaderViewportIndexLayerEXT => &[
+            DeviceRequirement::Extension("ext_shader_viewport_index_layer"),
+            DeviceRequirement::Extension("nv_viewport_array2"),
+        ],
+        Capability::ShaderViewportMaskNV => &[DeviceRequirement::Extension("nv_viewport_array2")],
+        Capability::PerViewAttributesNV => &[DeviceRequirement::Extension(
+            "nvx_multiview_per_view_attributes",
+        )],
+        Capability::StorageBuffer16BitAccess => {
+            &[DeviceRequirement::Feature("storage_buffer16_bit_access")]
+        }
+        Capability::UniformAndStorageBuffer16BitAccess => &[DeviceRequirement::Feature(
+            "uniform_and_storage_buffer16_bit_access",
+        )],
+        Capability::StoragePushConstant16 => {
+            &[DeviceRequirement::Feature("storage_push_constant16")]
+        }
+        Capability::StorageInputOutput16 => &[DeviceRequirement::Feature("storage_input_output16")],
         Capability::GroupNonUniform => todo!(),
         Capability::GroupNonUniformVote => todo!(),
         Capability::GroupNonUniformArithmetic => todo!(),
@@ -543,77 +594,149 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
         Capability::GroupNonUniformShuffleRelative => todo!(),
         Capability::GroupNonUniformClustered => todo!(),
         Capability::GroupNonUniformQuad => todo!(),
-        Capability::ShaderLayer => todo!(),
-        Capability::ShaderViewportIndex => todo!(),
-        Capability::SubgroupBallotKHR => todo!(),
-        Capability::SubgroupVoteKHR => todo!(),
-        Capability::DeviceGroup => todo!(),
-        Capability::VariablePointersStorageBuffer => todo!(),
-        Capability::VariablePointers => todo!(),
-        Capability::AtomicStorageOps => todo!(),
-        Capability::SampleMaskPostDepthCoverage => todo!(),
-        Capability::StorageBuffer8BitAccess => todo!(),
-        Capability::UniformAndStorageBuffer8BitAccess => {
-            &[DeviceRequirement::Extension("khr_8bit_storage")]
+        Capability::GroupNonUniformPartitionedNV => todo!(),
+        Capability::SampleMaskPostDepthCoverage => {
+            &[DeviceRequirement::Extension("ext_post_depth_coverage")]
         }
+        Capability::ShaderNonUniform => &[
+            DeviceRequirement::Version(1, 2),
+            DeviceRequirement::Extension("ext_descriptor_indexing"),
+        ],
+        Capability::RuntimeDescriptorArray => {
+            &[DeviceRequirement::Feature("runtime_descriptor_array")]
+        }
+        Capability::InputAttachmentArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_input_attachment_array_dynamic_indexing",
+        )],
+        Capability::UniformTexelBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_uniform_texel_buffer_array_dynamic_indexing",
+        )],
+        Capability::StorageTexelBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_storage_texel_buffer_array_dynamic_indexing",
+        )],
+        Capability::UniformBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_uniform_buffer_array_non_uniform_indexing",
+        )],
+        Capability::SampledImageArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_sampled_image_array_non_uniform_indexing",
+        )],
+        Capability::StorageBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_storage_buffer_array_non_uniform_indexing",
+        )],
+        Capability::StorageImageArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_storage_image_array_non_uniform_indexing",
+        )],
+        Capability::InputAttachmentArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_input_attachment_array_non_uniform_indexing",
+        )],
+        Capability::UniformTexelBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_uniform_texel_buffer_array_non_uniform_indexing",
+        )],
+        Capability::StorageTexelBufferArrayNonUniformIndexing => &[DeviceRequirement::Feature(
+            "shader_storage_texel_buffer_array_non_uniform_indexing",
+        )],
+        Capability::Float16 => &[
+            DeviceRequirement::Feature("shader_float16"),
+            DeviceRequirement::Extension("amd_gpu_shader_half_float"),
+        ],
+        Capability::Int8 => &[DeviceRequirement::Feature("shader_int8")],
+        Capability::StorageBuffer8BitAccess => {
+            &[DeviceRequirement::Feature("storage_buffer8_bit_access")]
+        }
+        Capability::UniformAndStorageBuffer8BitAccess => &[DeviceRequirement::Feature(
+            "uniform_and_storage_buffer8_bit_access",
+        )],
+        Capability::StoragePushConstant8 => &[DeviceRequirement::Feature("storage_push_constant8")],
+        Capability::VulkanMemoryModel => &[DeviceRequirement::Feature("vulkan_memory_model")],
+        Capability::VulkanMemoryModelDeviceScope => &[DeviceRequirement::Feature(
+            "vulkan_memory_model_device_scope",
+        )],
         Capability::DenormPreserve => todo!(),
         Capability::DenormFlushToZero => todo!(),
         Capability::SignedZeroInfNanPreserve => todo!(),
         Capability::RoundingModeRTE => todo!(),
         Capability::RoundingModeRTZ => todo!(),
-        Capability::RayQueryProvisionalKHR => todo!(),
-        Capability::RayTraversalPrimitiveCullingProvisionalKHR => todo!(),
-        Capability::Float16ImageAMD => todo!(),
-        Capability::ImageGatherBiasLodAMD => todo!(),
-        Capability::FragmentMaskAMD => todo!(),
-        Capability::StencilExportEXT => todo!(),
-        Capability::ImageReadWriteLodAMD => todo!(),
-        Capability::ShaderClockKHR => todo!(),
-        Capability::SampleMaskOverrideCoverageNV => todo!(),
-        Capability::GeometryShaderPassthroughNV => todo!(),
-        Capability::ShaderViewportIndexLayerEXT => todo!(),
-        Capability::ShaderViewportMaskNV => todo!(),
-        Capability::ShaderStereoViewNV => todo!(),
-        Capability::PerViewAttributesNV => todo!(),
-        Capability::FragmentFullyCoveredEXT => todo!(),
-        Capability::MeshShadingNV => todo!(),
-        Capability::ImageFootprintNV => todo!(),
-        Capability::FragmentBarycentricNV => todo!(),
-        Capability::ComputeDerivativeGroupQuadsNV => todo!(),
-        Capability::FragmentDensityEXT => todo!(),
-        Capability::GroupNonUniformPartitionedNV => todo!(),
-        Capability::ShaderNonUniform => todo!(),
-        Capability::RuntimeDescriptorArray => todo!(),
-        Capability::InputAttachmentArrayDynamicIndexing => todo!(),
-        Capability::UniformTexelBufferArrayDynamicIndexing => todo!(),
-        Capability::StorageTexelBufferArrayDynamicIndexing => todo!(),
-        Capability::UniformBufferArrayNonUniformIndexing => todo!(),
-        Capability::SampledImageArrayNonUniformIndexing => todo!(),
-        Capability::StorageBufferArrayNonUniformIndexing => todo!(),
-        Capability::StorageImageArrayNonUniformIndexing => todo!(),
-        Capability::InputAttachmentArrayNonUniformIndexing => todo!(),
-        Capability::UniformTexelBufferArrayNonUniformIndexing => todo!(),
-        Capability::StorageTexelBufferArrayNonUniformIndexing => todo!(),
-        Capability::RayTracingNV => todo!(),
-        Capability::VulkanMemoryModel => todo!(),
-        Capability::VulkanMemoryModelDeviceScope => todo!(),
-        Capability::PhysicalStorageBufferAddresses => todo!(),
-        Capability::ComputeDerivativeGroupLinearNV => todo!(),
-        Capability::RayTracingProvisionalKHR => todo!(),
-        Capability::CooperativeMatrixNV => todo!(),
-        Capability::FragmentShaderSampleInterlockEXT => todo!(),
-        Capability::FragmentShaderShadingRateInterlockEXT => todo!(),
-        Capability::ShaderSMBuiltinsNV => todo!(),
-        Capability::FragmentShaderPixelInterlockEXT => todo!(),
-        Capability::DemoteToHelperInvocationEXT => todo!(),
-        Capability::SubgroupShuffleINTEL => todo!(),
-        Capability::SubgroupBufferBlockIOINTEL => todo!(),
-        Capability::SubgroupImageBlockIOINTEL => todo!(),
-        Capability::SubgroupImageMediaBlockIOINTEL => todo!(),
-        Capability::IntegerFunctions2INTEL => todo!(),
-        Capability::SubgroupAvcMotionEstimationINTEL => todo!(),
-        Capability::SubgroupAvcMotionEstimationIntraINTEL => todo!(),
-        Capability::SubgroupAvcMotionEstimationChromaINTEL => todo!(),
+        Capability::ComputeDerivativeGroupQuadsNV => {
+            &[DeviceRequirement::Feature("compute_derivative_group_quads")]
+        }
+        Capability::ComputeDerivativeGroupLinearNV => &[DeviceRequirement::Feature(
+            "compute_derivative_group_linear",
+        )],
+        Capability::FragmentBarycentricNV => {
+            &[DeviceRequirement::Feature("fragment_shader_barycentric")]
+        }
+        Capability::ImageFootprintNV => &[DeviceRequirement::Feature("image_footprint")],
+        Capability::MeshShadingNV => &[DeviceRequirement::Extension("nv_mesh_shader")],
+        Capability::RayTracingProvisionalKHR => {
+            &[DeviceRequirement::Feature("ray_tracing_pipeline")]
+        }
+        Capability::RayQueryProvisionalKHR => &[DeviceRequirement::Feature("ray_query")],
+        Capability::RayTraversalPrimitiveCullingProvisionalKHR => &[DeviceRequirement::Feature(
+            "ray_traversal_primitive_culling",
+        )],
+        Capability::RayTracingNV => &[DeviceRequirement::Extension("nv_ray_tracing")],
+        // Capability::RayTracingMotionBlurNV => &[DeviceRequirement::Feature("ray_tracing_motion_blur")],
+        Capability::TransformFeedback => &[DeviceRequirement::Feature("transform_feedback")],
+        Capability::GeometryStreams => &[DeviceRequirement::Feature("geometry_streams")],
+        Capability::FragmentDensityEXT => &[
+            DeviceRequirement::Feature("fragment_density_map"),
+            DeviceRequirement::Feature("shading_rate_image"),
+        ],
+        Capability::PhysicalStorageBufferAddresses => {
+            &[DeviceRequirement::Feature("buffer_device_address")]
+        }
+        Capability::CooperativeMatrixNV => &[DeviceRequirement::Feature("cooperative_matrix")],
+        Capability::IntegerFunctions2INTEL => {
+            &[DeviceRequirement::Feature("shader_integer_functions2")]
+        }
+        Capability::ShaderSMBuiltinsNV => &[DeviceRequirement::Feature("shader_sm_builtins")],
+        Capability::FragmentShaderSampleInterlockEXT => &[DeviceRequirement::Feature(
+            "fragment_shader_sample_interlock",
+        )],
+        Capability::FragmentShaderPixelInterlockEXT => &[DeviceRequirement::Feature(
+            "fragment_shader_pixel_interlock",
+        )],
+        Capability::FragmentShaderShadingRateInterlockEXT => &[
+            DeviceRequirement::Feature("fragment_shader_shading_rate_interlock"),
+            DeviceRequirement::Feature("shading_rate_image"),
+        ],
+        Capability::DemoteToHelperInvocationEXT => &[DeviceRequirement::Feature(
+            "shader_demote_to_helper_invocation",
+        )],
+        // Capability::FragmentShadingRateKHR => &[DeviceRequirement::Feature("pipeline_fragment_shading_rate"), DeviceRequirement::Feature("primitive_fragment_shading_rate"), DeviceRequirement::Feature("attachment_fragment_shading_rate")],
+        // Capability::WorkgroupMemoryExplicitLayoutKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout")],
+        // Capability::WorkgroupMemoryExplicitLayout8BitAccessKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout8_bit_access")],
+        // Capability::WorkgroupMemoryExplicitLayout16BitAccessKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout16_bit_access")],
+        Capability::Addresses => panic!(),        // not supported
+        Capability::Linkage => panic!(),          // not supported
+        Capability::Kernel => panic!(),           // not supported
+        Capability::Vector16 => panic!(),         // not supported
+        Capability::Float16Buffer => panic!(),    // not supported
+        Capability::ImageBasic => panic!(),       // not supported
+        Capability::ImageReadWrite => panic!(),   // not supported
+        Capability::ImageMipmap => panic!(),      // not supported
+        Capability::Pipes => panic!(),            // not supported
+        Capability::Groups => panic!(),           // not supported
+        Capability::DeviceEnqueue => panic!(),    // not supported
+        Capability::LiteralSampler => panic!(),   // not supported
+        Capability::AtomicStorage => panic!(),    // not supported
+        Capability::ImageRect => panic!(),        // not supported
+        Capability::SampledRect => panic!(),      // not supported
+        Capability::GenericPointer => panic!(),   // not supported
+        Capability::SubgroupDispatch => panic!(), // not supported,
+        Capability::NamedBarrier => panic!(),     // not supported,
+        Capability::PipeStorage => panic!(),      // not supported,
+        Capability::AtomicStorageOps => panic!(), // not supported,
+        Capability::Float16ImageAMD => panic!(),  // not supported,
+        Capability::ShaderStereoViewNV => panic!(), // not supported,
+        Capability::FragmentFullyCoveredEXT => panic!(), // not supported,
+        Capability::SubgroupShuffleINTEL => panic!(), // not supported,
+        Capability::SubgroupBufferBlockIOINTEL => panic!(), // not supported,
+        Capability::SubgroupImageBlockIOINTEL => panic!(), // not supported,
+        Capability::SubgroupImageMediaBlockIOINTEL => panic!(), // not supported,
+        Capability::SubgroupAvcMotionEstimationINTEL => panic!(), // not supported,
+        Capability::SubgroupAvcMotionEstimationIntraINTEL => panic!(), // not supported,
+        Capability::SubgroupAvcMotionEstimationChromaINTEL => panic!(), // not supported,
     }
 }
 
