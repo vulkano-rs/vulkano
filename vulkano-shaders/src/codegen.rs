@@ -262,33 +262,43 @@ where
                     type_id: _,
                 } => storage_class_requirement(storage_class),
                 Instruction::Capability(cap) => capability_requirement(cap),
-                _ => DeviceRequirement::None,
+                _ => &[],
             }
         };
 
-        match dev_req {
-            DeviceRequirement::None => continue,
-            DeviceRequirement::Features(features) => {
-                for feature in features {
-                    let ident = Ident::new(feature, Span::call_site());
-                    cap_checks.push(quote! {
-                        if !device.enabled_features().#ident {
-                            panic!("Device feature {:?} required", #feature);
-                        }
-                    });
-                }
-            }
-            DeviceRequirement::Extensions(extensions) => {
-                for extension in extensions {
+        let (conditions, messages): (Vec<_>, Vec<_>) = dev_req
+            .iter()
+            .map(|req| match req {
+                DeviceRequirement::Extension(extension) => {
                     let ident = Ident::new(extension, Span::call_site());
-                    cap_checks.push(quote! {
-                        if !device.enabled_extensions().#ident {
-                            panic!("Device extension {:?} required", #extension);
-                        }
-                    });
+                    (
+                        quote! { device.enabled_extensions().#ident },
+                        format!("extension {}", extension),
+                    )
                 }
+                DeviceRequirement::Feature(feature) => {
+                    let ident = Ident::new(feature, Span::call_site());
+                    (
+                        quote! { device.enabled_features().#ident },
+                        format!("feature {}", feature),
+                    )
+                }
+                DeviceRequirement::Version(major, minor) => {
+                    let ident = format_ident!("V{}_{}", major, minor);
+                    (
+                        quote! { device.api_version() >= crate::Version::#ident },
+                        format!("API version {}.{}", major, minor),
+                    )
+                }
+            })
+            .unzip();
+        let messages = messages.join(", ");
+
+        cap_checks.push(quote! {
+            if !std::array::IntoIter::new([#(#conditions),*]).any(|x| x) {
+                panic!("One of the following must be enabled on the device: {}", #messages);
             }
-        }
+        });
     }
 
     // writing one method for each entry point of this module
@@ -429,20 +439,20 @@ impl From<ParseError> for Error {
 
 /// Returns the Vulkan device requirement for a SPIR-V `OpCapability`.
 // TODO: this function is a draft, as the actual names may not be the same
-fn capability_requirement(cap: &Capability) -> DeviceRequirement {
+fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
     match *cap {
-        Capability::Matrix => DeviceRequirement::None,
-        Capability::Shader => DeviceRequirement::None,
-        Capability::Geometry => DeviceRequirement::Features(&["geometry_shader"]),
-        Capability::Tessellation => DeviceRequirement::Features(&["tessellation_shader"]),
+        Capability::Matrix => &[],
+        Capability::Shader => &[],
+        Capability::Geometry => &[DeviceRequirement::Feature("geometry_shader")],
+        Capability::Tessellation => &[DeviceRequirement::Feature("tessellation_shader")],
         Capability::Addresses => panic!(),     // not supported
         Capability::Linkage => panic!(),       // not supported
         Capability::Kernel => panic!(),        // not supported
         Capability::Vector16 => panic!(),      // not supported
         Capability::Float16Buffer => panic!(), // not supported
         Capability::Float16 => panic!(),       // not supported
-        Capability::Float64 => DeviceRequirement::Features(&["shader_float64"]),
-        Capability::Int64 => DeviceRequirement::Features(&["shader_int64"]),
+        Capability::Float64 => &[DeviceRequirement::Feature("shader_float64")],
+        Capability::Int64 => &[DeviceRequirement::Feature("shader_int64")],
         Capability::Int64Atomics => panic!(),   // not supported
         Capability::ImageBasic => panic!(),     // not supported
         Capability::ImageReadWrite => panic!(), // not supported
@@ -452,76 +462,76 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::DeviceEnqueue => panic!(),  // not supported
         Capability::LiteralSampler => panic!(), // not supported
         Capability::AtomicStorage => panic!(),  // not supported
-        Capability::Int16 => DeviceRequirement::Features(&["shader_int16"]),
-        Capability::TessellationPointSize => {
-            DeviceRequirement::Features(&["shader_tessellation_and_geometry_point_size"])
-        }
-        Capability::GeometryPointSize => {
-            DeviceRequirement::Features(&["shader_tessellation_and_geometry_point_size"])
-        }
+        Capability::Int16 => &[DeviceRequirement::Feature("shader_int16")],
+        Capability::TessellationPointSize => &[DeviceRequirement::Feature(
+            "shader_tessellation_and_geometry_point_size",
+        )],
+        Capability::GeometryPointSize => &[DeviceRequirement::Feature(
+            "shader_tessellation_and_geometry_point_size",
+        )],
         Capability::ImageGatherExtended => {
-            DeviceRequirement::Features(&["shader_image_gather_extended"])
+            &[DeviceRequirement::Feature("shader_image_gather_extended")]
         }
-        Capability::StorageImageMultisample => {
-            DeviceRequirement::Features(&["shader_storage_image_multisample"])
-        }
-        Capability::UniformBufferArrayDynamicIndexing => {
-            DeviceRequirement::Features(&["shader_uniform_buffer_array_dynamic_indexing"])
-        }
-        Capability::SampledImageArrayDynamicIndexing => {
-            DeviceRequirement::Features(&["shader_sampled_image_array_dynamic_indexing"])
-        }
-        Capability::StorageBufferArrayDynamicIndexing => {
-            DeviceRequirement::Features(&["shader_storage_buffer_array_dynamic_indexing"])
-        }
-        Capability::StorageImageArrayDynamicIndexing => {
-            DeviceRequirement::Features(&["shader_storage_image_array_dynamic_indexing"])
-        }
-        Capability::ClipDistance => DeviceRequirement::Features(&["shader_clip_distance"]),
-        Capability::CullDistance => DeviceRequirement::Features(&["shader_cull_distance"]),
-        Capability::ImageCubeArray => DeviceRequirement::Features(&["image_cube_array"]),
-        Capability::SampleRateShading => DeviceRequirement::Features(&["sample_rate_shading"]),
+        Capability::StorageImageMultisample => &[DeviceRequirement::Feature(
+            "shader_storage_image_multisample",
+        )],
+        Capability::UniformBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_uniform_buffer_array_dynamic_indexing",
+        )],
+        Capability::SampledImageArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_sampled_image_array_dynamic_indexing",
+        )],
+        Capability::StorageBufferArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_storage_buffer_array_dynamic_indexing",
+        )],
+        Capability::StorageImageArrayDynamicIndexing => &[DeviceRequirement::Feature(
+            "shader_storage_image_array_dynamic_indexing",
+        )],
+        Capability::ClipDistance => &[DeviceRequirement::Feature("shader_clip_distance")],
+        Capability::CullDistance => &[DeviceRequirement::Feature("shader_cull_distance")],
+        Capability::ImageCubeArray => &[DeviceRequirement::Feature("image_cube_array")],
+        Capability::SampleRateShading => &[DeviceRequirement::Feature("sample_rate_shading")],
         Capability::ImageRect => panic!(),      // not supported
         Capability::SampledRect => panic!(),    // not supported
         Capability::GenericPointer => panic!(), // not supported
-        Capability::Int8 => DeviceRequirement::Extensions(&["khr_8bit_storage"]),
-        Capability::InputAttachment => DeviceRequirement::None,
-        Capability::SparseResidency => DeviceRequirement::Features(&["shader_resource_residency"]),
-        Capability::MinLod => DeviceRequirement::Features(&["shader_resource_min_lod"]),
-        Capability::Sampled1D => DeviceRequirement::None,
-        Capability::Image1D => DeviceRequirement::None,
-        Capability::SampledCubeArray => DeviceRequirement::Features(&["image_cube_array"]),
-        Capability::SampledBuffer => DeviceRequirement::None,
-        Capability::ImageBuffer => DeviceRequirement::None,
-        Capability::ImageMSArray => {
-            DeviceRequirement::Features(&["shader_storage_image_multisample"])
-        }
-        Capability::StorageImageExtendedFormats => {
-            DeviceRequirement::Features(&["shader_storage_image_extended_formats"])
-        }
-        Capability::ImageQuery => DeviceRequirement::None,
-        Capability::DerivativeControl => DeviceRequirement::None,
-        Capability::InterpolationFunction => DeviceRequirement::Features(&["sample_rate_shading"]),
+        Capability::Int8 => &[DeviceRequirement::Extension("khr_8bit_storage")],
+        Capability::InputAttachment => &[],
+        Capability::SparseResidency => &[DeviceRequirement::Feature("shader_resource_residency")],
+        Capability::MinLod => &[DeviceRequirement::Feature("shader_resource_min_lod")],
+        Capability::Sampled1D => &[],
+        Capability::Image1D => &[],
+        Capability::SampledCubeArray => &[DeviceRequirement::Feature("image_cube_array")],
+        Capability::SampledBuffer => &[],
+        Capability::ImageBuffer => &[],
+        Capability::ImageMSArray => &[DeviceRequirement::Feature(
+            "shader_storage_image_multisample",
+        )],
+        Capability::StorageImageExtendedFormats => &[DeviceRequirement::Feature(
+            "shader_storage_image_extended_formats",
+        )],
+        Capability::ImageQuery => &[],
+        Capability::DerivativeControl => &[],
+        Capability::InterpolationFunction => &[DeviceRequirement::Feature("sample_rate_shading")],
         Capability::TransformFeedback => panic!(), // not supported
         Capability::GeometryStreams => panic!(),   // not supported
-        Capability::StorageImageReadWithoutFormat => {
-            DeviceRequirement::Features(&["shader_storage_image_read_without_format"])
-        }
-        Capability::StorageImageWriteWithoutFormat => {
-            DeviceRequirement::Features(&["shader_storage_image_write_without_format"])
-        }
-        Capability::MultiViewport => DeviceRequirement::Features(&["multi_viewport"]),
-        Capability::DrawParameters => DeviceRequirement::Features(&["shader_draw_parameters"]),
+        Capability::StorageImageReadWithoutFormat => &[DeviceRequirement::Feature(
+            "shader_storage_image_read_without_format",
+        )],
+        Capability::StorageImageWriteWithoutFormat => &[DeviceRequirement::Feature(
+            "shader_storage_image_write_without_format",
+        )],
+        Capability::MultiViewport => &[DeviceRequirement::Feature("multi_viewport")],
+        Capability::DrawParameters => &[DeviceRequirement::Feature("shader_draw_parameters")],
         Capability::StorageBuffer16BitAccess => {
-            DeviceRequirement::Extensions(&["khr_16bit_storage"])
+            &[DeviceRequirement::Extension("khr_16bit_storage")]
         }
         Capability::UniformAndStorageBuffer16BitAccess => {
-            DeviceRequirement::Extensions(&["khr_16bit_storage"])
+            &[DeviceRequirement::Extension("khr_16bit_storage")]
         }
-        Capability::StoragePushConstant16 => DeviceRequirement::Extensions(&["khr_16bit_storage"]),
-        Capability::StorageInputOutput16 => DeviceRequirement::Extensions(&["khr_16bit_storage"]),
-        Capability::MultiView => DeviceRequirement::Features(&["multiview"]),
-        Capability::StoragePushConstant8 => DeviceRequirement::Extensions(&["khr_8bit_storage"]),
+        Capability::StoragePushConstant16 => &[DeviceRequirement::Extension("khr_16bit_storage")],
+        Capability::StorageInputOutput16 => &[DeviceRequirement::Extension("khr_16bit_storage")],
+        Capability::MultiView => &[DeviceRequirement::Feature("multiview")],
+        Capability::StoragePushConstant8 => &[DeviceRequirement::Extension("khr_8bit_storage")],
         Capability::SubgroupDispatch => todo!(),
         Capability::NamedBarrier => todo!(),
         Capability::PipeStorage => todo!(),
@@ -544,7 +554,7 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::SampleMaskPostDepthCoverage => todo!(),
         Capability::StorageBuffer8BitAccess => todo!(),
         Capability::UniformAndStorageBuffer8BitAccess => {
-            DeviceRequirement::Extensions(&["khr_8bit_storage"])
+            &[DeviceRequirement::Extension("khr_8bit_storage")]
         }
         Capability::DenormPreserve => todo!(),
         Capability::DenormFlushToZero => todo!(),
@@ -608,23 +618,23 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
 }
 
 /// Returns the Vulkan device requirement for a SPIR-V storage class.
-fn storage_class_requirement(storage_class: &StorageClass) -> DeviceRequirement {
+fn storage_class_requirement(storage_class: &StorageClass) -> &'static [DeviceRequirement] {
     match *storage_class {
-        StorageClass::UniformConstant => DeviceRequirement::None,
-        StorageClass::Input => DeviceRequirement::None,
-        StorageClass::Uniform => DeviceRequirement::None,
-        StorageClass::Output => DeviceRequirement::None,
-        StorageClass::Workgroup => DeviceRequirement::None,
-        StorageClass::CrossWorkgroup => DeviceRequirement::None,
-        StorageClass::Private => DeviceRequirement::None,
-        StorageClass::Function => DeviceRequirement::None,
-        StorageClass::Generic => DeviceRequirement::None,
-        StorageClass::PushConstant => DeviceRequirement::None,
-        StorageClass::AtomicCounter => DeviceRequirement::None,
-        StorageClass::Image => DeviceRequirement::None,
-        StorageClass::StorageBuffer => {
-            DeviceRequirement::Extensions(&["khr_storage_buffer_storage_class"])
-        }
+        StorageClass::UniformConstant => &[],
+        StorageClass::Input => &[],
+        StorageClass::Uniform => &[],
+        StorageClass::Output => &[],
+        StorageClass::Workgroup => &[],
+        StorageClass::CrossWorkgroup => &[],
+        StorageClass::Private => &[],
+        StorageClass::Function => &[],
+        StorageClass::Generic => &[],
+        StorageClass::PushConstant => &[],
+        StorageClass::AtomicCounter => &[],
+        StorageClass::Image => &[],
+        StorageClass::StorageBuffer => &[DeviceRequirement::Extension(
+            "khr_storage_buffer_storage_class",
+        )],
         StorageClass::CallableDataNV => todo!(),
         StorageClass::IncomingCallableDataNV => todo!(),
         StorageClass::RayPayloadNV => todo!(),
@@ -636,9 +646,9 @@ fn storage_class_requirement(storage_class: &StorageClass) -> DeviceRequirement 
 }
 
 enum DeviceRequirement {
-    None,
-    Features(&'static [&'static str]),
-    Extensions(&'static [&'static str]),
+    Feature(&'static str),
+    Extension(&'static str),
+    Version(u32, u32),
 }
 
 #[cfg(test)]
