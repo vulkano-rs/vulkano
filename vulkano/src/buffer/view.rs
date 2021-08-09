@@ -97,8 +97,7 @@ where
                 % device
                     .physical_device()
                     .properties()
-                    .min_texel_buffer_offset_alignment
-                    .unwrap() as usize)
+                    .min_texel_buffer_offset_alignment as usize)
                 != 0
             {
                 return Err(BufferViewCreationError::WrongBufferAlignment);
@@ -116,8 +115,7 @@ where
                 let l = device
                     .physical_device()
                     .properties()
-                    .max_texel_buffer_elements
-                    .unwrap();
+                    .max_texel_buffer_elements;
                 if nb > l as usize {
                     return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
                 }

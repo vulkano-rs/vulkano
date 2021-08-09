@@ -220,21 +220,21 @@ impl UnsafeBuffer {
             if usage.uniform_texel_buffer || usage.storage_texel_buffer {
                 output.alignment = align(
                     output.alignment,
-                    properties.min_texel_buffer_offset_alignment.unwrap() as usize,
+                    properties.min_texel_buffer_offset_alignment as usize,
                 );
             }
 
             if usage.storage_buffer {
                 output.alignment = align(
                     output.alignment,
-                    properties.min_storage_buffer_offset_alignment.unwrap() as usize,
+                    properties.min_storage_buffer_offset_alignment as usize,
                 );
             }
 
             if usage.uniform_buffer {
                 output.alignment = align(
                     output.alignment,
-                    properties.min_uniform_buffer_offset_alignment.unwrap() as usize,
+                    properties.min_uniform_buffer_offset_alignment as usize,
                 );
             }
 
@@ -275,17 +275,17 @@ impl UnsafeBuffer {
             let properties = self.device().physical_device().properties();
             if self.usage().uniform_texel_buffer || self.usage().storage_texel_buffer {
                 debug_assert!(
-                    offset % properties.min_texel_buffer_offset_alignment.unwrap() as usize == 0
+                    offset % properties.min_texel_buffer_offset_alignment as usize == 0
                 );
             }
             if self.usage().storage_buffer {
                 debug_assert!(
-                    offset % properties.min_storage_buffer_offset_alignment.unwrap() as usize == 0
+                    offset % properties.min_storage_buffer_offset_alignment as usize == 0
                 );
             }
             if self.usage().uniform_buffer {
                 debug_assert!(
-                    offset % properties.min_uniform_buffer_offset_alignment.unwrap() as usize == 0
+                    offset % properties.min_uniform_buffer_offset_alignment as usize == 0
                 );
             }
         }

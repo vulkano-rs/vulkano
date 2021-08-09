@@ -425,8 +425,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_vertex_input_bindings
-                .unwrap();
+                .max_vertex_input_bindings;
             first_binding + num_bindings <= max_bindings
         });
 
@@ -1022,8 +1021,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_compute_work_group_count
-                .unwrap();
+                .max_compute_work_group_count;
             group_counts[0] <= max_group_counts[0]
                 && group_counts[1] <= max_group_counts[1]
                 && group_counts[2] <= max_group_counts[2]
@@ -1421,8 +1419,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_viewports
-                .unwrap();
+                .max_viewports;
             first_scissor + scissors.len() as u32 <= max
         });
 
@@ -1457,8 +1454,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_viewports
-                .unwrap();
+                .max_viewports;
             first_viewport + viewports.len() as u32 <= max
         });
 
