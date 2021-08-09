@@ -66,7 +66,7 @@
 - Updated ash to 0.33.0, vk.xml to 1.2.185, and ran `cargo update` to update other dependencies' patch versions.
 - Add support for EXTENDED_SRGB_NONLINEAR_EXT color space.
 - Better error message for wrong color space value
-
+- Added `impl BitOr` for `debug::MessageType` and `debug::MessageSeverity` and some bit field generators, also turning them into `const fn`.
 
 # Version 0.24.0 (2021-06-20)
 
