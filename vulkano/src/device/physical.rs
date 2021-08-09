@@ -296,7 +296,7 @@ fn init_physical_devices_inner2(instance: &Instance, infos: &mut [PhysicalDevice
 /// }
 ///
 /// fn print_infos(dev: PhysicalDevice) {
-///     println!("Name: {}", dev.properties().device_name.as_ref().unwrap());
+///     println!("Name: {}", dev.properties().device_name);
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
@@ -319,7 +319,7 @@ impl<'a> PhysicalDevice<'a> {
     ///
     /// # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
-    ///     println!("Available device: {}", physical_device.properties().device_name.as_ref().unwrap());
+    ///     println!("Available device: {}", physical_device.properties().device_name);
     /// }
     /// ```
     #[inline]
@@ -535,6 +535,13 @@ pub enum PhysicalDeviceType {
     Cpu = ash::vk::PhysicalDeviceType::CPU.as_raw(),
     /// The device is something else.
     Other = ash::vk::PhysicalDeviceType::OTHER.as_raw(),
+}
+
+/// VkPhysicalDeviceType::Other is represented as 0
+impl Default for PhysicalDeviceType {
+  fn default() -> Self {
+    PhysicalDeviceType::Other
+  }
 }
 
 impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {

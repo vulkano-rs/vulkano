@@ -344,7 +344,6 @@ impl<'a> DeviceMemoryBuilder<'a> {
                 >= physical_device
                     .properties()
                     .max_memory_allocation_count
-                    .unwrap()
             {
                 return Err(DeviceMemoryAllocError::TooManyObjects);
             }

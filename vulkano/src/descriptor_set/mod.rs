@@ -205,8 +205,8 @@ impl DescriptorSetWithOffsets {
         let dynamic_offsets: SmallVec<_> = dynamic_offsets.into_iter().collect();
         let layout = descriptor_set.layout();
         let properties = layout.device().physical_device().properties();
-        let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment.unwrap() as u32;
-        let min_storage_off_align = properties.min_storage_buffer_offset_alignment.unwrap() as u32;
+        let min_uniform_off_align = properties.min_uniform_buffer_offset_alignment as u32;
+        let min_storage_off_align = properties.min_storage_buffer_offset_alignment as u32;
         let mut dynamic_offset_index = 0;
 
         // Ensure that the number of dynamic_offsets is correct and that each

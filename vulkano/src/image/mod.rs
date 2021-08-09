@@ -129,7 +129,7 @@ impl TryFrom<u32> for SampleCount {
 }
 
 /// Specifies how many sample counts supported for an image used for storage operations.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Default)]
 pub struct SampleCounts {
     // specify an image with one sample per pixel
     pub sample1: bool,

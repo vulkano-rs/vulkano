@@ -119,7 +119,7 @@ fn main() {
         // "default" or "recommended" device, and let the user choose the device themselves.
         .min_by_key(|(p, _)| {
             // We assign a better score to device types that are likely to be faster/better.
-            match p.properties().device_type.unwrap() {
+            match p.properties().device_type {
                 PhysicalDeviceType::DiscreteGpu => 0,
                 PhysicalDeviceType::IntegratedGpu => 1,
                 PhysicalDeviceType::VirtualGpu => 2,
@@ -132,8 +132,8 @@ fn main() {
     // Some little debug infos.
     println!(
         "Using device: {} (type: {:?})",
-        physical_device.properties().device_name.as_ref().unwrap(),
-        physical_device.properties().device_type.unwrap(),
+        physical_device.properties().device_name,
+        physical_device.properties().device_type,
     );
 
     // Now initializing the device. This is probably the most important object of Vulkan.

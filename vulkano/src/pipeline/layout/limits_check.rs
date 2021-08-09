@@ -74,66 +74,66 @@ pub fn check_desc_against_limits(
         }
     }
 
-    if descriptor_set_layouts.len() > properties.max_bound_descriptor_sets.unwrap() as usize {
+    if descriptor_set_layouts.len() > properties.max_bound_descriptor_sets as usize {
         return Err(PipelineLayoutLimitsError::MaxDescriptorSetsLimitExceeded {
-            limit: properties.max_bound_descriptor_sets.unwrap() as usize,
+            limit: properties.max_bound_descriptor_sets as usize,
             requested: descriptor_set_layouts.len(),
         });
     }
 
-    if num_resources.max_per_stage() > properties.max_per_stage_resources.unwrap() {
+    if num_resources.max_per_stage() > properties.max_per_stage_resources {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageResourcesLimitExceeded {
-                limit: properties.max_per_stage_resources.unwrap(),
+                limit: properties.max_per_stage_resources,
                 requested: num_resources.max_per_stage(),
             },
         );
     }
 
-    if num_samplers.max_per_stage() > properties.max_per_stage_descriptor_samplers.unwrap() {
+    if num_samplers.max_per_stage() > properties.max_per_stage_descriptor_samplers {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorSamplersLimitExceeded {
-                limit: properties.max_per_stage_descriptor_samplers.unwrap(),
+                limit: properties.max_per_stage_descriptor_samplers,
                 requested: num_samplers.max_per_stage(),
             },
         );
     }
     if num_uniform_buffers.max_per_stage()
-        > properties.max_per_stage_descriptor_uniform_buffers.unwrap()
+        > properties.max_per_stage_descriptor_uniform_buffers
     {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
-                limit: properties.max_per_stage_descriptor_uniform_buffers.unwrap(),
+                limit: properties.max_per_stage_descriptor_uniform_buffers,
                 requested: num_uniform_buffers.max_per_stage(),
             },
         );
     }
     if num_storage_buffers.max_per_stage()
-        > properties.max_per_stage_descriptor_storage_buffers.unwrap()
+        > properties.max_per_stage_descriptor_storage_buffers
     {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
-                limit: properties.max_per_stage_descriptor_storage_buffers.unwrap(),
+                limit: properties.max_per_stage_descriptor_storage_buffers,
                 requested: num_storage_buffers.max_per_stage(),
             },
         );
     }
     if num_sampled_images.max_per_stage()
-        > properties.max_per_stage_descriptor_sampled_images.unwrap()
+        > properties.max_per_stage_descriptor_sampled_images
     {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
-                limit: properties.max_per_stage_descriptor_sampled_images.unwrap(),
+                limit: properties.max_per_stage_descriptor_sampled_images,
                 requested: num_sampled_images.max_per_stage(),
             },
         );
     }
     if num_storage_images.max_per_stage()
-        > properties.max_per_stage_descriptor_storage_images.unwrap()
+        > properties.max_per_stage_descriptor_storage_images
     {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
-                limit: properties.max_per_stage_descriptor_storage_images.unwrap(),
+                limit: properties.max_per_stage_descriptor_storage_images,
                 requested: num_storage_images.max_per_stage(),
             },
         );
@@ -141,30 +141,28 @@ pub fn check_desc_against_limits(
     if num_input_attachments.max_per_stage()
         > properties
             .max_per_stage_descriptor_input_attachments
-            .unwrap()
     {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
                 limit: properties
-                    .max_per_stage_descriptor_input_attachments
-                    .unwrap(),
+                    .max_per_stage_descriptor_input_attachments,
                 requested: num_input_attachments.max_per_stage(),
             },
         );
     }
 
-    if num_samplers.total > properties.max_descriptor_set_samplers.unwrap() {
+    if num_samplers.total > properties.max_descriptor_set_samplers {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetSamplersLimitExceeded {
-                limit: properties.max_descriptor_set_samplers.unwrap(),
+                limit: properties.max_descriptor_set_samplers,
                 requested: num_samplers.total,
             },
         );
     }
-    if num_uniform_buffers.total > properties.max_descriptor_set_uniform_buffers.unwrap() {
+    if num_uniform_buffers.total > properties.max_descriptor_set_uniform_buffers {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersLimitExceeded {
-                limit: properties.max_descriptor_set_uniform_buffers.unwrap(),
+                limit: properties.max_descriptor_set_uniform_buffers,
                 requested: num_uniform_buffers.total,
             },
         );
@@ -172,21 +170,19 @@ pub fn check_desc_against_limits(
     if num_uniform_buffers_dynamic
         > properties
             .max_descriptor_set_uniform_buffers_dynamic
-            .unwrap()
     {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
                 limit: properties
-                    .max_descriptor_set_uniform_buffers_dynamic
-                    .unwrap(),
+                    .max_descriptor_set_uniform_buffers_dynamic,
                 requested: num_uniform_buffers_dynamic,
             },
         );
     }
-    if num_storage_buffers.total > properties.max_descriptor_set_storage_buffers.unwrap() {
+    if num_storage_buffers.total > properties.max_descriptor_set_storage_buffers {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersLimitExceeded {
-                limit: properties.max_descriptor_set_storage_buffers.unwrap(),
+                limit: properties.max_descriptor_set_storage_buffers,
                 requested: num_storage_buffers.total,
             },
         );
@@ -194,46 +190,44 @@ pub fn check_desc_against_limits(
     if num_storage_buffers_dynamic
         > properties
             .max_descriptor_set_storage_buffers_dynamic
-            .unwrap()
     {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
                 limit: properties
-                    .max_descriptor_set_storage_buffers_dynamic
-                    .unwrap(),
+                    .max_descriptor_set_storage_buffers_dynamic,
                 requested: num_storage_buffers_dynamic,
             },
         );
     }
-    if num_sampled_images.total > properties.max_descriptor_set_sampled_images.unwrap() {
+    if num_sampled_images.total > properties.max_descriptor_set_sampled_images {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetSampledImagesLimitExceeded {
-                limit: properties.max_descriptor_set_sampled_images.unwrap(),
+                limit: properties.max_descriptor_set_sampled_images,
                 requested: num_sampled_images.total,
             },
         );
     }
-    if num_storage_images.total > properties.max_descriptor_set_storage_images.unwrap() {
+    if num_storage_images.total > properties.max_descriptor_set_storage_images {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetStorageImagesLimitExceeded {
-                limit: properties.max_descriptor_set_storage_images.unwrap(),
+                limit: properties.max_descriptor_set_storage_images,
                 requested: num_storage_images.total,
             },
         );
     }
-    if num_input_attachments.total > properties.max_descriptor_set_input_attachments.unwrap() {
+    if num_input_attachments.total > properties.max_descriptor_set_input_attachments {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetInputAttachmentsLimitExceeded {
-                limit: properties.max_descriptor_set_input_attachments.unwrap(),
+                limit: properties.max_descriptor_set_input_attachments,
                 requested: num_input_attachments.total,
             },
         );
     }
 
     for &PipelineLayoutPcRange { offset, size, .. } in push_constants_ranges {
-        if offset + size > properties.max_push_constants_size.unwrap() as usize {
+        if offset + size > properties.max_push_constants_size as usize {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
-                limit: properties.max_push_constants_size.unwrap() as usize,
+                limit: properties.max_push_constants_size as usize,
                 requested: offset + size,
             });
         }

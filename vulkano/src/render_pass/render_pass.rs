@@ -290,7 +290,6 @@ impl RenderPass {
                         .physical_device()
                         .properties()
                         .max_color_attachments
-                        .unwrap()
                 {
                     return Err(RenderPassCreationError::ColorAttachmentsLimitExceeded);
                 }
@@ -858,7 +857,6 @@ mod tests {
             .physical_device()
             .properties()
             .max_color_attachments
-            .unwrap()
             >= 10
         {
             return; // test ignored

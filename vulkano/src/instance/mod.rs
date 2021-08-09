@@ -35,7 +35,7 @@
 //!
 //! # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
 //! for physical_device in PhysicalDevice::enumerate(&instance) {
-//!     println!("Available device: {}", physical_device.properties().device_name.as_ref().unwrap());
+//!     println!("Available device: {}", physical_device.properties().device_name);
 //! }
 //! ```
 //!

@@ -470,7 +470,6 @@ where
                             .physical_device()
                             .properties()
                             .min_uniform_buffer_offset_alignment
-                            .unwrap()
                     } else {
                         1
                     },
@@ -479,7 +478,6 @@ where
                             .physical_device()
                             .properties()
                             .min_storage_buffer_offset_alignment
-                            .unwrap()
                     } else {
                         1
                     },

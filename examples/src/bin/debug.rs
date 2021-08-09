@@ -126,7 +126,7 @@ fn main() {
                     .expect("couldn't find a queue family"),
             )
         })
-        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+        .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
             PhysicalDeviceType::IntegratedGpu => 1,
             PhysicalDeviceType::VirtualGpu => 2,

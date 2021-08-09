@@ -221,21 +221,21 @@ impl UnsafeBuffer {
             if usage.uniform_texel_buffer || usage.storage_texel_buffer {
                 output.alignment = align(
                     output.alignment,
-                    properties.min_texel_buffer_offset_alignment.unwrap(),
+                    properties.min_texel_buffer_offset_alignment,
                 );
             }
 
             if usage.storage_buffer {
                 output.alignment = align(
                     output.alignment,
-                    properties.min_storage_buffer_offset_alignment.unwrap(),
+                    properties.min_storage_buffer_offset_alignment,
                 );
             }
 
             if usage.uniform_buffer {
                 output.alignment = align(
                     output.alignment,
-                    properties.min_uniform_buffer_offset_alignment.unwrap(),
+                    properties.min_uniform_buffer_offset_alignment,
                 );
             }
 
@@ -279,17 +279,13 @@ impl UnsafeBuffer {
         {
             let properties = self.device().physical_device().properties();
             if self.usage().uniform_texel_buffer || self.usage().storage_texel_buffer {
-                debug_assert!(offset % properties.min_texel_buffer_offset_alignment.unwrap() == 0);
+                debug_assert!(offset % properties.min_texel_buffer_offset_alignment == 0);
             }
             if self.usage().storage_buffer {
-                debug_assert!(
-                    offset % properties.min_storage_buffer_offset_alignment.unwrap() == 0
-                );
+                debug_assert!(offset % properties.min_storage_buffer_offset_alignment == 0);
             }
             if self.usage().uniform_buffer {
-                debug_assert!(
-                    offset % properties.min_uniform_buffer_offset_alignment.unwrap() == 0
-                );
+                debug_assert!(offset % properties.min_uniform_buffer_offset_alignment == 0);
             }
         }
 

@@ -252,7 +252,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_color_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Uint | FormatTy::Sint => {
@@ -260,7 +259,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_integer_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Depth => {
@@ -268,7 +266,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_depth_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Stencil => {
@@ -276,7 +273,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_stencil_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::DepthStencil => {
@@ -284,13 +280,11 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_depth_sample_counts
-                        .unwrap()
                         .into();
                     supported_samples &= device
                         .physical_device()
                         .properties()
                         .sampled_image_stencil_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Ycbcr => {
@@ -308,7 +302,6 @@ impl UnsafeImage {
                     .physical_device()
                     .properties()
                     .storage_image_sample_counts
-                    .unwrap()
                     .into();
             }
 
@@ -323,7 +316,6 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_color_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::Depth => {
@@ -331,7 +323,6 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_depth_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::Stencil => {
@@ -339,7 +330,6 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_stencil_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::DepthStencil => {
@@ -347,13 +337,11 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_depth_sample_counts
-                            .unwrap()
                             .into();
                         supported_samples &= device
                             .physical_device()
                             .properties()
                             .framebuffer_stencil_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::Ycbcr => {
@@ -452,7 +440,6 @@ impl UnsafeImage {
                 .physical_device()
                 .properties()
                 .max_image_array_layers
-                .unwrap()
         {
             let err = ImageCreationError::UnsupportedDimensions { dimensions };
             capabilities_error = Some(err);
@@ -464,7 +451,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .max_image_dimension1_d
-                        .unwrap()
                 {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -474,8 +460,7 @@ impl UnsafeImage {
                 let limit = device
                     .physical_device()
                     .properties()
-                    .max_image_dimension2_d
-                    .unwrap();
+                    .max_image_dimension2_d;
                 if extent.width > limit || extent.height > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -485,8 +470,7 @@ impl UnsafeImage {
                     let limit = device
                         .physical_device()
                         .properties()
-                        .max_image_dimension_cube
-                        .unwrap();
+                        .max_image_dimension_cube;
                     if extent.width > limit {
                         let err = ImageCreationError::UnsupportedDimensions { dimensions };
                         capabilities_error = Some(err);
@@ -497,8 +481,7 @@ impl UnsafeImage {
                 let limit = device
                     .physical_device()
                     .properties()
-                    .max_image_dimension3_d
-                    .unwrap();
+                    .max_image_dimension3_d;
                 if extent.width > limit || extent.height > limit || extent.depth > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
