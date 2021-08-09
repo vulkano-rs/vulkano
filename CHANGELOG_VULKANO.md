@@ -40,7 +40,8 @@
 - **Breaking** The boolean `graphics` parameter on the `bind_descriptor_sets` method of `SyncCommandBufferBuilder`, `UnsafeCommandBufferBuilder` and `StateCacher` has been replaced with a new enum `PipelineBindPoint`.
 - **Breaking** Known physical device properties (VkPhysicalDeviceProperties, VkPhysicalDeviceLimits, VkPhysicalDeviceSparseProperties) are now no longer `Option<T>`.
   - These properties are available with every `vkGetPhysicalDeviceProperties2` call.
-- Add some `Default` instances to make the auto trait happy.
+  - Add some `Default` instances to make the auto trait happy.
+- **Breaking** Values that represent a size, offset or index on the device are now represented as `DeviceSize` (a type alias of `u64`).
 - Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
