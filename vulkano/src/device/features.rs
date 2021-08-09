@@ -110,7 +110,7 @@ macro_rules! features {
             }
 
             /// Builds a `Features` object with all values to false.
-            pub fn none() -> Features {
+            pub const fn none() -> Features {
                 Features {
                     $($member: false,)*
                 }
@@ -120,7 +120,7 @@ macro_rules! features {
             ///
             /// > **Note**: This function is used for testing purposes, and is probably useless in
             /// > a real code.
-            pub fn all() -> Features {
+            pub const fn all() -> Features {
                 Features {
                     $($member: true,)*
                 }
