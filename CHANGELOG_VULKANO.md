@@ -6,6 +6,9 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+
+# Version 0.25.0 (2021-08-10)
+
 - **Breaking** Refactoring of `PhysicalDevice` and related types.
   - The module `instance::physical_device` is moved to `device::physical`. Items are exported directly from there.
   - Functions on `PhysicalDevice` that previously returned a custom iterator type now return `impl ExactSizeIterator`.
