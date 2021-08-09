@@ -42,6 +42,7 @@
   - These properties are available with every `vkGetPhysicalDeviceProperties2` call.
   - Add some `Default` instances to make the auto trait happy.
 - **Breaking** Values that represent a size, offset or index on the device are now represented as `DeviceSize` (a type alias of `u64`).
+- **Breaking** Fix in push constant ranges with intersecting stage flags.
 - Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
