@@ -129,11 +129,11 @@ impl ShaderModule {
     /// - The input, output and layout must correctly describe the input, output and layout used
     ///   by this stage.
     ///
-    pub unsafe fn graphics_entry_point<'a, D, P>(
+    pub unsafe fn graphics_entry_point<'a, D>(
         &'a self,
         name: &'a CStr,
         descriptor_set_layout_descs: D,
-        push_constant_ranges: P,
+        push_constant_range: Option<PipelineLayoutPcRange>,
         spec_constants: &'static [SpecializationMapEntry],
         input: ShaderInterface,
         output: ShaderInterface,
@@ -141,13 +141,12 @@ impl ShaderModule {
     ) -> GraphicsEntryPoint<'a>
     where
         D: IntoIterator<Item = DescriptorSetDesc>,
-        P: IntoIterator<Item = PipelineLayoutPcRange>,
     {
         GraphicsEntryPoint {
             module: self,
             name,
             descriptor_set_layout_descs: descriptor_set_layout_descs.into_iter().collect(),
-            push_constant_ranges: push_constant_ranges.into_iter().collect(),
+            push_constant_range,
             spec_constants,
             input,
             output,
@@ -167,22 +166,21 @@ impl ShaderModule {
     /// - The layout must correctly describe the layout used by this stage.
     ///
     #[inline]
-    pub unsafe fn compute_entry_point<'a, D, P>(
+    pub unsafe fn compute_entry_point<'a, D>(
         &'a self,
         name: &'a CStr,
         descriptor_set_layout_descs: D,
-        push_constant_ranges: P,
+        push_constant_range: Option<PipelineLayoutPcRange>,
         spec_constants: &'static [SpecializationMapEntry],
     ) -> ComputeEntryPoint<'a>
     where
         D: IntoIterator<Item = DescriptorSetDesc>,
-        P: IntoIterator<Item = PipelineLayoutPcRange>,
     {
         ComputeEntryPoint {
             module: self,
             name,
             descriptor_set_layout_descs: descriptor_set_layout_descs.into_iter().collect(),
-            push_constant_ranges: push_constant_ranges.into_iter().collect(),
+            push_constant_range,
             spec_constants,
         }
     }
@@ -219,7 +217,7 @@ pub unsafe trait EntryPointAbstract {
     fn descriptor_set_layout_descs(&self) -> &[DescriptorSetDesc];
 
     /// Returns the push constant ranges.
-    fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange];
+    fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange>;
 
     /// Returns the layout of the specialization constants.
     fn spec_constants(&self) -> &[SpecializationMapEntry];
@@ -234,7 +232,7 @@ pub struct GraphicsEntryPoint<'a> {
     name: &'a CStr,
 
     descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
-    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]>,
+    push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
     input: ShaderInterface,
     output: ShaderInterface,
@@ -278,8 +276,8 @@ unsafe impl<'a> EntryPointAbstract for GraphicsEntryPoint<'a> {
     }
 
     #[inline]
-    fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
-        &self.push_constant_ranges
+    fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange> {
+        &self.push_constant_range
     }
 
     #[inline]
@@ -347,7 +345,7 @@ pub struct ComputeEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
     descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
-    push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]>,
+    push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
 }
 
@@ -368,8 +366,8 @@ unsafe impl<'a> EntryPointAbstract for ComputeEntryPoint<'a> {
     }
 
     #[inline]
-    fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
-        &self.push_constant_ranges
+    fn push_constant_range(&self) -> &Option<PipelineLayoutPcRange> {
+        &self.push_constant_range
     }
 
     #[inline]

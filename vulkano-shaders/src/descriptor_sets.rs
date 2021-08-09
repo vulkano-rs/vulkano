@@ -28,7 +28,7 @@ pub(super) fn write_descriptor_set_layout_descs(
     entrypoint_id: u32,
     interface: &[u32],
     exact_entrypoint_interface: bool,
-    stages: TokenStream,
+    stages: &TokenStream,
 ) -> TokenStream {
     // TODO: somewhat implemented correctly
 
@@ -84,7 +84,7 @@ pub(super) fn write_descriptor_set_layout_descs(
     }
 }
 
-pub(super) fn write_push_constant_ranges(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_push_constant_ranges(doc: &Spirv, stage: &TokenStream, types_meta: &TypesMeta) -> TokenStream {
     // TODO: somewhat implemented correctly
 
     // Looping to find all the push constant structs.
@@ -106,17 +106,17 @@ pub(super) fn write_push_constant_ranges(doc: &Spirv, types_meta: &TypesMeta) ->
 
     if push_constants_size == 0 {
         quote! {
-            []
+            None
         }
     } else {
         quote! {
-            [
+            Some(
                 PipelineLayoutPcRange {
                     offset: 0,                   // FIXME: not necessarily true
                     size: #push_constants_size,
-                    stages: ShaderStages::all(), // FIXME: wrong
+                    stages: #stage,
                 }
-            ]
+            )
         }
     }
 }

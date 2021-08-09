@@ -290,7 +290,7 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [],
-                [],
+                None,
                 <()>::descriptors(),
             )
         };
@@ -335,7 +335,7 @@ mod tests {
             first_module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [],
-                [],
+                None,
                 <()>::descriptors(),
             )
         };
@@ -376,7 +376,7 @@ mod tests {
             second_module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [],
-                [],
+                None,
                 <()>::descriptors(),
             )
         };
@@ -430,7 +430,7 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [],
-                [],
+                None,
                 <()>::descriptors(),
             )
         };

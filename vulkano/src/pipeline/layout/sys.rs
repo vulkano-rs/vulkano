@@ -54,22 +54,13 @@ impl PipelineLayout {
         let push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
             push_constant_ranges.into_iter().collect();
 
-        // Check for overlapping ranges
+        // Check for overlapping stages
         for (a_id, a) in push_constant_ranges.iter().enumerate() {
             for b in push_constant_ranges.iter().skip(a_id + 1) {
-                if a.offset <= b.offset && a.offset + a.size > b.offset {
+                if a.stages.intersects(&b.stages) {
                     return Err(PipelineLayoutCreationError::PushConstantsConflict {
-                        first_offset: a.offset,
-                        first_size: a.size,
-                        second_offset: b.offset,
-                    });
-                }
-
-                if b.offset <= a.offset && b.offset + b.size > a.offset {
-                    return Err(PipelineLayoutCreationError::PushConstantsConflict {
-                        first_offset: b.offset,
-                        first_size: b.size,
-                        second_offset: a.offset,
+                        first_range: *a,
+                        second_range: *b,
                     });
                 }
             }
@@ -179,7 +170,7 @@ impl PipelineLayout {
     pub fn ensure_superset_of(
         &self,
         descriptor_set_layout_descs: &[DescriptorSetDesc],
-        push_constant_ranges: &[PipelineLayoutPcRange],
+        push_constant_range: &Option<PipelineLayoutPcRange>,
     ) -> Result<(), PipelineLayoutSupersetError> {
         // Ewwwwwww
         let empty = DescriptorSetDesc::empty();
@@ -207,6 +198,18 @@ impl PipelineLayout {
         }
 
         // FIXME: check push constants
+        if let Some(range) = push_constant_range {
+            for own_range in self.push_constant_ranges.as_ref().into_iter() {
+                if range.stages.intersects(&own_range.stages) &&       // check if it shares any stages
+                    (range.offset < own_range.offset || // our range must start before and end after the given range
+                        own_range.offset + own_range.size < range.offset + range.size) {
+                    return Err(PipelineLayoutSupersetError::PushConstantRange {
+                        first_range: *own_range,
+                        second_range: *range,
+                    });
+                }
+            }
+        }
 
         Ok(())
     }
@@ -264,9 +267,8 @@ pub enum PipelineLayoutCreationError {
     InvalidPushConstant,
     /// Conflict between different push constants ranges.
     PushConstantsConflict {
-        first_offset: usize,
-        first_size: usize,
-        second_offset: usize,
+        first_range: PipelineLayoutPcRange,
+        second_range: PipelineLayoutPcRange,
     },
 }
 
@@ -339,6 +341,10 @@ pub enum PipelineLayoutSupersetError {
         error: DescriptorSetDescSupersetError,
         set_num: u32,
     },
+    PushConstantRange {
+        first_range: PipelineLayoutPcRange,
+        second_range: PipelineLayoutPcRange,
+    },
 }
 
 impl error::Error for PipelineLayoutSupersetError {
@@ -346,6 +352,7 @@ impl error::Error for PipelineLayoutSupersetError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             PipelineLayoutSupersetError::DescriptorSet { ref error, .. } => Some(error),
+            ref error @ PipelineLayoutSupersetError::PushConstantRange { .. } => Some(error),
         }
     }
 }
@@ -353,21 +360,36 @@ impl error::Error for PipelineLayoutSupersetError {
 impl fmt::Display for PipelineLayoutSupersetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                PipelineLayoutSupersetError::DescriptorSet { .. } => {
+        match *self {
+            PipelineLayoutSupersetError::DescriptorSet { .. } => {
+                write!(
+                    fmt,
                     "the descriptor set was not a superset of the other"
-                }
-            }
-        )
+                )
+            },
+            PipelineLayoutSupersetError::PushConstantRange { first_range, second_range } => {
+                writeln!(fmt, "our range did not completely encompass the other range")?;
+                writeln!(fmt, "    our stages: {:?}", first_range.stages)?;
+                writeln!(
+                    fmt,
+                    "    our range: {} - {}",
+                    first_range.offset,
+                    first_range.offset + first_range.size
+                )?;
+                writeln!(fmt, "    other stages: {:?}", second_range.stages)?;
+                write!(fmt,
+                    "    other range: {} - {}",
+                    second_range.offset,
+                    second_range.offset + second_range.size
+                )
+            },
+        }
     }
 }
 
 /// Description of a range of the push constants of a pipeline layout.
 // TODO: should contain the layout as well
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct PipelineLayoutPcRange {
     /// Offset in bytes from the start of the push constants to this range.
     pub offset: usize,
@@ -376,51 +398,6 @@ pub struct PipelineLayoutPcRange {
     /// The stages which can access this range. Note that the same shader stage can't access two
     /// different ranges.
     pub stages: ShaderStages,
-}
-
-impl PipelineLayoutPcRange {
-    pub fn union_multiple(
-        first: &[PipelineLayoutPcRange],
-        second: &[PipelineLayoutPcRange],
-    ) -> Vec<PipelineLayoutPcRange> {
-        first
-            .iter()
-            .map(|&(mut new_range)| {
-                // Find the ranges in `second` that share the same stages as `first_range`.
-                // If there is a range with a similar stage in `second`, then adjust the offset
-                // and size to include it.
-                for second_range in second {
-                    if !second_range.stages.intersects(&new_range.stages) {
-                        continue;
-                    }
-
-                    if second_range.offset < new_range.offset {
-                        new_range.size += new_range.offset - second_range.offset;
-                        new_range.size = cmp::max(new_range.size, second_range.size);
-                        new_range.offset = second_range.offset;
-                    } else if second_range.offset > new_range.offset {
-                        new_range.size = cmp::max(
-                            new_range.size,
-                            second_range.size + (second_range.offset - new_range.offset),
-                        );
-                    }
-                }
-
-                new_range
-            })
-            .chain(
-                // Add the ones from `second` that were filtered out previously.
-                second
-                    .iter()
-                    .filter(|second_range| {
-                        first
-                            .iter()
-                            .all(|first_range| !second_range.stages.intersects(&first_range.stages))
-                    })
-                    .map(|range| *range),
-            )
-            .collect()
-    }
 }
 
 /* TODO: restore
