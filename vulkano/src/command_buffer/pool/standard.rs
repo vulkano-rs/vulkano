@@ -145,7 +145,7 @@ unsafe impl CommandPool for Arc<StandardCommandPool> {
             let pool_lock = per_thread.pool.lock().unwrap();
             let num_new = count as usize - output.len();
 
-            for cmd in pool_lock.alloc_command_buffers(secondary, num_new)? {
+            for cmd in pool_lock.alloc_command_buffers(secondary, num_new as u32)? {
                 output.push(StandardCommandPoolBuilder {
                     inner: StandardCommandPoolAlloc {
                         cmd: ManuallyDrop::new(cmd),

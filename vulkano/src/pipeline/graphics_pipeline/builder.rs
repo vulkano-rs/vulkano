@@ -50,6 +50,7 @@ use crate::render_pass::Subpass;
 use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
+use std::collections::hash_map::{Entry, HashMap};
 use std::mem;
 use std::mem::MaybeUninit;
 use std::ptr;
@@ -182,9 +183,28 @@ where
                 dynamic_buffers.into_iter().cloned(),
             );
 
-            let push_constant_ranges = stages.iter().fold(vec![], |total, shader| {
-                PipelineLayoutPcRange::union_multiple(&total, shader.push_constant_ranges())
-            });
+            // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
+            // e.g. The range [0, 16) is either made available to Vertex | Fragment or we only make [0, 16) available to
+            // Vertex and a subrange available to Fragment, like [0, 8)
+            let mut range_map = HashMap::new();
+            for stage in stages.iter() {
+                if let Some(range) = stage.push_constant_range() {
+                    match range_map.entry((range.offset, range.size)) {
+                        Entry::Vacant(entry) => {
+                            entry.insert(range.stages);
+                        },
+                        Entry::Occupied(mut entry) => {
+                            *entry.get_mut() = *entry.get() | range.stages;
+                        },
+                    }
+                }
+            }
+            let push_constant_ranges: Vec<_> = range_map
+                .iter()
+                .map(|((offset, size), stages)| {
+                    PipelineLayoutPcRange { offset: *offset, size: *size, stages: *stages }
+                })
+                .collect();
 
             (descriptor_set_layout_descs, push_constant_ranges)
         };
@@ -221,7 +241,7 @@ where
             let shader = &self.vertex_shader.as_ref().unwrap().0;
             pipeline_layout.ensure_superset_of(
                 shader.descriptor_set_layout_descs(),
-                shader.push_constant_ranges(),
+                shader.push_constant_range(),
             )?;
         }
 
@@ -229,7 +249,7 @@ where
             let shader = &geometry_shader.0;
             pipeline_layout.ensure_superset_of(
                 shader.descriptor_set_layout_descs(),
-                shader.push_constant_ranges(),
+                shader.push_constant_range(),
             )?;
         }
 
@@ -238,7 +258,7 @@ where
                 let shader = &tess.tessellation_control_shader.0;
                 pipeline_layout.ensure_superset_of(
                     shader.descriptor_set_layout_descs(),
-                    shader.push_constant_ranges(),
+                    shader.push_constant_range(),
                 )?;
             }
 
@@ -246,7 +266,7 @@ where
                 let shader = &tess.tessellation_evaluation_shader.0;
                 pipeline_layout.ensure_superset_of(
                     shader.descriptor_set_layout_descs(),
-                    shader.push_constant_ranges(),
+                    shader.push_constant_range(),
                 )?;
             }
         }
@@ -255,7 +275,7 @@ where
             let shader = &fragment_shader.0;
             pipeline_layout.ensure_superset_of(
                 shader.descriptor_set_layout_descs(),
-                shader.push_constant_ranges(),
+                shader.push_constant_range(),
             )?;
 
             // Check that the subpass can accept the output of the fragment shader.
@@ -486,15 +506,13 @@ where
                         .physical_device()
                         .properties()
                         .max_vertex_input_bindings
-                        .unwrap()
                 {
                     return Err(
                         GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
                             max: device
                                 .physical_device()
                                 .properties()
-                                .max_vertex_input_bindings
-                                .unwrap(),
+                                .max_vertex_input_bindings,
                             obtained: binding,
                         },
                     );
@@ -505,7 +523,6 @@ where
                         .physical_device()
                         .properties()
                         .max_vertex_input_binding_stride
-                        .unwrap()
                 {
                     return Err(
                         GraphicsPipelineCreationError::MaxVertexInputBindingStrideExceeded {
@@ -513,8 +530,7 @@ where
                             max: device
                                 .physical_device()
                                 .properties()
-                                .max_vertex_input_binding_stride
-                                .unwrap(),
+                                .max_vertex_input_binding_stride,
                             obtained: binding_desc.stride,
                         },
                     );
@@ -574,16 +590,14 @@ where
                 > device
                     .physical_device()
                     .properties()
-                    .max_vertex_input_bindings
-                    .unwrap() as usize
+                    .max_vertex_input_bindings as usize
             {
                 return Err(
                     GraphicsPipelineCreationError::MaxVertexInputBindingsExceeded {
                         max: device
                             .physical_device()
                             .properties()
-                            .max_vertex_input_bindings
-                            .unwrap(),
+                            .max_vertex_input_bindings,
                         obtained: binding_descriptions.len() as u32,
                     },
                 );
@@ -603,15 +617,13 @@ where
                         .physical_device()
                         .properties()
                         .max_vertex_input_attribute_offset
-                        .unwrap()
                 {
                     return Err(
                         GraphicsPipelineCreationError::MaxVertexInputAttributeOffsetExceeded {
                             max: device
                                 .physical_device()
                                 .properties()
-                                .max_vertex_input_attribute_offset
-                                .unwrap(),
+                                .max_vertex_input_attribute_offset,
                             obtained: attribute_desc.offset,
                         },
                     );
@@ -629,16 +641,14 @@ where
                 > device
                     .physical_device()
                     .properties()
-                    .max_vertex_input_attributes
-                    .unwrap() as usize
+                    .max_vertex_input_attributes as usize
             {
                 return Err(
                     GraphicsPipelineCreationError::MaxVertexInputAttributesExceeded {
                         max: device
                             .physical_device()
                             .properties()
-                            .max_vertex_input_attributes
-                            .unwrap(),
+                            .max_vertex_input_attributes,
                         obtained: attribute_descriptions.len(),
                     },
                 );
@@ -705,7 +715,6 @@ where
                         .physical_device()
                         .properties()
                         .max_tessellation_patch_size
-                        .unwrap()
                 {
                     return Err(GraphicsPipelineCreationError::MaxTessellationPatchSizeExceeded);
                 }
@@ -764,10 +773,10 @@ where
             return Err(GraphicsPipelineCreationError::MultiViewportFeatureNotEnabled);
         }
 
-        if vp_num > device.physical_device().properties().max_viewports.unwrap() {
+        if vp_num > device.physical_device().properties().max_viewports {
             return Err(GraphicsPipelineCreationError::MaxViewportsExceeded {
                 obtained: vp_num,
-                max: device.physical_device().properties().max_viewports.unwrap(),
+                max: device.physical_device().properties().max_viewports,
             });
         }
 
@@ -776,14 +785,12 @@ where
                 > device
                     .physical_device()
                     .properties()
-                    .max_viewport_dimensions
-                    .unwrap()[0] as f32
+                    .max_viewport_dimensions[0] as f32
                 || vp.height
                     > device
                         .physical_device()
                         .properties()
-                        .max_viewport_dimensions
-                        .unwrap()[1] as f32
+                        .max_viewport_dimensions[1] as f32
             {
                 return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
             }
@@ -792,26 +799,22 @@ where
                 < device
                     .physical_device()
                     .properties()
-                    .viewport_bounds_range
-                    .unwrap()[0]
+                    .viewport_bounds_range[0]
                 || vp.x + vp.width
                     > device
                         .physical_device()
                         .properties()
-                        .viewport_bounds_range
-                        .unwrap()[1]
+                        .viewport_bounds_range[1]
                 || vp.y
                     < device
                         .physical_device()
                         .properties()
-                        .viewport_bounds_range
-                        .unwrap()[0]
+                        .viewport_bounds_range[0]
                 || vp.y + vp.height
                     > device
                         .physical_device()
                         .properties()
-                        .viewport_bounds_range
-                        .unwrap()[1]
+                        .viewport_bounds_range[1]
             {
                 return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
             }

@@ -97,8 +97,7 @@ where
                 % device
                     .physical_device()
                     .properties()
-                    .min_texel_buffer_offset_alignment
-                    .unwrap() as usize)
+                    .min_texel_buffer_offset_alignment)
                 != 0
             {
                 return Err(BufferViewCreationError::WrongBufferAlignment);
@@ -116,9 +115,9 @@ where
                 let l = device
                     .physical_device()
                     .properties()
-                    .max_texel_buffer_elements
-                    .unwrap();
-                if nb > l as usize {
+                    .max_texel_buffer_elements;
+
+                if nb as u32 > l {
                     return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
                 }
             }
@@ -150,8 +149,8 @@ where
                 flags: ash::vk::BufferViewCreateFlags::empty(),
                 buffer: buffer.internal_object(),
                 format: format.into(),
-                offset: offset as u64,
-                range: size as u64,
+                offset,
+                range: size,
                 ..Default::default()
             };
 

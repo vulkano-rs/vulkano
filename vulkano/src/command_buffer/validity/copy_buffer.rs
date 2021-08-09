@@ -7,14 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
-use std::error;
-use std::fmt;
-
 use crate::buffer::TypedBufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::DeviceSize;
 use crate::VulkanObject;
+use std::cmp;
+use std::error;
+use std::fmt;
 
 /// Checks whether a copy buffer command is valid.
 ///
@@ -66,7 +66,7 @@ pub struct CheckCopyBuffer {
     ///
     /// If the size of the source and destination are not equal, then the value is equal to the
     /// smallest of the two.
-    pub copy_size: usize,
+    pub copy_size: DeviceSize,
 }
 
 /// Error that can happen from `check_copy_buffer`.

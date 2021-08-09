@@ -76,7 +76,7 @@ impl ComputePipeline {
             let pipeline_layout = Arc::new(PipelineLayout::new(
                 device.clone(),
                 descriptor_set_layouts,
-                shader.push_constant_ranges().iter().cloned(),
+                shader.push_constant_range().iter().cloned(),
             )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
@@ -110,7 +110,7 @@ impl ComputePipeline {
         unsafe {
             pipeline_layout.ensure_superset_of(
                 shader.descriptor_set_layout_descs(),
-                shader.push_constant_ranges(),
+                shader.push_constant_range(),
             )?;
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
@@ -460,7 +460,7 @@ mod tests {
                     },
                     readonly: true,
                 })])],
-                [],
+                None,
                 SpecConsts::descriptors(),
             )
         };

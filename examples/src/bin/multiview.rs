@@ -84,7 +84,7 @@ fn main() {
                 .find(|&q| q.supports_graphics())
                 .map(|q| (p, q))
         })
-        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+        .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
             PhysicalDeviceType::IntegratedGpu => 1,
             PhysicalDeviceType::VirtualGpu => 2,
@@ -97,8 +97,8 @@ fn main() {
 
     println!(
         "Using device: {} (type: {:?})",
-        physical_device.properties().device_name.as_ref().unwrap(),
-        physical_device.properties().device_type.unwrap()
+        physical_device.properties().device_name,
+        physical_device.properties().device_type
     );
 
     let (device, mut queues) = Device::new(

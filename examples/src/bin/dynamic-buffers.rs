@@ -46,7 +46,7 @@ fn main() {
                 .find(|&q| q.supports_compute())
                 .map(|q| (p, q))
         })
-        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+        .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
             PhysicalDeviceType::IntegratedGpu => 1,
             PhysicalDeviceType::VirtualGpu => 2,
@@ -57,8 +57,8 @@ fn main() {
 
     println!(
         "Using device: {} (type: {:?})",
-        physical_device.properties().device_name.as_ref().unwrap(),
-        physical_device.properties().device_type.unwrap()
+        physical_device.properties().device_name,
+        physical_device.properties().device_type
     );
 
     let (device, mut queues) = Device::new(
@@ -140,7 +140,7 @@ fn main() {
                         descriptor_set_layouts,
                         shader
                             .main_entry_point()
-                            .push_constant_ranges()
+                            .push_constant_range()
                             .iter()
                             .cloned(),
                     )
@@ -159,8 +159,7 @@ fn main() {
     let min_dynamic_align = device
         .physical_device()
         .properties()
-        .min_uniform_buffer_offset_alignment
-        .unwrap() as usize;
+        .min_uniform_buffer_offset_alignment as usize;
     println!(
         "Minimum uniform buffer offset alignment: {}",
         min_dynamic_align

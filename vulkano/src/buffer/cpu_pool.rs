@@ -27,6 +27,7 @@ use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::DeviceSize;
 use crate::OomError;
 use std::cmp;
 use std::hash::Hash;
@@ -35,7 +36,7 @@ use std::iter;
 use std::marker::PhantomData;
 use std::mem;
 use std::ptr;
-use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -133,20 +134,20 @@ where
     chunks_in_use: Mutex<Vec<ActualBufferChunk>>,
 
     // The index of the chunk that should be available next for the ring buffer.
-    next_index: AtomicUsize,
+    next_index: AtomicU64,
 
     // Number of elements in the buffer.
-    capacity: usize,
+    capacity: DeviceSize,
 }
 
 // Access pattern of one subbuffer.
 #[derive(Debug)]
 struct ActualBufferChunk {
     // First element number within the actual buffer.
-    index: usize,
+    index: DeviceSize,
 
     // Number of occupied elements within the actual buffer.
-    len: usize,
+    len: DeviceSize,
 
     // Number of `CpuBufferPoolSubbuffer` objects that point to this subbuffer.
     num_cpu_accesses: usize,
@@ -166,15 +167,15 @@ where
     buffer: Arc<ActualBuffer<A>>,
 
     // Index of the subbuffer within `buffer`. In number of elements.
-    index: usize,
+    index: DeviceSize,
 
     // Number of bytes to add to `index * mem::size_of::<T>()` to obtain the start of the data in
     // the buffer. Necessary for alignment purposes.
-    align_offset: usize,
+    align_offset: DeviceSize,
 
     // Size of the subbuffer in number of elements, as requested by the user.
     // If this is 0, then no entry was added to `chunks_in_use`.
-    requested_len: usize,
+    requested_len: DeviceSize,
 
     // Necessary to make it compile.
     marker: PhantomData<Box<T>>,
@@ -257,7 +258,7 @@ where
     A: MemoryPool,
 {
     /// Returns the current capacity of the pool, in number of elements.
-    pub fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> DeviceSize {
         match *self.current_buffer.lock().unwrap() {
             None => 0,
             Some(ref buf) => buf.capacity,
@@ -268,7 +269,7 @@ where
     /// case.
     ///
     /// Since this can involve a memory allocation, an `OomError` can happen.
-    pub fn reserve(&self, capacity: usize) -> Result<(), DeviceMemoryAllocError> {
+    pub fn reserve(&self, capacity: DeviceSize) -> Result<(), DeviceMemoryAllocError> {
         let mut cur_buf = self.current_buffer.lock().unwrap();
 
         // Check current capacity.
@@ -323,8 +324,8 @@ where
         };
 
         let next_capacity = match *mutex {
-            Some(ref b) if data.len() < b.capacity => 2 * b.capacity,
-            _ => 2 * data.len(),
+            Some(ref b) if (data.len() as DeviceSize) < b.capacity => 2 * b.capacity,
+            _ => 2 * data.len() as DeviceSize,
         };
 
         self.reset_buf(&mut mutex, next_capacity)?;
@@ -355,11 +356,11 @@ where
     fn reset_buf(
         &self,
         cur_buf_mutex: &mut MutexGuard<Option<Arc<ActualBuffer<A>>>>,
-        capacity: usize,
+        capacity: DeviceSize,
     ) -> Result<(), DeviceMemoryAllocError> {
         unsafe {
             let (buffer, mem_reqs) = {
-                let size_bytes = match mem::size_of::<T>().checked_mul(capacity) {
+                let size_bytes = match (mem::size_of::<T>() as DeviceSize).checked_mul(capacity) {
                     Some(s) => s,
                     None => {
                         return Err(DeviceMemoryAllocError::OomError(
@@ -370,7 +371,7 @@ where
 
                 match UnsafeBuffer::new(
                     self.device.clone(),
-                    size_bytes,
+                    size_bytes as DeviceSize,
                     self.usage,
                     Sharing::Exclusive::<iter::Empty<_>>,
                     None,
@@ -398,7 +399,7 @@ where
                 inner: buffer,
                 memory: mem,
                 chunks_in_use: Mutex::new(vec![]),
-                next_index: AtomicUsize::new(0),
+                next_index: AtomicU64::new(0),
                 capacity: capacity,
             }));
 
@@ -434,7 +435,7 @@ where
         debug_assert!(!chunks_in_use.iter().any(|c| c.len == 0));
 
         // Number of elements requested by the user.
-        let requested_len = data.len();
+        let requested_len = data.len() as DeviceSize;
 
         // We special case when 0 elements are requested. Polluting the list of allocated chunks
         // with chunks of length 0 means that we will have troubles deallocating.
@@ -469,7 +470,6 @@ where
                             .physical_device()
                             .properties()
                             .min_uniform_buffer_offset_alignment
-                            .unwrap() as usize
                     } else {
                         1
                     },
@@ -478,18 +478,18 @@ where
                             .physical_device()
                             .properties()
                             .min_storage_buffer_offset_alignment
-                            .unwrap() as usize
                     } else {
                         1
                     },
                 );
 
-                let tentative_align_offset =
-                    (align_bytes - ((idx * mem::size_of::<T>()) % align_bytes)) % align_bytes;
+                let tentative_align_offset = (align_bytes
+                    - ((idx * mem::size_of::<T>() as DeviceSize) % align_bytes))
+                    % align_bytes;
                 let additional_len = if tentative_align_offset == 0 {
                     0
                 } else {
-                    1 + (tentative_align_offset - 1) / mem::size_of::<T>()
+                    1 + (tentative_align_offset - 1) / mem::size_of::<T>() as DeviceSize
                 };
 
                 (idx, requested_len + additional_len, tentative_align_offset)
@@ -519,8 +519,10 @@ where
         // Write `data` in the memory.
         unsafe {
             let mem_off = current_buffer.memory.offset();
-            let range_start = index * mem::size_of::<T>() + align_offset + mem_off;
-            let range_end = (index + requested_len) * mem::size_of::<T>() + align_offset + mem_off;
+            let range_start = index * mem::size_of::<T>() as DeviceSize + align_offset + mem_off;
+            let range_end = (index + requested_len) * mem::size_of::<T>() as DeviceSize
+                + align_offset
+                + mem_off;
             let mut mapping = current_buffer
                 .memory
                 .mapped_memory()
@@ -624,22 +626,22 @@ where
     fn inner(&self) -> BufferInner {
         BufferInner {
             buffer: &self.buffer.inner,
-            offset: self.index * mem::size_of::<T>() + self.align_offset,
+            offset: self.index * mem::size_of::<T>() as DeviceSize + self.align_offset,
         }
     }
 
     #[inline]
-    fn size(&self) -> usize {
-        self.requested_len * mem::size_of::<T>()
+    fn size(&self) -> DeviceSize {
+        self.requested_len * mem::size_of::<T>() as DeviceSize
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         (
             self.buffer.inner.key(),
             // ensure the special cased empty buffers don't collide with a regular buffer starting at 0
             if self.requested_len == 0 {
-                usize::max_value()
+                u64::MAX
             } else {
                 self.index
             },
@@ -788,12 +790,12 @@ where
     }
 
     #[inline]
-    fn size(&self) -> usize {
+    fn size(&self) -> DeviceSize {
         self.chunk.size()
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         self.chunk.conflict_key()
     }
 

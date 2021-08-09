@@ -13,6 +13,7 @@ use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::memory::Content;
 use crate::sync::AccessError;
+use crate::DeviceSize;
 use crate::{SafeDeref, VulkanObject};
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -28,7 +29,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     fn inner(&self) -> BufferInner;
 
     /// Returns the size of the buffer in bytes.
-    fn size(&self) -> usize;
+    fn size(&self) -> DeviceSize;
 
     /// Builds a `BufferSlice` object holding the buffer by reference.
     #[inline]
@@ -48,7 +49,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Returns `None` if out of range.
     #[inline]
-    fn slice<T>(&self, range: Range<usize>) -> Option<BufferSlice<[T], &Self>>
+    fn slice<T>(&self, range: Range<DeviceSize>) -> Option<BufferSlice<[T], &Self>>
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
     {
@@ -73,7 +74,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     ///
     /// Returns `None` if out of range.
     #[inline]
-    fn index<T>(&self, index: usize) -> Option<BufferSlice<[T], &Self>>
+    fn index<T>(&self, index: DeviceSize) -> Option<BufferSlice<[T], &Self>>
     where
         Self: Sized + TypedBufferAccess<Content = [T]>,
     {
@@ -90,7 +91,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
     /// Since it is possible to accidentally return the same key for memory ranges that don't
     /// overlap, the `conflicts_buffer` or `conflicts_image` function should always be called to
     /// verify whether they actually overlap.
-    fn conflict_key(&self) -> (u64, usize);
+    fn conflict_key(&self) -> (u64, u64);
 
     /// Locks the resource for usage on the GPU. Returns an error if the lock can't be acquired.
     ///
@@ -148,7 +149,7 @@ pub unsafe trait BufferAccess: DeviceOwned {
                 panic!("got null ptr from a valid GetBufferDeviceAddressEXT call");
             }
 
-            Ok(NonZeroU64::new_unchecked(ptr + inner.offset as u64))
+            Ok(NonZeroU64::new_unchecked(ptr + inner.offset))
         }
     }
 }
@@ -160,7 +161,7 @@ pub struct BufferInner<'a> {
     pub buffer: &'a UnsafeBuffer,
     /// The offset in bytes from the start of the underlying buffer object to the start of the
     /// buffer we're describing.
-    pub offset: usize,
+    pub offset: DeviceSize,
 }
 
 unsafe impl<T> BufferAccess for T
@@ -174,12 +175,12 @@ where
     }
 
     #[inline]
-    fn size(&self) -> usize {
+    fn size(&self) -> DeviceSize {
         (**self).size()
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         (**self).conflict_key()
     }
 
@@ -208,7 +209,7 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
     ///
     /// This method can only be called for buffers whose type is known to be an array.
     #[inline]
-    fn len(&self) -> usize
+    fn len(&self) -> DeviceSize
     where
         Self::Content: Content,
     {

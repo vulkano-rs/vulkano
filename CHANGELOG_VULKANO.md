@@ -38,6 +38,11 @@
 - **Breaking** `PipelineLayout` now has a `descriptor_set_layouts` method which returns a slice of all the layouts, replacing the previous `descriptor_set_layout` which only returned one at a time.
 - **Breaking** Vulkano is now relaying on features from **Rustc >= 1.53.0**.
 - **Breaking** The boolean `graphics` parameter on the `bind_descriptor_sets` method of `SyncCommandBufferBuilder`, `UnsafeCommandBufferBuilder` and `StateCacher` has been replaced with a new enum `PipelineBindPoint`.
+- **Breaking** Known physical device properties (VkPhysicalDeviceProperties, VkPhysicalDeviceLimits, VkPhysicalDeviceSparseProperties) are now no longer `Option<T>`.
+  - These properties are available with every `vkGetPhysicalDeviceProperties2` call.
+  - Add some `Default` instances to make the auto trait happy.
+- **Breaking** Values that represent a size, offset or index on the device are now represented as `DeviceSize` (a type alias of `u64`).
+- **Breaking** Fix in push constant ranges with intersecting stage flags.
 - Added support for the `ext_vertex_attribute_divisor` extension, via the new `BuffersDefinition` type and the additions to `VertexInputRate`.
 - Added `is_superset_of` method to `DeviceExtensions` and `InstanceExtensions`.
 - Examples now enable only the features they need instead of all of them.
@@ -59,6 +64,9 @@
 - Fixed synchronization bug where pipeline barriers were placed based on the binding of resources instead of the draw/dispatch calls that use them.
 - `SyncCommandBufferBuilder` and `UnsafeCommandBufferBuilder` accept any `IntoIterator` where they previously only accepted `Iterator`.
 - Updated ash to 0.33.0, vk.xml to 1.2.185, and ran `cargo update` to update other dependencies' patch versions.
+- Add support for EXTENDED_SRGB_NONLINEAR_EXT color space.
+- Better error message for wrong color space value
+- Added `impl BitOr` for `debug::MessageType` and `debug::MessageSeverity` and some bit field generators, also turning them into `const fn`.
 
 # Version 0.24.0 (2021-06-20)
 

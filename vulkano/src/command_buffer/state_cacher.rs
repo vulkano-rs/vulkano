@@ -14,6 +14,7 @@ use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
 use crate::pipeline::PipelineBindPoint;
+use crate::DeviceSize;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::ops::Range;
@@ -40,11 +41,11 @@ pub struct StateCacher {
     // comparing, we know that something bad happened and we flush the cache.
     poisoned_descriptor_sets: bool,
     // The vertex buffers currently bound.
-    vertex_buffers: SmallVec<[(ash::vk::Buffer, ash::vk::DeviceSize); 12]>,
+    vertex_buffers: SmallVec<[(ash::vk::Buffer, DeviceSize); 12]>,
     // Same as `poisoned_descriptor_sets` but for vertex buffers.
     poisoned_vertex_buffers: bool,
     // The index buffer, offset, and index type currently bound. `None` if nothing bound.
-    index_buffer: Option<(ash::vk::Buffer, usize, IndexType)>,
+    index_buffer: Option<(ash::vk::Buffer, DeviceSize, IndexType)>,
 }
 
 /// Outcome of an operation.
@@ -296,7 +297,7 @@ pub struct StateCacherVertexBuffers<'s> {
     // Reference to the parent's `poisoned_vertex_buffers`.
     poisoned: &'s mut bool,
     // Reference to the vertex buffers list to compare to.
-    state: &'s mut SmallVec<[(ash::vk::Buffer, ash::vk::DeviceSize); 12]>,
+    state: &'s mut SmallVec<[(ash::vk::Buffer, DeviceSize); 12]>,
     // Next offset within the list to compare to.
     offset: usize,
     // Contains the offset of the first vertex buffer that differs.
@@ -315,7 +316,7 @@ impl<'s> StateCacherVertexBuffers<'s> {
         let raw = {
             let inner = buffer.inner();
             let raw = inner.buffer.internal_object();
-            let offset = inner.offset as ash::vk::DeviceSize;
+            let offset = inner.offset;
             (raw, offset)
         };
 

@@ -47,6 +47,7 @@ use crate::sync::AccessFlags;
 use crate::sync::Event;
 use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
+use crate::DeviceSize;
 use crate::OomError;
 use crate::VulkanObject;
 use ash::vk::Handle;
@@ -366,7 +367,7 @@ impl UnsafeCommandBufferBuilder {
         fns.v1_0.cmd_bind_index_buffer(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as ash::vk::DeviceSize,
+            inner.offset,
             index_ty.into(),
         );
     }
@@ -425,8 +426,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_vertex_input_bindings
-                .unwrap();
+                .max_vertex_input_bindings;
             first_binding + num_bindings <= max_bindings
         });
 
@@ -796,7 +796,7 @@ impl UnsafeCommandBufferBuilder {
     where
         S: ?Sized + BufferAccess,
         D: ?Sized + BufferAccess,
-        R: IntoIterator<Item = (usize, usize, usize)>,
+        R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
     {
         // TODO: debug assert that there's no overlap in the destinations?
 
@@ -811,9 +811,9 @@ impl UnsafeCommandBufferBuilder {
         let regions: SmallVec<[_; 8]> = regions
             .into_iter()
             .map(|(sr, de, sz)| ash::vk::BufferCopy {
-                src_offset: (sr + source.offset) as ash::vk::DeviceSize,
-                dst_offset: (de + destination.offset) as ash::vk::DeviceSize,
-                size: sz as ash::vk::DeviceSize,
+                src_offset: sr + source.offset,
+                dst_offset: de + destination.offset,
+                size: sz,
             })
             .collect();
 
@@ -867,7 +867,7 @@ impl UnsafeCommandBufferBuilder {
                 debug_assert!(copy.image_mip_level < destination.num_mipmap_levels as u32);
 
                 ash::vk::BufferImageCopy {
-                    buffer_offset: (source.offset + copy.buffer_offset) as ash::vk::DeviceSize,
+                    buffer_offset: source.offset + copy.buffer_offset,
                     buffer_row_length: copy.buffer_row_length,
                     buffer_image_height: copy.buffer_image_height,
                     image_subresource: ash::vk::ImageSubresourceLayers {
@@ -942,7 +942,7 @@ impl UnsafeCommandBufferBuilder {
                 debug_assert!(copy.image_mip_level < source.num_mipmap_levels as u32);
 
                 ash::vk::BufferImageCopy {
-                    buffer_offset: (destination.offset + copy.buffer_offset) as ash::vk::DeviceSize,
+                    buffer_offset: destination.offset + copy.buffer_offset,
                     buffer_row_length: copy.buffer_row_length,
                     buffer_image_height: copy.buffer_image_height,
                     image_subresource: ash::vk::ImageSubresourceLayers {
@@ -987,7 +987,7 @@ impl UnsafeCommandBufferBuilder {
         &mut self,
         queries: QueriesRange,
         destination: D,
-        stride: usize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) where
         D: BufferAccess + TypedBufferAccess<Content = [T]>,
@@ -997,8 +997,8 @@ impl UnsafeCommandBufferBuilder {
         let range = queries.range();
         debug_assert!(destination.offset < destination.buffer.size());
         debug_assert!(destination.buffer.usage().transfer_destination);
-        debug_assert!(destination.offset % std::mem::size_of::<T>() == 0);
-        debug_assert!(stride % std::mem::size_of::<T>() == 0);
+        debug_assert!(destination.offset % std::mem::size_of::<T>() as DeviceSize == 0);
+        debug_assert!(stride % std::mem::size_of::<T>() as DeviceSize == 0);
 
         let fns = self.device().fns();
         let cmd = self.internal_object();
@@ -1008,8 +1008,8 @@ impl UnsafeCommandBufferBuilder {
             range.start,
             range.end - range.start,
             destination.buffer.internal_object(),
-            destination.offset as ash::vk::DeviceSize,
-            stride as ash::vk::DeviceSize,
+            destination.offset,
+            stride,
             ash::vk::QueryResultFlags::from(flags) | T::FLAG,
         );
     }
@@ -1022,8 +1022,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_compute_work_group_count
-                .unwrap();
+                .max_compute_work_group_count;
             group_counts[0] <= max_group_counts[0]
                 && group_counts[1] <= max_group_counts[1]
                 && group_counts[2] <= max_group_counts[2]
@@ -1049,11 +1048,8 @@ impl UnsafeCommandBufferBuilder {
         debug_assert!(inner.buffer.usage().indirect_buffer);
         debug_assert_eq!(inner.offset % 4, 0);
 
-        fns.v1_0.cmd_dispatch_indirect(
-            cmd,
-            inner.buffer.internal_object(),
-            inner.offset as ash::vk::DeviceSize,
-        );
+        fns.v1_0
+            .cmd_dispatch_indirect(cmd, inner.buffer.internal_object(), inner.offset);
     }
 
     /// Calls `vkCmdDraw` on the builder.
@@ -1120,7 +1116,7 @@ impl UnsafeCommandBufferBuilder {
         fns.v1_0.cmd_draw_indirect(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as ash::vk::DeviceSize,
+            inner.offset,
             draw_count,
             stride,
         );
@@ -1142,7 +1138,7 @@ impl UnsafeCommandBufferBuilder {
         fns.v1_0.cmd_draw_indexed_indirect(
             cmd,
             inner.buffer.internal_object(),
-            inner.offset as ash::vk::DeviceSize,
+            inner.offset,
             draw_count,
             stride,
         );
@@ -1202,13 +1198,8 @@ impl UnsafeCommandBufferBuilder {
             (buffer_inner.internal_object(), offset)
         };
 
-        fns.v1_0.cmd_fill_buffer(
-            cmd,
-            buffer_handle,
-            offset as ash::vk::DeviceSize,
-            size as ash::vk::DeviceSize,
-            data,
-        );
+        fns.v1_0
+            .cmd_fill_buffer(cmd, buffer_handle, offset, size, data);
     }
 
     /// Calls `vkCmdNextSubpass` on the builder.
@@ -1407,8 +1398,8 @@ impl UnsafeCommandBufferBuilder {
 
         debug_assert!(scissors.iter().all(|s| s.offset.x >= 0 && s.offset.y >= 0));
         debug_assert!(scissors.iter().all(|s| {
-            s.extent.width < i32::max_value() as u32
-                && s.extent.height < i32::max_value() as u32
+            s.extent.width < i32::MAX as u32
+                && s.extent.height < i32::MAX as u32
                 && s.offset.x.checked_add(s.extent.width as i32).is_some()
                 && s.offset.y.checked_add(s.extent.height as i32).is_some()
         }));
@@ -1421,8 +1412,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_viewports
-                .unwrap();
+                .max_viewports;
             first_scissor + scissors.len() as u32 <= max
         });
 
@@ -1457,8 +1447,7 @@ impl UnsafeCommandBufferBuilder {
                 .device()
                 .physical_device()
                 .properties()
-                .max_viewports
-                .unwrap();
+                .max_viewports;
             first_viewport + viewports.len() as u32 <= max
         });
 
@@ -1485,7 +1474,7 @@ impl UnsafeCommandBufferBuilder {
         let size = buffer.size();
         debug_assert_eq!(size % 4, 0);
         debug_assert!(size <= 65536);
-        debug_assert!(size <= mem::size_of_val(data));
+        debug_assert!(size <= mem::size_of_val(data) as DeviceSize);
 
         let (buffer_handle, offset) = {
             let BufferInner {
@@ -1500,8 +1489,8 @@ impl UnsafeCommandBufferBuilder {
         fns.v1_0.cmd_update_buffer(
             cmd,
             buffer_handle,
-            offset as ash::vk::DeviceSize,
-            size as ash::vk::DeviceSize,
+            offset,
+            size,
             data as *const D as *const _,
         );
     }
@@ -1589,7 +1578,7 @@ pub struct UnsafeCommandBufferBuilderBindVertexBuffer {
     // Raw handles of the buffers to bind.
     raw_buffers: SmallVec<[ash::vk::Buffer; 4]>,
     // Raw offsets of the buffers to bind.
-    offsets: SmallVec<[ash::vk::DeviceSize; 4]>,
+    offsets: SmallVec<[DeviceSize; 4]>,
 }
 
 impl UnsafeCommandBufferBuilderBindVertexBuffer {
@@ -1611,7 +1600,7 @@ impl UnsafeCommandBufferBuilderBindVertexBuffer {
         let inner = buffer.inner();
         debug_assert!(inner.buffer.usage().vertex_buffer);
         self.raw_buffers.push(inner.buffer.internal_object());
-        self.offsets.push(inner.offset as ash::vk::DeviceSize);
+        self.offsets.push(inner.offset);
     }
 }
 
@@ -1659,7 +1648,7 @@ pub struct UnsafeCommandBufferBuilderColorImageClear {
 // TODO: move somewhere else?
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct UnsafeCommandBufferBuilderBufferImageCopy {
-    pub buffer_offset: usize,
+    pub buffer_offset: DeviceSize,
     pub buffer_row_length: u32,
     pub buffer_image_height: u32,
     pub image_aspect: ImageAspect,
@@ -1836,8 +1825,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
         destination_access: AccessFlags,
         by_region: bool,
         queue_transfer: Option<(u32, u32)>,
-        offset: usize,
-        size: usize,
+        offset: DeviceSize,
+        size: DeviceSize,
     ) where
         B: ?Sized + BufferAccess,
     {
@@ -1865,8 +1854,8 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             src_queue_family_index: src_queue,
             dst_queue_family_index: dest_queue,
             buffer: buffer.internal_object(),
-            offset: offset as ash::vk::DeviceSize,
-            size: size as ash::vk::DeviceSize,
+            offset,
+            size,
             ..Default::default()
         });
     }

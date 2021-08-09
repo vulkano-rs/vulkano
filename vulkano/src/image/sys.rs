@@ -28,6 +28,7 @@ use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MemoryRequirements;
 use crate::sync::Sharing;
+use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
@@ -251,7 +252,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_color_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Uint | FormatTy::Sint => {
@@ -259,7 +259,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_integer_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Depth => {
@@ -267,7 +266,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_depth_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Stencil => {
@@ -275,7 +273,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_stencil_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::DepthStencil => {
@@ -283,13 +280,11 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .sampled_image_depth_sample_counts
-                        .unwrap()
                         .into();
                     supported_samples &= device
                         .physical_device()
                         .properties()
                         .sampled_image_stencil_sample_counts
-                        .unwrap()
                         .into();
                 }
                 FormatTy::Ycbcr => {
@@ -307,7 +302,6 @@ impl UnsafeImage {
                     .physical_device()
                     .properties()
                     .storage_image_sample_counts
-                    .unwrap()
                     .into();
             }
 
@@ -322,7 +316,6 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_color_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::Depth => {
@@ -330,7 +323,6 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_depth_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::Stencil => {
@@ -338,7 +330,6 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_stencil_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::DepthStencil => {
@@ -346,13 +337,11 @@ impl UnsafeImage {
                             .physical_device()
                             .properties()
                             .framebuffer_depth_sample_counts
-                            .unwrap()
                             .into();
                         supported_samples &= device
                             .physical_device()
                             .properties()
                             .framebuffer_stencil_sample_counts
-                            .unwrap()
                             .into();
                     }
                     FormatTy::Ycbcr => {
@@ -451,7 +440,6 @@ impl UnsafeImage {
                 .physical_device()
                 .properties()
                 .max_image_array_layers
-                .unwrap()
         {
             let err = ImageCreationError::UnsupportedDimensions { dimensions };
             capabilities_error = Some(err);
@@ -463,7 +451,6 @@ impl UnsafeImage {
                         .physical_device()
                         .properties()
                         .max_image_dimension1_d
-                        .unwrap()
                 {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -473,8 +460,7 @@ impl UnsafeImage {
                 let limit = device
                     .physical_device()
                     .properties()
-                    .max_image_dimension2_d
-                    .unwrap();
+                    .max_image_dimension2_d;
                 if extent.width > limit || extent.height > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -484,8 +470,7 @@ impl UnsafeImage {
                     let limit = device
                         .physical_device()
                         .properties()
-                        .max_image_dimension_cube
-                        .unwrap();
+                        .max_image_dimension_cube;
                     if extent.width > limit {
                         let err = ImageCreationError::UnsupportedDimensions { dimensions };
                         capabilities_error = Some(err);
@@ -496,8 +481,7 @@ impl UnsafeImage {
                 let limit = device
                     .physical_device()
                     .properties()
-                    .max_image_dimension3_d
-                    .unwrap();
+                    .max_image_dimension3_d;
                 if extent.width > limit || extent.height > limit || extent.depth > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -695,7 +679,11 @@ impl UnsafeImage {
         }
     }
 
-    pub unsafe fn bind_memory(&self, memory: &DeviceMemory, offset: usize) -> Result<(), OomError> {
+    pub unsafe fn bind_memory(
+        &self,
+        memory: &DeviceMemory,
+        offset: DeviceSize,
+    ) -> Result<(), OomError> {
         let fns = self.device.fns();
 
         // We check for correctness in debug mode.
@@ -708,8 +696,8 @@ impl UnsafeImage {
             );
 
             let mem_reqs = mem_reqs.assume_init();
-            mem_reqs.size <= (memory.size() - offset) as u64
-                && (offset as u64 % mem_reqs.alignment) == 0
+            mem_reqs.size <= memory.size() - offset
+                && offset % mem_reqs.alignment == 0
                 && mem_reqs.memory_type_bits & (1 << memory.memory_type().id()) != 0
         });
 
@@ -717,7 +705,7 @@ impl UnsafeImage {
             self.device.internal_object(),
             self.image,
             memory.internal_object(),
-            offset as ash::vk::DeviceSize,
+            offset,
         ))?;
         Ok(())
     }
@@ -869,11 +857,11 @@ impl UnsafeImage {
 
         let out = out.assume_init();
         LinearLayout {
-            offset: out.offset as usize,
-            size: out.size as usize,
-            row_pitch: out.row_pitch as usize,
-            array_pitch: out.array_pitch as usize,
-            depth_pitch: out.depth_pitch as usize,
+            offset: out.offset,
+            size: out.size,
+            row_pitch: out.row_pitch,
+            array_pitch: out.array_pitch,
+            depth_pitch: out.depth_pitch,
         }
     }
 
@@ -1055,17 +1043,17 @@ impl From<Error> for ImageCreationError {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct LinearLayout {
     /// Number of bytes from the start of the memory and the start of the queried subresource.
-    pub offset: usize,
+    pub offset: DeviceSize,
     /// Total number of bytes for the queried subresource. Can be used for a safety check.
-    pub size: usize,
+    pub size: DeviceSize,
     /// Number of bytes between two texels or two blocks in adjacent rows.
-    pub row_pitch: usize,
+    pub row_pitch: DeviceSize,
     /// Number of bytes between two texels or two blocks in adjacent array layers. This value is
     /// undefined for images with only one array layer.
-    pub array_pitch: usize,
+    pub array_pitch: DeviceSize,
     /// Number of bytes between two texels or two blocks in adjacent depth layers. This value is
     /// undefined for images that are not three-dimensional.
-    pub depth_pitch: usize,
+    pub depth_pitch: DeviceSize,
 }
 
 #[cfg(test)]

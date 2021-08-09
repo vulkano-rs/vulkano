@@ -168,7 +168,7 @@ where
                     .saturating_mul(1_000_000_000)
                     .saturating_add(timeout.subsec_nanos() as u64)
             } else {
-                u64::max_value()
+                u64::MAX
             };
 
             let fns = self.device.fns();
@@ -230,7 +230,7 @@ where
                 .saturating_mul(1_000_000_000)
                 .saturating_add(timeout.subsec_nanos() as u64)
         } else {
-            u64::max_value()
+            u64::MAX
         };
 
         let r = if let Some(device) = device {

@@ -82,8 +82,8 @@ pub(super) fn write_entry_point(
     };
 
     let descriptor_set_layout_descs =
-        write_descriptor_set_layout_descs(&doc, id, interface, exact_entrypoint_interface, stage);
-    let push_constant_ranges = write_push_constant_ranges(&doc, &types_meta);
+        write_descriptor_set_layout_descs(&doc, id, interface, exact_entrypoint_interface, &stage);
+    let push_constant_ranges = write_push_constant_ranges(&doc, &stage, &types_meta);
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         quote! { SpecializationConstants }

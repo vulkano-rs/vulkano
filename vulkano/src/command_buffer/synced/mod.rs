@@ -399,7 +399,7 @@ unsafe impl DeviceOwned for SyncCommandBuffer {
 // that conflict with each other compare equal.
 #[derive(Debug, PartialEq, Eq, Hash)]
 enum ResourceKey {
-    Buffer((u64, usize)),
+    Buffer((u64, u64)),
     Image(u64, Range<u32>, Range<u32>),
 }
 

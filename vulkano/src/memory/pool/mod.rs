@@ -7,6 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+pub use self::host_visible::StdHostVisibleMemoryTypePool;
+pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;
+pub use self::non_host_visible::StdNonHostVisibleMemoryTypePool;
+pub use self::non_host_visible::StdNonHostVisibleMemoryTypePoolAlloc;
+pub use self::pool::StdMemoryPool;
+pub use self::pool::StdMemoryPoolAlloc;
 use crate::device::physical::MemoryType;
 use crate::device::{Device, DeviceOwned};
 use crate::memory::DedicatedAlloc;
@@ -14,13 +20,7 @@ use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MappedDeviceMemory;
 use crate::memory::MemoryRequirements;
-
-pub use self::host_visible::StdHostVisibleMemoryTypePool;
-pub use self::host_visible::StdHostVisibleMemoryTypePoolAlloc;
-pub use self::non_host_visible::StdNonHostVisibleMemoryTypePool;
-pub use self::non_host_visible::StdNonHostVisibleMemoryTypePoolAlloc;
-pub use self::pool::StdMemoryPool;
-pub use self::pool::StdMemoryPoolAlloc;
+use crate::DeviceSize;
 use std::sync::Arc;
 
 mod host_visible;
@@ -29,7 +29,7 @@ mod pool;
 
 // If the allocation size goes beyond this, then we perform a dedicated allocation which bypasses
 // the pool. This prevents the pool from overallocating a significant amount of memory.
-const MAX_POOL_ALLOC: usize = 256 * 1024 * 1024;
+const MAX_POOL_ALLOC: DeviceSize = 256 * 1024 * 1024;
 
 fn choose_allocation_memory_type<'s, F>(
     device: &'s Arc<Device>,
@@ -95,8 +95,8 @@ pub unsafe trait MemoryPool: DeviceOwned {
     fn alloc_generic(
         &self,
         ty: MemoryType,
-        size: usize,
-        alignment: usize,
+        size: DeviceSize,
+        alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
     ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
@@ -106,8 +106,8 @@ pub unsafe trait MemoryPool: DeviceOwned {
     fn alloc_generic_with_exportable_fd(
         &self,
         ty: MemoryType,
-        size: usize,
-        alignment: usize,
+        size: DeviceSize,
+        alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
     ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
@@ -282,7 +282,7 @@ pub unsafe trait MemoryPoolAlloc {
 
     /// Returns the offset at the start of the memory where the first byte of this allocation
     /// resides.
-    fn offset(&self) -> usize;
+    fn offset(&self) -> DeviceSize;
 }
 
 /// Whether an allocation should map the memory or not.
@@ -335,7 +335,7 @@ where
     }
 
     #[inline]
-    fn offset(&self) -> usize {
+    fn offset(&self) -> DeviceSize {
         match *self {
             PotentialDedicatedAllocation::Generic(ref alloc) => alloc.offset(),
             PotentialDedicatedAllocation::Dedicated(_) => 0,

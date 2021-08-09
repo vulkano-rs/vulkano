@@ -73,6 +73,7 @@ pub use self::vertex::VertexMemberInfo;
 pub use self::vertex::VertexMemberTy;
 use crate::buffer::BufferAccess;
 use crate::format::Format;
+use crate::DeviceSize;
 use fnv::FnvHashMap;
 use std::convert::TryInto;
 
@@ -150,7 +151,7 @@ impl VertexInput {
 
         for (binding, buffer) in buffers {
             let binding_desc = &self.bindings[&binding];
-            let mut num_elements = (buffer.size() / binding_desc.stride as usize)
+            let mut num_elements = (buffer.size() / binding_desc.stride as DeviceSize)
                 .try_into()
                 .unwrap_or(u32::MAX);
 

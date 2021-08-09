@@ -80,7 +80,7 @@ fn main() {
                 .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
                 .map(|q| (p, q))
         })
-        .min_by_key(|(p, _)| match p.properties().device_type.unwrap() {
+        .min_by_key(|(p, _)| match p.properties().device_type {
             PhysicalDeviceType::DiscreteGpu => 0,
             PhysicalDeviceType::IntegratedGpu => 1,
             PhysicalDeviceType::VirtualGpu => 2,
@@ -91,8 +91,8 @@ fn main() {
 
     println!(
         "Using device: {} (type: {:?})",
-        physical_device.properties().device_name.as_ref().unwrap(),
-        physical_device.properties().device_type.unwrap()
+        physical_device.properties().device_name,
+        physical_device.properties().device_type
     );
 
     let (device, mut queues) = Device::new(
@@ -221,7 +221,7 @@ fn main() {
         vs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
             [], // No descriptor sets.
-            [], // No push constants.
+            None, // No push constants.
             <()>::descriptors(),
             vertex_input,
             vertex_output,
@@ -233,7 +233,7 @@ fn main() {
         fs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
             [], // No descriptor sets.
-            [], // No push constants.
+            None, // No push constants.
             <()>::descriptors(),
             fragment_input,
             fragment_output,

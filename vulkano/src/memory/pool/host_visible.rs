@@ -7,17 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::cmp;
-use std::ops::Range;
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use crate::device::physical::MemoryType;
 use crate::device::Device;
 use crate::instance::Instance;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MappedDeviceMemory;
+use crate::DeviceSize;
+use std::cmp;
+use std::ops::Range;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 /// Memory pool that operates on a given memory type.
 #[derive(Debug)]
@@ -25,7 +25,7 @@ pub struct StdHostVisibleMemoryTypePool {
     device: Arc<Device>,
     memory_type: u32,
     // TODO: obviously very inefficient
-    occupied: Mutex<Vec<(Arc<MappedDeviceMemory>, Vec<Range<usize>>)>>,
+    occupied: Mutex<Vec<(Arc<MappedDeviceMemory>, Vec<Range<DeviceSize>>)>>,
 }
 
 impl StdHostVisibleMemoryTypePool {
@@ -64,14 +64,14 @@ impl StdHostVisibleMemoryTypePool {
     ///
     pub fn alloc(
         me: &Arc<Self>,
-        size: usize,
-        alignment: usize,
+        size: DeviceSize,
+        alignment: DeviceSize,
     ) -> Result<StdHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocError> {
         assert!(size != 0);
         assert!(alignment != 0);
 
         #[inline]
-        fn align(val: usize, al: usize) -> usize {
+        fn align(val: DeviceSize, al: DeviceSize) -> DeviceSize {
             al * (1 + (val - 1) / al)
         }
 
@@ -111,7 +111,7 @@ impl StdHostVisibleMemoryTypePool {
 
         // We need to allocate a new block.
         let new_block = {
-            const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
+            const MIN_BLOCK_SIZE: DeviceSize = 8 * 1024 * 1024; // 8 MB
             let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
             let new_block =
                 DeviceMemory::alloc_and_map(me.device.clone(), me.memory_type(), to_alloc)?;
@@ -123,7 +123,7 @@ impl StdHostVisibleMemoryTypePool {
             pool: me.clone(),
             memory: new_block,
             offset: 0,
-            size: size,
+            size,
         })
     }
 
@@ -131,14 +131,14 @@ impl StdHostVisibleMemoryTypePool {
     #[cfg(target_os = "linux")]
     pub fn alloc_with_exportable_fd(
         me: &Arc<Self>,
-        size: usize,
-        alignment: usize,
+        size: DeviceSize,
+        alignment: DeviceSize,
     ) -> Result<StdHostVisibleMemoryTypePoolAlloc, DeviceMemoryAllocError> {
         assert!(size != 0);
         assert!(alignment != 0);
 
         #[inline]
-        fn align(val: usize, al: usize) -> usize {
+        fn align(val: DeviceSize, al: DeviceSize) -> DeviceSize {
             al * (1 + (val - 1) / al)
         }
 
@@ -178,7 +178,7 @@ impl StdHostVisibleMemoryTypePool {
 
         // We need to allocate a new block.
         let new_block = {
-            const MIN_BLOCK_SIZE: usize = 8 * 1024 * 1024; // 8 MB
+            const MIN_BLOCK_SIZE: DeviceSize = 8 * 1024 * 1024; // 8 MB
             let to_alloc = cmp::max(MIN_BLOCK_SIZE, size.next_power_of_two());
             let new_block = DeviceMemory::alloc_and_map_with_exportable_fd(
                 me.device.clone(),
@@ -217,8 +217,8 @@ impl StdHostVisibleMemoryTypePool {
 pub struct StdHostVisibleMemoryTypePoolAlloc {
     pool: Arc<StdHostVisibleMemoryTypePool>,
     memory: Arc<MappedDeviceMemory>,
-    offset: usize,
-    size: usize,
+    offset: DeviceSize,
+    size: DeviceSize,
 }
 
 impl StdHostVisibleMemoryTypePoolAlloc {
@@ -228,12 +228,12 @@ impl StdHostVisibleMemoryTypePoolAlloc {
     }
 
     #[inline]
-    pub fn offset(&self) -> usize {
+    pub fn offset(&self) -> DeviceSize {
         self.offset
     }
 
     #[inline]
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> DeviceSize {
         self.size
     }
 }

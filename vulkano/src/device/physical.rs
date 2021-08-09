@@ -11,6 +11,7 @@ use crate::check_errors;
 use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
 use crate::instance::{Instance, InstanceCreationError};
 use crate::sync::PipelineStage;
+use crate::DeviceSize;
 use crate::Version;
 use crate::VulkanObject;
 use std::convert::TryFrom;
@@ -295,7 +296,7 @@ fn init_physical_devices_inner2(instance: &Instance, infos: &mut [PhysicalDevice
 /// }
 ///
 /// fn print_infos(dev: PhysicalDevice) {
-///     println!("Name: {}", dev.properties().device_name.as_ref().unwrap());
+///     println!("Name: {}", dev.properties().device_name);
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
@@ -318,7 +319,7 @@ impl<'a> PhysicalDevice<'a> {
     ///
     /// # let instance = Instance::new(None, Version::V1_1, &InstanceExtensions::none(), None).unwrap();
     /// for physical_device in PhysicalDevice::enumerate(&instance) {
-    ///     println!("Available device: {}", physical_device.properties().device_name.as_ref().unwrap());
+    ///     println!("Available device: {}", physical_device.properties().device_name);
     /// }
     /// ```
     #[inline]
@@ -536,6 +537,13 @@ pub enum PhysicalDeviceType {
     Other = ash::vk::PhysicalDeviceType::OTHER.as_raw(),
 }
 
+/// VkPhysicalDeviceType::Other is represented as 0
+impl Default for PhysicalDeviceType {
+  fn default() -> Self {
+    PhysicalDeviceType::Other
+  }
+}
+
 impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {
     type Error = ();
 
@@ -647,8 +655,8 @@ impl<'a> MemoryHeap<'a> {
 
     /// Returns the size in bytes on this heap.
     #[inline]
-    pub fn size(&self) -> usize {
-        self.info.size as usize
+    pub fn size(&self) -> DeviceSize {
+        self.info.size
     }
 
     /// Returns true if the heap is local to the GPU.
