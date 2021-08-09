@@ -123,6 +123,7 @@
 - Implement fmt::Display for DisplayMode.
 - Clarify return value is in millihertz for DisplayMode.refresh_rate()
 - Reworked some of the internals of `SyncCommandBufferBuilder`, so that a mutex is no longer needed and resource conflict detection is simplified.
+- `Features::all` and `Features::none` are now `const fn`.
 
 # Version 0.23.0 (2021-04-10)
 
