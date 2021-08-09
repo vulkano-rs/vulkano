@@ -27,7 +27,7 @@ use crate::image::ImageAspect;
 use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::image::SampleCount;
-use crate::pipeline::depth_stencil::StencilFaceFlags;
+use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderStages;
@@ -1351,11 +1351,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_compare_mask(
-        &mut self,
-        face_mask: StencilFaceFlags,
-        compare_mask: u32,
-    ) {
+    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: StencilFaces, compare_mask: u32) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
         fns.v1_0
@@ -1364,7 +1360,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaceFlags, reference: u32) {
+    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaces, reference: u32) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
         fns.v1_0
@@ -1373,7 +1369,7 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaceFlags, write_mask: u32) {
+    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaces, write_mask: u32) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
         fns.v1_0
