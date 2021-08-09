@@ -181,7 +181,7 @@ impl UnsafeCommandPool {
     pub fn alloc_command_buffers(
         &self,
         secondary: bool,
-        count: usize,
+        count: u32,
     ) -> Result<UnsafeCommandPoolAllocIter, OomError> {
         if count == 0 {
             return Ok(UnsafeCommandPoolAllocIter {
@@ -197,20 +197,20 @@ impl UnsafeCommandPool {
             } else {
                 ash::vk::CommandBufferLevel::PRIMARY
             },
-            command_buffer_count: count as u32,
+            command_buffer_count: count,
             ..Default::default()
         };
 
         unsafe {
             let fns = self.device.fns();
-            let mut out = Vec::with_capacity(count);
+            let mut out = Vec::with_capacity(count as usize);
             check_errors(fns.v1_0.allocate_command_buffers(
                 self.device.internal_object(),
                 &infos,
                 out.as_mut_ptr(),
             ))?;
 
-            out.set_len(count);
+            out.set_len(count as usize);
 
             Ok(UnsafeCommandPoolAllocIter {
                 device: self.device.clone(),

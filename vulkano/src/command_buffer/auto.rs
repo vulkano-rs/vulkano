@@ -74,6 +74,7 @@ use crate::sync::GpuFuture;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
+use crate::DeviceSize;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
 use fnv::FnvHashMap;
@@ -800,10 +801,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     pub fn copy_buffer_dimensions<S, D, T>(
         &mut self,
         source: S,
-        source_offset: usize,
+        source_offset: DeviceSize,
         destination: D,
-        destination_offset: usize,
-        count: usize,
+        destination_offset: DeviceSize,
+        count: DeviceSize,
     ) -> Result<&mut Self, CopyBufferError>
     where
         S: TypedBufferAccess<Content = [T]> + Send + Sync + 'static,
@@ -815,7 +816,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         debug_assert!(source_offset + count <= source.len());
         debug_assert!(destination_offset + count <= destination.len());
 
-        let size = std::mem::size_of::<T>();
+        let size = std::mem::size_of::<T>() as DeviceSize;
         unsafe {
             self.inner.copy_buffer(
                 source,
@@ -1533,7 +1534,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.ensure_outside_render_pass()?;
             check_update_buffer(self.device(), &buffer, data.deref())?;
 
-            let size_of_data = mem::size_of_val(data.deref());
+            let size_of_data = mem::size_of_val(data.deref()) as DeviceSize;
             if buffer.size() >= size_of_data {
                 self.inner.update_buffer(buffer, data);
             } else {

@@ -7,13 +7,6 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use fnv::FnvHasher;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-use std::hash::BuildHasherDefault;
-use std::sync::Arc;
-use std::sync::Mutex;
-
 use crate::device::physical::MemoryType;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -28,6 +21,13 @@ use crate::memory::pool::StdNonHostVisibleMemoryTypePoolAlloc;
 use crate::memory::DeviceMemory;
 use crate::memory::DeviceMemoryAllocError;
 use crate::memory::MappedDeviceMemory;
+use crate::DeviceSize;
+use fnv::FnvHasher;
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::hash::BuildHasherDefault;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 #[derive(Debug)]
 pub struct StdMemoryPool {
@@ -55,8 +55,8 @@ impl StdMemoryPool {
 fn generic_allocation(
     mem_pool: Arc<StdMemoryPool>,
     memory_type: MemoryType,
-    size: usize,
-    alignment: usize,
+    size: DeviceSize,
+    alignment: DeviceSize,
     layout: AllocLayout,
     map: MappingRequirement,
 ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
@@ -115,8 +115,8 @@ fn generic_allocation(
 fn generit_allocation_with_exportable_fd(
     mem_pool: Arc<StdMemoryPool>,
     memory_type: MemoryType,
-    size: usize,
-    alignment: usize,
+    size: DeviceSize,
+    alignment: DeviceSize,
     layout: AllocLayout,
     map: MappingRequirement,
 ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
@@ -182,8 +182,8 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
     fn alloc_generic(
         &self,
         memory_type: MemoryType,
-        size: usize,
-        alignment: usize,
+        size: DeviceSize,
+        alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
     ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
@@ -195,8 +195,8 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
     fn alloc_generic_with_exportable_fd(
         &self,
         memory_type: MemoryType,
-        size: usize,
-        alignment: usize,
+        size: DeviceSize,
+        alignment: DeviceSize,
         layout: AllocLayout,
         map: MappingRequirement,
     ) -> Result<StdMemoryPoolAlloc, DeviceMemoryAllocError> {
@@ -232,7 +232,7 @@ pub struct StdMemoryPoolAlloc {
 
 impl StdMemoryPoolAlloc {
     #[inline]
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> DeviceSize {
         match self.inner {
             StdMemoryPoolAllocInner::NonHostVisible(ref mem) => mem.size(),
             StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.size(),
@@ -258,7 +258,7 @@ unsafe impl MemoryPoolAlloc for StdMemoryPoolAlloc {
     }
 
     #[inline]
-    fn offset(&self) -> usize {
+    fn offset(&self) -> DeviceSize {
         match self.inner {
             StdMemoryPoolAllocInner::NonHostVisible(ref mem) => mem.offset(),
             StdMemoryPoolAllocInner::HostVisible(ref mem) => mem.offset(),

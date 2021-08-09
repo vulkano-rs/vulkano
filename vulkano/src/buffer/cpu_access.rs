@@ -39,6 +39,7 @@ use crate::memory::DedicatedAlloc;
 use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::DeviceSize;
 use parking_lot::RwLock;
 use parking_lot::RwLockReadGuard;
 use parking_lot::RwLockWriteGuard;
@@ -110,7 +111,7 @@ impl<T> CpuAccessibleBuffer<T> {
         unsafe {
             let uninitialized = CpuAccessibleBuffer::raw(
                 device,
-                mem::size_of::<T>(),
+                mem::size_of::<T>() as DeviceSize,
                 usage,
                 host_cached,
                 iter::empty(),
@@ -138,7 +139,7 @@ impl<T> CpuAccessibleBuffer<T> {
     ) -> Result<Arc<CpuAccessibleBuffer<T>>, DeviceMemoryAllocError> {
         CpuAccessibleBuffer::raw(
             device,
-            mem::size_of::<T>(),
+            mem::size_of::<T>() as DeviceSize,
             usage,
             host_cached,
             iter::empty(),
@@ -160,8 +161,12 @@ impl<T> CpuAccessibleBuffer<[T]> {
         T: Content + 'static,
     {
         unsafe {
-            let uninitialized =
-                CpuAccessibleBuffer::uninitialized_array(device, data.len(), usage, host_cached)?;
+            let uninitialized = CpuAccessibleBuffer::uninitialized_array(
+                device,
+                data.len() as DeviceSize,
+                usage,
+                host_cached,
+            )?;
 
             // Note that we are in panic-unsafety land here. However a panic should never ever
             // happen here, so in theory we are safe.
@@ -183,13 +188,13 @@ impl<T> CpuAccessibleBuffer<[T]> {
     #[inline]
     pub unsafe fn uninitialized_array(
         device: Arc<Device>,
-        len: usize,
+        len: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
     ) -> Result<Arc<CpuAccessibleBuffer<[T]>>, DeviceMemoryAllocError> {
         CpuAccessibleBuffer::raw(
             device,
-            len * mem::size_of::<T>(),
+            len * mem::size_of::<T>() as DeviceSize,
             usage,
             host_cached,
             iter::empty(),
@@ -206,7 +211,7 @@ impl<T: ?Sized> CpuAccessibleBuffer<T> {
     ///
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>,
-        size: usize,
+        size: DeviceSize,
         usage: BufferUsage,
         host_cached: bool,
         queue_families: I,
@@ -373,12 +378,12 @@ where
     }
 
     #[inline]
-    fn size(&self) -> usize {
+    fn size(&self) -> DeviceSize {
         self.inner.size()
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         (self.inner.key(), 0)
     }
 

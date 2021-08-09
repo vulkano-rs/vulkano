@@ -69,7 +69,7 @@ impl VertexMemberTy {
         let format_size = match format.size() {
             None => return false,
             Some(s) => s,
-        };
+        } as usize;
 
         array_size * my_size == format_size * num_locs as usize
     }

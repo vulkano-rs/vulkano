@@ -100,6 +100,7 @@ pub use self::device_memory::DeviceMemoryMapping;
 pub use self::device_memory::MappedDeviceMemory;
 pub use self::external_memory_handle_type::ExternalMemoryHandleType;
 pub use self::pool::MemoryPool;
+use crate::DeviceSize;
 
 mod device_memory;
 mod external_memory_handle_type;
@@ -110,11 +111,11 @@ pub mod pool;
 #[derive(Debug, Copy, Clone)]
 pub struct MemoryRequirements {
     /// Number of bytes of memory required.
-    pub size: usize,
+    pub size: DeviceSize,
 
     /// Alignment of the requirement buffer. The base memory address must be a multiple
     /// of this value.
-    pub alignment: usize,
+    pub alignment: DeviceSize,
 
     /// Indicates which memory types can be used. Each bit that is set to 1 means that the memory
     /// type whose index is the same as the position of the bit can be used.
@@ -133,8 +134,8 @@ impl From<ash::vk::MemoryRequirements> for MemoryRequirements {
     #[inline]
     fn from(val: ash::vk::MemoryRequirements) -> Self {
         MemoryRequirements {
-            size: val.size as usize,
-            alignment: val.alignment as usize,
+            size: val.size,
+            alignment: val.alignment,
             memory_type_bits: val.memory_type_bits,
             prefer_dedicated: false,
         }
@@ -165,10 +166,10 @@ pub unsafe trait Content {
     fn ref_from_ptr<'a>(ptr: *mut c_void, size: usize) -> Option<*mut Self>;
 
     /// Returns true if the size is suitable to store a type like this.
-    fn is_size_suitable(size: usize) -> bool;
+    fn is_size_suitable(size: DeviceSize) -> bool;
 
     /// Returns the size of an individual element.
-    fn indiv_size() -> usize;
+    fn indiv_size() -> DeviceSize;
 }
 
 unsafe impl<T> Content for T {
@@ -182,13 +183,13 @@ unsafe impl<T> Content for T {
     }
 
     #[inline]
-    fn is_size_suitable(size: usize) -> bool {
-        size == mem::size_of::<T>()
+    fn is_size_suitable(size: DeviceSize) -> bool {
+        size == mem::size_of::<T>() as DeviceSize
     }
 
     #[inline]
-    fn indiv_size() -> usize {
-        mem::size_of::<T>()
+    fn indiv_size() -> DeviceSize {
+        mem::size_of::<T>() as DeviceSize
     }
 }
 
@@ -201,13 +202,13 @@ unsafe impl<T> Content for [T] {
     }
 
     #[inline]
-    fn is_size_suitable(size: usize) -> bool {
-        size % mem::size_of::<T>() == 0
+    fn is_size_suitable(size: DeviceSize) -> bool {
+        size % mem::size_of::<T>() as DeviceSize == 0
     }
 
     #[inline]
-    fn indiv_size() -> usize {
-        mem::size_of::<T>()
+    fn indiv_size() -> DeviceSize {
+        mem::size_of::<T>() as DeviceSize
     }
 }
 

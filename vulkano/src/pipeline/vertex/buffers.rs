@@ -18,6 +18,7 @@ use crate::pipeline::vertex::VertexInputAttribute;
 use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexInputRate;
 use crate::pipeline::vertex::VertexSource;
+use crate::DeviceSize;
 use std::mem;
 use std::sync::Arc;
 
@@ -133,7 +134,7 @@ unsafe impl VertexDefinition for BuffersDefinition {
                 });
             }
 
-            let mut offset = infos.offset;
+            let mut offset = infos.offset as DeviceSize;
             for location in element.location.clone() {
                 attributes.push((
                     location,
@@ -198,7 +199,7 @@ impl BuffersDefinition {
         let mut instances = None;
 
         for (buffer, source) in self.0.iter().zip(source) {
-            let items = source.size() / buffer.stride as usize;
+            let items = (source.size() / buffer.stride as DeviceSize) as usize;
             let (items, count) = match buffer.input_rate {
                 VertexInputRate::Vertex => (items, &mut vertices),
                 VertexInputRate::Instance { divisor } => (

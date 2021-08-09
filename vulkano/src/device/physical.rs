@@ -11,6 +11,7 @@ use crate::check_errors;
 use crate::device::{DeviceExtensions, Features, FeaturesFfi, Properties, PropertiesFfi};
 use crate::instance::{Instance, InstanceCreationError};
 use crate::sync::PipelineStage;
+use crate::DeviceSize;
 use crate::Version;
 use crate::VulkanObject;
 use std::convert::TryFrom;
@@ -654,8 +655,8 @@ impl<'a> MemoryHeap<'a> {
 
     /// Returns the size in bytes on this heap.
     #[inline]
-    pub fn size(&self) -> usize {
-        self.info.size as usize
+    pub fn size(&self) -> DeviceSize {
+        self.info.size
     }
 
     /// Returns true if the heap is local to the GPU.

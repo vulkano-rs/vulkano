@@ -94,6 +94,7 @@
 
 use crate::device::physical::PhysicalDevice;
 use crate::image::ImageAspects;
+use crate::DeviceSize;
 use crate::VulkanObject;
 use half::f16;
 use std::convert::TryFrom;
@@ -124,7 +125,7 @@ macro_rules! formats {
             /// this will be the size of a single block. Returns `None` if the
             /// size is irrelevant.
             #[inline]
-            pub const fn size(&self) -> Option<usize> {
+            pub const fn size(&self) -> Option<DeviceSize> {
                 match *self {
                     $(
                         Format::$name => $sz,
@@ -492,7 +493,7 @@ macro_rules! impl_pixel {
         unsafe impl Pixel for $ty {
             fn ensure_accepts(format: Format) -> Result<(), IncompatiblePixelsType> {
                 // TODO: Be more strict: accept only if the format has a matching AcceptsPixels impl.
-                if format.size().map_or(false, |x| x % mem::size_of::<$ty>() == 0) {
+                if format.size().map_or(false, |x| x % mem::size_of::<$ty>() as DeviceSize == 0) {
                     Ok(())
                 } else {
                     Err(IncompatiblePixelsType)
@@ -500,7 +501,7 @@ macro_rules! impl_pixel {
             }
 
             fn rate(format: Format) -> u32 {
-                (format.size().expect("this format cannot accept pixels") / mem::size_of::<$ty>()) as u32
+                (format.size().expect("this format cannot accept pixels") / mem::size_of::<$ty>() as DeviceSize) as u32
             }
         }
     }

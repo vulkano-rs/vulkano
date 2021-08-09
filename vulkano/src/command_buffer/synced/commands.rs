@@ -53,6 +53,7 @@ use crate::sync::Event;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStage;
 use crate::sync::PipelineStages;
+use crate::DeviceSize;
 use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
@@ -660,7 +661,7 @@ impl SyncCommandBufferBuilder {
     where
         S: BufferAccess + Send + Sync + 'static,
         D: BufferAccess + Send + Sync + 'static,
-        R: IntoIterator<Item = (usize, usize, usize)> + Send + Sync + 'static,
+        R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
             source: S,
@@ -672,7 +673,7 @@ impl SyncCommandBufferBuilder {
         where
             S: BufferAccess + Send + Sync + 'static,
             D: BufferAccess + Send + Sync + 'static,
-            R: IntoIterator<Item = (usize, usize, usize)>,
+            R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
         {
             fn name(&self) -> &'static str {
                 "vkCmdCopyBuffer"
@@ -995,7 +996,7 @@ impl SyncCommandBufferBuilder {
         query_pool: Arc<QueryPool>,
         queries: Range<u32>,
         destination: D,
-        stride: usize,
+        stride: DeviceSize,
         flags: QueryResultFlags,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
@@ -1006,7 +1007,7 @@ impl SyncCommandBufferBuilder {
             query_pool: Arc<QueryPool>,
             queries: Range<u32>,
             destination: D,
-            stride: usize,
+            stride: DeviceSize,
             flags: QueryResultFlags,
         }
 

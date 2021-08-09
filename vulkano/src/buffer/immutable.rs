@@ -46,6 +46,7 @@ use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::NowFuture;
 use crate::sync::Sharing;
+use crate::DeviceSize;
 use smallvec::SmallVec;
 use std::hash::Hash;
 use std::hash::Hasher;
@@ -178,7 +179,7 @@ impl<T> ImmutableBuffer<T> {
     {
         ImmutableBuffer::raw(
             device.clone(),
-            mem::size_of::<T>(),
+            mem::size_of::<T>() as DeviceSize,
             usage,
             device.active_queue_families(),
         )
@@ -223,7 +224,7 @@ impl<T> ImmutableBuffer<[T]> {
     #[inline]
     pub unsafe fn uninitialized_array(
         device: Arc<Device>,
-        len: usize,
+        len: DeviceSize,
         usage: BufferUsage,
     ) -> Result<
         (
@@ -234,7 +235,7 @@ impl<T> ImmutableBuffer<[T]> {
     > {
         ImmutableBuffer::raw(
             device.clone(),
-            len * mem::size_of::<T>(),
+            len * mem::size_of::<T>() as DeviceSize,
             usage,
             device.active_queue_families(),
         )
@@ -260,7 +261,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     #[inline]
     pub unsafe fn raw<'a, I>(
         device: Arc<Device>,
-        size: usize,
+        size: DeviceSize,
         usage: BufferUsage,
         queue_families: I,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
@@ -275,7 +276,7 @@ impl<T: ?Sized> ImmutableBuffer<T> {
     // inlined.
     unsafe fn raw_impl(
         device: Arc<Device>,
-        size: usize,
+        size: DeviceSize,
         usage: BufferUsage,
         queue_families: SmallVec<[u32; 4]>,
     ) -> Result<(Arc<ImmutableBuffer<T>>, ImmutableBufferInitialization<T>), DeviceMemoryAllocError>
@@ -362,12 +363,12 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     }
 
     #[inline]
-    fn size(&self) -> usize {
+    fn size(&self) -> DeviceSize {
         self.inner.size()
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         (self.inner.key(), 0)
     }
 
@@ -436,12 +437,12 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 
     #[inline]
-    fn size(&self) -> usize {
+    fn size(&self) -> DeviceSize {
         self.buffer.size()
     }
 
     #[inline]
-    fn conflict_key(&self) -> (u64, usize) {
+    fn conflict_key(&self) -> (u64, u64) {
         (self.buffer.inner.key(), 0)
     }
 

@@ -14,6 +14,7 @@ use crate::image::sys::UnsafeImage;
 use crate::memory::DeviceMemory;
 use crate::sync::Fence;
 use crate::sync::Semaphore;
+use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::SynchronizedVulkanObject;
@@ -364,24 +365,24 @@ impl<'a> SubmitBindSparseBufferBindBuilder<'a> {
 
     pub unsafe fn add_bind(
         &mut self,
-        offset: usize,
-        size: usize,
+        offset: DeviceSize,
+        size: DeviceSize,
         memory: &DeviceMemory,
-        memory_offset: usize,
+        memory_offset: DeviceSize,
     ) {
         self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset as ash::vk::DeviceSize,
-            size: size as ash::vk::DeviceSize,
+            resource_offset: offset,
+            size,
             memory: memory.internal_object(),
-            memory_offset: memory_offset as ash::vk::DeviceSize,
+            memory_offset,
             flags: ash::vk::SparseMemoryBindFlags::empty(), // Flags are only relevant for images.
         });
     }
 
-    pub unsafe fn add_unbind(&mut self, offset: usize, size: usize) {
+    pub unsafe fn add_unbind(&mut self, offset: DeviceSize, size: DeviceSize) {
         self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset as ash::vk::DeviceSize,
-            size: size as ash::vk::DeviceSize,
+            resource_offset: offset,
+            size,
             memory: ash::vk::DeviceMemory::null(),
             memory_offset: 0,
             flags: ash::vk::SparseMemoryBindFlags::empty(),
@@ -410,17 +411,17 @@ impl<'a> SubmitBindSparseImageOpaqueBindBuilder<'a> {
 
     pub unsafe fn add_bind(
         &mut self,
-        offset: usize,
-        size: usize,
+        offset: DeviceSize,
+        size: DeviceSize,
         memory: &DeviceMemory,
-        memory_offset: usize,
+        memory_offset: DeviceSize,
         bind_metadata: bool,
     ) {
         self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset as ash::vk::DeviceSize,
-            size: size as ash::vk::DeviceSize,
+            resource_offset: offset,
+            size,
             memory: memory.internal_object(),
-            memory_offset: memory_offset as ash::vk::DeviceSize,
+            memory_offset,
             flags: if bind_metadata {
                 ash::vk::SparseMemoryBindFlags::METADATA
             } else {
@@ -429,10 +430,10 @@ impl<'a> SubmitBindSparseImageOpaqueBindBuilder<'a> {
         });
     }
 
-    pub unsafe fn add_unbind(&mut self, offset: usize, size: usize) {
+    pub unsafe fn add_unbind(&mut self, offset: DeviceSize, size: DeviceSize) {
         self.binds.push(ash::vk::SparseMemoryBind {
-            resource_offset: offset as ash::vk::DeviceSize,
-            size: size as ash::vk::DeviceSize,
+            resource_offset: offset,
+            size,
             memory: ash::vk::DeviceMemory::null(),
             memory_offset: 0,
             flags: ash::vk::SparseMemoryBindFlags::empty(), // TODO: is that relevant?

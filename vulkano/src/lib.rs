@@ -98,6 +98,10 @@ mod autogen {
     include!(concat!(env!("OUT_DIR"), "/autogen.rs"));
 }
 
+/// Represents memory size and offset values on a Vulkan device.
+/// Analogous to the Rust `usize` type on the host.
+pub use ash::vk::DeviceSize;
+
 /// Alternative to the `Deref` trait. Contrary to `Deref`, must always return the same object.
 pub unsafe trait SafeDeref: Deref {}
 unsafe impl<'a, T: ?Sized> SafeDeref for &'a T {}

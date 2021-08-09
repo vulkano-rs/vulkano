@@ -14,6 +14,7 @@ use crate::device::DeviceOwned;
 use crate::memory::Content;
 use crate::memory::DedicatedAlloc;
 use crate::memory::ExternalMemoryHandleType;
+use crate::DeviceSize;
 use crate::Error;
 use crate::OomError;
 use crate::Version;
@@ -76,7 +77,7 @@ unsafe impl ExtendsMemoryAllocateInfo for ash::vk::ImportMemoryFdInfoKHR {}
 pub struct DeviceMemory {
     memory: ash::vk::DeviceMemory,
     device: Arc<Device>,
-    size: usize,
+    size: DeviceSize,
     memory_type_index: u32,
     handle_types: ExternalMemoryHandleType,
     mapped: Mutex<bool>,
@@ -107,9 +108,13 @@ pub struct DeviceMemoryBuilder<'a> {
 impl<'a> DeviceMemoryBuilder<'a> {
     /// Returns a new `DeviceMemoryBuilder` given the required device, memory type and size fields.
     /// Validation of parameters is done when the builder is built.
-    pub fn new(device: Arc<Device>, memory_index: u32, size: usize) -> DeviceMemoryBuilder<'a> {
+    pub fn new(
+        device: Arc<Device>,
+        memory_index: u32,
+        size: DeviceSize,
+    ) -> DeviceMemoryBuilder<'a> {
         let allocate = ash::vk::MemoryAllocateInfo {
-            allocation_size: size as u64,
+            allocation_size: size,
             memory_type_index: memory_index,
             ..Default::default()
         };
@@ -269,7 +274,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         // VkPhysicalDeviceMemoryProperties::memoryTypes[pAllocateInfo->memoryTypeIndex].heapIndex as
         // returned by vkGetPhysicalDeviceMemoryProperties for the VkPhysicalDevice that device was created
         // from".
-        let reported_heap_size = memory_type.heap().size() as u64;
+        let reported_heap_size = memory_type.heap().size();
         if reported_heap_size != 0 && self.allocate.allocation_size > reported_heap_size {
             return Err(DeviceMemoryAllocError::SpecViolation(1713));
         }
@@ -358,7 +363,7 @@ impl<'a> DeviceMemoryBuilder<'a> {
         Ok(Arc::new(DeviceMemory {
             memory: memory,
             device: self.device,
-            size: self.allocate.allocation_size as usize,
+            size: self.allocate.allocation_size,
             memory_type_index: self.allocate.memory_type_index,
             handle_types: ExternalMemoryHandleType::from(export_handle_bits),
             mapped: Mutex::new(false),
@@ -381,7 +386,7 @@ impl DeviceMemory {
     pub fn alloc(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         let memory = DeviceMemoryBuilder::new(device, memory_type.id(), size).build()?;
         // Will never panic because we call the DeviceMemoryBuilder internally, and that only
@@ -400,7 +405,7 @@ impl DeviceMemory {
     pub fn dedicated_alloc(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
         resource: DedicatedAlloc,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         let memory = DeviceMemoryBuilder::new(device, memory_type.id(), size)
@@ -423,7 +428,7 @@ impl DeviceMemory {
     pub fn alloc_and_map(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
     ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         DeviceMemory::dedicated_alloc_and_map(device, memory_type, size, DedicatedAlloc::None)
     }
@@ -432,7 +437,7 @@ impl DeviceMemory {
     pub fn dedicated_alloc_and_map(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
         resource: DedicatedAlloc,
     ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         let fns = device.fns();
@@ -449,7 +454,7 @@ impl DeviceMemory {
     pub fn alloc_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         let memory = DeviceMemoryBuilder::new(device, memory_type.id(), size)
             .export_info(ExternalMemoryHandleType {
@@ -469,7 +474,7 @@ impl DeviceMemory {
     pub fn dedicated_alloc_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
         resource: DedicatedAlloc,
     ) -> Result<DeviceMemory, DeviceMemoryAllocError> {
         let memory = DeviceMemoryBuilder::new(device, memory_type.id(), size)
@@ -491,7 +496,7 @@ impl DeviceMemory {
     pub fn alloc_and_map_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
     ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         DeviceMemory::dedicated_alloc_and_map_with_exportable_fd(
             device,
@@ -507,7 +512,7 @@ impl DeviceMemory {
     pub fn dedicated_alloc_and_map_with_exportable_fd(
         device: Arc<Device>,
         memory_type: MemoryType,
-        size: usize,
+        size: DeviceSize,
         resource: DedicatedAlloc,
     ) -> Result<MappedDeviceMemory, DeviceMemoryAllocError> {
         let fns = device.fns();
@@ -535,7 +540,7 @@ impl DeviceMemory {
                 device.internal_object(),
                 mem.memory,
                 0,
-                mem.size as ash::vk::DeviceSize,
+                mem.size,
                 ash::vk::MemoryMapFlags::empty(),
                 output.as_mut_ptr(),
             ))?;
@@ -560,7 +565,7 @@ impl DeviceMemory {
 
     /// Returns the size in bytes of that memory chunk.
     #[inline]
-    pub fn size(&self) -> usize {
+    pub fn size(&self) -> DeviceSize {
         self.size
     }
 
@@ -727,22 +732,22 @@ impl MappedDeviceMemory {
     ///   the `MappedDeviceMemory`.
     ///
     #[inline]
-    pub unsafe fn read_write<T: ?Sized>(&self, range: Range<usize>) -> CpuAccess<T>
+    pub unsafe fn read_write<T: ?Sized>(&self, range: Range<DeviceSize>) -> CpuAccess<T>
     where
         T: Content,
     {
         let fns = self.memory.device().fns();
         let pointer = T::ref_from_ptr(
-            (self.pointer as usize + range.start) as *mut _,
-            range.end - range.start,
+            (self.pointer as usize + range.start as usize) as *mut _,
+            (range.end - range.start) as usize,
         )
         .unwrap(); // TODO: error
 
         if !self.coherent {
             let range = ash::vk::MappedMemoryRange {
                 memory: self.memory.internal_object(),
-                offset: range.start as u64,
-                size: (range.end - range.start) as u64,
+                offset: range.start,
+                size: range.end - range.start,
                 ..Default::default()
             };
 
@@ -759,7 +764,7 @@ impl MappedDeviceMemory {
             pointer: pointer,
             mem: self,
             coherent: self.coherent,
-            range: range,
+            range,
         }
     }
 }
@@ -814,8 +819,8 @@ impl DeviceMemoryMapping {
     pub fn new(
         device: Arc<Device>,
         memory: Arc<DeviceMemory>,
-        offset: u64,
-        size: u64,
+        offset: DeviceSize,
+        size: DeviceSize,
         flags: u32,
     ) -> Result<DeviceMemoryMapping, DeviceMemoryAllocError> {
         // VUID-vkMapMemory-memory-00678: "memory must not be currently host mapped".
@@ -826,7 +831,7 @@ impl DeviceMemoryMapping {
         }
 
         // VUID-vkMapMemory-offset-00679: "offset must be less than the size of memory"
-        if size != ash::vk::WHOLE_SIZE && offset >= memory.size() as u64 {
+        if size != ash::vk::WHOLE_SIZE && offset >= memory.size() {
             return Err(DeviceMemoryAllocError::SpecViolation(679));
         }
 
@@ -838,7 +843,7 @@ impl DeviceMemoryMapping {
 
         // VUID-vkMapMemory-size-00681: "If size is not equal to VK_WHOLE_SIZE, size must be less
         // than or equal to the size of the memory minus offset".
-        if size != ash::vk::WHOLE_SIZE && size > memory.size() as u64 - offset {
+        if size != ash::vk::WHOLE_SIZE && size > memory.size() - offset {
             return Err(DeviceMemoryAllocError::SpecViolation(681));
         }
 
@@ -877,7 +882,7 @@ impl DeviceMemoryMapping {
                 device.internal_object(),
                 memory.memory,
                 0,
-                memory.size as ash::vk::DeviceSize,
+                memory.size,
                 ash::vk::MemoryMapFlags::empty(),
                 output.as_mut_ptr(),
             ))?;
@@ -927,7 +932,7 @@ pub struct CpuAccess<'a, T: ?Sized + 'a> {
     pointer: *mut T,
     mem: &'a MappedDeviceMemory,
     coherent: bool,
-    range: Range<usize>,
+    range: Range<DeviceSize>,
 }
 
 impl<'a, T: ?Sized + 'a> CpuAccess<'a, T> {
@@ -979,8 +984,8 @@ impl<'a, T: ?Sized + 'a> Drop for CpuAccess<'a, T> {
 
             let range = ash::vk::MappedMemoryRange {
                 memory: self.mem.as_ref().internal_object(),
-                offset: self.range.start as u64,
-                size: (self.range.end - self.range.start) as u64,
+                offset: self.range.start,
+                size: self.range.end - self.range.start,
                 ..Default::default()
             };
 
