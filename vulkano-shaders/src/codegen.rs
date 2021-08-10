@@ -266,6 +266,10 @@ where
             }
         };
 
+        if dev_req.len() == 0 {
+            continue;
+        }
+
         let (conditions, messages): (Vec<_>, Vec<_>) = dev_req
             .iter()
             .map(|req| match req {
