@@ -455,6 +455,50 @@ impl<W> Surface<W> {
         }))
     }
 
+    /// Creates a `Surface` from a `CAMetalLayer`.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure that the `layer` is correct and stays alive for the entire
+    ///   lifetime of the surface. The `win` parameter can be used to ensure this.
+    pub unsafe fn from_metal_layer<T>(
+        instance: Arc<Instance>,
+        layer: *const T,
+        win: W,
+    ) -> Result<Arc<Surface<W>>, SurfaceCreationError> {
+        let fns = instance.fns();
+
+        if !instance.enabled_extensions().ext_metal_surface {
+            return Err(SurfaceCreationError::MissingExtension {
+                name: "VK_EXT_metal_surface",
+            });
+        }
+
+        let surface = {
+            let infos = ash::vk::MetalSurfaceCreateInfoEXT {
+                flags: ash::vk::MetalSurfaceCreateFlagsEXT::empty(),
+                p_layer: layer as *const _,
+                ..Default::default()
+            };
+
+            let mut output = MaybeUninit::uninit();
+            check_errors(fns.ext_metal_surface.create_metal_surface_ext(
+                instance.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))?;
+            output.assume_init()
+        };
+
+        Ok(Arc::new(Surface {
+            window: win,
+            instance: instance.clone(),
+            surface,
+            has_swapchain: AtomicBool::new(false),
+        }))
+    }
+
     /// Creates a `Surface` from a `code:nn::code:vi::code:Layer`.
     ///
     /// # Safety
