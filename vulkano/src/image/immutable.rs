@@ -100,7 +100,7 @@ impl SubImage {
             image,
             mip_levels_access,
             layer_levels_access,
-            layout: ImageLayout::ShaderReadOnlyOptimal,
+            layout,
         })
     }
 }
