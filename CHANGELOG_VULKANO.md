@@ -6,6 +6,8 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** The `draw` and `draw_indexed` commands on `AutoCommandBufferBuilder` now take parameters to explicitly specify the range of vertices and instances to draw.
+- **Breaking** `BufferlessDefinition` is removed.
 
 # Version 0.25.0 (2021-08-10)
 
