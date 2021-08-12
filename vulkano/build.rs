@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::{env, fs::File, io::BufWriter, path::Path};
+use std::{env, fs::File, io::BufWriter, path::Path, process::Command};
 
 mod autogen;
 
@@ -27,6 +27,11 @@ fn main() {
     // Write autogen.rs
     println!("cargo:rerun-if-changed=vk.xml");
     let path = Path::new(&env::var_os("OUT_DIR").unwrap()).join("autogen.rs");
-    let mut writer = BufWriter::new(File::create(path).unwrap());
-    autogen::write(&mut writer);
+
+    {
+        let mut writer = BufWriter::new(File::create(&path).unwrap());
+        autogen::write(&mut writer);
+    }
+
+    Command::new("rustfmt").arg(&path).status().ok();
 }

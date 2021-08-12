@@ -9,68 +9,118 @@
 
 use heck::SnakeCase;
 use indexmap::IndexMap;
+use proc_macro2::{Ident, TokenStream};
+use quote::{format_ident, quote};
 use regex::Regex;
 use std::{
     collections::{hash_map::Entry, HashMap},
-    io::Write,
+    fmt::Write as _,
 };
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
-pub fn write<W: Write>(
-    writer: &mut W,
+pub fn write(
     types: &HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&str, &Extension>,
-) {
-    write!(writer, "crate::device::properties::properties! {{").unwrap();
+) -> TokenStream {
+    let properties = write_properties(&make_properties(types));
+    let properties_ffi = write_properties_ffi(&make_properties_ffi(types, extensions));
 
-    for feat in make_vulkano_properties(&types) {
-        write!(writer, "\n\t{} => {{", feat.member).unwrap();
-        write_doc(writer, &feat);
-        write!(writer, "\n\t\tty: {},", feat.ty).unwrap();
-        write!(writer, "\n\t\tffi_name: {},", feat.ffi_name).unwrap();
-        write!(
-            writer,
-            "\n\t\tffi_members: [{}],",
-            feat.ffi_members.join(", ")
-        )
-        .unwrap();
-        write!(writer, "\n\t\trequired: {},", feat.required).unwrap();
-        write!(writer, "\n\t}},").unwrap();
+    quote! {
+        #properties
+        #properties_ffi
     }
-
-    write!(
-        writer,
-        "\n}}\n\ncrate::device::properties::properties_ffi! {{\n\tapi_version,\n\tdevice_extensions,\n\tinstance_extensions,"
-    )
-    .unwrap();
-
-    for ffi in make_vulkano_properties_ffi(types, extensions) {
-        write!(writer, "\n\t{} => {{", ffi.member).unwrap();
-        write!(writer, "\n\t\tty: {},", ffi.ty).unwrap();
-        write!(
-            writer,
-            "\n\t\tprovided_by: [{}],",
-            ffi.provided_by.join(", ")
-        )
-        .unwrap();
-        write!(writer, "\n\t\tconflicts: [{}],", ffi.conflicts.join(", ")).unwrap();
-        write!(writer, "\n\t}},").unwrap();
-    }
-
-    write!(writer, "\n}}").unwrap();
 }
 
 #[derive(Clone, Debug)]
-struct VulkanoProperty {
-    member: String,
-    ty: String,
-    vulkan_doc: String,
-    ffi_name: String,
-    ffi_members: Vec<String>,
-    required: bool,
+struct PropertiesMember {
+    name: Ident,
+    ty: TokenStream,
+    doc: String,
+    ffi_name: Ident,
+    ffi_members: Vec<(Ident, TokenStream)>,
+    optional: bool,
 }
 
-fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<VulkanoProperty> {
+fn write_properties(members: &[PropertiesMember]) -> TokenStream {
+    let struct_lines = members.iter().map(
+        |PropertiesMember {
+             name,
+             ty,
+             doc,
+             optional,
+             ..
+         }| {
+            if *optional {
+                quote! {
+                    #[doc = #doc]
+                    pub #name: Option<#ty>,
+                }
+            } else {
+                quote! {
+                    #[doc = #doc]
+                    pub #name: #ty,
+                }
+            }
+        },
+    );
+
+    let from_lines = members.iter().map(
+        |PropertiesMember {
+             name,
+             ty,
+             ffi_name,
+             ffi_members,
+             optional,
+             ..
+         }| {
+            if *optional {
+                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                    quote! { properties_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
+                });
+
+                quote! {
+                    #name: std::array::IntoIter::new([
+                        #(#ffi_members),*
+                    ]).flatten().next().and_then(|x| <#ty>::from_vulkan(x)),
+                }
+            } else {
+                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                    quote! { properties_ffi.#ffi_member #ffi_member_field .#ffi_name }
+                });
+
+                quote! {
+                    #name: std::array::IntoIter::new([
+                        #(#ffi_members),*
+                    ]).next().and_then(|x| <#ty>::from_vulkan(x)).unwrap(),
+                }
+            }
+        },
+    );
+
+    quote! {
+        /// Represents all the properties of a physical device.
+        ///
+        /// Depending on the highest version of Vulkan supported by the physical device, and the
+        /// available extensions, not every property may be available. For that reason, some
+        /// properties are wrapped in an `Option`.
+        #[derive(Clone, Debug, Default)]
+        pub struct Properties {
+            #(#struct_lines)*
+        }
+
+        impl From<&PropertiesFfi> for Properties {
+            fn from(properties_ffi: &PropertiesFfi) -> Self {
+                use crate::device::properties::FromVulkan;
+
+                Properties {
+                    #(#from_lines)*
+                }
+            }
+        }
+    }
+}
+
+fn make_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<PropertiesMember> {
     let mut properties = HashMap::new();
     std::array::IntoIter::new([
         &types["VkPhysicalDeviceProperties"],
@@ -87,19 +137,33 @@ fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Vul
     })
     .for_each(|(ty, _)| {
         let vulkan_ty_name = ty.name.as_ref().unwrap();
-        let required = vulkan_ty_name == "VkPhysicalDeviceProperties"
-            || vulkan_ty_name == "VkPhysicalDeviceLimits"
-            || vulkan_ty_name == "VkPhysicalDeviceSparseProperties"
-        ;
 
-        let ty_name = if vulkan_ty_name == "VkPhysicalDeviceProperties" {
-            "properties_vulkan10.properties".to_owned()
+        let (ty_name, optional) = if vulkan_ty_name == "VkPhysicalDeviceProperties" {
+            (
+                (format_ident!("properties_vulkan10"), quote! { .properties }),
+                false,
+            )
         } else if vulkan_ty_name == "VkPhysicalDeviceLimits" {
-            "properties_vulkan10.properties.limits".to_owned()
+            (
+                (
+                    format_ident!("properties_vulkan10"),
+                    quote! { .properties.limits },
+                ),
+                false,
+            )
         } else if vulkan_ty_name == "VkPhysicalDeviceSparseProperties" {
-            "properties_vulkan10.properties.sparse_properties".to_owned()
+            (
+                (
+                    format_ident!("properties_vulkan10"),
+                    quote! { .properties.sparse_properties },
+                ),
+                false,
+            )
         } else {
-            ffi_member(vulkan_ty_name)
+            (
+                (format_ident!("{}", ffi_member(vulkan_ty_name)), quote! {}),
+                true,
+            )
         };
 
         members(ty)
@@ -111,22 +175,24 @@ fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Vul
 
                 let vulkano_member = name.to_snake_case();
                 let vulkano_ty = match name {
-                    "apiVersion" => "crate::Version",
+                    "apiVersion" => quote! { crate::Version },
                     _ => vulkano_type(ty, len),
                 };
                 match properties.entry(vulkano_member.clone()) {
                     Entry::Vacant(entry) => {
-                        entry.insert(VulkanoProperty {
-                            member: vulkano_member.clone(),
-                            ty: vulkano_ty.to_owned(),
-                            vulkan_doc: format!("{}.html#limits-{}", vulkan_ty_name, name),
-                            ffi_name: vulkano_member,
-                            ffi_members: vec![ty_name.to_owned()],
-                            required: required,
-                        });
+                        let mut member = PropertiesMember {
+                            name: format_ident!("{}", vulkano_member),
+                            ty: vulkano_ty,
+                            doc: String::new(),
+                            ffi_name: format_ident!("{}", vulkano_member),
+                            ffi_members: vec![ty_name.clone()],
+                            optional,
+                        };
+                        make_doc(&mut member, vulkan_ty_name);
+                        entry.insert(member);
                     }
                     Entry::Occupied(entry) => {
-                        entry.into_mut().ffi_members.push(ty_name.to_owned());
+                        entry.into_mut().ffi_members.push(ty_name.clone());
                     }
                 };
             });
@@ -134,7 +200,7 @@ fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Vul
 
     let mut names: Vec<_> = properties
         .values()
-        .map(|feat| feat.member.clone())
+        .map(|prop| prop.name.to_string())
         .collect();
     names.sort_unstable();
     names
@@ -143,26 +209,77 @@ fn make_vulkano_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<Vul
         .collect()
 }
 
-fn write_doc<W>(writer: &mut W, feat: &VulkanoProperty)
-where
-    W: Write,
-{
-    write!(writer, "\n\t\tdoc: \"\n\t\t\t- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/{})", feat.vulkan_doc).unwrap();
-    write!(writer, "\n\t\t\",").unwrap();
+fn make_doc(prop: &mut PropertiesMember, vulkan_ty_name: &str) {
+    let writer = &mut prop.doc;
+    write!(writer, "- [Vulkan documentation](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/{}.html#limits-{})", vulkan_ty_name, prop.name).unwrap();
 }
 
 #[derive(Clone, Debug)]
-struct VulkanoPropertyFfi {
-    member: String,
-    ty: String,
-    provided_by: Vec<String>,
-    conflicts: Vec<String>,
+struct PropertiesFfiMember {
+    name: Ident,
+    ty: Ident,
+    provided_by: Vec<TokenStream>,
+    conflicts: Vec<Ident>,
 }
 
-fn make_vulkano_properties_ffi<'a>(
+fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
+    let struct_lines = members.iter().map(|PropertiesFfiMember { name, ty, .. }| {
+        quote! { #name: Option<ash::vk::#ty>, }
+    });
+
+    let make_chain_lines = members.iter().map(
+        |PropertiesFfiMember {
+             name,
+             provided_by,
+             conflicts,
+             ..
+         }| {
+            quote! {
+                if std::array::IntoIter::new([#(#provided_by),*]).any(|x| x) &&
+                    std::array::IntoIter::new([#(self.#conflicts.is_none()),*]).all(|x| x) {
+                    self.#name = Some(Default::default());
+                    let member = self.#name.as_mut().unwrap();
+                    member.p_next = head.p_next;
+                    head.p_next = member as *mut _ as _;
+                }
+            }
+        },
+    );
+
+    quote! {
+        #[derive(Default)]
+        pub struct PropertiesFfi {
+            properties_vulkan10: ash::vk::PhysicalDeviceProperties2KHR,
+            #(#struct_lines)*
+        }
+
+        impl PropertiesFfi {
+            pub(crate) fn make_chain(
+                &mut self,
+                api_version: crate::Version,
+                device_extensions: &crate::device::DeviceExtensions,
+                instance_extensions: &crate::instance::InstanceExtensions,
+            ) {
+                self.properties_vulkan10 = Default::default();
+                let head = &mut self.properties_vulkan10;
+                #(#make_chain_lines)*
+            }
+
+            pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceProperties2KHR {
+                &self.properties_vulkan10
+            }
+
+            pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceProperties2KHR {
+                &mut self.properties_vulkan10
+            }
+        }
+    }
+}
+
+fn make_properties_ffi<'a>(
     types: &'a HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&'a str, &Extension>,
-) -> Vec<VulkanoPropertyFfi> {
+) -> Vec<PropertiesFfiMember> {
     let mut property_included_in: HashMap<&str, Vec<&str>> = HashMap::new();
     sorted_structs(types)
         .into_iter()
@@ -172,16 +289,22 @@ fn make_vulkano_properties_ffi<'a>(
                 .iter()
                 .map(|provided_by| {
                     if let Some(version) = provided_by.strip_prefix("VK_VERSION_") {
-                        format!("api_version >= crate::Version::V{}", version)
+                        let version = format_ident!("V{}", version);
+                        quote! { api_version >= crate::Version::#version }
                     } else {
-                        format!(
-                            "{}_extensions.{}",
-                            extensions[provided_by].ext_type.as_ref().unwrap().as_str(),
+                        let member = format_ident!(
+                            "{}_extensions",
+                            extensions[provided_by].ext_type.as_ref().unwrap().as_str()
+                        );
+                        let name = format_ident!(
+                            "{}",
                             provided_by
                                 .strip_prefix("VK_")
                                 .unwrap()
-                                .to_ascii_lowercase()
-                        )
+                                .to_ascii_lowercase(),
+                        );
+
+                        quote! { #member.#name }
                     }
                 })
                 .collect();
@@ -204,11 +327,14 @@ fn make_vulkano_properties_ffi<'a>(
                 }
             });
 
-            VulkanoPropertyFfi {
-                member: ffi_member(ty_name),
-                ty: ty_name.strip_prefix("Vk").unwrap().to_owned(),
+            PropertiesFfiMember {
+                name: format_ident!("{}", ffi_member(ty_name)),
+                ty: format_ident!("{}", ty_name.strip_prefix("Vk").unwrap()),
                 provided_by,
-                conflicts,
+                conflicts: conflicts
+                    .into_iter()
+                    .map(|s| format_ident!("{}", s))
+                    .collect(),
             }
         })
         .collect()
@@ -315,42 +441,44 @@ fn members(ty: &Type) -> Vec<Member> {
     }
 }
 
-fn vulkano_type(ty: &str, len: Option<&str>) -> &'static str {
+fn vulkano_type(ty: &str, len: Option<&str>) -> TokenStream {
     if let Some(len) = len {
         match ty {
-            "char" => "String",
-            "uint8_t" if len == "VK_LUID_SIZE" => "[u8; 8]",
-            "uint8_t" if len == "VK_UUID_SIZE" => "[u8; 16]",
-            "uint32_t" if len == "2" => "[u32; 2]",
-            "uint32_t" if len == "3" => "[u32; 3]",
-            "float" if len == "2" => "[f32; 2]",
+            "char" => quote! { String },
+            "uint8_t" if len == "VK_LUID_SIZE" => quote! { [u8; 8] },
+            "uint8_t" if len == "VK_UUID_SIZE" => quote! { [u8; 16] },
+            "uint32_t" if len == "2" => quote! { [u32; 2] },
+            "uint32_t" if len == "3" => quote! { [u32; 3] },
+            "float" if len == "2" => quote! { [f32; 2] },
             _ => unimplemented!("{}[{}]", ty, len),
         }
     } else {
         match ty {
-            "float" => "f32",
-            "int32_t" => "i32",
-            "int64_t" => "i64",
-            "size_t" => "usize",
-            "uint8_t" => "u8",
-            "uint32_t" => "u32",
-            "uint64_t" => "u64",
-            "VkBool32" => "bool",
-            "VkConformanceVersion" => "crate::device::physical::ConformanceVersion",
-            "VkDeviceSize" => "crate::DeviceSize",
-            "VkDriverId" => "crate::device::physical::DriverId",
-            "VkExtent2D" => "[u32; 2]",
-            "VkPhysicalDeviceType" => "crate::device::physical::PhysicalDeviceType",
-            "VkPointClippingBehavior" => "crate::device::physical::PointClippingBehavior",
-            "VkResolveModeFlags" => "crate::render_pass::ResolveModes",
-            "VkSampleCountFlags" => "crate::image::SampleCounts",
-            "VkSampleCountFlagBits" => "crate::image::SampleCount",
-            "VkShaderCorePropertiesFlagsAMD" => "crate::device::physical::ShaderCoreProperties",
-            "VkShaderFloatControlsIndependence" => {
-                "crate::device::physical::ShaderFloatControlsIndependence"
+            "float" => quote! { f32 },
+            "int32_t" => quote! { i32 },
+            "int64_t" => quote! { i64 },
+            "size_t" => quote! { usize },
+            "uint8_t" => quote! { u8 },
+            "uint32_t" => quote! { u32 },
+            "uint64_t" => quote! { u64 },
+            "VkBool32" => quote! { bool },
+            "VkConformanceVersion" => quote! { crate::device::physical::ConformanceVersion },
+            "VkDeviceSize" => quote! { crate::DeviceSize },
+            "VkDriverId" => quote! { crate::device::physical::DriverId },
+            "VkExtent2D" => quote! { [u32; 2] },
+            "VkPhysicalDeviceType" => quote! { crate::device::physical::PhysicalDeviceType },
+            "VkPointClippingBehavior" => quote! { crate::device::physical::PointClippingBehavior },
+            "VkResolveModeFlags" => quote! { crate::render_pass::ResolveModes },
+            "VkSampleCountFlags" => quote! { crate::image::SampleCounts },
+            "VkSampleCountFlagBits" => quote! { crate::image::SampleCount },
+            "VkShaderCorePropertiesFlagsAMD" => {
+                quote! { crate::device::physical::ShaderCoreProperties }
             }
-            "VkShaderStageFlags" => "crate::pipeline::shader::ShaderStages",
-            "VkSubgroupFeatureFlags" => "crate::device::physical::SubgroupFeatures",
+            "VkShaderFloatControlsIndependence" => {
+                quote! { crate::device::physical::ShaderFloatControlsIndependence }
+            }
+            "VkShaderStageFlags" => quote! { crate::pipeline::shader::ShaderStages },
+            "VkSubgroupFeatureFlags" => quote! { crate::device::physical::SubgroupFeatures },
             _ => unimplemented!("{}", ty),
         }
     }
