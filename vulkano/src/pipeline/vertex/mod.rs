@@ -64,9 +64,9 @@
 //! ```
 
 pub use self::buffers::BuffersDefinition;
+pub use self::collection::VertexBuffersCollection;
 pub use self::definition::IncompatibleVertexDefinitionError;
 pub use self::definition::VertexDefinition;
-pub use self::definition::VertexSource;
 pub use self::impl_vertex::VertexMember;
 pub use self::vertex::Vertex;
 pub use self::vertex::VertexMemberInfo;
@@ -78,6 +78,7 @@ use fnv::FnvHashMap;
 use std::convert::TryInto;
 
 mod buffers;
+mod collection;
 mod definition;
 mod impl_vertex;
 mod vertex;

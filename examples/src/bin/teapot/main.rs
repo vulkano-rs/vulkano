@@ -271,7 +271,7 @@ fn main() {
                         0,
                         pipeline.clone(),
                         &DynamicState::none(),
-                        vec![vertex_buffer.clone(), normals_buffer.clone()],
+                        (vertex_buffer.clone(), normals_buffer.clone()),
                         index_buffer.clone(),
                         set.clone(),
                         (),

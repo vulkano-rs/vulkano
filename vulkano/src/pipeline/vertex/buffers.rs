@@ -8,7 +8,6 @@
 // according to those terms.
 
 use super::VertexMemberInfo;
-use crate::buffer::BufferAccess;
 use crate::pipeline::shader::ShaderInterface;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::Vertex;
@@ -17,10 +16,8 @@ use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::vertex::VertexInputAttribute;
 use crate::pipeline::vertex::VertexInputBinding;
 use crate::pipeline::vertex::VertexInputRate;
-use crate::pipeline::vertex::VertexSource;
 use crate::DeviceSize;
 use std::mem;
-use std::sync::Arc;
 
 /// A vertex definition for any number of vertex and instance buffers.
 #[derive(Clone, Default)]
@@ -149,86 +146,5 @@ unsafe impl VertexDefinition for BuffersDefinition {
         }
 
         Ok(VertexInput::new(bindings, attributes))
-    }
-}
-
-unsafe impl VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> for BuffersDefinition {
-    #[inline]
-    fn decode(
-        &self,
-        source: Vec<Arc<dyn BufferAccess + Send + Sync>>,
-    ) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        let result = source
-            .into_iter()
-            .map(|source| Box::new(source) as Box<_>)
-            .collect::<Vec<_>>();
-        let (vertices, instances) = self.vertices_instances(&result);
-        (result, vertices, instances)
-    }
-}
-
-unsafe impl<B> VertexSource<B> for BuffersDefinition
-where
-    B: BufferAccess + Send + Sync + 'static,
-{
-    #[inline]
-    fn decode(&self, source: B) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        let result = vec![Box::new(source) as Box<_>];
-        let (vertices, instances) = self.vertices_instances(&result);
-        (result, vertices, instances)
-    }
-}
-
-unsafe impl<B1, B2> VertexSource<(B1, B2)> for BuffersDefinition
-where
-    B1: BufferAccess + Send + Sync + 'static,
-    B2: BufferAccess + Send + Sync + 'static,
-{
-    #[inline]
-    fn decode(&self, source: (B1, B2)) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        let result = vec![Box::new(source.0) as Box<_>, Box::new(source.1) as Box<_>];
-        let (vertices, instances) = self.vertices_instances(&result);
-        (result, vertices, instances)
-    }
-}
-
-impl BuffersDefinition {
-    fn vertices_instances(&self, source: &[Box<dyn BufferAccess + Send + Sync>]) -> (usize, usize) {
-        assert_eq!(source.len(), self.0.len());
-        let mut vertices = None;
-        let mut instances = None;
-
-        for (buffer, source) in self.0.iter().zip(source) {
-            let items = (source.size() / buffer.stride as DeviceSize) as usize;
-            let (items, count) = match buffer.input_rate {
-                VertexInputRate::Vertex => (items, &mut vertices),
-                VertexInputRate::Instance { divisor } => (
-                    if divisor == 0 {
-                        // A divisor of 0 means the same instance data is used for all instances,
-                        // so we can draw any number of instances from a single element.
-                        // The buffer must contain at least one element though.
-                        if items == 0 {
-                            0
-                        } else {
-                            usize::MAX
-                        }
-                    } else {
-                        // If divisor is 2, we use only half the amount of data from the source buffer,
-                        // so the number of instances that can be drawn is twice as large.
-                        items * divisor as usize
-                    },
-                    &mut instances,
-                ),
-            };
-
-            if let Some(count) = count {
-                *count = std::cmp::min(*count, items);
-            } else {
-                *count = Some(items);
-            }
-        }
-
-        // TODO: find some way to let the user specify these when drawing
-        (vertices.unwrap_or(1), instances.unwrap_or(1))
     }
 }

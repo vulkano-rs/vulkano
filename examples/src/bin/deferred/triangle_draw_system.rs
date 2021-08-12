@@ -103,7 +103,7 @@ impl TriangleDrawSystem {
                     }]),
                     ..DynamicState::none()
                 },
-                vec![self.vertex_buffer.clone()],
+                self.vertex_buffer.clone(),
                 (),
                 (),
             )

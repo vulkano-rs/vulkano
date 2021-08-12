@@ -53,7 +53,7 @@ use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::input_assembly::Index;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::vertex::VertexSource;
+use crate::pipeline::vertex::VertexBuffersCollection;
 use crate::pipeline::ComputePipelineAbstract;
 use crate::pipeline::GraphicsPipelineAbstract;
 use crate::pipeline::PipelineBindPoint;
@@ -1061,7 +1061,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DispatchError>
     where
-        Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        Cp: ComputePipelineAbstract + Send + Sync + 'static,
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1076,18 +1076,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
             check_dispatch(pipeline.device(), group_counts)?;
 
+            let pipeline_layout = pipeline.layout().clone();
+
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
             {
-                self.inner.bind_pipeline_compute(pipeline.clone());
+                self.inner.bind_pipeline_compute(pipeline);
             }
 
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            set_push_constants(&mut self.inner, &pipeline_layout, push_constants);
             bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Compute,
-                pipeline.layout(),
+                &pipeline_layout,
                 descriptor_sets,
             )?;
 
@@ -1112,7 +1114,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Send
             + Sync
             + 'static,
-        Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        Cp: ComputePipelineAbstract + Send + Sync + 'static,
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1127,18 +1129,20 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_push_constants_validity(pipeline.layout(), &push_constants)?;
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
 
+            let pipeline_layout = pipeline.layout().clone();
+
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_compute_pipeline(&pipeline)
             {
-                self.inner.bind_pipeline_compute(pipeline.clone());
+                self.inner.bind_pipeline_compute(pipeline);
             }
 
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            set_push_constants(&mut self.inner, &pipeline_layout, push_constants);
             bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Compute,
-                pipeline.layout(),
+                &pipeline_layout,
                 descriptor_sets,
             )?;
 
@@ -1154,7 +1158,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for the draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(
+    pub fn draw<Gp, V, S, Pc>(
         &mut self,
         vertex_count: u32,
         instance_count: u32,
@@ -1167,11 +1171,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
+        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
+        V: VertexBuffersCollection,
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
-        let vertex_buffers = pipeline.decode(vertex_buffers).0;
+        let vertex_buffers = vertex_buffers.into_vec();
 
         let (max_vertex_count, max_instance_count) =
             pipeline.vertex_input().max_vertices_instances(
@@ -1223,21 +1228,23 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
             check_vertex_buffers(&pipeline, &vertex_buffers)?;
 
+            let pipeline_layout = pipeline.layout().clone();
+
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
             {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
+                self.inner.bind_pipeline_graphics(pipeline);
             }
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            set_push_constants(&mut self.inner, &pipeline_layout, push_constants);
             set_state(&mut self.inner, &dynamic);
             bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
-                pipeline.layout(),
+                &pipeline_layout,
                 descriptor_sets,
             )?;
             bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
@@ -1265,7 +1272,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for every draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Inb>(
+    pub fn draw_indirect<Gp, V, Inb, S, Pc>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
@@ -1275,16 +1282,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
+        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
+        V: VertexBuffersCollection,
         Inb: BufferAccess
             + TypedBufferAccess<Content = [DrawIndirectCommand]>
             + Send
             + Sync
             + 'static,
+        S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
-        let vertex_buffers = pipeline.decode(vertex_buffers).0;
+        let vertex_buffers = vertex_buffers.into_vec();
 
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1313,21 +1321,23 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 );
             }
 
+            let pipeline_layout = pipeline.layout().clone();
+
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
             {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
+                self.inner.bind_pipeline_graphics(pipeline);
             }
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            set_push_constants(&mut self.inner, &pipeline_layout, push_constants);
             set_state(&mut self.inner, &dynamic);
             bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
-                pipeline.layout(),
+                &pipeline_layout,
                 descriptor_sets,
             )?;
             bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
@@ -1352,7 +1362,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for the draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
+    pub fn draw_indexed<Gp, V, Ib, I, S, Pc>(
         &mut self,
         index_count: u32,
         instance_count: u32,
@@ -1367,13 +1377,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
+        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
+        V: VertexBuffersCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
+        S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
-        let vertex_buffers = pipeline.decode(vertex_buffers).0;
+        let vertex_buffers = vertex_buffers.into_vec();
 
         let (max_vertex_count, max_instance_count) =
             pipeline.vertex_input().max_vertices_instances(
@@ -1427,29 +1438,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
             check_vertex_buffers(&pipeline, &vertex_buffers)?;
 
-            if let Some(multiview) = pipeline.subpass().render_pass().desc().multiview() {
-                let max_instance_index = pipeline
-                    .device()
-                    .physical_device()
-                    .properties()
-                    .max_multiview_instance_index
-                    .unwrap_or(0);
-
-                // vulkano currently always uses `0` as the first instance which means the highest
-                // used index will just be `instance_count - 1`
-                if instance_count > max_instance_index + 1 {
-                    return Err(CheckVertexBufferError::TooManyInstances {
-                        instance_count,
-                        max_instance_count: max_instance_index + 1,
-                    }
-                    .into());
-                }
-            }
+            let pipeline_layout = pipeline.layout().clone();
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
             {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
+                self.inner.bind_pipeline_graphics(pipeline);
             }
 
             if let StateCacherOutcome::NeedChange =
@@ -1460,13 +1454,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            set_push_constants(&mut self.inner, &pipeline_layout, push_constants);
             set_state(&mut self.inner, &dynamic);
             bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
-                pipeline.layout(),
+                &pipeline_layout,
                 descriptor_sets,
             )?;
             bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
@@ -1501,7 +1495,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for every draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(
+    pub fn draw_indexed_indirect<Gp, V, Ib, I, Inb, S, Pc>(
         &mut self,
         pipeline: Gp,
         dynamic: &DynamicState,
@@ -1512,18 +1506,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
+        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
+        V: VertexBuffersCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+        I: Index + 'static,
         Inb: BufferAccess
             + TypedBufferAccess<Content = [DrawIndexedIndirectCommand]>
             + Send
             + Sync
             + 'static,
-        I: Index + 'static,
+        S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
-        let vertex_buffers = pipeline.decode(vertex_buffers).0;
+        let vertex_buffers = vertex_buffers.into_vec();
 
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1553,10 +1548,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 );
             }
 
+            let pipeline_layout = pipeline.layout().clone();
+
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
             {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
+                self.inner.bind_pipeline_graphics(pipeline);
             }
 
             if let StateCacherOutcome::NeedChange =
@@ -1567,13 +1564,13 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let dynamic = self.state_cacher.dynamic_state(dynamic);
 
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
+            set_push_constants(&mut self.inner, &pipeline_layout, push_constants);
             set_state(&mut self.inner, &dynamic);
             bind_descriptor_sets(
                 &mut self.inner,
                 &mut self.state_cacher,
                 PipelineBindPoint::Graphics,
-                pipeline.layout(),
+                &pipeline_layout,
                 descriptor_sets,
             )?;
             bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;

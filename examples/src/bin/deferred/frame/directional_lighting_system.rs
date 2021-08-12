@@ -174,7 +174,7 @@ impl DirectionalLightingSystem {
                 0,
                 self.pipeline.clone(),
                 &dynamic_state,
-                vec![self.vertex_buffer.clone()],
+                self.vertex_buffer.clone(),
                 descriptor_set,
                 push_constants,
             )

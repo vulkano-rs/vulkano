@@ -9,7 +9,6 @@
 
 pub use self::builder::GraphicsPipelineBuilder;
 pub use self::creation_error::GraphicsPipelineCreationError;
-use crate::buffer::BufferAccess;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayout;
@@ -18,7 +17,6 @@ use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
 use crate::pipeline::vertex::VertexDefinition;
 use crate::pipeline::vertex::VertexInput;
-use crate::pipeline::vertex::VertexSource;
 use crate::render_pass::RenderPass;
 use crate::render_pass::Subpass;
 use crate::SafeDeref;
@@ -198,9 +196,7 @@ impl Drop for Inner {
 /// object.
 /// When using this trait `AutoCommandBufferBuilder::draw*` calls will need the buffers to be
 /// wrapped in a `vec!()`.
-pub unsafe trait GraphicsPipelineAbstract:
-    VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>> + DeviceOwned
-{
+pub unsafe trait GraphicsPipelineAbstract: DeviceOwned {
     /// Returns an opaque object that represents the inside of the graphics pipeline.
     fn inner(&self) -> GraphicsPipelineSys;
 
@@ -238,10 +234,7 @@ pub unsafe trait GraphicsPipelineAbstract:
     fn has_dynamic_stencil_reference(&self) -> bool;
 }
 
-unsafe impl<Mv> GraphicsPipelineAbstract for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
+unsafe impl<Mv> GraphicsPipelineAbstract for GraphicsPipeline<Mv> {
     #[inline]
     fn inner(&self) -> GraphicsPipelineSys {
         GraphicsPipelineSys(self.inner.pipeline, PhantomData)
@@ -370,23 +363,16 @@ where
     }
 }
 
-impl<Mv> PartialEq for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
+impl<Mv> PartialEq for GraphicsPipeline<Mv> {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner == other.inner
     }
 }
 
-impl<Mv> Eq for GraphicsPipeline<Mv> where Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>
-{}
+impl<Mv> Eq for GraphicsPipeline<Mv> {}
 
-impl<Mv> Hash for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<Vec<Arc<dyn BufferAccess + Send + Sync>>>,
-{
+impl<Mv> Hash for GraphicsPipeline<Mv> {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
@@ -434,15 +420,5 @@ where
         interface: &ShaderInterface,
     ) -> Result<VertexInput, IncompatibleVertexDefinitionError> {
         self.vertex_definition.definition(interface)
-    }
-}
-
-unsafe impl<Mv, S> VertexSource<S> for GraphicsPipeline<Mv>
-where
-    Mv: VertexSource<S>,
-{
-    #[inline]
-    fn decode(&self, s: S) -> (Vec<Box<dyn BufferAccess + Send + Sync>>, usize, usize) {
-        self.vertex_definition.decode(s)
     }
 }
