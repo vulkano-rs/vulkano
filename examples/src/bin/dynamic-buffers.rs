@@ -26,7 +26,6 @@ use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::layout::PipelineLayout;
 use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::ComputePipeline;
-use vulkano::pipeline::ComputePipelineAbstract;
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::OomError;

@@ -54,8 +54,8 @@ use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::input_assembly::Index;
 use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::vertex::VertexBuffersCollection;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
@@ -457,13 +457,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     #[inline]
-    fn ensure_inside_render_pass_inline<Gp>(
+    fn ensure_inside_render_pass_inline(
         &self,
-        pipeline: &Gp,
-    ) -> Result<(), AutoCommandBufferBuilderContextError>
-    where
-        Gp: ?Sized + GraphicsPipelineAbstract,
-    {
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
             .as_ref()
@@ -1053,15 +1050,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform a single compute operation using a compute pipeline.
     #[inline]
-    pub fn dispatch<Cp, S, Pc>(
+    pub fn dispatch<S, Pc>(
         &mut self,
         group_counts: [u32; 3],
-        pipeline: Cp,
+        pipeline: Arc<ComputePipeline>,
         descriptor_sets: S,
         push_constants: Pc,
     ) -> Result<&mut Self, DispatchError>
     where
-        Cp: ComputePipelineAbstract + Send + Sync + 'static,
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1101,10 +1097,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
     /// each `vulkano::command_buffer::DispatchIndirectCommand` struct in `indirect_buffer`.
     #[inline]
-    pub fn dispatch_indirect<Inb, Cp, S, Pc>(
+    pub fn dispatch_indirect<Inb, S, Pc>(
         &mut self,
         indirect_buffer: Inb,
-        pipeline: Cp,
+        pipeline: Arc<ComputePipeline>,
         descriptor_sets: S,
         push_constants: Pc,
     ) -> Result<&mut Self, DispatchIndirectError>
@@ -1114,7 +1110,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Send
             + Sync
             + 'static,
-        Cp: ComputePipelineAbstract + Send + Sync + 'static,
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
@@ -1158,20 +1153,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for the draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<Gp, V, S, Pc>(
+    pub fn draw<V, S, Pc>(
         &mut self,
         vertex_count: u32,
         instance_count: u32,
         first_vertex: u32,
         first_instance: u32,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         descriptor_sets: S,
         push_constants: Pc,
     ) -> Result<&mut Self, DrawError>
     where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
         V: VertexBuffersCollection,
         S: DescriptorSetsCollection,
     {
@@ -1272,9 +1266,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for every draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<Gp, V, Inb, S, Pc>(
+    pub fn draw_indirect<V, Inb, S, Pc>(
         &mut self,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         indirect_buffer: Inb,
@@ -1282,7 +1276,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
         V: VertexBuffersCollection,
         Inb: BufferAccess
             + TypedBufferAccess<Content = [DrawIndirectCommand]>
@@ -1362,14 +1355,14 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for the draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<Gp, V, Ib, I, S, Pc>(
+    pub fn draw_indexed<V, Ib, I, S, Pc>(
         &mut self,
         index_count: u32,
         instance_count: u32,
         first_index: u32,
         vertex_offset: i32,
         first_instance: u32,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         index_buffer: Ib,
@@ -1377,7 +1370,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedError>
     where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
         V: VertexBuffersCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
@@ -1495,9 +1487,9 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for every draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed_indirect<Gp, V, Ib, I, Inb, S, Pc>(
+    pub fn draw_indexed_indirect<V, Ib, I, Inb, S, Pc>(
         &mut self,
-        pipeline: Gp,
+        pipeline: Arc<GraphicsPipeline>,
         dynamic: &DynamicState,
         vertex_buffers: V,
         index_buffer: Ib,
@@ -1506,7 +1498,6 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
         V: VertexBuffersCollection,
         Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         I: Index + 'static,
