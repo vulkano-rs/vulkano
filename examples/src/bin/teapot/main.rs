@@ -13,6 +13,7 @@ use std::iter;
 use std::sync::Arc;
 use std::time::Instant;
 use vulkano::buffer::cpu_pool::CpuBufferPool;
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
@@ -263,6 +264,11 @@ fn main() {
                     )
                     .unwrap()
                     .draw_indexed(
+                        index_buffer.len() as u32,
+                        1,
+                        0,
+                        0,
+                        0,
                         pipeline.clone(),
                         &DynamicState::none(),
                         vec![vertex_buffer.clone(), normals_buffer.clone()],

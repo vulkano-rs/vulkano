@@ -17,7 +17,7 @@
 // what a vertex or a shader is.
 
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
@@ -490,6 +490,10 @@ fn main() {
                     // The last two parameters contain the list of resources to pass to the shaders.
                     // Since we used an `EmptyPipeline` object, the objects have to be `()`.
                     .draw(
+                        vertex_buffer.len() as u32,
+                        1,
+                        0,
+                        0,
                         pipeline.clone(),
                         &dynamic_state,
                         vertex_buffer.clone(),

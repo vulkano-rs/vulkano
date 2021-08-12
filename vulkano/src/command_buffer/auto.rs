@@ -79,6 +79,7 @@ use crate::DeviceSize;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
 use fnv::FnvHashMap;
+use std::convert::TryInto;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -1155,6 +1156,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn draw<V, Gp, S, Pc>(
         &mut self,
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffers: V,
@@ -1166,6 +1171,48 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         S: DescriptorSetsCollection,
     {
         let descriptor_sets = descriptor_sets.into_vec();
+        let vertex_buffers = pipeline.decode(vertex_buffers).0;
+
+        let (max_vertex_count, max_instance_count) =
+            pipeline.vertex_input().max_vertices_instances(
+                vertex_buffers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (i as u32, v as _)),
+            );
+
+        if first_vertex + vertex_count > max_vertex_count {
+            return Err(CheckVertexBufferError::TooManyVertices {
+                vertex_count,
+                max_vertex_count,
+            }
+            .into());
+        }
+
+        if first_instance + instance_count > max_instance_count {
+            return Err(CheckVertexBufferError::TooManyInstances {
+                instance_count,
+                max_instance_count,
+            }
+            .into());
+        }
+
+        if let Some(multiview) = pipeline.subpass().render_pass().desc().multiview() {
+            let max_instance_index = pipeline
+                .device()
+                .physical_device()
+                .properties()
+                .max_multiview_instance_index
+                .unwrap_or(0);
+
+            if first_instance + instance_count > max_instance_index + 1 {
+                return Err(CheckVertexBufferError::TooManyInstances {
+                    instance_count,
+                    max_instance_count: max_instance_index + 1, // TODO: this can overflow
+                }
+                .into());
+            }
+        }
 
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1174,7 +1221,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(pipeline.layout(), &push_constants)?;
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
+            check_vertex_buffers(&pipeline, &vertex_buffers)?;
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1193,20 +1240,12 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 pipeline.layout(),
                 descriptor_sets,
             )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
+            bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
 
             debug_assert!(self.queue_family().supports_graphics());
 
-            self.inner.draw(
-                vb_infos.vertex_count as u32,
-                vb_infos.instance_count as u32,
-                0,
-                0,
-            );
+            self.inner
+                .draw(vertex_count, instance_count, first_vertex, first_instance);
             Ok(self)
         }
     }
@@ -1245,6 +1284,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + 'static,
     {
         let descriptor_sets = descriptor_sets.into_vec();
+        let vertex_buffers = pipeline.decode(vertex_buffers).0;
 
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
@@ -1254,7 +1294,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(pipeline.layout(), &push_constants)?;
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
+            check_vertex_buffers(&pipeline, &vertex_buffers)?;
 
             let requested = indirect_buffer.len() as u32;
             let limit = self
@@ -1290,11 +1330,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 pipeline.layout(),
                 descriptor_sets,
             )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
+            bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
 
             debug_assert!(self.queue_family().supports_graphics());
 
@@ -1318,6 +1354,11 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
         &mut self,
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
         pipeline: Gp,
         dynamic: &DynamicState,
         vertex_buffers: V,
@@ -1332,16 +1373,78 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         I: Index + 'static,
     {
         let descriptor_sets = descriptor_sets.into_vec();
+        let vertex_buffers = pipeline.decode(vertex_buffers).0;
+
+        let (max_vertex_count, max_instance_count) =
+            pipeline.vertex_input().max_vertices_instances(
+                vertex_buffers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| (i as u32, v as _)),
+            );
+        let max_index_count = index_buffer.len().try_into().unwrap_or(u32::MAX);
+
+        if first_index + index_count > max_index_count {
+            return Err(CheckVertexBufferError::TooManyIndices {
+                index_count,
+                max_index_count,
+            }
+            .into());
+        }
+
+        if first_instance + instance_count > max_instance_count {
+            return Err(CheckVertexBufferError::TooManyInstances {
+                instance_count,
+                max_instance_count,
+            }
+            .into());
+        }
+
+        if let Some(multiview) = pipeline.subpass().render_pass().desc().multiview() {
+            let max_instance_index = pipeline
+                .device()
+                .physical_device()
+                .properties()
+                .max_multiview_instance_index
+                .unwrap_or(0);
+
+            if first_instance + instance_count > max_instance_index + 1 {
+                return Err(CheckVertexBufferError::TooManyInstances {
+                    instance_count,
+                    max_instance_count: max_instance_index + 1, // TODO: this can overflow
+                }
+                .into());
+            }
+        }
 
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
+            check_index_buffer(self.device(), &index_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(pipeline.layout(), &push_constants)?;
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
+            check_vertex_buffers(&pipeline, &vertex_buffers)?;
+
+            if let Some(multiview) = pipeline.subpass().render_pass().desc().multiview() {
+                let max_instance_index = pipeline
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_multiview_instance_index
+                    .unwrap_or(0);
+
+                // vulkano currently always uses `0` as the first instance which means the highest
+                // used index will just be `instance_count - 1`
+                if instance_count > max_instance_index + 1 {
+                    return Err(CheckVertexBufferError::TooManyInstances {
+                        instance_count,
+                        max_instance_count: max_instance_index + 1,
+                    }
+                    .into());
+                }
+            }
 
             if let StateCacherOutcome::NeedChange =
                 self.state_cacher.bind_graphics_pipeline(&pipeline)
@@ -1366,21 +1469,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 pipeline.layout(),
                 descriptor_sets,
             )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
+            bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
             // TODO: how to handle an index out of range of the vertex buffers?
 
             debug_assert!(self.queue_family().supports_graphics());
 
             self.inner.draw_indexed(
-                ib_infos.num_indices as u32,
-                vb_infos.instance_count as u32,
-                0,
-                0,
-                0,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
             );
             Ok(self)
         }
@@ -1424,17 +1523,18 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
         I: Index + 'static,
     {
         let descriptor_sets = descriptor_sets.into_vec();
+        let vertex_buffers = pipeline.decode(vertex_buffers).0;
 
         unsafe {
             // TODO: must check that pipeline is compatible with render pass
 
             self.ensure_inside_render_pass_inline(&pipeline)?;
-            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
+            check_index_buffer(self.device(), &index_buffer)?;
             check_indirect_buffer(self.device(), &indirect_buffer)?;
             check_dynamic_state_validity(&pipeline, dynamic)?;
             check_push_constants_validity(pipeline.layout(), &push_constants)?;
             check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
+            check_vertex_buffers(&pipeline, &vertex_buffers)?;
 
             let requested = indirect_buffer.len() as u32;
             let limit = self
@@ -1476,11 +1576,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 pipeline.layout(),
                 descriptor_sets,
             )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
+            bind_vertex_buffers(&mut self.inner, &mut self.state_cacher, vertex_buffers)?;
 
             debug_assert!(self.queue_family().supports_graphics());
 

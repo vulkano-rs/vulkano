@@ -19,7 +19,7 @@ extern crate vulkano_win;
 extern crate winit;
 
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
@@ -334,6 +334,10 @@ fn main() {
                     )
                     .unwrap()
                     .draw(
+                        triangle_vertex_buffer.len() as u32,
+                        instance_data_buffer.len() as u32,
+                        0,
+                        0,
                         pipeline.clone(),
                         &dynamic_state,
                         // We pass both our lists of vertices here.

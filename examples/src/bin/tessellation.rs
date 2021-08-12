@@ -19,7 +19,7 @@
 // *    tessellation_shaders(..), patch_list(3) and polygon_mode_line() are called on the pipeline builder
 
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
 };
@@ -367,6 +367,10 @@ fn main() {
                 )
                 .unwrap()
                 .draw(
+                    vertex_buffer.len() as u32,
+                    1,
+                    0,
+                    0,
                     pipeline.clone(),
                     &dynamic_state,
                     vertex_buffer.clone(),

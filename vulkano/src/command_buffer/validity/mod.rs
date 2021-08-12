@@ -21,7 +21,7 @@ pub use self::descriptor_sets::{check_descriptor_sets_validity, CheckDescriptorS
 pub use self::dispatch::{check_dispatch, CheckDispatchError};
 pub use self::dynamic_state::{check_dynamic_state_validity, CheckDynamicStateValidityError};
 pub use self::fill_buffer::{check_fill_buffer, CheckFillBufferError};
-pub use self::index_buffer::{check_index_buffer, CheckIndexBuffer, CheckIndexBufferError};
+pub use self::index_buffer::{check_index_buffer, CheckIndexBufferError};
 pub use self::indirect_buffer::{check_indirect_buffer, CheckIndirectBufferError};
 pub use self::push_constants::{check_push_constants_validity, CheckPushConstantsValidityError};
 pub use self::query::{
@@ -30,7 +30,7 @@ pub use self::query::{
     CheckEndQueryError, CheckResetQueryPoolError, CheckWriteTimestampError,
 };
 pub use self::update_buffer::{check_update_buffer, CheckUpdateBufferError};
-pub use self::vertex_buffers::{check_vertex_buffers, CheckVertexBuffer, CheckVertexBufferError};
+pub use self::vertex_buffers::{check_vertex_buffers, CheckVertexBufferError};
 
 mod blit_image;
 mod clear_color_image;

@@ -63,8 +63,6 @@
 //! # }
 //! ```
 
-pub use self::bufferless::BufferlessDefinition;
-pub use self::bufferless::BufferlessVertices;
 pub use self::buffers::BuffersDefinition;
 pub use self::definition::IncompatibleVertexDefinitionError;
 pub use self::definition::VertexDefinition;
@@ -79,7 +77,6 @@ use crate::DeviceSize;
 use fnv::FnvHashMap;
 use std::convert::TryInto;
 
-mod bufferless;
 mod buffers;
 mod definition;
 mod impl_vertex;
