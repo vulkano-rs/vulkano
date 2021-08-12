@@ -41,17 +41,17 @@ fn write_fns(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
         .chain(extension_members.iter().cloned())
         .collect::<Vec<_>>();
 
-    let struct_lines = members.iter().map(|FnsMember { name, fn_struct }| {
+    let struct_items = members.iter().map(|FnsMember { name, fn_struct }| {
         quote! { pub #name: ash::vk::#fn_struct, }
     });
 
-    let load_lines = members.iter().map(|FnsMember { name, fn_struct }| {
+    let load_items = members.iter().map(|FnsMember { name, fn_struct }| {
         quote! { #name: ash::vk::#fn_struct::load(&mut load_fn), }
     });
 
     quote! {
         pub struct #struct_name {
-            #(#struct_lines)*
+            #(#struct_items)*
         }
 
         impl #struct_name {
@@ -59,7 +59,7 @@ fn write_fns(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
                 where F: FnMut(&std::ffi::CStr) -> *const std::ffi::c_void
             {
                 #struct_name {
-                    #(#load_lines)*
+                    #(#load_items)*
                 }
             }
         }

@@ -69,7 +69,7 @@ enum ExtensionStatus {
 fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
     let common = write_extensions_common(format_ident!("DeviceExtensions"), members);
 
-    let check_requirements_lines = members.iter().map(|ExtensionsMember {
+    let check_requirements_items = members.iter().map(|ExtensionsMember {
         name,
         requires_core,
         requires_device_extensions,
@@ -80,7 +80,7 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
     }| {
         let name_string = name.to_string();
         let requires_core = format_ident!("V{}_{}", requires_core.0, requires_core.1);
-        let requires_device_extensions_lines = requires_device_extensions.iter().map(|extension| {
+        let requires_device_extensions_items = requires_device_extensions.iter().map(|extension| {
             let string = extension.to_string();
             quote! {
                 if !self.#extension {
@@ -91,7 +91,7 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
                 }
             }
         });
-        let requires_instance_extensions_lines = requires_instance_extensions.iter().map(|extension| {
+        let requires_instance_extensions_items = requires_instance_extensions.iter().map(|extension| {
             let string = extension.to_string();
             quote! {
                 if !instance_extensions.#extension {
@@ -102,7 +102,7 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
                 }
             }
         });
-        let conflicts_device_extensions_lines = conflicts_device_extensions.iter().map(|extension| {
+        let conflicts_device_extensions_items = conflicts_device_extensions.iter().map(|extension| {
             let string = extension.to_string();
             quote! {
                 if self.#extension {
@@ -142,16 +142,16 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
                     });
                 }
 
-                #(#requires_device_extensions_lines)*
-                #(#requires_instance_extensions_lines)*
-                #(#conflicts_device_extensions_lines)*
+                #(#requires_device_extensions_items)*
+                #(#requires_instance_extensions_items)*
+                #(#conflicts_device_extensions_items)*
             } else {
                 #required_if_supported
             }
         }
     });
 
-    let required_if_supported_extensions_lines = members.iter().map(
+    let required_if_supported_extensions_items = members.iter().map(
         |ExtensionsMember {
              name,
              required_if_supported,
@@ -174,13 +174,13 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
                 api_version: crate::Version,
                 instance_extensions: &InstanceExtensions,
             ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
-                #(#check_requirements_lines)*
+                #(#check_requirements_items)*
                 Ok(())
             }
 
             pub(crate) fn required_if_supported_extensions() -> Self {
                 Self {
-                    #(#required_if_supported_extensions_lines)*
+                    #(#required_if_supported_extensions_items)*
                     _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
@@ -191,10 +191,10 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
 fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
     let common = write_extensions_common(format_ident!("InstanceExtensions"), members);
 
-    let check_requirements_lines = members.iter().map(|ExtensionsMember { name, requires_core, requires_instance_extensions, .. }| {
+    let check_requirements_items = members.iter().map(|ExtensionsMember { name, requires_core, requires_instance_extensions, .. }| {
         let name_string = name.to_string();
         let requires_core = format_ident!("V{}_{}", requires_core.0, requires_core.1);
-        let requires_instance_extensions_lines = requires_instance_extensions.iter().map(|extension| {
+        let requires_instance_extensions_items = requires_instance_extensions.iter().map(|extension| {
             let string = extension.to_string();
             quote! {
                 if !self.#extension {
@@ -221,7 +221,7 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
                         restriction: crate::extensions::ExtensionRestriction::RequiresCore(crate::Version::#requires_core),
                     });
                 } else {
-                    #(#requires_instance_extensions_lines)*
+                    #(#requires_instance_extensions_items)*
                 }
             }
         }
@@ -237,7 +237,7 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
                 supported: &InstanceExtensions,
                 api_version: crate::Version,
             ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
-                #(#check_requirements_lines)*
+                #(#check_requirements_items)*
                 Ok(())
             }
         }
@@ -245,44 +245,44 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
 }
 
 fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> TokenStream {
-    let struct_lines = members.iter().map(|ExtensionsMember { name, doc, .. }| {
+    let struct_items = members.iter().map(|ExtensionsMember { name, doc, .. }| {
         quote! {
             #[doc = #doc]
             pub #name: bool,
         }
     });
 
-    let none_lines = members.iter().map(|ExtensionsMember { name, .. }| {
+    let none_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: false,
         }
     });
 
-    let is_superset_of_lines = members.iter().map(|ExtensionsMember { name, .. }| {
+    let is_superset_of_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             (self.#name || !other.#name)
         }
     });
 
-    let union_lines = members.iter().map(|ExtensionsMember { name, .. }| {
+    let union_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: self.#name || other.#name,
         }
     });
 
-    let intersection_lines = members.iter().map(|ExtensionsMember { name, .. }| {
+    let intersection_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: self.#name && other.#name,
         }
     });
 
-    let difference_lines = members.iter().map(|ExtensionsMember { name, .. }| {
+    let difference_items = members.iter().map(|ExtensionsMember { name, .. }| {
         quote! {
             #name: self.#name && !other.#name,
         }
     });
 
-    let debug_lines = members.iter().map(|ExtensionsMember { name, raw, .. }| {
+    let debug_items = members.iter().map(|ExtensionsMember { name, raw, .. }| {
         quote! {
             if self.#name {
                 if !first { write!(f, ", ")? }
@@ -292,7 +292,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
         }
     });
 
-    let from_cstr_for_extensions_lines =
+    let from_cstr_for_extensions_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             let raw = Literal::byte_string(raw.as_bytes());
             quote! {
@@ -300,7 +300,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             }
         });
 
-    let from_extensions_for_vec_cstring_lines =
+    let from_extensions_for_vec_cstring_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             quote! {
                 if x.#name { data.push(std::ffi::CString::new(&#raw[..]).unwrap()); }
@@ -311,7 +311,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
         /// List of extensions that are enabled or available.
         #[derive(Copy, Clone, PartialEq, Eq)]
         pub struct #struct_name {
-            #(#struct_lines)*
+            #(#struct_items)*
 
             /// This field ensures that an instance of this `Extensions` struct
             /// can only be created through Vulkano functions and the update
@@ -325,7 +325,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             #[inline]
             pub const fn none() -> Self {
                 Self {
-                    #(#none_lines)*
+                    #(#none_items)*
                     _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
@@ -335,14 +335,14 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             /// That is, for each extension of the parameter that is true, the corresponding value
             /// in self is true as well.
             pub fn is_superset_of(&self, other: &Self) -> bool {
-                #(#is_superset_of_lines)&&*
+                #(#is_superset_of_items)&&*
             }
 
             /// Returns the union of this list and another list.
             #[inline]
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
-                    #(#union_lines)*
+                    #(#union_items)*
                     _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
@@ -351,7 +351,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             #[inline]
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
-                    #(#intersection_lines)*
+                    #(#intersection_items)*
                     _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
@@ -360,7 +360,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             #[inline]
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
-                    #(#difference_lines)*
+                    #(#difference_items)*
                     _unbuildable: crate::extensions::Unbuildable(())
                 }
             }
@@ -372,7 +372,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
                 write!(f, "[")?;
 
                 let mut first = true;
-                #(#debug_lines)*
+                #(#debug_items)*
 
                 write!(f, "]")
             }
@@ -383,7 +383,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
                 let mut extensions = Self::none();
                 for name in names {
                     match name.to_bytes() {
-                        #(#from_cstr_for_extensions_lines)*
+                        #(#from_cstr_for_extensions_items)*
                         _ => (),
                     }
                 }
@@ -394,7 +394,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
         impl<'a> From<&'a #struct_name> for Vec<std::ffi::CString> {
             fn from(x: &'a #struct_name) -> Self {
                 let mut data = Self::new();
-                #(#from_extensions_for_vec_cstring_lines)*
+                #(#from_extensions_for_vec_cstring_items)*
                 data
             }
         }

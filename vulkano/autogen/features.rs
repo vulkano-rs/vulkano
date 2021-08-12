@@ -85,14 +85,14 @@ struct FeaturesMember {
 }
 
 fn write_features(members: &[FeaturesMember]) -> TokenStream {
-    let struct_lines = members.iter().map(|FeaturesMember { name, doc, .. }| {
+    let struct_items = members.iter().map(|FeaturesMember { name, doc, .. }| {
         quote! {
             #[doc = #doc]
             pub #name: bool,
         }
     });
 
-    let check_requirements_lines = members.iter().map(
+    let check_requirements_items = members.iter().map(
         |FeaturesMember {
              name,
              requires_features,
@@ -101,7 +101,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
              ..
          }| {
             let name_string = name.to_string();
-            let requires_features_lines = requires_features.iter().map(|feature| {
+            let requires_features_items = requires_features.iter().map(|feature| {
                 let string = feature.to_string();
                 quote! {
                     if !self.#feature {
@@ -112,7 +112,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                     }
                 }
             });
-            let conflicts_features_lines = conflicts_features.iter().map(|feature| {
+            let conflicts_features_items = conflicts_features.iter().map(|feature| {
                 let string = feature.to_string();
                 quote! {
                     if self.#feature {
@@ -123,7 +123,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                     }
                 }
             });
-            let required_by_extensions_lines = required_by_extensions.iter().map(|extension| {
+            let required_by_extensions_items = required_by_extensions.iter().map(|extension| {
                 let string = extension.to_string();
                 quote! {
                     if extensions.#extension {
@@ -143,46 +143,46 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                         });
                     }
 
-                    #(#requires_features_lines)*
-                    #(#conflicts_features_lines)*
+                    #(#requires_features_items)*
+                    #(#conflicts_features_items)*
                 } else {
-                    #(#required_by_extensions_lines)*
+                    #(#required_by_extensions_items)*
                 }
             }
         },
     );
 
-    let none_lines = members.iter().map(|FeaturesMember { name, .. }| {
+    let none_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: false,
         }
     });
 
-    let all_lines = members.iter().map(|FeaturesMember { name, .. }| {
+    let all_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: true,
         }
     });
 
-    let is_superset_of_lines = members.iter().map(|FeaturesMember { name, .. }| {
+    let is_superset_of_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             (self.#name || !other.#name)
         }
     });
 
-    let intersection_lines = members.iter().map(|FeaturesMember { name, .. }| {
+    let intersection_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: self.#name && other.#name,
         }
     });
 
-    let difference_lines = members.iter().map(|FeaturesMember { name, .. }| {
+    let difference_items = members.iter().map(|FeaturesMember { name, .. }| {
         quote! {
             #name: self.#name && !other.#name,
         }
     });
 
-    let write_lines = members.iter().map(
+    let write_items = members.iter().map(
         |FeaturesMember {
              name,
              ffi_name,
@@ -200,7 +200,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
         },
     );
 
-    let from_lines = members.iter().map(
+    let from_items = members.iter().map(
         |FeaturesMember {
              name,
              ffi_name,
@@ -251,7 +251,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
         ///
         #[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
         pub struct Features {
-            #(#struct_lines)*
+            #(#struct_items)*
         }
 
         impl Features {
@@ -263,14 +263,14 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                 crate::Version,
                 extensions: &crate::device::DeviceExtensions,
             ) -> Result<(), crate::device::features::FeatureRestrictionError> {
-                #(#check_requirements_lines)*
+                #(#check_requirements_items)*
                 Ok(())
             }
 
             /// Builds a `Features` object with all values to false.
             pub const fn none() -> Features {
                 Features {
-                    #(#none_lines)*
+                    #(#none_items)*
                 }
             }
 
@@ -280,7 +280,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
             /// > a real code.
             pub const fn all() -> Features {
                 Features {
-                    #(#all_lines)*
+                    #(#all_items)*
                 }
             }
 
@@ -289,7 +289,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
             /// That is, for each feature of the parameter that is true, the corresponding value
             /// in self is true as well.
             pub const fn is_superset_of(&self, other: &Features) -> bool {
-                #(#is_superset_of_lines)&&*
+                #(#is_superset_of_items)&&*
             }
 
             /// Builds a `Features` that is the intersection of `self` and another `Features`
@@ -298,7 +298,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
             /// The result's field will be true if it is also true in both `self` and `other`.
             pub const fn intersection(&self, other: &Features) -> Features {
                 Features {
-                    #(#intersection_lines)*
+                    #(#intersection_items)*
                 }
             }
 
@@ -307,21 +307,21 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
             /// The result's field will be true if it is true in `self` but not `other`.
             pub const fn difference(&self, other: &Features) -> Features {
                 Features {
-                    #(#difference_lines)*
+                    #(#difference_items)*
                 }
             }
         }
 
         impl FeaturesFfi {
             pub(crate) fn write(&mut self, features: &Features) {
-                #(#write_lines)*
+                #(#write_items)*
             }
         }
 
         impl From<&FeaturesFfi> for Features {
             fn from(features_ffi: &FeaturesFfi) -> Self {
                 Features {
-                    #(#from_lines)*
+                    #(#from_items)*
                 }
             }
         }
@@ -470,11 +470,11 @@ struct FeaturesFfiMember {
 }
 
 fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
-    let struct_lines = members.iter().map(|FeaturesFfiMember { name, ty, .. }| {
+    let struct_items = members.iter().map(|FeaturesFfiMember { name, ty, .. }| {
         quote! { #name: Option<ash::vk::#ty>, }
     });
 
-    let make_chain_lines = members.iter().map(
+    let make_chain_items = members.iter().map(
         |FeaturesFfiMember {
              name,
              provided_by,
@@ -497,7 +497,7 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
         #[derive(Default)]
         pub struct FeaturesFfi {
             features_vulkan10: Option<ash::vk::PhysicalDeviceFeatures2KHR>,
-            #(#struct_lines)*
+            #(#struct_items)*
         }
 
         impl FeaturesFfi {
@@ -509,7 +509,7 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
             ) {
                 self.features_vulkan10 = Some(Default::default());
                 let head = self.features_vulkan10.as_mut().unwrap();
-                #(#make_chain_lines)*
+                #(#make_chain_items)*
             }
 
             pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceFeatures2KHR {

@@ -42,7 +42,7 @@ struct PropertiesMember {
 }
 
 fn write_properties(members: &[PropertiesMember]) -> TokenStream {
-    let struct_lines = members.iter().map(
+    let struct_items = members.iter().map(
         |PropertiesMember {
              name,
              ty,
@@ -64,7 +64,7 @@ fn write_properties(members: &[PropertiesMember]) -> TokenStream {
         },
     );
 
-    let from_lines = members.iter().map(
+    let from_items = members.iter().map(
         |PropertiesMember {
              name,
              ty,
@@ -105,7 +105,7 @@ fn write_properties(members: &[PropertiesMember]) -> TokenStream {
         /// properties are wrapped in an `Option`.
         #[derive(Clone, Debug, Default)]
         pub struct Properties {
-            #(#struct_lines)*
+            #(#struct_items)*
         }
 
         impl From<&PropertiesFfi> for Properties {
@@ -113,7 +113,7 @@ fn write_properties(members: &[PropertiesMember]) -> TokenStream {
                 use crate::device::properties::FromVulkan;
 
                 Properties {
-                    #(#from_lines)*
+                    #(#from_items)*
                 }
             }
         }
@@ -223,11 +223,11 @@ struct PropertiesFfiMember {
 }
 
 fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
-    let struct_lines = members.iter().map(|PropertiesFfiMember { name, ty, .. }| {
+    let struct_items = members.iter().map(|PropertiesFfiMember { name, ty, .. }| {
         quote! { #name: Option<ash::vk::#ty>, }
     });
 
-    let make_chain_lines = members.iter().map(
+    let make_chain_items = members.iter().map(
         |PropertiesFfiMember {
              name,
              provided_by,
@@ -250,7 +250,7 @@ fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
         #[derive(Default)]
         pub struct PropertiesFfi {
             properties_vulkan10: ash::vk::PhysicalDeviceProperties2KHR,
-            #(#struct_lines)*
+            #(#struct_items)*
         }
 
         impl PropertiesFfi {
@@ -262,7 +262,7 @@ fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
             ) {
                 self.properties_vulkan10 = Default::default();
                 let head = &mut self.properties_vulkan10;
-                #(#make_chain_lines)*
+                #(#make_chain_items)*
             }
 
             pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceProperties2KHR {
