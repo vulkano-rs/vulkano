@@ -539,9 +539,9 @@ pub enum PhysicalDeviceType {
 
 /// VkPhysicalDeviceType::Other is represented as 0
 impl Default for PhysicalDeviceType {
-  fn default() -> Self {
-    PhysicalDeviceType::Other
-  }
+    fn default() -> Self {
+        PhysicalDeviceType::Other
+    }
 }
 
 impl TryFrom<ash::vk::PhysicalDeviceType> for PhysicalDeviceType {

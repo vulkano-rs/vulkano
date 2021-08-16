@@ -16,67 +16,7 @@ use crate::instance::loader::LoadingError;
 use std::ffi::CStr;
 use std::ptr;
 
-macro_rules! instance_extensions {
-    (
-        $($member:ident => {
-            doc: $doc:expr,
-            raw: $raw:expr,
-            requires_core: $requires_core:expr,
-            requires_instance_extensions: [$($requires_instance_extension:ident),*]$(,)?
-        },)*
-    ) => (
-        extensions! {
-            InstanceExtensions,
-            $($member => {
-                doc: $doc,
-                raw: $raw,
-                requires_core: $requires_core,
-                requires_device_extensions: [],
-                requires_instance_extensions: [$($requires_instance_extension),*],
-            },)*
-        }
-
-        impl InstanceExtensions {
-            /// Checks enabled extensions against the instance version and each other.
-            pub(super) fn check_requirements(
-                &self,
-                supported: &InstanceExtensions,
-                api_version: crate::Version,
-            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
-                $(
-                    if self.$member {
-                        if !supported.$member {
-                            return Err(crate::extensions::ExtensionRestrictionError {
-                                extension: stringify!($member),
-                                restriction: crate::extensions::ExtensionRestriction::NotSupported,
-                            });
-                        }
-
-                        if api_version < $requires_core {
-                            return Err(crate::extensions::ExtensionRestrictionError {
-                                extension: stringify!($member),
-                                restriction: crate::extensions::ExtensionRestriction::RequiresCore($requires_core),
-                            });
-                        } else {
-                            $(
-                                if !self.$requires_instance_extension {
-                                    return Err(crate::extensions::ExtensionRestrictionError {
-                                        extension: stringify!($member),
-                                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(stringify!($requires_instance_extension)),
-                                    });
-                                }
-                            )*
-                        }
-                    }
-                )*
-                Ok(())
-            }
-        }
-    );
-}
-
 pub use crate::autogen::InstanceExtensions;
-pub(crate) use instance_extensions;
 
 impl InstanceExtensions {
     /// See the docs of supported_by_core().
