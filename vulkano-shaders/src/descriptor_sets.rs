@@ -544,6 +544,20 @@ fn descriptor_infos(
                     let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
                     Some((desc, readonly, len))
                 }
+
+                &Instruction::TypeRuntimeArray {
+                    result_id,
+                    type_id,
+                } if result_id == pointed_ty => {
+                    let (desc, readonly, arr) =
+                        match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
+                            None => return None,
+                            Some(v) => v,
+                        };
+                    assert_eq!(arr, 1); // TODO: implement?
+                    Some((desc, readonly, 0))
+                }
+
                 _ => None, // TODO: other types
             }
         })

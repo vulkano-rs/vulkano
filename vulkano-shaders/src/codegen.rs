@@ -573,11 +573,13 @@ fn capability_requirement(cap: &Capability) -> DeviceRequirement {
         Capability::FragmentDensityEXT => todo!(),
         Capability::GroupNonUniformPartitionedNV => todo!(),
         Capability::ShaderNonUniform => todo!(),
-        Capability::RuntimeDescriptorArray => todo!(),
+        Capability::RuntimeDescriptorArray =>
+            DeviceRequirement::Features(&["runtime_descriptor_array"]),
         Capability::InputAttachmentArrayDynamicIndexing => todo!(),
         Capability::UniformTexelBufferArrayDynamicIndexing => todo!(),
         Capability::StorageTexelBufferArrayDynamicIndexing => todo!(),
-        Capability::UniformBufferArrayNonUniformIndexing => todo!(),
+        Capability::UniformBufferArrayNonUniformIndexing =>
+            DeviceRequirement::Features(&["shader_uniform_buffer_array_non_uniform_indexing"]),
         Capability::SampledImageArrayNonUniformIndexing => todo!(),
         Capability::StorageBufferArrayNonUniformIndexing => todo!(),
         Capability::StorageImageArrayNonUniformIndexing => todo!(),
