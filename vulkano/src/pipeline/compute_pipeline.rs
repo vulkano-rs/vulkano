@@ -19,7 +19,6 @@ use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::Error;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -193,57 +192,24 @@ impl ComputePipeline {
             pipeline_layout: pipeline_layout,
         })
     }
+
+    /// Returns the `Device` this compute pipeline was created with.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+
+    /// Returns the pipeline layout used in this compute pipeline.
+    #[inline]
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.pipeline_layout
+    }
 }
 
 impl fmt::Debug for ComputePipeline {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(fmt, "<Vulkan compute pipeline {:?}>", self.inner.pipeline)
-    }
-}
-
-impl ComputePipeline {
-    /// Returns the `Device` this compute pipeline was created with.
-    #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.inner.device
-    }
-}
-
-/// Trait implemented on all compute pipelines.
-pub unsafe trait ComputePipelineAbstract: DeviceOwned {
-    /// Returns an opaque object that represents the inside of the compute pipeline.
-    fn inner(&self) -> ComputePipelineSys;
-
-    /// Returns the pipeline layout used in this compute pipeline.
-    fn layout(&self) -> &Arc<PipelineLayout>;
-}
-
-unsafe impl ComputePipelineAbstract for ComputePipeline {
-    #[inline]
-    fn inner(&self) -> ComputePipelineSys {
-        ComputePipelineSys(self.inner.pipeline, PhantomData)
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
-        &self.pipeline_layout
-    }
-}
-
-unsafe impl<T> ComputePipelineAbstract for T
-where
-    T: SafeDeref,
-    T::Target: ComputePipelineAbstract,
-{
-    #[inline]
-    fn inner(&self) -> ComputePipelineSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
-        (**self).layout()
     }
 }
 
@@ -387,7 +353,6 @@ mod tests {
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
-    use crate::pipeline::ComputePipelineAbstract;
     use crate::sync::now;
     use crate::sync::GpuFuture;
     use std::ffi::CStr;

@@ -138,7 +138,7 @@ where
     pub fn build(
         self,
         device: Arc<Device>,
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         self.with_auto_layout(device, &[])
     }
 
@@ -150,7 +150,7 @@ where
         self,
         device: Arc<Device>,
         dynamic_buffers: &[(usize, usize)],
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         let (descriptor_set_layout_descs, push_constant_ranges) = {
             let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
@@ -229,7 +229,7 @@ where
         mut self,
         device: Arc<Device>,
         pipeline_layout: Arc<PipelineLayout>,
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
 
         let fns = device.fns();
@@ -1213,7 +1213,6 @@ where
             },
             layout: pipeline_layout,
             subpass: self.subpass.take().unwrap(),
-            vertex_definition: self.vertex_definition,
             vertex_input,
 
             dynamic_line_width: self.raster.line_width.is_none(),

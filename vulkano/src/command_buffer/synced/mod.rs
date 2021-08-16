@@ -80,7 +80,7 @@ use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
-use crate::pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract};
+use crate::pipeline::{ComputePipeline, GraphicsPipeline};
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlags;
@@ -496,11 +496,11 @@ trait Command {
         panic!()
     }
 
-    fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
+    fn bound_pipeline_compute(&self) -> &Arc<ComputePipeline> {
         panic!()
     }
 
-    fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
+    fn bound_pipeline_graphics(&self) -> &Arc<GraphicsPipeline> {
         panic!()
     }
 

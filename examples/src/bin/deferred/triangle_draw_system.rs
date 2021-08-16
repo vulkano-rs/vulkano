@@ -7,24 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SecondaryAutoCommandBuffer,
 };
 use vulkano::device::Queue;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
-
-use std::sync::Arc;
-use vulkano::buffer::TypedBufferAccess;
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<GraphicsPipeline>,
 }
 
 impl TriangleDrawSystem {
@@ -103,7 +101,7 @@ impl TriangleDrawSystem {
                     }]),
                     ..DynamicState::none()
                 },
-                vec![self.vertex_buffer.clone()],
+                self.vertex_buffer.clone(),
                 (),
                 (),
             )

@@ -76,11 +76,9 @@
 #![allow(deprecated)]
 
 pub use self::compute_pipeline::ComputePipeline;
-pub use self::compute_pipeline::ComputePipelineAbstract;
 pub use self::compute_pipeline::ComputePipelineCreationError;
 pub use self::compute_pipeline::ComputePipelineSys;
 pub use self::graphics_pipeline::GraphicsPipeline;
-pub use self::graphics_pipeline::GraphicsPipelineAbstract;
 pub use self::graphics_pipeline::GraphicsPipelineBuilder;
 pub use self::graphics_pipeline::GraphicsPipelineCreationError;
 pub use self::graphics_pipeline::GraphicsPipelineSys;

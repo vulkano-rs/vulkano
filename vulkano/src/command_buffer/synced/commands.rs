@@ -37,8 +37,8 @@ use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::vertex::VertexInput;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPool;
@@ -246,18 +246,12 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_compute<Cp>(&mut self, pipeline: Cp)
-    where
-        Cp: ComputePipelineAbstract + Send + Sync + 'static,
-    {
-        struct Cmd<Gp> {
-            pipeline: Gp,
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) {
+        struct Cmd {
+            pipeline: Arc<ComputePipeline>,
         }
 
-        impl<Gp> Command for Cmd<Gp>
-        where
-            Gp: ComputePipelineAbstract + Send + Sync + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBindPipeline"
             }
@@ -266,7 +260,7 @@ impl SyncCommandBufferBuilder {
                 out.bind_pipeline_compute(&self.pipeline);
             }
 
-            fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
+            fn bound_pipeline_compute(&self) -> &Arc<ComputePipeline> {
                 &self.pipeline
             }
         }
@@ -277,18 +271,12 @@ impl SyncCommandBufferBuilder {
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: Gp)
-    where
-        Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
-    {
-        struct Cmd<Gp> {
-            pipeline: Gp,
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) {
+        struct Cmd {
+            pipeline: Arc<GraphicsPipeline>,
         }
 
-        impl<Gp> Command for Cmd<Gp>
-        where
-            Gp: GraphicsPipelineAbstract + Send + Sync + 'static,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdBindPipeline"
             }
@@ -297,7 +285,7 @@ impl SyncCommandBufferBuilder {
                 out.bind_pipeline_graphics(&self.pipeline);
             }
 
-            fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
+            fn bound_pipeline_graphics(&self) -> &Arc<GraphicsPipeline> {
                 &self.pipeline
             }
         }

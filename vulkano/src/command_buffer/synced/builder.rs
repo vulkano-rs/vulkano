@@ -27,7 +27,7 @@ use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
-use crate::pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract, PipelineBindPoint};
+use crate::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
@@ -627,7 +627,7 @@ impl SyncCommandBufferBuilder {
     }
 
     /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
-    pub(crate) fn bound_pipeline_compute(&self) -> Option<&dyn ComputePipelineAbstract> {
+    pub(crate) fn bound_pipeline_compute(&self) -> Option<&Arc<ComputePipeline>> {
         self.bindings
             .pipeline_compute
             .as_ref()
@@ -635,7 +635,7 @@ impl SyncCommandBufferBuilder {
     }
 
     /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
-    pub(crate) fn bound_pipeline_graphics(&self) -> Option<&dyn GraphicsPipelineAbstract> {
+    pub(crate) fn bound_pipeline_graphics(&self) -> Option<&Arc<GraphicsPipeline>> {
         self.bindings
             .pipeline_graphics
             .as_ref()
