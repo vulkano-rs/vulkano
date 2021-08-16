@@ -97,6 +97,7 @@ pub mod layout;
 pub mod persistent;
 pub mod pool;
 pub mod sys;
+pub mod runtime;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
 ///
