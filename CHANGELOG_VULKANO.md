@@ -11,6 +11,7 @@
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
+- The full Rust code is now generated from vk.xml by autogen directly, instead of using intermediate macros.
 
 # Version 0.25.0 (2021-08-10)
 
