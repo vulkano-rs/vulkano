@@ -1,10 +1,11 @@
 mod bound;
+mod builder;
 pub mod persistent;
-pub mod builder;
 
 use crate::descriptor_set::layout::DescriptorImageDescDimensions;
 use crate::descriptor_set::persistent::{MissingBufferUsage, MissingImageUsage};
 use crate::format::Format;
+use crate::OomError;
 
 pub enum RuntimeDescriptorSetError {
     /// Builder is already within an array.
@@ -82,4 +83,16 @@ pub enum RuntimeDescriptorSetError {
 
     /// The image view isn't compatible with the sampler.
     IncompatibleImageViewSampler,
+
+    /// The builder has previously return an error and is an unknown state.
+    BuilderPoisoned,
+
+    /// Out of memory
+    OomError(OomError),
+}
+
+impl From<OomError> for RuntimeDescriptorSetError {
+    fn from(error: OomError) -> Self {
+        Self::OomError(error)
+    }
 }

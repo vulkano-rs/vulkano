@@ -5,6 +5,7 @@ use crate::descriptor_set::layout::DescriptorDescTy;
 use crate::descriptor_set::layout::DescriptorImageDesc;
 use crate::descriptor_set::layout::DescriptorImageDescArray;
 use crate::descriptor_set::layout::DescriptorImageDescDimensions;
+use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::sys::DescriptorWrite;
 use crate::descriptor_set::BufferAccess;
 use crate::descriptor_set::DescriptorSetLayout;
@@ -29,8 +30,14 @@ pub struct RuntimeDescriptorSetBuilder {
     bound_resources: BoundResources,
 }
 
+pub struct RuntimeDescriptorSetBuilderOutput {
+    pub layout: Arc<DescriptorSetLayout>,
+    pub writes: Vec<DescriptorWrite>,
+    pub bound_resources: BoundResources,
+}
+
 impl RuntimeDescriptorSetBuilder {
-    pub(super) fn with_rt_desc_capacity(
+    pub fn start(
         layout: Arc<DescriptorSetLayout>,
         capacity: usize,
     ) -> Result<Self, RuntimeDescriptorSetError> {
@@ -62,29 +69,54 @@ impl RuntimeDescriptorSetBuilder {
         })
     }
 
-    pub fn build(self) -> Result<(), RuntimeDescriptorSetError> {
+    pub fn output(self) -> Result<RuntimeDescriptorSetBuilderOutput, RuntimeDescriptorSetError> {
         if self.cur_binding != self.descriptors.len() {
             Err(RuntimeDescriptorSetError::DescriptorsMissing {
                 expected: self.descriptors.len(),
                 obtained: self.cur_binding,
             })
         } else {
-            Ok(())
+            let mut all_writes = Vec::new();
+            let mut all_desc = Vec::with_capacity(self.descriptors.len());
+
+            for RuntimeDescriptor { desc, mut writes } in self.descriptors {
+                if desc.variable_count {
+                    all_desc.push(Some(DescriptorDesc {
+                        array_count: writes.len() as u32,
+                        ..desc
+                    }));
+                } else {
+                    all_desc.push(Some(desc));
+                }
+
+                all_writes.append(&mut writes);
+            }
+
+            let layout = Arc::new(DescriptorSetLayout::new(
+                self.device,
+                DescriptorSetDesc::new(all_desc),
+            )?);
+
+            Ok(RuntimeDescriptorSetBuilderOutput {
+                layout,
+                writes: all_writes,
+                bound_resources: self.bound_resources,
+            })
         }
     }
 
-    pub fn enter_array(&mut self) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    pub fn enter_array(&mut self) -> Result<(), RuntimeDescriptorSetError> {
         if self.in_array {
             Err(RuntimeDescriptorSetError::AlreadyInArray)
         } else if self.cur_binding >= self.descriptors.len() {
             Err(RuntimeDescriptorSetError::TooManyDescriptors)
         } else {
             self.in_array = true;
-            Ok(self)
+            Ok(())
         }
     }
 
-    pub fn leave_array(&mut self) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    pub fn leave_array(&mut self) -> Result<(), RuntimeDescriptorSetError> {
         if !self.in_array {
             Err(RuntimeDescriptorSetError::NotInArray)
         } else {
@@ -101,11 +133,11 @@ impl RuntimeDescriptorSetBuilder {
 
             self.in_array = false;
             self.cur_binding += 1;
-            Ok(self)
+            Ok(())
         }
     }
 
-    pub fn add_empty(&mut self) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    pub fn add_empty(&mut self) -> Result<(), RuntimeDescriptorSetError> {
         let leave_array = if !self.in_array {
             self.enter_array()?;
             true
@@ -118,14 +150,14 @@ impl RuntimeDescriptorSetBuilder {
         if leave_array {
             self.leave_array()
         } else {
-            Ok(self)
+            Ok(())
         }
     }
 
-    pub fn add_buffer<T>(
+    pub fn add_buffer(
         &mut self,
         buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    ) -> Result<(), RuntimeDescriptorSetError> {
         if buffer.inner().buffer.device().internal_object() != self.device.internal_object() {
             return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
         }
@@ -191,14 +223,14 @@ impl RuntimeDescriptorSetBuilder {
         if leave_array {
             self.leave_array()
         } else {
-            Ok(self)
+            Ok(())
         }
     }
 
-    pub fn add_image<T>(
+    pub fn add_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    ) -> Result<(), RuntimeDescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
             != self.device.internal_object()
         {
@@ -296,15 +328,15 @@ impl RuntimeDescriptorSetBuilder {
         if leave_array {
             self.leave_array()
         } else {
-            Ok(self)
+            Ok(())
         }
     }
 
-    pub fn add_sampled_image<T>(
+    pub fn add_sampled_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         sampler: Arc<Sampler>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    ) -> Result<(), RuntimeDescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
             != self.device.internal_object()
         {
@@ -353,14 +385,11 @@ impl RuntimeDescriptorSetBuilder {
         if leave_array {
             self.leave_array()
         } else {
-            Ok(self)
+            Ok(())
         }
     }
 
-    pub fn add_sampler(
-        &mut self,
-        sampler: Arc<Sampler>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<(), RuntimeDescriptorSetError> {
         if sampler.device().internal_object() != self.device.internal_object() {
             return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
         }
@@ -392,8 +421,14 @@ impl RuntimeDescriptorSetBuilder {
         if leave_array {
             self.leave_array()
         } else {
-            Ok(self)
+            Ok(())
         }
+    }
+}
+
+unsafe impl DeviceOwned for RuntimeDescriptorSetBuilder {
+    fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }
 

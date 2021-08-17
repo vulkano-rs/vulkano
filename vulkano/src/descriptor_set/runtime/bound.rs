@@ -3,7 +3,7 @@ use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
 use std::sync::Arc;
 
-pub(super) struct BoundResources {
+pub struct BoundResources {
     resources: Vec<BoundResource>,
 }
 
