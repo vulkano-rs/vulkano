@@ -256,6 +256,9 @@ pub struct DescriptorDesc {
 
     /// True if the attachment is only ever read by the shader. False if it is also written.
     pub readonly: bool,
+
+    /// True if the descriptor has a variable descriptor count.
+    pub variable_count: bool,
 }
 
 impl DescriptorDesc {
@@ -369,6 +372,7 @@ impl DescriptorDesc {
                 array_count: cmp::max(first.array_count, second.array_count),
                 stages: first.stages | second.stages,
                 readonly: first.readonly && second.readonly,
+                variable_count: first.variable_count && second.variable_count // TODO: What is the correct behavior here?
             }))
         } else {
             Ok(first.or(second).cloned())

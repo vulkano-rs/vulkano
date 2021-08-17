@@ -39,15 +39,15 @@ impl RuntimeDescriptorSetBuilder {
 
         for binding_i in 0..layout.num_bindings() {
             let desc = layout.descriptor(binding_i).unwrap();
-            let writes = match desc.array_count {
-                0 => {
-                    if binding_i != layout.num_bindings() - 1 {
-                        return Err(RuntimeDescriptorSetError::RuntimeArrayMustBeLast);
-                    } else {
-                        Vec::with_capacity(capacity)
-                    }
+
+            let writes = if desc.variable_count {
+                if binding_i != layout.num_bindings() - 1 {
+                    return Err(RuntimeDescriptorSetError::RuntimeArrayMustBeLast);
                 }
-                c => Vec::with_capacity(c as usize),
+
+                Vec::with_capacity(capacity)
+            } else {
+                Vec::with_capacity(desc.array_count as usize)
             };
 
             descriptors.push(RuntimeDescriptor { desc, writes });
@@ -90,7 +90,7 @@ impl RuntimeDescriptorSetBuilder {
         } else {
             let descriptor = &self.descriptors[self.cur_binding];
 
-            if descriptor.desc.array_count != 0
+            if !descriptor.desc.variable_count
                 && descriptor.writes.len() != descriptor.desc.array_count as usize
             {
                 return Err(RuntimeDescriptorSetError::ArrayLengthMismatch {
