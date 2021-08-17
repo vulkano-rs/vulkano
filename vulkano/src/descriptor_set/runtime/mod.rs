@@ -6,7 +6,10 @@ use crate::descriptor_set::layout::DescriptorImageDescDimensions;
 use crate::descriptor_set::persistent::{MissingBufferUsage, MissingImageUsage};
 use crate::format::Format;
 use crate::OomError;
+use std::error;
+use std::fmt;
 
+#[derive(Debug, Clone)]
 pub enum RuntimeDescriptorSetError {
     /// Builder is already within an array.
     AlreadyInArray,
@@ -94,5 +97,47 @@ pub enum RuntimeDescriptorSetError {
 impl From<OomError> for RuntimeDescriptorSetError {
     fn from(error: OomError) -> Self {
         Self::OomError(error)
+    }
+}
+
+impl error::Error for RuntimeDescriptorSetError {}
+
+impl fmt::Display for RuntimeDescriptorSetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::AlreadyInArray => "builder is already within an array",
+                Self::NotInArray => "builder is not in an array",
+                Self::ArrayLengthMismatch { .. } =>
+                    "array doesn't contain the correct amount of descriptors",
+                Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
+                Self::RuntimeArrayMustBeLast => "runtime arrays must be the last binding in a set",
+                Self::DescriptorsMissing { .. } => "not all descriptors have been added",
+                Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
+                Self::MissingImageUsage(_) => "the image is missing the correct usage",
+                Self::WrongDescriptorType => "expected one type of resource but got another",
+                Self::ResourceWrongDevice => "resource belongs to another device",
+                Self::ImageViewFormatMismatch { .. } =>
+                    "the format of an image view doesn't match what was expected",
+                Self::ImageViewTypeMismatch { .. } =>
+                    "the type of an image view doesn't match what was expected",
+                Self::ExpectedMultisampled =>
+                    "expected a multisampled image, but got a single-sampled image",
+                Self::UnexpectedMultisampled =>
+                    "expected a single-sampled image, but got a multisampled image",
+                Self::ArrayLayersMismatch { .. } =>
+                    "the number of array layers of an image doesn't match what was expected",
+                Self::NotIdentitySwizzled =>
+                    "the image view has a component swizzle that is different from identity",
+                Self::IncompatibleImageViewSampler =>
+                    "the image view isn't compatible with the sampler",
+                Self::BuilderPoisoned =>
+                    "the builder has previously return an error and is an unknown state",
+                Self::OomError(_) => "out of memory",
+            }
+        )
     }
 }

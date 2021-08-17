@@ -95,4 +95,12 @@ impl BoundResources {
             data: BoundResourceData::Sampler(sampler),
         });
     }
+
+    pub fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
+        unimplemented!()
+    }
+
+    pub fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
+        unimplemented!()
+    }
 }

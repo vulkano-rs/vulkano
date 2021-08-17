@@ -6,11 +6,16 @@ use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::BufferAccess;
+use crate::descriptor_set::DescriptorSet;
 use crate::descriptor_set::DescriptorSetLayout;
+use crate::descriptor_set::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
+use crate::VulkanObject;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::sync::Arc;
 
 pub struct RuntimePersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
@@ -28,6 +33,72 @@ impl RuntimePersistentDescriptorSet {
             inner: RuntimeDescriptorSetBuilder::start(layout, runtime_array_capacity.unwrap_or(0))?,
             poisoned: false,
         })
+    }
+}
+
+unsafe impl<P> DescriptorSet for RuntimePersistentDescriptorSet<P>
+where
+    P: DescriptorPoolAlloc,
+{
+    #[inline]
+    fn inner(&self) -> &UnsafeDescriptorSet {
+        self.inner.inner()
+    }
+
+    #[inline]
+    fn layout(&self) -> &Arc<DescriptorSetLayout> {
+        &self.layout
+    }
+
+    #[inline]
+    fn num_buffers(&self) -> usize {
+        self.bound_resources.num_buffers()
+    }
+
+    #[inline]
+    fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
+        self.bound_resources.buffer(index)
+    }
+
+    #[inline]
+    fn num_images(&self) -> usize {
+        self.bound_resources.num_images()
+    }
+
+    #[inline]
+    fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
+        self.bound_resources.image(index)
+    }
+}
+
+unsafe impl<P> DeviceOwned for RuntimePersistentDescriptorSet<P> {
+    #[inline]
+    fn device(&self) -> &Arc<Device> {
+        self.layout.device()
+    }
+}
+
+impl<P> PartialEq for RuntimePersistentDescriptorSet<P>
+where
+    P: DescriptorPoolAlloc,
+{
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner().internal_object() == other.inner().internal_object()
+            && self.device() == other.device()
+    }
+}
+
+impl<P> Eq for RuntimePersistentDescriptorSet<P> where P: DescriptorPoolAlloc {}
+
+impl<P> Hash for RuntimePersistentDescriptorSet<P>
+where
+    P: DescriptorPoolAlloc,
+{
+    #[inline]
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner().internal_object().hash(state);
+        self.device().hash(state);
     }
 }
 
