@@ -75,11 +75,35 @@ impl DescriptorSetLayout {
         // Note that it seems legal to have no descriptor at all in the set.
 
         let handle = unsafe {
-            let infos = ash::vk::DescriptorSetLayoutCreateInfo {
-                flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
-                binding_count: bindings.len() as u32,
-                p_bindings: bindings.as_ptr(),
-                ..Default::default()
+            let infos = match desc.bindings().last() {
+                Some(last_binding) if last_binding.is_some() && last_binding.as_ref().unwrap().variable_count => {
+                    // TODO: Check vulkan version?
+                    
+                    let mut flags = vec![ash::vk::DescriptorBindingFlags::empty(); desc.bindings().len()];
+                    *flags.last_mut().unwrap() = ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT_EXT;
+ 
+                    let binding_flags_create_info = ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+                        s_type: ash::vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+                        p_next: ptr::null(),
+                        binding_count: desc.bindings().len() as u32,
+                        p_binding_flags: flags.as_ptr(),
+                    };
+
+                    ash::vk::DescriptorSetLayoutCreateInfo {
+                        flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                        binding_count: bindings.len() as u32,
+                        p_bindings: bindings.as_ptr(),
+                        p_next: &binding_flags_create_info as *const _ as *const _,
+                        ..Default::default()
+                    }
+                }, _ => {
+                    ash::vk::DescriptorSetLayoutCreateInfo {
+                        flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                        binding_count: bindings.len() as u32,
+                        p_bindings: bindings.as_ptr(),
+                        ..Default::default()
+                    }
+                }
             };
 
             let mut output = MaybeUninit::uninit();

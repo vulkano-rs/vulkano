@@ -27,6 +27,22 @@ enum BoundResourceData {
     Sampler(Arc<Sampler>),
 }
 
+impl BoundResourceData {
+    fn buffer_ref(&self) -> &(dyn BufferAccess + Send + Sync + 'static) {
+        match self {
+            Self::Buffer(buf) => &*buf,
+            _ => panic!("resource is not a buffer")
+        }
+    }
+
+    fn image_ref(&self) -> &(dyn ImageViewAbstract + Send + Sync + 'static) {
+        match self {
+            Self::Image(img) => &*img,
+            _ => panic!("resource is not an image")
+        }
+    }
+}   
+
 impl BoundResources {
     pub fn new() -> Self {
         Self {
@@ -97,10 +113,26 @@ impl BoundResources {
     }
 
     pub fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        unimplemented!()
+        for resource in &self.resources {
+            if resource.ty == BoundResourceTy::Buffer {
+                if resource.ty_index == index {
+                    return Some((resource.data.buffer_ref(), resource.desc_index));
+                }
+            }
+        }
+
+        None
     }
 
     pub fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        unimplemented!()
+        for resource in &self.resources {
+            if resource.ty == BoundResourceTy::Image {
+                if resource.ty_index == index {
+                    return Some((resource.data.image_ref(), resource.desc_index));
+                }
+            }
+        }
+
+        None
     }
 }
