@@ -150,7 +150,7 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
-    pub fn add_buffer<T>(
+    pub fn add_buffer(
         &mut self,
         buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
     ) -> Result<&mut Self, RuntimeDescriptorSetError> {
@@ -167,7 +167,7 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
-    pub fn add_image<T>(
+    pub fn add_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
     ) -> Result<&mut Self, RuntimeDescriptorSetError> {
@@ -184,7 +184,7 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
-    pub fn add_sampled_image<T>(
+    pub fn add_sampled_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         sampler: Arc<Sampler>,

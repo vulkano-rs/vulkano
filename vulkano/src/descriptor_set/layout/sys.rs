@@ -78,7 +78,7 @@ impl DescriptorSetLayout {
             let infos = match desc.bindings().last() {
                 Some(last_binding) if last_binding.is_some() && last_binding.as_ref().unwrap().variable_count => {
                     // TODO: Check vulkan version?
-                    
+
                     let mut flags = vec![ash::vk::DescriptorBindingFlags::empty(); desc.bindings().len()];
                     *flags.last_mut().unwrap() = ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT_EXT;
  
