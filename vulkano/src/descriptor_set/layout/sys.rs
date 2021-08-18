@@ -45,6 +45,7 @@ impl DescriptorSetLayout {
     {
         let desc = desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
+        let mut variable_descriptor_count = false;
 
         let bindings = desc
             .bindings()
@@ -60,12 +61,25 @@ impl DescriptorSetLayout {
                 //        doesn't have tess shaders enabled
 
                 let ty = desc.ty.ty();
-                descriptors_count.add_num(ty, desc.array_count);
+
+                let array_count = if desc.variable_count {
+                    variable_descriptor_count = true;
+
+                    if desc.array_count == 0 {
+                        1
+                    } else {
+                        desc.array_count
+                    }
+                } else {
+                    desc.array_count
+                };
+
+                descriptors_count.add_num(ty, array_count);
 
                 Some(ash::vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
                     descriptor_type: ty.into(),
-                    descriptor_count: desc.array_count,
+                    descriptor_count: array_count,
                     stage_flags: desc.stages.into(),
                     p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
                 })
@@ -75,46 +89,57 @@ impl DescriptorSetLayout {
         // Note that it seems legal to have no descriptor at all in the set.
 
         let handle = unsafe {
-            let infos = match desc.bindings().last() {
-                Some(last_binding) if last_binding.is_some() && last_binding.as_ref().unwrap().variable_count => {
-                    // TODO: Check vulkan version?
+            if variable_descriptor_count {
+                // TODO: Check vulkan version & features
 
-                    let mut flags = vec![ash::vk::DescriptorBindingFlags::empty(); desc.bindings().len()];
-                    *flags.last_mut().unwrap() = ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT_EXT;
- 
-                    let binding_flags_create_info = ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
-                        s_type: ash::vk::StructureType::DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-                        p_next: ptr::null(),
-                        binding_count: desc.bindings().len() as u32,
-                        p_binding_flags: flags.as_ptr(),
-                    };
+                let mut flags = vec![ash::vk::DescriptorBindingFlags::empty(); bindings.len()];
+                *flags.last_mut().unwrap() = ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT | ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
 
-                    ash::vk::DescriptorSetLayoutCreateInfo {
-                        flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
-                        binding_count: bindings.len() as u32,
-                        p_bindings: bindings.as_ptr(),
-                        p_next: &binding_flags_create_info as *const _ as *const _,
-                        ..Default::default()
-                    }
-                }, _ => {
-                    ash::vk::DescriptorSetLayoutCreateInfo {
-                        flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
-                        binding_count: bindings.len() as u32,
-                        p_bindings: bindings.as_ptr(),
-                        ..Default::default()
-                    }
-                }
-            };
+                let binding_flags = ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+                    binding_count: bindings.len() as u32,
+                    p_binding_flags: flags.as_ptr(),
+                    ..Default::default()
+                };
 
-            let mut output = MaybeUninit::uninit();
-            let fns = device.fns();
-            check_errors(fns.v1_0.create_descriptor_set_layout(
-                device.internal_object(),
-                &infos,
-                ptr::null(),
-                output.as_mut_ptr(),
-            ))?;
-            output.assume_init()
+                let infos = ash::vk::DescriptorSetLayoutCreateInfo {
+                    flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                    binding_count: bindings.len() as u32,
+                    p_bindings: bindings.as_ptr(),
+                    p_next: &binding_flags as *const _ as *const _,
+                    ..Default::default()
+                };
+
+                let mut output = MaybeUninit::uninit();
+                let fns = device.fns();
+
+                check_errors(fns.v1_0.create_descriptor_set_layout(
+                    device.internal_object(),
+                    &infos,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                ))?;
+                
+                output.assume_init()
+            } else {
+                let infos = ash::vk::DescriptorSetLayoutCreateInfo {
+                    flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                    binding_count: bindings.len() as u32,
+                    p_bindings: bindings.as_ptr(),
+                    ..Default::default()
+                };
+
+                let mut output = MaybeUninit::uninit();
+                let fns = device.fns();
+
+                check_errors(fns.v1_0.create_descriptor_set_layout(
+                    device.internal_object(),
+                    &infos,
+                    ptr::null(),
+                    output.as_mut_ptr(),
+                ))?;
+                
+                output.assume_init()
+            }
         };
 
         Ok(DescriptorSetLayout {
