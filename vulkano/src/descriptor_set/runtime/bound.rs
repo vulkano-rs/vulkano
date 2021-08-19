@@ -44,9 +44,9 @@ impl BoundResourceData {
 }   
 
 impl BoundResources {
-    pub fn new() -> Self {
+    pub fn new(capacity: usize) -> Self {
         Self {
-            resources: Vec::new(),
+            resources: Vec::with_capacity(capacity),
         }
     }
 

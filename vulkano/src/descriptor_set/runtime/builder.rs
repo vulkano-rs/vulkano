@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 struct RuntimeDescriptor {
     desc: DescriptorDesc,
-    writes: Vec<DescriptorWrite>,
+    array_element: u32,
 }
 
 pub struct RuntimeDescriptorSetBuilder {
@@ -28,6 +28,7 @@ pub struct RuntimeDescriptorSetBuilder {
     descriptors: Vec<RuntimeDescriptor>,
     cur_binding: usize,
     bound_resources: BoundResources,
+    desc_writes: Vec<DescriptorWrite>,
 }
 
 pub struct RuntimeDescriptorSetBuilderOutput {
@@ -43,21 +44,28 @@ impl RuntimeDescriptorSetBuilder {
     ) -> Result<Self, RuntimeDescriptorSetError> {
         let device = layout.device().clone();
         let mut descriptors = Vec::with_capacity(layout.num_bindings());
+        let mut desc_writes_capacity = 0;
+        let mut bound_resources_capacity = 0;
 
         for binding_i in 0..layout.num_bindings() {
             let desc = layout.descriptor(binding_i).unwrap();
-
-            let writes = if desc.variable_count {
+            let array_capacity = if desc.variable_count {
                 if binding_i != layout.num_bindings() - 1 {
                     return Err(RuntimeDescriptorSetError::RuntimeArrayMustBeLast);
                 }
 
-                Vec::with_capacity(capacity)
+                capacity
             } else {
-                Vec::with_capacity(desc.array_count as usize)
+                desc.array_count as usize
             };
 
-            descriptors.push(RuntimeDescriptor { desc, writes });
+            desc_writes_capacity += array_capacity;
+            bound_resources_capacity += match desc.ty {
+                DescriptorDescTy::CombinedImageSampler(_) => 2,
+                _ => 1
+            } * array_capacity;
+
+            descriptors.push(RuntimeDescriptor { desc, array_element: 0 });
         }
 
         Ok(Self {
@@ -65,7 +73,8 @@ impl RuntimeDescriptorSetBuilder {
             in_array: false,
             cur_binding: 0,
             descriptors,
-            bound_resources: BoundResources::new(),
+            bound_resources: BoundResources::new(bound_resources_capacity),
+            desc_writes: Vec::with_capacity(desc_writes_capacity),
         })
     }
 
@@ -76,30 +85,20 @@ impl RuntimeDescriptorSetBuilder {
                 obtained: self.cur_binding,
             })
         } else {
-            let mut all_writes = Vec::new();
-            let mut all_desc = Vec::with_capacity(self.descriptors.len());
-
-            for RuntimeDescriptor { desc, mut writes } in self.descriptors {
-                if desc.variable_count {
-                    all_desc.push(Some(DescriptorDesc {
-                        array_count: writes.len() as u32,
-                        ..desc
-                    }));
-                } else {
-                    all_desc.push(Some(desc));
-                }
-
-                all_writes.append(&mut writes);
-            }
-
             let layout = Arc::new(DescriptorSetLayout::new(
                 self.device,
-                DescriptorSetDesc::new(all_desc),
+                DescriptorSetDesc::new(self.descriptors.into_iter().map(|mut desc| {
+                    if desc.desc.variable_count {
+                        desc.desc.array_count = desc.array_element;
+                    }
+
+                    Some(desc.desc)
+                })),
             )?);
 
             Ok(RuntimeDescriptorSetBuilderOutput {
                 layout,
-                writes: all_writes,
+                writes: self.desc_writes,
                 bound_resources: self.bound_resources,
             })
         }
@@ -123,11 +122,11 @@ impl RuntimeDescriptorSetBuilder {
             let descriptor = &self.descriptors[self.cur_binding];
 
             if !descriptor.desc.variable_count
-                && descriptor.writes.len() != descriptor.desc.array_count as usize
+                && descriptor.array_element != descriptor.desc.array_count
             {
                 return Err(RuntimeDescriptorSetError::ArrayLengthMismatch {
-                    expected: descriptor.desc.array_count as usize,
-                    obtained: descriptor.writes.len(),
+                    expected: descriptor.desc.array_count,
+                    obtained: descriptor.array_element,
                 });
             }
 
@@ -170,11 +169,10 @@ impl RuntimeDescriptorSetBuilder {
         };
 
         let descriptor = &mut self.descriptors[self.cur_binding];
-        let array_element = descriptor.writes.len() as u32;
 
         match descriptor.desc.ty {
             DescriptorDescTy::Buffer(ref buffer_desc) => {
-                descriptor.writes.push(if buffer_desc.storage {
+                self.desc_writes.push(if buffer_desc.storage {
                     if !buffer.inner().buffer.usage().storage_buffer {
                         return Err(RuntimeDescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::StorageBuffer,
@@ -184,7 +182,7 @@ impl RuntimeDescriptorSetBuilder {
                     unsafe {
                         DescriptorWrite::storage_buffer(
                             self.cur_binding as u32,
-                            array_element,
+                            descriptor.array_element,
                             &buffer,
                         )
                     }
@@ -199,7 +197,7 @@ impl RuntimeDescriptorSetBuilder {
                         unsafe {
                             DescriptorWrite::dynamic_uniform_buffer(
                                 self.cur_binding as u32,
-                                array_element,
+                                descriptor.array_element,
                                 &buffer,
                             )
                         }
@@ -207,18 +205,18 @@ impl RuntimeDescriptorSetBuilder {
                         unsafe {
                             DescriptorWrite::uniform_buffer(
                                 self.cur_binding as u32,
-                                array_element,
+                                descriptor.array_element,
                                 &buffer,
                             )
                         }
                     }
                 });
-
-                self.bound_resources
-                    .add_buffer(self.cur_binding as u32, buffer);
             }
             _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
         }
+
+        self.bound_resources.add_buffer(self.cur_binding as u32, buffer);
+        descriptor.array_element += 1;
 
         if leave_array {
             self.leave_array()
@@ -245,16 +243,15 @@ impl RuntimeDescriptorSetBuilder {
         };
 
         let descriptor = &mut self.descriptors[self.cur_binding];
-        let array_element = descriptor.writes.len() as u32;
 
         match descriptor.desc.ty {
             DescriptorDescTy::Image(ref desc) => {
                 image_match_desc(&image_view, &desc)?;
 
-                descriptor.writes.push(if desc.sampled {
+                self.desc_writes.push(if desc.sampled {
                     DescriptorWrite::sampled_image(
                         self.cur_binding as u32,
-                        array_element,
+                        descriptor.array_element,
                         &image_view,
                     )
                 } else if !image_view.component_mapping().is_identity() {
@@ -262,7 +259,7 @@ impl RuntimeDescriptorSetBuilder {
                 } else {
                     DescriptorWrite::storage_image(
                         self.cur_binding as u32,
-                        array_element,
+                        descriptor.array_element,
                         &image_view,
                     )
                 });
@@ -313,17 +310,17 @@ impl RuntimeDescriptorSetBuilder {
                     DescriptorImageDescArray::Arrayed { max_layers: None } => {}
                 }
 
-                descriptor.writes.push(DescriptorWrite::input_attachment(
+                self.desc_writes.push(DescriptorWrite::input_attachment(
                     self.cur_binding as u32,
-                    array_element,
+                    descriptor.array_element,
                     &image_view,
                 ));
             }
             _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
         }
 
-        self.bound_resources
-            .add_image(self.cur_binding as u32, image_view);
+        descriptor.array_element += 1;
+        self.bound_resources.add_image(self.cur_binding as u32, image_view);
 
         if leave_array {
             self.leave_array()
@@ -359,17 +356,15 @@ impl RuntimeDescriptorSetBuilder {
         };
 
         let descriptor = &mut self.descriptors[self.cur_binding];
-        let array_element = descriptor.writes.len() as u32;
 
         match descriptor.desc.ty {
             DescriptorDescTy::CombinedImageSampler(ref desc) => {
                 image_match_desc(&image_view, &desc)?;
 
-                descriptor
-                    .writes
+                self.desc_writes
                     .push(DescriptorWrite::combined_image_sampler(
                         self.cur_binding as u32,
-                        array_element,
+                        descriptor.array_element,
                         &sampler,
                         &image_view,
                     ));
@@ -377,6 +372,7 @@ impl RuntimeDescriptorSetBuilder {
             _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
         }
 
+        descriptor.array_element += 1;
         self.bound_resources
             .add_image(self.cur_binding as u32, image_view);
         self.bound_resources
@@ -402,19 +398,19 @@ impl RuntimeDescriptorSetBuilder {
         };
 
         let descriptor = &mut self.descriptors[self.cur_binding];
-        let array_element = descriptor.writes.len() as u32;
 
         match descriptor.desc.ty {
             DescriptorDescTy::Sampler => {
-                descriptor.writes.push(DescriptorWrite::sampler(
+               self.desc_writes.push(DescriptorWrite::sampler(
                     self.cur_binding as u32,
-                    array_element,
+                    descriptor.array_element,
                     &sampler,
                 ));
             }
             _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
         }
 
+        descriptor.array_element += 1;
         self.bound_resources
             .add_sampler(self.cur_binding as u32, sampler);
 

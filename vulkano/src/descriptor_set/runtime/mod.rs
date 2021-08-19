@@ -20,9 +20,9 @@ pub enum RuntimeDescriptorSetError {
     /// Array doesn't contain the correct amount of descriptors
     ArrayLengthMismatch {
         /// Expected length
-        expected: usize,
+        expected: u32,
         /// Obtained length
-        obtained: usize,
+        obtained: u32,
     },
 
     /// Builder doesn't expect anymore descriptors
