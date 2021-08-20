@@ -110,8 +110,14 @@ fn generic_allocation(
     }
 }
 
-/// Same as `generic_allocation` but with exportable memory fd on Linux.
-#[cfg(target_os = "linux")]
+/// Same as `generic_allocation` but with exportable memory fd on Linux/BSD.
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 fn generit_allocation_with_exportable_fd(
     mem_pool: Arc<StdMemoryPool>,
     memory_type: MemoryType,
@@ -190,8 +196,14 @@ unsafe impl MemoryPool for Arc<StdMemoryPool> {
         generic_allocation(self.clone(), memory_type, size, alignment, layout, map)
     }
 
-    /// Same as `alloc_generic` but with exportable fd option on Linux.
-    #[cfg(target_os = "linux")]
+    /// Same as `alloc_generic` but with exportable fd option on Linux/BSD.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     fn alloc_generic_with_exportable_fd(
         &self,
         memory_type: MemoryType,
