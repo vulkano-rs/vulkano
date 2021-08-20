@@ -343,7 +343,6 @@ mod tests {
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
@@ -414,10 +413,7 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [DescriptorSetDesc::new([Some(DescriptorDesc {
-                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                        dynamic: Some(false),
-                        storage: true,
-                    }),
+                    ty: DescriptorDescTy::StorageBuffer,
                     array_count: 1,
                     stages: ShaderStages {
                         compute: true,

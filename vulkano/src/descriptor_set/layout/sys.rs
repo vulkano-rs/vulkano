@@ -156,7 +156,6 @@ impl Drop for DescriptorSetLayout {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
@@ -176,10 +175,7 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(false),
-                storage: false,
-            }),
+            ty: DescriptorDescTy::UniformBuffer,
             array_count: 1,
             stages: ShaderStages::all_graphics(),
             readonly: true,

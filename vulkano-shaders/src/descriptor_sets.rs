@@ -84,7 +84,11 @@ pub(super) fn write_descriptor_set_layout_descs(
     }
 }
 
-pub(super) fn write_push_constant_ranges(doc: &Spirv, stage: &TokenStream, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_push_constant_ranges(
+    doc: &Spirv,
+    stage: &TokenStream,
+    types_meta: &TypesMeta,
+) -> TokenStream {
     // TODO: somewhat implemented correctly
 
     // Looping to find all the push constant structs.
@@ -385,26 +389,20 @@ fn descriptor_infos(
                         "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
 
-                    // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-                    let storage = decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer;
+                    let (ty, readonly) = if decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer {
+                        // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                        // Determine whether all members have a NonWritable decoration.
+                        let nonwritable = (0..member_types.len() as u32).all(|i| {
+                            doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
+                        });
 
-                    // Determine whether all members have a NonWritable decoration.
-                    let nonwritable = (0..member_types.len() as u32).all(|i| {
-                        doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
-                    });
-
-                    // Uniforms are never writable.
-                    let readonly = !storage || nonwritable;
-
-                    let desc = quote! {
-                        DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: None,
-                            storage: #storage,
-                        })
+                        (quote! { DescriptorDescTy::StorageBuffer }, nonwritable)
+                    } else {
+                        // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                        (quote! { DescriptorDescTy::UniformBuffer }, true) // Uniforms are never writable.
                     };
-
-                    Some((desc, readonly, 1))
+                    
+                    Some((ty, readonly, 1))
                 }
                 &Instruction::TypeImage {
                     result_id,
@@ -422,11 +420,6 @@ fn descriptor_infos(
 
                     let vulkan_format = to_vulkan_format(*format);
 
-                    let arrayed = match arrayed {
-                        true => quote! { DescriptorImageDescArray::Arrayed { max_layers: None } },
-                        false => quote! { DescriptorImageDescArray::NonArrayed },
-                    };
-
                     match dim {
                         Dim::DimSubpassData => {
                             // VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
@@ -441,63 +434,67 @@ fn descriptor_infos(
                                 "If Dim is SubpassData, Image Format must be Unknown"
                             );
                             assert!(!sampled, "If Dim is SubpassData, Sampled must be 2");
+                            assert!(!arrayed, "If Dim is SubpassData, Arrayed must be 0");
 
                             let desc = quote! {
                                 DescriptorDescTy::InputAttachment {
                                     multisampled: #ms,
-                                    array_layers: #arrayed
                                 }
                             };
 
                             Some((desc, true, 1)) // Never writable.
                         }
                         Dim::DimBuffer => {
-                            // false -> VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
-                            // true -> VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
-                            let storage = !sampled;
+                            let (ty, readonly) = if sampled {
+                                // VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+                                (quote! { DescriptorDescTy::UniformTexelBuffer }, true) // Uniforms are never writable.
+                            } else {
+                                // VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+                                (quote! { DescriptorDescTy::StorageTexelBuffer }, false)
+                            };
+
                             let desc = quote! {
-                                DescriptorDescTy::TexelBuffer {
-                                    storage: #storage,
+                                #ty {
                                     format: #vulkan_format,
                                 }
                             };
 
-                            Some((desc, !storage, 1)) // Uniforms are never writable.
+                            Some((desc, readonly, 1))
+                            
                         }
                         _ => {
-                            let (ty, readonly) = match force_combined_image_sampled {
+                            let (ty, readonly) = if force_combined_image_sampled {
                                 // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
                                 // Never writable.
-                                true => (quote! { DescriptorDescTy::CombinedImageSampler }, true),
-                                false => {
-                                    // false -> VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
-                                    let storage = !sampled;
-                                    (quote! { DescriptorDescTy::Image }, !storage) // Sampled images are never writable.
-                                },
+                                assert!(sampled, "A combined image sampler must not reference a storage image");
+                                (quote! { DescriptorDescTy::CombinedImageSampler }, true)
+                            } else {
+                                if sampled {
+                                    // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                                    (quote! { DescriptorDescTy::SampledImage }, true) // Sampled images are never writable.
+                                } else {
+                                    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                    (quote! { DescriptorDescTy::StorageImage }, false)
+                                }
                             };
-                            let dim = match *dim {
-                                Dim::Dim1D => {
-                                    quote! { DescriptorImageDescDimensions::OneDimensional }
-                                }
-                                Dim::Dim2D => {
-                                    quote! { DescriptorImageDescDimensions::TwoDimensional }
-                                }
-                                Dim::Dim3D => {
-                                    quote! { DescriptorImageDescDimensions::ThreeDimensional }
-                                }
-                                Dim::DimCube => quote! { DescriptorImageDescDimensions::Cube },
-                                Dim::DimRect => panic!("Vulkan doesn't support rectangle textures"),
+                            let view_type = match (dim, arrayed) {
+                                (Dim::Dim1D, false) => quote! { ImageViewType::Dim1d },
+                                (Dim::Dim1D, true) => quote! { ImageViewType::Dim1dArray },
+                                (Dim::Dim2D, false) => quote! { ImageViewType::Dim2d },
+                                (Dim::Dim2D, true) => quote! { ImageViewType::Dim2dArray },
+                                (Dim::Dim3D, false) => quote! { ImageViewType::Dim3d },
+                                (Dim::Dim3D, true) => panic!("Vulkan doesn't support arrayed 3D textures"),
+                                (Dim::DimCube, false) => quote! { ImageViewType::Cube },
+                                (Dim::DimCube, true) => quote! { ImageViewType::CubeArray },
+                                (Dim::DimRect, _) => panic!("Vulkan doesn't support rectangle textures"),
                                 _ => unreachable!(),
                             };
 
                             let desc = quote! {
-                                #ty(DescriptorImageDesc {
-                                    sampled: #sampled,
-                                    dimensions: #dim,
+                                #ty(DescriptorDescImage {
                                     format: #vulkan_format,
                                     multisampled: #ms,
-                                    array_layers: #arrayed,
+                                    view_type: #view_type,
                                 })
                             };
 

@@ -2659,13 +2659,8 @@ impl SyncCommandBufferBuilder {
                     .expect("descriptor_layouts must return Some when used in an image view");
                 let layout = match desc.ty {
                     DescriptorDescTy::CombinedImageSampler(_) => layouts.combined_image_sampler,
-                    DescriptorDescTy::Image(ref img) => {
-                        if img.sampled {
-                            layouts.sampled_image
-                        } else {
-                            layouts.storage_image
-                        }
-                    }
+                    DescriptorDescTy::SampledImage(_) => layouts.sampled_image,
+                    DescriptorDescTy::StorageImage(_) => layouts.storage_image,
                     DescriptorDescTy::InputAttachment { .. } => {
                         // FIXME: This is tricky. Since we read from the input attachment
                         // and this input attachment is being written in an earlier pass,
