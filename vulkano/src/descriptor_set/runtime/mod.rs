@@ -1,6 +1,7 @@
 mod bound;
 mod builder;
 pub mod persistent;
+pub mod pool;
 
 use crate::descriptor_set::layout::DescriptorImageDescDimensions;
 use crate::descriptor_set::persistent::{MissingBufferUsage, MissingImageUsage};
