@@ -93,7 +93,7 @@ impl<const N: usize> FromVulkan<[f32; N]> for [f32; N] {
 
 impl<const N: usize> FromVulkan<[std::os::raw::c_char; N]> for String {
     #[inline]
-    fn from_vulkan(val: [i8; N]) -> Option<Self> {
+    fn from_vulkan(val: [std::os::raw::c_char; N]) -> Option<Self> {
         Some(unsafe { CStr::from_ptr(val.as_ptr()).to_string_lossy().into_owned() })
     }
 }
