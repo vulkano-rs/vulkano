@@ -467,11 +467,11 @@ fn descriptor_infos(
                                 // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
                                 // Never writable.
                                 assert!(sampled, "A combined image sampler must not reference a storage image");
-                                (quote! { DescriptorDescTy::CombinedImageSampler }, false) // Sampled images are never writable.
+                                (quote! { DescriptorDescTy::CombinedImageSampler }, false) // Sampled images are never mutable.
                             } else {
                                 if sampled {
                                     // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                                    (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never writable.
+                                    (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never mutable.
                                 } else {
                                     // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
                                     (quote! { DescriptorDescTy::StorageImage }, true)
