@@ -93,6 +93,9 @@ pub enum RuntimeDescriptorSetError {
 
     /// Out of memory
     OomError(OomError),
+
+    /// Operation can not be performed on an empty descriptor.
+    DescriptorIsEmpty,
 }
 
 impl From<OomError> for RuntimeDescriptorSetError {
@@ -138,6 +141,8 @@ impl fmt::Display for RuntimeDescriptorSetError {
                 Self::BuilderPoisoned =>
                     "the builder has previously return an error and is an unknown state",
                 Self::OomError(_) => "out of memory",
+                Self::DescriptorIsEmpty =>
+                    "operation can not be performed on an empty descriptor",
             }
         )
     }
