@@ -192,17 +192,19 @@ where
                     match range_map.entry((range.offset, range.size)) {
                         Entry::Vacant(entry) => {
                             entry.insert(range.stages);
-                        },
+                        }
                         Entry::Occupied(mut entry) => {
                             *entry.get_mut() = *entry.get() | range.stages;
-                        },
+                        }
                     }
                 }
             }
             let push_constant_ranges: Vec<_> = range_map
                 .iter()
-                .map(|((offset, size), stages)| {
-                    PipelineLayoutPcRange { offset: *offset, size: *size, stages: *stages }
+                .map(|((offset, size), stages)| PipelineLayoutPcRange {
+                    offset: *offset,
+                    size: *size,
+                    stages: *stages,
                 })
                 .collect();
 
@@ -239,7 +241,7 @@ where
 
         {
             let shader = &self.vertex_shader.as_ref().unwrap().0;
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -247,7 +249,7 @@ where
 
         if let Some(ref geometry_shader) = self.geometry_shader {
             let shader = &geometry_shader.0;
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -256,7 +258,7 @@ where
         if let Some(ref tess) = self.tessellation {
             {
                 let shader = &tess.tessellation_control_shader.0;
-                pipeline_layout.ensure_superset_of(
+                pipeline_layout.ensure_compatible_with_shader(
                     shader.descriptor_set_layout_descs(),
                     shader.push_constant_range(),
                 )?;
@@ -264,7 +266,7 @@ where
 
             {
                 let shader = &tess.tessellation_evaluation_shader.0;
-                pipeline_layout.ensure_superset_of(
+                pipeline_layout.ensure_compatible_with_shader(
                     shader.descriptor_set_layout_descs(),
                     shader.push_constant_range(),
                 )?;
@@ -273,7 +275,7 @@ where
 
         if let Some(ref fragment_shader) = self.fragment_shader {
             let shader = &fragment_shader.0;
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -795,26 +797,10 @@ where
                 return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
             }
 
-            if vp.x
-                < device
-                    .physical_device()
-                    .properties()
-                    .viewport_bounds_range[0]
-                || vp.x + vp.width
-                    > device
-                        .physical_device()
-                        .properties()
-                        .viewport_bounds_range[1]
-                || vp.y
-                    < device
-                        .physical_device()
-                        .properties()
-                        .viewport_bounds_range[0]
-                || vp.y + vp.height
-                    > device
-                        .physical_device()
-                        .properties()
-                        .viewport_bounds_range[1]
+            if vp.x < device.physical_device().properties().viewport_bounds_range[0]
+                || vp.x + vp.width > device.physical_device().properties().viewport_bounds_range[1]
+                || vp.y < device.physical_device().properties().viewport_bounds_range[0]
+                || vp.y + vp.height > device.physical_device().properties().viewport_bounds_range[1]
             {
                 return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
             }

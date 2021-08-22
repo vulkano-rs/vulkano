@@ -14,9 +14,8 @@ pub mod pool;
 
 pub use self::persistent::PersistentDescriptorSet;
 pub use self::pool::DescriptorSetPool;
-
-use crate::descriptor_set::layout::DescriptorImageDescDimensions;
 use crate::format::Format;
+use crate::image::view::ImageViewType;
 use crate::OomError;
 use std::error;
 use std::fmt;
@@ -75,9 +74,9 @@ pub enum DescriptorSetError {
     /// The type of an image view doesn't match what was expected.
     ImageViewTypeMismatch {
         /// Expected type.
-        expected: DescriptorImageDescDimensions,
+        expected: ImageViewType,
         /// Type of the image view that was passed.
-        obtained: DescriptorImageDescDimensions,
+        obtained: ImageViewType,
     },
 
     /// Expected a multisampled image, but got a single-sampled image.
@@ -108,6 +107,9 @@ pub enum DescriptorSetError {
 
     /// Operation can not be performed on an empty descriptor.
     DescriptorIsEmpty,
+
+    /// Expected a non-arrayed image, but got an arrayed image.
+    UnexpectedArrayed,
 }
 
 impl From<OomError> for DescriptorSetError {
@@ -154,6 +156,7 @@ impl fmt::Display for DescriptorSetError {
                     "the builder has previously return an error and is an unknown state",
                 Self::OomError(_) => "out of memory",
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
+                Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
             }
         )
     }

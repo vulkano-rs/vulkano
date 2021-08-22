@@ -343,13 +343,7 @@ where
         #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorDescTy;
         #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorBufferDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorImageDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorImageDescDimensions;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorImageDescArray;
+        use vulkano::descriptor_set::layout::DescriptorDescImage;
         #[allow(unused_imports)]
         use vulkano::descriptor_set::layout::DescriptorSetDesc;
         #[allow(unused_imports)]
@@ -358,6 +352,8 @@ where
         use vulkano::descriptor_set::DescriptorSet;
         #[allow(unused_imports)]
         use vulkano::format::Format;
+        #[allow(unused_imports)]
+        use vulkano::image::view::ImageViewType;
         #[allow(unused_imports)]
         use vulkano::pipeline::layout::PipelineLayout;
         #[allow(unused_imports)]

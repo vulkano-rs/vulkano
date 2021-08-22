@@ -81,7 +81,7 @@ pub use self::persistent::PersistentDescriptorSetBuildError;
 pub use self::persistent::PersistentDescriptorSetError;
 use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
-use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy};
+use crate::descriptor_set::layout::DescriptorDescTy;
 use crate::device::DeviceOwned;
 use crate::image::view::ImageViewAbstract;
 use crate::SafeDeref;
@@ -214,22 +214,22 @@ impl DescriptorSetWithOffsets {
         // dynamic offset is a multiple of the minimum offset alignment specified
         // by the physical device.
         for desc in layout.desc().bindings() {
-            let desc = desc.as_ref().unwrap();
-            if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(true),
-                storage,
-            }) = desc.ty
-            {
-                // Don't check alignment if there are not enough offsets anyway
-                if dynamic_offsets.len() > dynamic_offset_index {
-                    if storage {
+            match desc.as_ref().unwrap().ty {
+                DescriptorDescTy::StorageBufferDynamic => {
+                    // Don't check alignment if there are not enough offsets anyway
+                    if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
                             "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
                             dynamic_offsets[dynamic_offset_index],
                             min_storage_off_align
                         );
-                    } else {
+                    }
+                    dynamic_offset_index += 1;
+                }
+                DescriptorDescTy::UniformBufferDynamic => {
+                    // Don't check alignment if there are not enough offsets anyway
+                    if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
                             "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
@@ -237,8 +237,9 @@ impl DescriptorSetWithOffsets {
                             min_uniform_off_align
                         );
                     }
+                    dynamic_offset_index += 1;
                 }
-                dynamic_offset_index += 1;
+                _ => (),
             }
         }
 

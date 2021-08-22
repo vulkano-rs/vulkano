@@ -373,7 +373,6 @@ impl ExactSizeIterator for UnsafeDescriptorPoolAllocIter {}
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
@@ -421,13 +420,10 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(false),
-                storage: false,
-            }),
-            array_count: 1,
+            ty: DescriptorDescTy::UniformBuffer,
+            descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
-            readonly: true,
+            mutable: false,
         };
 
         let set_layout = DescriptorSetLayout::new(
@@ -454,13 +450,10 @@ mod tests {
         let (device2, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(false),
-                storage: false,
-            }),
-            array_count: 1,
+            ty: DescriptorDescTy::UniformBuffer,
+            descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
-            readonly: true,
+            mutable: false,
         };
 
         let set_layout =

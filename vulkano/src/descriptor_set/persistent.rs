@@ -29,10 +29,8 @@
 use crate::buffer::BufferAccess;
 use crate::buffer::BufferViewRef;
 use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorDescImage;
 use crate::descriptor_set::layout::DescriptorDescTy;
-use crate::descriptor_set::layout::DescriptorImageDesc;
-use crate::descriptor_set::layout::DescriptorImageDescArray;
-use crate::descriptor_set::layout::DescriptorImageDescDimensions;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
@@ -45,6 +43,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::image::view::ImageViewAbstract;
+use crate::image::view::ImageViewType;
 use crate::image::SampleCount;
 use crate::sampler::Sampler;
 use crate::OomError;
@@ -398,14 +397,14 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
     pub fn leave_array(
         mut self,
     ) -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
-        if self.desc.array_count > self.array_element as u32 {
+        if self.desc.descriptor_count > self.array_element as u32 {
             return Err(PersistentDescriptorSetError::MissingArrayElements {
-                expected: self.desc.array_count,
+                expected: self.desc.descriptor_count,
                 obtained: self.array_element as u32,
             });
         }
 
-        debug_assert_eq!(self.desc.array_count, self.array_element as u32);
+        debug_assert_eq!(self.desc.descriptor_count, self.array_element as u32);
 
         self.builder.binding_id += 1;
         Ok(self.builder)
@@ -434,21 +433,21 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             buffer.inner().buffer.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
-        self.builder.writes.push(match self.desc.ty {
-            DescriptorDescTy::Buffer(ref buffer_desc) => {
-                // Note that the buffer content is not checked. This is technically not unsafe as
-                // long as the data in the buffer has no invalid memory representation (ie. no
-                // bool, no enum, no pointer, no str) and as long as the robust buffer access
-                // feature is enabled.
-                // TODO: this is not checked ^
+        // Note that the buffer content is not checked. This is technically not unsafe as
+        // long as the data in the buffer has no invalid memory representation (ie. no
+        // bool, no enum, no pointer, no str) and as long as the robust buffer access
+        // feature is enabled.
+        // TODO: this is not checked ^
 
-                // TODO: eventually shouldn't be an assert ; for now robust_buffer_access is always
-                //       enabled so this assert should never fail in practice, but we put it anyway
-                //       in case we forget to adjust this code
+        // TODO: eventually shouldn't be an assert ; for now robust_buffer_access is always
+        //       enabled so this assert should never fail in practice, but we put it anyway
+        //       in case we forget to adjust this code
+        self.builder.writes.push(match self.desc.ty {
+            DescriptorDescTy::StorageBuffer | DescriptorDescTy::StorageBufferDynamic => {
                 assert!(
                     self.builder
                         .layout
@@ -457,44 +456,64 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                         .robust_buffer_access
                 );
 
-                if buffer_desc.storage {
-                    if !buffer.inner().buffer.usage().storage_buffer {
-                        return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                            MissingBufferUsage::StorageBuffer,
-                        ));
-                    }
+                if !buffer.inner().buffer.usage().storage_buffer {
+                    return Err(PersistentDescriptorSetError::MissingBufferUsage(
+                        MissingBufferUsage::StorageBuffer,
+                    ));
+                }
 
-                    unsafe {
-                        DescriptorWrite::storage_buffer(
-                            self.builder.binding_id as u32,
-                            self.array_element as u32,
-                            &buffer,
-                        )
-                    }
-                } else {
-                    if !buffer.inner().buffer.usage().uniform_buffer {
-                        return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                            MissingBufferUsage::UniformBuffer,
-                        ));
-                    }
+                unsafe {
+                    DescriptorWrite::storage_buffer(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        &buffer,
+                    )
+                }
+            }
+            DescriptorDescTy::UniformBuffer => {
+                assert!(
+                    self.builder
+                        .layout
+                        .device()
+                        .enabled_features()
+                        .robust_buffer_access
+                );
 
-                    if buffer_desc.dynamic.unwrap_or(false) {
-                        unsafe {
-                            DescriptorWrite::dynamic_uniform_buffer(
-                                self.builder.binding_id as u32,
-                                self.array_element as u32,
-                                &buffer,
-                            )
-                        }
-                    } else {
-                        unsafe {
-                            DescriptorWrite::uniform_buffer(
-                                self.builder.binding_id as u32,
-                                self.array_element as u32,
-                                &buffer,
-                            )
-                        }
-                    }
+                if !buffer.inner().buffer.usage().uniform_buffer {
+                    return Err(PersistentDescriptorSetError::MissingBufferUsage(
+                        MissingBufferUsage::UniformBuffer,
+                    ));
+                }
+
+                unsafe {
+                    DescriptorWrite::uniform_buffer(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        &buffer,
+                    )
+                }
+            }
+            DescriptorDescTy::UniformBufferDynamic => {
+                assert!(
+                    self.builder
+                        .layout
+                        .device()
+                        .enabled_features()
+                        .robust_buffer_access
+                );
+
+                if !buffer.inner().buffer.usage().uniform_buffer {
+                    return Err(PersistentDescriptorSetError::MissingBufferUsage(
+                        MissingBufferUsage::UniformBuffer,
+                    ));
+                }
+
+                unsafe {
+                    DescriptorWrite::dynamic_uniform_buffer(
+                        self.builder.binding_id as u32,
+                        self.array_element as u32,
+                        &buffer,
+                    )
                 }
             }
             ref d => {
@@ -543,39 +562,38 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             view.view().device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
         self.builder.writes.push(match self.desc.ty {
-            DescriptorDescTy::TexelBuffer { storage, .. } => {
-                if storage {
-                    // TODO: storage_texel_buffer_atomic
+            DescriptorDescTy::StorageTexelBuffer { .. } => {
+                // TODO: storage_texel_buffer_atomic
 
-                    if !view.view().storage_texel_buffer() {
-                        return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                            MissingBufferUsage::StorageTexelBuffer,
-                        ));
-                    }
-
-                    DescriptorWrite::storage_texel_buffer(
-                        self.builder.binding_id as u32,
-                        self.array_element as u32,
-                        view.view(),
-                    )
-                } else {
-                    if !view.view().uniform_texel_buffer() {
-                        return Err(PersistentDescriptorSetError::MissingBufferUsage(
-                            MissingBufferUsage::UniformTexelBuffer,
-                        ));
-                    }
-
-                    DescriptorWrite::uniform_texel_buffer(
-                        self.builder.binding_id as u32,
-                        self.array_element as u32,
-                        view.view(),
-                    )
+                if !view.view().storage_texel_buffer() {
+                    return Err(PersistentDescriptorSetError::MissingBufferUsage(
+                        MissingBufferUsage::StorageTexelBuffer,
+                    ));
                 }
+
+                DescriptorWrite::storage_texel_buffer(
+                    self.builder.binding_id as u32,
+                    self.array_element as u32,
+                    view.view(),
+                )
+            }
+            DescriptorDescTy::UniformTexelBuffer { .. } => {
+                if !view.view().uniform_texel_buffer() {
+                    return Err(PersistentDescriptorSetError::MissingBufferUsage(
+                        MissingBufferUsage::UniformTexelBuffer,
+                    ));
+                }
+
+                DescriptorWrite::uniform_texel_buffer(
+                    self.builder.binding_id as u32,
+                    self.array_element as u32,
+                    view.view(),
+                )
             }
             ref d => {
                 return Err(PersistentDescriptorSetError::WrongDescriptorTy { expected: d.ty() });
@@ -623,7 +641,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             image_view.image().inner().image.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -633,31 +651,41 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
         };
 
         self.builder.writes.push(match desc.ty {
-            DescriptorDescTy::Image(ref desc) => {
+            DescriptorDescTy::SampledImage(ref desc) => {
+                if !image_view.image().inner().image.usage().sampled {
+                    return Err(PersistentDescriptorSetError::MissingImageUsage(
+                        MissingImageUsage::Sampled,
+                    ));
+                }
+
                 image_match_desc(&image_view, &desc)?;
 
-                if desc.sampled {
-                    DescriptorWrite::sampled_image(
-                        self.builder.binding_id as u32,
-                        self.array_element as u32,
-                        &image_view,
-                    )
-                } else {
-                    if !image_view.component_mapping().is_identity() {
-                        return Err(PersistentDescriptorSetError::NotIdentitySwizzled);
-                    }
-
-                    DescriptorWrite::storage_image(
-                        self.builder.binding_id as u32,
-                        self.array_element as u32,
-                        &image_view,
-                    )
-                }
+                DescriptorWrite::sampled_image(
+                    self.builder.binding_id as u32,
+                    self.array_element as u32,
+                    &image_view,
+                )
             }
-            DescriptorDescTy::InputAttachment {
-                multisampled,
-                array_layers,
-            } => {
+            DescriptorDescTy::StorageImage(ref desc) => {
+                if !image_view.image().inner().image.usage().storage {
+                    return Err(PersistentDescriptorSetError::MissingImageUsage(
+                        MissingImageUsage::Storage,
+                    ));
+                }
+
+                image_match_desc(&image_view, &desc)?;
+
+                if !image_view.component_mapping().is_identity() {
+                    return Err(PersistentDescriptorSetError::NotIdentitySwizzled);
+                }
+
+                DescriptorWrite::storage_image(
+                    self.builder.binding_id as u32,
+                    self.array_element as u32,
+                    &image_view,
+                )
+            }
+            DescriptorDescTy::InputAttachment { multisampled } => {
                 if !image_view.image().inner().image.usage().input_attachment {
                     return Err(PersistentDescriptorSetError::MissingImageUsage(
                         MissingImageUsage::InputAttachment,
@@ -677,28 +705,9 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
                 let image_layers = image_view.array_layers();
                 let num_layers = image_layers.end - image_layers.start;
 
-                match array_layers {
-                    DescriptorImageDescArray::NonArrayed => {
-                        if num_layers != 1 {
-                            return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                                expected: 1,
-                                obtained: num_layers,
-                            });
-                        }
-                    }
-                    DescriptorImageDescArray::Arrayed {
-                        max_layers: Some(max_layers),
-                    } => {
-                        if num_layers > max_layers {
-                            // TODO: is this correct? "max" layers? or is it in fact min layers?
-                            return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                                expected: max_layers,
-                                obtained: num_layers,
-                            });
-                        }
-                    }
-                    DescriptorImageDescArray::Arrayed { max_layers: None } => {}
-                };
+                if image_view.ty().is_arrayed() {
+                    return Err(PersistentDescriptorSetError::UnexpectedArrayed);
+                }
 
                 DescriptorWrite::input_attachment(
                     self.builder.binding_id as u32,
@@ -760,7 +769,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             sampler.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -768,6 +777,12 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             Some(d) => d,
             None => return Err(PersistentDescriptorSetError::EmptyExpected),
         };
+
+        if !image_view.image().inner().image.usage().sampled {
+            return Err(PersistentDescriptorSetError::MissingImageUsage(
+                MissingImageUsage::Sampled,
+            ));
+        }
 
         if !image_view.can_be_sampled(&sampler) {
             return Err(PersistentDescriptorSetError::IncompatibleImageViewSampler);
@@ -829,7 +844,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             sampler.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -868,26 +883,15 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
 // Checks whether an image view matches the descriptor.
 fn image_match_desc<I>(
     image_view: &I,
-    desc: &DescriptorImageDesc,
+    desc: &DescriptorDescImage,
 ) -> Result<(), PersistentDescriptorSetError>
 where
     I: ?Sized + ImageViewAbstract,
 {
-    if desc.sampled && !image_view.image().inner().image.usage().sampled {
-        return Err(PersistentDescriptorSetError::MissingImageUsage(
-            MissingImageUsage::Sampled,
-        ));
-    } else if !desc.sampled && !image_view.image().inner().image.usage().storage {
-        return Err(PersistentDescriptorSetError::MissingImageUsage(
-            MissingImageUsage::Storage,
-        ));
-    }
-
-    let image_view_ty = DescriptorImageDescDimensions::from_image_view_type(image_view.ty());
-    if image_view_ty != desc.dimensions {
+    if image_view.ty() != desc.view_type {
         return Err(PersistentDescriptorSetError::ImageViewTypeMismatch {
-            expected: desc.dimensions,
-            obtained: image_view_ty,
+            expected: desc.view_type,
+            obtained: image_view.ty(),
         });
     }
 
@@ -905,46 +909,6 @@ where
     } else if !desc.multisampled && image_view.image().samples() != SampleCount::Sample1 {
         return Err(PersistentDescriptorSetError::UnexpectedMultisampled);
     }
-
-    let image_layers = image_view.array_layers();
-    let num_layers = image_layers.end - image_layers.start;
-
-    match desc.array_layers {
-        DescriptorImageDescArray::NonArrayed => {
-            // TODO: when a non-array is expected, can we pass an image view that is in fact an
-            // array with one layer? need to check
-            let required_layers = if desc.dimensions == DescriptorImageDescDimensions::Cube {
-                6
-            } else {
-                1
-            };
-
-            if num_layers != required_layers {
-                return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                    expected: 1,
-                    obtained: num_layers,
-                });
-            }
-        }
-        DescriptorImageDescArray::Arrayed {
-            max_layers: Some(max_layers),
-        } => {
-            let required_layers = if desc.dimensions == DescriptorImageDescDimensions::Cube {
-                max_layers * 6
-            } else {
-                max_layers
-            };
-
-            // TODO: is this correct? "max" layers? or is it in fact min layers?
-            if num_layers > required_layers {
-                return Err(PersistentDescriptorSetError::ArrayLayersMismatch {
-                    expected: max_layers,
-                    obtained: num_layers,
-                });
-            }
-        }
-        DescriptorImageDescArray::Arrayed { max_layers: None } => {}
-    };
 
     Ok(())
 }
@@ -1147,12 +1111,12 @@ pub enum MissingImageUsage {
 /// Error related to the persistent descriptor set.
 #[derive(Debug, Clone)]
 pub enum PersistentDescriptorSetError {
-    /// The number of array layers of an image doesn't match what was expected.
-    ArrayLayersMismatch {
-        /// Number of expected array layers for the image.
-        expected: u32,
-        /// Number of array layers of the image that was added.
-        obtained: u32,
+    /// The arrayed-ness of an image view doesn't match what was expected.
+    ArrayedMismatch {
+        /// Whether the shader expects an arrayed image.
+        expected: bool,
+        /// Whether an arrayed image view was provided.
+        obtained: bool,
     },
 
     /// Tried to add too many elements to an array.
@@ -1175,9 +1139,9 @@ pub enum PersistentDescriptorSetError {
     /// The type of an image view doesn't match what was expected.
     ImageViewTypeMismatch {
         /// Expected type.
-        expected: DescriptorImageDescDimensions,
+        expected: ImageViewType,
         /// Type of the image view that was passed.
-        obtained: DescriptorImageDescDimensions,
+        obtained: ImageViewType,
     },
 
     /// The image view isn't compatible with the sampler.
@@ -1200,6 +1164,9 @@ pub enum PersistentDescriptorSetError {
     /// The image view has a component swizzle that is different from identity.
     NotIdentitySwizzled,
 
+    /// Expected a non-arrayed image, but got an arrayed image.
+    UnexpectedArrayed,
+
     /// Expected a single-sampled image, but got a multisampled image.
     UnexpectedMultisampled,
 
@@ -1219,8 +1186,8 @@ impl fmt::Display for PersistentDescriptorSetError {
             fmt,
             "{}",
             match *self {
-                PersistentDescriptorSetError::ArrayLayersMismatch { .. } => {
-                    "the number of array layers of an image doesn't match what was expected"
+                PersistentDescriptorSetError::ArrayedMismatch { .. } => {
+                    "the arrayed-ness of an image view doesn't match what was expected"
                 }
                 PersistentDescriptorSetError::ArrayOutOfBounds => {
                     "tried to add too many elements to an array"
@@ -1251,6 +1218,9 @@ impl fmt::Display for PersistentDescriptorSetError {
                 }
                 PersistentDescriptorSetError::NotIdentitySwizzled => {
                     "the image view's component mapping is not identity swizzled"
+                }
+                PersistentDescriptorSetError::UnexpectedArrayed => {
+                    "expected a non-arrayed image, but got an arrayed image"
                 }
                 PersistentDescriptorSetError::UnexpectedMultisampled => {
                     "expected a single-sampled image, but got a multisampled image"

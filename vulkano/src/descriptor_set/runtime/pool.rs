@@ -106,7 +106,7 @@ unsafe impl DescriptorPool for Pool {
         let layout_rt_arr_cap = match layout.descriptor(layout.num_bindings() - 1) {
             Some(desc) => {
                 if desc.variable_count {
-                    desc.array_count as usize
+                    desc.descriptor_count as usize
                 } else {
                     0
                 }
@@ -145,7 +145,7 @@ unsafe impl DescriptorPool for Pool {
 
                     if let Some(desc) = &mut desc {
                         if desc.variable_count {
-                            desc.array_count = self.rt_arr_cap as u32;
+                            desc.descriptor_count = self.rt_arr_cap as u32;
                         }
                     }
 

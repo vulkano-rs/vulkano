@@ -9,6 +9,7 @@
 
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::pool::DescriptorsCount;
 use crate::device::Device;
@@ -61,25 +62,24 @@ impl DescriptorSetLayout {
                 //        doesn't have tess shaders enabled
 
                 let ty = desc.ty.ty();
-
-                let array_count = if desc.variable_count {
+                let descriptor_count = if desc.variable_count {
                     variable_descriptor_count = true;
 
-                    if desc.array_count == 0 {
+                    if desc.descriptor_count == 0 {
                         1
                     } else {
-                        desc.array_count
+                        desc.descriptor_count
                     }
                 } else {
-                    desc.array_count
+                    desc.descriptor_count
                 };
 
-                descriptors_count.add_num(ty, array_count);
+                descriptors_count.add_num(ty, descriptor_count);
 
                 Some(ash::vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
                     descriptor_type: ty.into(),
-                    descriptor_count: array_count,
+                    descriptor_count: descriptor_count,
                     stage_flags: desc.stages.into(),
                     p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
                 })
@@ -171,6 +171,19 @@ impl DescriptorSetLayout {
     pub fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
         self.desc.bindings().get(binding).cloned().unwrap_or(None)
     }
+
+    /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
+    /// of a descriptor set being bound `other`.
+    pub fn ensure_compatible_with_bind(
+        &self,
+        other: &DescriptorSetLayout,
+    ) -> Result<(), DescriptorSetCompatibilityError> {
+        if self.internal_object() == other.internal_object() {
+            return Ok(());
+        }
+
+        self.desc.ensure_compatible_with_bind(&other.desc)
+    }
 }
 
 unsafe impl DeviceOwned for DescriptorSetLayout {
@@ -205,7 +218,6 @@ impl Drop for DescriptorSetLayout {
 
 #[cfg(test)]
 mod tests {
-    use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
@@ -225,13 +237,10 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let layout = DescriptorDesc {
-            ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(false),
-                storage: false,
-            }),
-            array_count: 1,
+            ty: DescriptorDescTy::UniformBuffer,
+            descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
-            readonly: true,
+            mutable: false,
         };
 
         let sl = DescriptorSetLayout::new(
