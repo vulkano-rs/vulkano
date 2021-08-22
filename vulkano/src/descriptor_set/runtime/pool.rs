@@ -32,7 +32,9 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// Pool of descriptor sets of a specific layout that are automatically reclaimed.
+/// `DescriptorSetPool` is a convenience wrapper provided by Vulkano not to be confused with
+/// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate `DescriptorSet`'s
+/// from and optimizes for a specific layout. For a more general purpose pool see `descriptor_set::pool::StdDescriptorPool`.
 pub struct DescriptorSetPool {
     layout: Arc<DescriptorSetLayout>,
     pool: Pool,
