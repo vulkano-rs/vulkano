@@ -197,6 +197,7 @@ mod tests {
             descriptor_count: 1,
             stages: ShaderStages::all(),
             mutable: true,
+            variable_count: false,
         };
         let layout = DescriptorSetLayout::new(
             device.clone(),

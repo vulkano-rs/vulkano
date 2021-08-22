@@ -399,7 +399,7 @@ impl DescriptorDesc {
     ///  geometry: true,
     ///  fragment: false,
     ///  compute: true
-    ///}, mutable: true };
+    ///}, mutable: true, variable_count: false };
     ///
     ///let desc_part2 = DescriptorDesc{ ty: Sampler, descriptor_count: 1, stages: ShaderStages{
     ///  vertex: true,
@@ -408,7 +408,7 @@ impl DescriptorDesc {
     ///  geometry: false,
     ///  fragment: true,
     ///  compute: true
-    ///}, mutable: false };
+    ///}, mutable: false, variable_count: false };
     ///
     ///let desc_union = DescriptorDesc{ ty: Sampler, descriptor_count: 2, stages: ShaderStages{
     ///  vertex: true,
@@ -417,7 +417,7 @@ impl DescriptorDesc {
     ///  geometry: true,
     ///  fragment: true,
     ///  compute: true
-    ///}, mutable: true };
+    ///}, mutable: true, variable_count: false };
     ///
     ///assert_eq!(DescriptorDesc::union(Some(&desc_part1), Some(&desc_part2)), Ok(Some(desc_union)));
     ///```

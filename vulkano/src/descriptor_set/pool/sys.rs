@@ -424,6 +424,7 @@ mod tests {
             descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
             mutable: false,
+            variable_count: false,
         };
 
         let set_layout = DescriptorSetLayout::new(
@@ -454,6 +455,7 @@ mod tests {
             descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
             mutable: false,
+            variable_count: false,
         };
 
         let set_layout =

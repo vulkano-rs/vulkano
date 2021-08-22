@@ -420,6 +420,7 @@ mod tests {
                         ..ShaderStages::none()
                     },
                     mutable: false,
+                    variable_count: false,
                 })])],
                 None,
                 SpecConsts::descriptors(),

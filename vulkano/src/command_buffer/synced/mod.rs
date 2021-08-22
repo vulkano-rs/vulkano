@@ -714,6 +714,7 @@ mod tests {
                         descriptor_count: 1,
                         stages: ShaderStages::all(),
                         mutable: false,
+                        variable_count: false,
                     })],
                 )
                 .unwrap(),
