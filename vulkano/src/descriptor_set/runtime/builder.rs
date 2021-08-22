@@ -55,7 +55,9 @@ impl DescriptorSetBuilder {
         let device = layout.device().clone();
         let mut descriptors = Vec::with_capacity(layout.num_bindings());
         let mut desc_writes_capacity = 0;
-        let mut bound_resources_capacity = 0;
+        let mut t_num_bufs = 0;
+        let mut t_num_imgs = 0;
+        let mut t_num_samplers = 0;
 
         for binding_i in 0..layout.num_bindings() {
             let desc = layout.descriptor(binding_i);
@@ -74,16 +76,27 @@ impl DescriptorSetBuilder {
                 0
             };
 
-            let resources_per_element = match &desc {
+            let (num_bufs, num_imgs, num_samplers) = match &desc {
                 Some(desc) => match desc.ty {
-                    DescriptorDescTy::CombinedImageSampler(_) => 2,
-                    _ => 1,
+                    DescriptorDescTy::Sampler => (0, 0, 1),
+                    DescriptorDescTy::CombinedImageSampler(_) => (0, 1, 1),
+                    DescriptorDescTy::SampledImage(_) => (0, 1, 0),
+                    DescriptorDescTy::StorageImage(_) => (0, 1, 0),
+                    DescriptorDescTy::UniformTexelBuffer { .. } => (1, 0, 0),
+                    DescriptorDescTy::StorageTexelBuffer { .. } => (1, 0, 0),
+                    DescriptorDescTy::UniformBuffer => (1, 0, 0),
+                    DescriptorDescTy::StorageBuffer => (1, 0, 0),
+                    DescriptorDescTy::UniformBufferDynamic => (1, 0, 0),
+                    DescriptorDescTy::StorageBufferDynamic => (1, 0, 0),
+                    DescriptorDescTy::InputAttachment { .. } => (0, 1, 0),
                 },
-                None => 0,
+                None => (0, 0, 0),
             };
 
+            t_num_bufs += num_bufs * descriptor_count;
+            t_num_imgs += num_imgs * descriptor_count;
+            t_num_samplers += num_samplers * descriptor_count;
             desc_writes_capacity += descriptor_count;
-            bound_resources_capacity += resources_per_element * descriptor_count;
 
             descriptors.push(BuilderDescriptor {
                 desc,
@@ -96,7 +109,7 @@ impl DescriptorSetBuilder {
             in_array: false,
             cur_binding: 0,
             descriptors,
-            bound_resources: BoundResources::new(bound_resources_capacity),
+            bound_resources: BoundResources::new(t_num_bufs, t_num_imgs, t_num_samplers),
             desc_writes: Vec::with_capacity(desc_writes_capacity),
         })
     }

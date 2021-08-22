@@ -20,43 +20,9 @@ use crate::DeviceSize;
 use std::sync::Arc;
 
 pub struct BoundResources {
-    resources: Vec<BoundResource>,
-}
-
-struct BoundResource {
-    desc_index: u32,
-    ty: BoundResourceTy,
-    ty_index: usize,
-    data: BoundResourceData,
-}
-
-#[derive(PartialEq)]
-enum BoundResourceTy {
-    Buffer,
-    Image,
-    Sampler,
-}
-
-enum BoundResourceData {
-    Buffer(Arc<dyn BufferAccess + Send + Sync + 'static>),
-    Image(Arc<dyn ImageViewAbstract + Send + Sync + 'static>),
-    Sampler(Arc<Sampler>),
-}
-
-impl BoundResourceData {
-    fn buffer_ref(&self) -> &(dyn BufferAccess + Send + Sync + 'static) {
-        match self {
-            Self::Buffer(buf) => &*buf,
-            _ => panic!("resource is not a buffer"),
-        }
-    }
-
-    fn image_ref(&self) -> &(dyn ImageViewAbstract + Send + Sync + 'static) {
-        match self {
-            Self::Image(img) => &*img,
-            _ => panic!("resource is not an image"),
-        }
-    }
+    buffers: Vec<(Arc<dyn BufferAccess + Send + Sync + 'static>, u32)>,
+    images: Vec<(Arc<dyn ImageViewAbstract + Send + Sync + 'static>, u32)>,
+    samplers: Vec<(Arc<Sampler>, u32)>,
 }
 
 struct BufferViewResource<B>(Arc<BufferView<B>>)
@@ -102,31 +68,24 @@ where
 }
 
 impl BoundResources {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(buffer_capacity: usize, image_capacity: usize, sampler_capacity: usize) -> Self {
         Self {
-            resources: Vec::with_capacity(capacity),
+            buffers: Vec::with_capacity(buffer_capacity),
+            images: Vec::with_capacity(image_capacity),
+            samplers: Vec::with_capacity(sampler_capacity),
         }
     }
 
     pub fn num_buffers(&self) -> usize {
-        self.resources
-            .iter()
-            .filter(|r| r.ty == BoundResourceTy::Buffer)
-            .count()
+        self.buffers.len()
     }
 
     pub fn num_images(&self) -> usize {
-        self.resources
-            .iter()
-            .filter(|r| r.ty == BoundResourceTy::Image)
-            .count()
+        self.images.len()
     }
 
     pub fn num_samplers(&self) -> usize {
-        self.resources
-            .iter()
-            .filter(|r| r.ty == BoundResourceTy::Sampler)
-            .count()
+        self.samplers.len()
     }
 
     pub fn add_buffer(
@@ -134,28 +93,15 @@ impl BoundResources {
         desc_index: u32,
         buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
     ) {
-        let ty_index = self.num_buffers();
-
-        self.resources.push(BoundResource {
-            desc_index,
-            ty: BoundResourceTy::Buffer,
-            ty_index,
-            data: BoundResourceData::Buffer(buffer),
-        });
+        self.buffers.push((buffer, desc_index));
     }
 
     pub fn add_buffer_view<B>(&mut self, desc_index: u32, view: Arc<BufferView<B>>)
     where
         B: BufferAccess + 'static,
     {
-        let ty_index = self.num_buffers();
-
-        self.resources.push(BoundResource {
-            desc_index,
-            ty: BoundResourceTy::Buffer,
-            ty_index,
-            data: BoundResourceData::Buffer(Arc::new(BufferViewResource(view))),
-        });
+        self.buffers
+            .push((Arc::new(BufferViewResource(view)), desc_index));
     }
 
     pub fn add_image(
@@ -163,48 +109,22 @@ impl BoundResources {
         desc_index: u32,
         image: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
     ) {
-        let ty_index = self.num_images();
-
-        self.resources.push(BoundResource {
-            desc_index,
-            ty: BoundResourceTy::Image,
-            ty_index,
-            data: BoundResourceData::Image(image),
-        })
+        self.images.push((image, desc_index));
     }
 
     pub fn add_sampler(&mut self, desc_index: u32, sampler: Arc<Sampler>) {
-        let ty_index = self.num_samplers();
-
-        self.resources.push(BoundResource {
-            desc_index,
-            ty: BoundResourceTy::Sampler,
-            ty_index,
-            data: BoundResourceData::Sampler(sampler),
-        });
+        self.samplers.push((sampler, desc_index))
     }
 
     pub fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        for resource in &self.resources {
-            if resource.ty == BoundResourceTy::Buffer {
-                if resource.ty_index == index {
-                    return Some((resource.data.buffer_ref(), resource.desc_index));
-                }
-            }
-        }
-
-        None
+        self.buffers
+            .get(index)
+            .map(|(buf, bind)| (&**buf as _, *bind))
     }
 
     pub fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        for resource in &self.resources {
-            if resource.ty == BoundResourceTy::Image {
-                if resource.ty_index == index {
-                    return Some((resource.data.image_ref(), resource.desc_index));
-                }
-            }
-        }
-
-        None
+        self.images
+            .get(index)
+            .map(|(img, bind)| (&**img as _, *bind))
     }
 }
