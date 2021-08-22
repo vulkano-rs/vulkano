@@ -9,8 +9,8 @@
 
 use super::limits_check;
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
-use crate::descriptor_set::layout::DescriptorSetDescSupersetError;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -167,7 +167,7 @@ impl PipelineLayout {
 
     /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
     /// constant ranges. Returns an `Err` if this is not the case.
-    pub fn ensure_superset_of(
+    pub fn ensure_compatible_with_shader(
         &self,
         descriptor_set_layout_descs: &[DescriptorSetDesc],
         push_constant_range: &Option<PipelineLayoutPcRange>,
@@ -189,7 +189,7 @@ impl PipelineLayout {
                 .get(set_num)
                 .unwrap_or_else(|| &empty);
 
-            if let Err(error) = first.ensure_superset_of(second) {
+            if let Err(error) = first.ensure_compatible_with_shader(second) {
                 return Err(PipelineLayoutSupersetError::DescriptorSet {
                     error,
                     set_num: set_num as u32,
@@ -202,7 +202,8 @@ impl PipelineLayout {
             for own_range in self.push_constant_ranges.as_ref().into_iter() {
                 if range.stages.intersects(&own_range.stages) &&       // check if it shares any stages
                     (range.offset < own_range.offset || // our range must start before and end after the given range
-                        own_range.offset + own_range.size < range.offset + range.size) {
+                        own_range.offset + own_range.size < range.offset + range.size)
+                {
                     return Err(PipelineLayoutSupersetError::PushConstantRange {
                         first_range: *own_range,
                         second_range: *range,
@@ -338,7 +339,7 @@ impl From<Error> for PipelineLayoutCreationError {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PipelineLayoutSupersetError {
     DescriptorSet {
-        error: DescriptorSetDescSupersetError,
+        error: DescriptorSetCompatibilityError,
         set_num: u32,
     },
     PushConstantRange {
@@ -362,13 +363,16 @@ impl fmt::Display for PipelineLayoutSupersetError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             PipelineLayoutSupersetError::DescriptorSet { .. } => {
-                write!(
+                write!(fmt, "the descriptor set was not a superset of the other")
+            }
+            PipelineLayoutSupersetError::PushConstantRange {
+                first_range,
+                second_range,
+            } => {
+                writeln!(
                     fmt,
-                    "the descriptor set was not a superset of the other"
-                )
-            },
-            PipelineLayoutSupersetError::PushConstantRange { first_range, second_range } => {
-                writeln!(fmt, "our range did not completely encompass the other range")?;
+                    "our range did not completely encompass the other range"
+                )?;
                 writeln!(fmt, "    our stages: {:?}", first_range.stages)?;
                 writeln!(
                     fmt,
@@ -377,12 +381,13 @@ impl fmt::Display for PipelineLayoutSupersetError {
                     first_range.offset + first_range.size
                 )?;
                 writeln!(fmt, "    other stages: {:?}", second_range.stages)?;
-                write!(fmt,
+                write!(
+                    fmt,
                     "    other range: {} - {}",
                     second_range.offset,
                     second_range.offset + second_range.size
                 )
-            },
+            }
         }
     }
 }

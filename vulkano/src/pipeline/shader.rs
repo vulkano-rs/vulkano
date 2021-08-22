@@ -681,24 +681,16 @@ impl ShaderStages {
         }
     }
 
-    /// Checks whether we have more stages enabled than `other`.
+    /// Returns whether `self` contains all the stages of `other`.
     // TODO: add example
     #[inline]
-    pub const fn ensure_superset_of(
-        &self,
-        other: &ShaderStages,
-    ) -> Result<(), ShaderStagesSupersetError> {
-        if (self.vertex || !other.vertex)
+    pub const fn is_superset_of(&self, other: &ShaderStages) -> bool {
+        (self.vertex || !other.vertex)
             && (self.tessellation_control || !other.tessellation_control)
             && (self.tessellation_evaluation || !other.tessellation_evaluation)
             && (self.geometry || !other.geometry)
             && (self.fragment || !other.fragment)
             && (self.compute || !other.compute)
-        {
-            Ok(())
-        } else {
-            Err(ShaderStagesSupersetError::NotSuperset)
-        }
     }
 
     /// Checks whether any of the stages in `self` are also present in `other`.
@@ -783,26 +775,5 @@ impl From<ShaderStages> for PipelineStages {
             compute_shader: stages.compute,
             ..PipelineStages::none()
         }
-    }
-}
-
-/// Error when checking that a `ShaderStages` object is a superset of another.
-#[derive(Debug, Clone)]
-pub enum ShaderStagesSupersetError {
-    NotSuperset,
-}
-
-impl error::Error for ShaderStagesSupersetError {}
-
-impl fmt::Display for ShaderStagesSupersetError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                ShaderStagesSupersetError::NotSuperset => "shader stages not a superset",
-            }
-        )
     }
 }

@@ -421,9 +421,9 @@ mod tests {
 
         let layout = DescriptorDesc {
             ty: DescriptorDescTy::UniformBuffer,
-            array_count: 1,
+            descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
-            readonly: true,
+            mutable: false,
         };
 
         let set_layout = DescriptorSetLayout::new(
@@ -451,9 +451,9 @@ mod tests {
 
         let layout = DescriptorDesc {
             ty: DescriptorDescTy::UniformBuffer,
-            array_count: 1,
+            descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
-            readonly: true,
+            mutable: false,
         };
 
         let set_layout =

@@ -19,8 +19,8 @@ struct Descriptor {
     set: u32,
     binding: u32,
     desc_ty: TokenStream,
-    array_count: u64,
-    readonly: bool,
+    descriptor_count: u64,
+    mutable: bool,
 }
 
 pub(super) fn write_descriptor_set_layout_descs(
@@ -51,14 +51,14 @@ pub(super) fn write_descriptor_set_layout_descs(
                     {
                         Some(d) => {
                             let desc_ty = &d.desc_ty;
-                            let array_count = d.array_count as u32;
-                            let readonly = d.readonly;
+                            let descriptor_count = d.descriptor_count as u32;
+                            let mutable = d.mutable;
                             quote! {
                                 Some(DescriptorDesc {
                                     ty: #desc_ty,
-                                    array_count: #array_count,
+                                    descriptor_count: #descriptor_count,
                                     stages: #stages,
-                                    readonly: #readonly,
+                                    mutable: #mutable,
                                 }),
                             }
                         }
@@ -177,7 +177,7 @@ fn find_descriptors(
             .is_some();
 
         // Find information about the kind of binding for this descriptor.
-        let (desc_ty, readonly, array_count) =
+        let (desc_ty, mutable, descriptor_count) =
             descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
                 "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
                 name, pointed_ty
@@ -186,8 +186,8 @@ fn find_descriptors(
             desc_ty,
             set,
             binding,
-            array_count,
-            readonly: nonwritable || readonly,
+            descriptor_count,
+            mutable: !nonwritable && mutable,
         });
     }
 
@@ -389,20 +389,20 @@ fn descriptor_infos(
                         "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
 
-                    let (ty, readonly) = if decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer {
+                    let (ty, mutable) = if decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer {
                         // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                         // Determine whether all members have a NonWritable decoration.
                         let nonwritable = (0..member_types.len() as u32).all(|i| {
                             doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
                         });
 
-                        (quote! { DescriptorDescTy::StorageBuffer }, nonwritable)
+                        (quote! { DescriptorDescTy::StorageBuffer }, !nonwritable)
                     } else {
                         // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                        (quote! { DescriptorDescTy::UniformBuffer }, true) // Uniforms are never writable.
+                        (quote! { DescriptorDescTy::UniformBuffer }, false) // Uniforms are never mutable.
                     };
                     
-                    Some((ty, readonly, 1))
+                    Some((ty, mutable, 1))
                 }
                 &Instruction::TypeImage {
                     result_id,
@@ -445,12 +445,12 @@ fn descriptor_infos(
                             Some((desc, true, 1)) // Never writable.
                         }
                         Dim::DimBuffer => {
-                            let (ty, readonly) = if sampled {
+                            let (ty, mutable) = if sampled {
                                 // VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
-                                (quote! { DescriptorDescTy::UniformTexelBuffer }, true) // Uniforms are never writable.
+                                (quote! { DescriptorDescTy::UniformTexelBuffer }, false) // Uniforms are never mutable.
                             } else {
                                 // VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
-                                (quote! { DescriptorDescTy::StorageTexelBuffer }, false)
+                                (quote! { DescriptorDescTy::StorageTexelBuffer }, true)
                             };
 
                             let desc = quote! {
@@ -459,22 +459,22 @@ fn descriptor_infos(
                                 }
                             };
 
-                            Some((desc, readonly, 1))
+                            Some((desc, mutable, 1))
                             
                         }
                         _ => {
-                            let (ty, readonly) = if force_combined_image_sampled {
+                            let (ty, mutable) = if force_combined_image_sampled {
                                 // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
                                 // Never writable.
                                 assert!(sampled, "A combined image sampler must not reference a storage image");
-                                (quote! { DescriptorDescTy::CombinedImageSampler }, true)
+                                (quote! { DescriptorDescTy::CombinedImageSampler }, false) // Sampled images are never writable.
                             } else {
                                 if sampled {
                                     // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                                    (quote! { DescriptorDescTy::SampledImage }, true) // Sampled images are never writable.
+                                    (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never writable.
                                 } else {
                                     // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
-                                    (quote! { DescriptorDescTy::StorageImage }, false)
+                                    (quote! { DescriptorDescTy::StorageImage }, true)
                                 }
                             };
                             let view_type = match (dim, arrayed) {
@@ -498,7 +498,7 @@ fn descriptor_infos(
                                 })
                             };
 
-                            Some((desc, readonly, 1))
+                            Some((desc, mutable, 1))
                         }
                     }
                 }
@@ -512,14 +512,14 @@ fn descriptor_infos(
 
                 &Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
                     let desc = quote! { DescriptorDescTy::Sampler };
-                    Some((desc, true, 1))
+                    Some((desc, false, 1))
                 }
                 &Instruction::TypeArray {
                     result_id,
                     type_id,
                     length_id,
                 } if result_id == pointed_ty => {
-                    let (desc, readonly, arr) =
+                    let (desc, mutable, arr) =
                         match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
                             None => return None,
                             Some(v) => v,
@@ -539,7 +539,7 @@ fn descriptor_infos(
                         .next()
                         .expect("failed to find array length");
                     let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
-                    Some((desc, readonly, len))
+                    Some((desc, mutable, len))
                 }
                 _ => None, // TODO: other types
             }

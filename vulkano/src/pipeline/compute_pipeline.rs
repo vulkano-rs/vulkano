@@ -107,7 +107,7 @@ impl ComputePipeline {
         }
 
         unsafe {
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -414,12 +414,12 @@ mod tests {
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [DescriptorSetDesc::new([Some(DescriptorDesc {
                     ty: DescriptorDescTy::StorageBuffer,
-                    array_count: 1,
+                    descriptor_count: 1,
                     stages: ShaderStages {
                         compute: true,
                         ..ShaderStages::none()
                     },
-                    readonly: true,
+                    mutable: false,
                 })])],
                 None,
                 SpecConsts::descriptors(),

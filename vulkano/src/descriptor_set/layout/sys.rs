@@ -9,6 +9,7 @@
 
 use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorDesc;
+use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::pool::DescriptorsCount;
 use crate::device::Device;
@@ -60,12 +61,12 @@ impl DescriptorSetLayout {
                 //        doesn't have tess shaders enabled
 
                 let ty = desc.ty.ty();
-                descriptors_count.add_num(ty, desc.array_count);
+                descriptors_count.add_num(ty, desc.descriptor_count);
 
                 Some(ash::vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
                     descriptor_type: ty.into(),
-                    descriptor_count: desc.array_count,
+                    descriptor_count: desc.descriptor_count,
                     stage_flags: desc.stages.into(),
                     p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
                 })
@@ -122,6 +123,19 @@ impl DescriptorSetLayout {
     pub fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
         self.desc.bindings().get(binding).cloned().unwrap_or(None)
     }
+
+    /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
+    /// of a descriptor set being bound `other`.
+    pub fn ensure_compatible_with_bind(
+        &self,
+        other: &DescriptorSetLayout,
+    ) -> Result<(), DescriptorSetCompatibilityError> {
+        if self.internal_object() == other.internal_object() {
+            return Ok(());
+        }
+
+        self.desc.ensure_compatible_with_bind(&other.desc)
+    }
 }
 
 unsafe impl DeviceOwned for DescriptorSetLayout {
@@ -176,9 +190,9 @@ mod tests {
 
         let layout = DescriptorDesc {
             ty: DescriptorDescTy::UniformBuffer,
-            array_count: 1,
+            descriptor_count: 1,
             stages: ShaderStages::all_graphics(),
-            readonly: true,
+            mutable: false,
         };
 
         let sl = DescriptorSetLayout::new(

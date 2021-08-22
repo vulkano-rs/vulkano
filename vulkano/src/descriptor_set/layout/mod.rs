@@ -13,12 +13,12 @@
 //! can create a descriptor set layout manually, but it is normally created automatically by each
 //! pipeline layout.
 
+pub use self::desc::DescriptorCompatibilityError;
 pub use self::desc::DescriptorDesc;
 pub use self::desc::DescriptorDescImage;
-pub use self::desc::DescriptorDescSupersetError;
 pub use self::desc::DescriptorDescTy;
+pub use self::desc::DescriptorSetCompatibilityError;
 pub use self::desc::DescriptorSetDesc;
-pub use self::desc::DescriptorSetDescSupersetError;
 pub use self::desc::DescriptorType;
 pub use self::sys::DescriptorSetLayout;
 

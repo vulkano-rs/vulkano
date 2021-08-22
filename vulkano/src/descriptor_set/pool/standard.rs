@@ -194,9 +194,9 @@ mod tests {
 
         let desc = DescriptorDesc {
             ty: DescriptorDescTy::Sampler,
-            array_count: 1,
+            descriptor_count: 1,
             stages: ShaderStages::all(),
-            readonly: false,
+            mutable: true,
         };
         let layout = DescriptorSetLayout::new(
             device.clone(),

@@ -397,14 +397,14 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
     pub fn leave_array(
         mut self,
     ) -> Result<PersistentDescriptorSetBuilder<R>, PersistentDescriptorSetError> {
-        if self.desc.array_count > self.array_element as u32 {
+        if self.desc.descriptor_count > self.array_element as u32 {
             return Err(PersistentDescriptorSetError::MissingArrayElements {
-                expected: self.desc.array_count,
+                expected: self.desc.descriptor_count,
                 obtained: self.array_element as u32,
             });
         }
 
-        debug_assert_eq!(self.desc.array_count, self.array_element as u32);
+        debug_assert_eq!(self.desc.descriptor_count, self.array_element as u32);
 
         self.builder.binding_id += 1;
         Ok(self.builder)
@@ -433,7 +433,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             buffer.inner().buffer.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -562,7 +562,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             view.view().device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -641,7 +641,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             image_view.image().inner().image.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -769,7 +769,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             sampler.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 
@@ -844,7 +844,7 @@ impl<R> PersistentDescriptorSetBuilderArray<R> {
             sampler.device().internal_object()
         );
 
-        if self.array_element as u32 >= self.desc.array_count {
+        if self.array_element as u32 >= self.desc.descriptor_count {
             return Err(PersistentDescriptorSetError::ArrayOutOfBounds);
         }
 

@@ -2631,7 +2631,7 @@ impl SyncCommandBufferBuilder {
                     .layout()
                     .descriptor(ds.buffer(buf_num).unwrap().1 as usize)
                     .unwrap();
-                let exclusive = !desc.readonly;
+                let exclusive = desc.mutable;
                 let (stages, access) = desc.pipeline_stages_and_access();
                 resources.push((
                     KeyTy::Buffer,
@@ -2650,7 +2650,7 @@ impl SyncCommandBufferBuilder {
             for img_num in 0..ds.num_images() {
                 let (image_view, desc_num) = ds.image(img_num).unwrap();
                 let desc = ds.layout().descriptor(desc_num as usize).unwrap();
-                let exclusive = !desc.readonly;
+                let exclusive = desc.mutable;
                 let (stages, access) = desc.pipeline_stages_and_access();
                 let mut ignore_me_hack = false;
                 let layouts = image_view
