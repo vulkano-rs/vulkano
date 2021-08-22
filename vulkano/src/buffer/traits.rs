@@ -24,7 +24,7 @@ use std::ops::Range;
 /// buffer.
 ///
 /// See also `TypedBufferAccess`.
-pub unsafe trait BufferAccess: DeviceOwned {
+pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
 
@@ -166,7 +166,7 @@ pub struct BufferInner<'a> {
 
 unsafe impl<T> BufferAccess for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: BufferAccess,
 {
     #[inline]
@@ -201,7 +201,7 @@ where
 }
 
 /// Extension trait for `BufferAccess`. Indicates the type of the content of the buffer.
-pub unsafe trait TypedBufferAccess: BufferAccess {
+pub unsafe trait TypedBufferAccess: BufferAccess + Send + Sync {
     /// The type of the content.
     type Content: ?Sized;
 
@@ -219,7 +219,7 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
 
 unsafe impl<T> TypedBufferAccess for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: TypedBufferAccess,
 {
     type Content = <T::Target as TypedBufferAccess>::Content;

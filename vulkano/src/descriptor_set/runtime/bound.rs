@@ -1,6 +1,13 @@
+use crate::buffer::BufferInner;
+use crate::buffer::BufferView;
 use crate::descriptor_set::BufferAccess;
+use crate::device::Device;
+use crate::device::DeviceOwned;
+use crate::device::Queue;
 use crate::image::ImageViewAbstract;
 use crate::sampler::Sampler;
+use crate::sync::AccessError;
+use crate::DeviceSize;
 use std::sync::Arc;
 
 pub struct BoundResources {
@@ -31,17 +38,59 @@ impl BoundResourceData {
     fn buffer_ref(&self) -> &(dyn BufferAccess + Send + Sync + 'static) {
         match self {
             Self::Buffer(buf) => &*buf,
-            _ => panic!("resource is not a buffer")
+            _ => panic!("resource is not a buffer"),
         }
     }
 
     fn image_ref(&self) -> &(dyn ImageViewAbstract + Send + Sync + 'static) {
         match self {
             Self::Image(img) => &*img,
-            _ => panic!("resource is not an image")
+            _ => panic!("resource is not an image"),
         }
     }
-}   
+}
+
+struct BufferViewResource<B>(Arc<BufferView<B>>)
+where
+    B: BufferAccess;
+
+unsafe impl<B> DeviceOwned for BufferViewResource<B>
+where
+    B: BufferAccess,
+{
+    fn device(&self) -> &Arc<Device> {
+        self.0.device()
+    }
+}
+
+unsafe impl<B> BufferAccess for BufferViewResource<B>
+where
+    B: BufferAccess,
+{
+    fn inner(&self) -> BufferInner<'_> {
+        self.0.buffer().inner()
+    }
+
+    fn size(&self) -> DeviceSize {
+        self.0.buffer().size()
+    }
+
+    fn conflict_key(&self) -> (u64, u64) {
+        self.0.buffer().conflict_key()
+    }
+
+    fn try_gpu_lock(&self, exclusive_access: bool, queue: &Queue) -> Result<(), AccessError> {
+        self.0.buffer().try_gpu_lock(exclusive_access, queue)
+    }
+
+    unsafe fn increase_gpu_lock(&self) {
+        self.0.buffer().increase_gpu_lock()
+    }
+
+    unsafe fn unlock(&self) {
+        self.0.buffer().unlock()
+    }
+}
 
 impl BoundResources {
     pub fn new(capacity: usize) -> Self {
@@ -83,6 +132,20 @@ impl BoundResources {
             ty: BoundResourceTy::Buffer,
             ty_index,
             data: BoundResourceData::Buffer(buffer),
+        });
+    }
+
+    pub fn add_buffer_view<B>(&mut self, desc_index: u32, view: Arc<BufferView<B>>)
+    where
+        B: BufferAccess + 'static,
+    {
+        let ty_index = self.num_buffers();
+
+        self.resources.push(BoundResource {
+            desc_index,
+            ty: BoundResourceTy::Buffer,
+            ty_index,
+            data: BoundResourceData::Buffer(Arc::new(BufferViewResource(view))),
         });
     }
 
