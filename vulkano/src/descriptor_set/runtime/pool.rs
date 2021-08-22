@@ -229,7 +229,7 @@ impl Drop for PoolAlloc {
     }
 }
 
-/// A descriptor set created from a `DescriptorSetsPool`.
+/// A descriptor set created from a `DescriptorSetPool`.
 pub struct DescriptorSetPoolSet {
     inner: PoolAlloc,
     bound_resources: BoundResources,

@@ -10,6 +10,7 @@
 use super::bound::BoundResources;
 use super::DescriptorSetError;
 use super::MissingBufferUsage;
+use super::MissingFeature;
 use super::MissingImageUsage;
 use crate::buffer::BufferView;
 use crate::descriptor_set::layout::DescriptorDesc;
@@ -53,6 +54,7 @@ impl DescriptorSetBuilder {
         runtime_array_capacity: usize,
     ) -> Result<Self, DescriptorSetError> {
         let device = layout.device().clone();
+        let enabled_features = device.enabled_features();
         let mut descriptors = Vec::with_capacity(layout.num_bindings());
         let mut desc_writes_capacity = 0;
         let mut t_num_bufs = 0;
@@ -66,6 +68,24 @@ impl DescriptorSetBuilder {
                 if desc.variable_count {
                     if binding_i != layout.num_bindings() - 1 {
                         return Err(DescriptorSetError::RuntimeArrayMustBeLast);
+                    }
+
+                    if !enabled_features.runtime_descriptor_array {
+                        return Err(DescriptorSetError::MissingFeature(
+                            MissingFeature::RuntimeDescriptorArray,
+                        ));
+                    }
+
+                    if !enabled_features.descriptor_binding_variable_descriptor_count {
+                        return Err(DescriptorSetError::MissingFeature(
+                            MissingFeature::DescriptorBindingVariableDescriptorCount,
+                        ));
+                    }
+
+                    if !enabled_features.descriptor_binding_partially_bound {
+                        return Err(DescriptorSetError::MissingFeature(
+                            MissingFeature::DescriptorBindingPartiallyBound,
+                        ));
                     }
 
                     runtime_array_capacity

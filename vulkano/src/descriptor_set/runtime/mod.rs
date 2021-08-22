@@ -110,6 +110,9 @@ pub enum DescriptorSetError {
 
     /// Expected a non-arrayed image, but got an arrayed image.
     UnexpectedArrayed,
+
+    /// A required feature is missing from the Device
+    MissingFeature(MissingFeature)
 }
 
 impl From<OomError> for DescriptorSetError {
@@ -157,6 +160,7 @@ impl fmt::Display for DescriptorSetError {
                 Self::OomError(_) => "out of memory",
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
+                Self::MissingFeature(_) => "a required feature is missing from the Device",
             }
         )
     }
@@ -179,4 +183,13 @@ pub enum MissingImageUsage {
     InputAttachment,
     Sampled,
     Storage,
+}
+
+// Part of the DescriptorSetError for the case
+// of missing features on a device.
+#[derive(Debug, Clone)]
+pub enum MissingFeature {
+    RuntimeDescriptorArray,
+    DescriptorBindingVariableDescriptorCount,
+    DescriptorBindingPartiallyBound,
 }
