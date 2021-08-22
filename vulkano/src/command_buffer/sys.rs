@@ -33,8 +33,8 @@ use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueriesRange;
 use crate::query::Query;
@@ -374,30 +374,26 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_compute<Cp>(&mut self, pipeline: &Cp)
-    where
-        Cp: ?Sized + ComputePipelineAbstract,
-    {
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
         fns.v1_0.cmd_bind_pipeline(
             cmd,
             ash::vk::PipelineBindPoint::COMPUTE,
-            pipeline.inner().internal_object(),
+            pipeline.internal_object(),
         );
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: &Gp)
-    where
-        Gp: ?Sized + GraphicsPipelineAbstract,
-    {
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
-        fns.v1_0
-            .cmd_bind_pipeline(cmd, ash::vk::PipelineBindPoint::GRAPHICS, inner);
+        fns.v1_0.cmd_bind_pipeline(
+            cmd,
+            ash::vk::PipelineBindPoint::GRAPHICS,
+            pipeline.internal_object(),
+        );
     }
 
     /// Calls `vkCmdBindVertexBuffers` on the builder.

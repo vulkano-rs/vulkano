@@ -9,7 +9,7 @@
 
 use crate::buffer::BufferAccess;
 use crate::device::DeviceOwned;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::GraphicsPipeline;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -20,13 +20,10 @@ use std::fmt;
 ///
 /// - Panics if one of the vertex buffers was not created with the same device as `pipeline`.
 ///
-pub fn check_vertex_buffers<GP>(
-    pipeline: &GP,
+pub fn check_vertex_buffers(
+    pipeline: &GraphicsPipeline,
     vertex_buffers: &[Box<dyn BufferAccess + Send + Sync>],
-) -> Result<(), CheckVertexBufferError>
-where
-    GP: GraphicsPipelineAbstract,
-{
+) -> Result<(), CheckVertexBufferError> {
     for (num, buf) in vertex_buffers.iter().enumerate() {
         assert_eq!(
             buf.inner().buffer.device().internal_object(),

@@ -8,6 +8,13 @@
 -->
 - **Breaking** The `draw` and `draw_indexed` commands on `AutoCommandBufferBuilder` now take parameters to explicitly specify the range of vertices and instances to draw.
 - **Breaking** `BufferlessDefinition` is removed.
+- **Breaking** The `VertexSource` trait is removed, and has been replaced with the new `VertexBuffersCollection` trait, which works analogously to `DescriptorSetsCollection`. Vertex buffers can now be passed in as a tuple, just like descriptor sets.
+- **Breaking** Removed the vertex definition type parameter from `GraphicsPipeline`, which is no longer needed with the change above.
+- **Breaking** The `ComputePipelineAbstract` and `GraphicsPipelineAbstract` traits are no longer needed and have been removed, with their methods made available on the base `ComputePipeline` and `GraphicsPipeline` types.
+- Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
+- Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
+- Bug fixed. Image layout passed to SubImage is now being respected
+- The full Rust code is now generated from vk.xml by autogen directly, instead of using intermediate macros.
 
 # Version 0.25.0 (2021-08-10)
 

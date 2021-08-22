@@ -22,7 +22,6 @@ use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
 
 use std::sync::Arc;
@@ -31,7 +30,7 @@ use vulkano::buffer::TypedBufferAccess;
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<GraphicsPipeline>,
 }
 
 impl PointLightingSystem {
@@ -189,7 +188,7 @@ impl PointLightingSystem {
                 0,
                 self.pipeline.clone(),
                 &dynamic_state,
-                vec![self.vertex_buffer.clone()],
+                self.vertex_buffer.clone(),
                 descriptor_set,
                 push_constants,
             )
