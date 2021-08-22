@@ -1,5 +1,16 @@
+// Copyright (c) 2017 The vulkano developers
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+
 use super::bound::BoundResources;
-use super::{MissingBufferUsage, MissingImageUsage, RuntimeDescriptorSetError};
+use super::DescriptorSetError;
+use super::MissingBufferUsage;
+use super::MissingImageUsage;
 use crate::buffer::BufferView;
 use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::layout::DescriptorDescTy;
@@ -18,31 +29,31 @@ use crate::sampler::Sampler;
 use crate::VulkanObject;
 use std::sync::Arc;
 
-struct RuntimeDescriptor {
+struct BuilderDescriptor {
     desc: Option<DescriptorDesc>,
     array_element: u32,
 }
 
-pub struct RuntimeDescriptorSetBuilder {
+pub struct DescriptorSetBuilder {
     device: Arc<Device>,
     in_array: bool,
-    descriptors: Vec<RuntimeDescriptor>,
+    descriptors: Vec<BuilderDescriptor>,
     cur_binding: usize,
     bound_resources: BoundResources,
     desc_writes: Vec<DescriptorWrite>,
 }
 
-pub struct RuntimeDescriptorSetBuilderOutput {
+pub struct DescriptorSetBuilderOutput {
     pub layout: Arc<DescriptorSetLayout>,
     pub writes: Vec<DescriptorWrite>,
     pub bound_resources: BoundResources,
 }
 
-impl RuntimeDescriptorSetBuilder {
+impl DescriptorSetBuilder {
     pub fn start(
         layout: Arc<DescriptorSetLayout>,
         runtime_array_capacity: usize,
-    ) -> Result<Self, RuntimeDescriptorSetError> {
+    ) -> Result<Self, DescriptorSetError> {
         let device = layout.device().clone();
         let mut descriptors = Vec::with_capacity(layout.num_bindings());
         let mut desc_writes_capacity = 0;
@@ -54,7 +65,7 @@ impl RuntimeDescriptorSetBuilder {
             let array_count = if let Some(desc) = &desc {
                 if desc.variable_count {
                     if binding_i != layout.num_bindings() - 1 {
-                        return Err(RuntimeDescriptorSetError::RuntimeArrayMustBeLast);
+                        return Err(DescriptorSetError::RuntimeArrayMustBeLast);
                     }
 
                     runtime_array_capacity
@@ -75,7 +86,7 @@ impl RuntimeDescriptorSetBuilder {
 
             desc_writes_capacity += array_count;
             bound_resources_capacity += resources_per_element * array_count;
-            descriptors.push(RuntimeDescriptor {
+            descriptors.push(BuilderDescriptor {
                 desc,
                 array_element: 0,
             });
@@ -91,9 +102,9 @@ impl RuntimeDescriptorSetBuilder {
         })
     }
 
-    pub fn output(self) -> Result<RuntimeDescriptorSetBuilderOutput, RuntimeDescriptorSetError> {
+    pub fn output(self) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
         if self.cur_binding != self.descriptors.len() {
-            Err(RuntimeDescriptorSetError::DescriptorsMissing {
+            Err(DescriptorSetError::DescriptorsMissing {
                 expected: self.descriptors.len(),
                 obtained: self.cur_binding,
             })
@@ -111,7 +122,7 @@ impl RuntimeDescriptorSetBuilder {
                 })),
             )?);
 
-            Ok(RuntimeDescriptorSetBuilderOutput {
+            Ok(DescriptorSetBuilderOutput {
                 layout,
                 writes: self.desc_writes,
                 bound_resources: self.bound_resources,
@@ -119,22 +130,22 @@ impl RuntimeDescriptorSetBuilder {
         }
     }
 
-    pub fn enter_array(&mut self) -> Result<(), RuntimeDescriptorSetError> {
+    pub fn enter_array(&mut self) -> Result<(), DescriptorSetError> {
         if self.in_array {
-            Err(RuntimeDescriptorSetError::AlreadyInArray)
+            Err(DescriptorSetError::AlreadyInArray)
         } else if self.cur_binding >= self.descriptors.len() {
-            Err(RuntimeDescriptorSetError::TooManyDescriptors)
+            Err(DescriptorSetError::TooManyDescriptors)
         } else if self.descriptors[self.cur_binding].desc.is_none() {
-            Err(RuntimeDescriptorSetError::DescriptorIsEmpty)
+            Err(DescriptorSetError::DescriptorIsEmpty)
         } else {
             self.in_array = true;
             Ok(())
         }
     }
 
-    pub fn leave_array(&mut self) -> Result<(), RuntimeDescriptorSetError> {
+    pub fn leave_array(&mut self) -> Result<(), DescriptorSetError> {
         if !self.in_array {
-            Err(RuntimeDescriptorSetError::NotInArray)
+            Err(DescriptorSetError::NotInArray)
         } else {
             let descriptor = &self.descriptors[self.cur_binding];
             let inner_desc = match descriptor.desc.as_ref() {
@@ -143,7 +154,7 @@ impl RuntimeDescriptorSetBuilder {
             };
 
             if !inner_desc.variable_count && descriptor.array_element != inner_desc.array_count {
-                return Err(RuntimeDescriptorSetError::ArrayLengthMismatch {
+                return Err(DescriptorSetError::ArrayLengthMismatch {
                     expected: inner_desc.array_count,
                     obtained: descriptor.array_element,
                 });
@@ -155,12 +166,12 @@ impl RuntimeDescriptorSetBuilder {
         }
     }
 
-    pub fn add_empty(&mut self) -> Result<(), RuntimeDescriptorSetError> {
+    pub fn add_empty(&mut self) -> Result<(), DescriptorSetError> {
         // Should be unreahable as enter_array prevents entering an array for empty descriptors.
         assert!(!self.in_array);
 
         if self.descriptors[self.cur_binding].desc.is_some() {
-            return Err(RuntimeDescriptorSetError::WrongDescriptorType);
+            return Err(DescriptorSetError::WrongDescriptorType);
         }
 
         self.cur_binding += 1;
@@ -170,9 +181,9 @@ impl RuntimeDescriptorSetBuilder {
     pub fn add_buffer(
         &mut self,
         buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
-    ) -> Result<(), RuntimeDescriptorSetError> {
+    ) -> Result<(), DescriptorSetError> {
         if buffer.inner().buffer.device().internal_object() != self.device.internal_object() {
-            return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
+            return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
         let leave_array = if !self.in_array {
@@ -185,14 +196,14 @@ impl RuntimeDescriptorSetBuilder {
         let descriptor = &mut self.descriptors[self.cur_binding];
         let inner_desc = match descriptor.desc.as_ref() {
             Some(some) => some,
-            None => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            None => return Err(DescriptorSetError::WrongDescriptorType),
         };
 
         match inner_desc.ty {
             DescriptorDescTy::Buffer(ref buffer_desc) => {
                 self.desc_writes.push(if buffer_desc.storage {
                     if !buffer.inner().buffer.usage().storage_buffer {
-                        return Err(RuntimeDescriptorSetError::MissingBufferUsage(
+                        return Err(DescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::StorageBuffer,
                         ));
                     }
@@ -206,7 +217,7 @@ impl RuntimeDescriptorSetBuilder {
                     }
                 } else {
                     if !buffer.inner().buffer.usage().uniform_buffer {
-                        return Err(RuntimeDescriptorSetError::MissingBufferUsage(
+                        return Err(DescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::UniformBuffer,
                         ));
                     }
@@ -230,7 +241,7 @@ impl RuntimeDescriptorSetBuilder {
                     }
                 });
             }
-            _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            _ => return Err(DescriptorSetError::WrongDescriptorType),
         }
 
         self.bound_resources
@@ -244,15 +255,12 @@ impl RuntimeDescriptorSetBuilder {
         }
     }
 
-    pub fn add_buffer_view<B>(
-        &mut self,
-        view: Arc<BufferView<B>>,
-    ) -> Result<(), RuntimeDescriptorSetError>
+    pub fn add_buffer_view<B>(&mut self, view: Arc<BufferView<B>>) -> Result<(), DescriptorSetError>
     where
         B: BufferAccess + 'static,
     {
         if view.device().internal_object() != self.device.internal_object() {
-            return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
+            return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
         let leave_array = if !self.in_array {
@@ -265,7 +273,7 @@ impl RuntimeDescriptorSetBuilder {
         let descriptor = &mut self.descriptors[self.cur_binding];
         let inner_desc = match descriptor.desc.as_ref() {
             Some(some) => some,
-            None => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            None => return Err(DescriptorSetError::WrongDescriptorType),
         };
 
         match inner_desc.ty {
@@ -274,7 +282,7 @@ impl RuntimeDescriptorSetBuilder {
                     // TODO: storage_texel_buffer_atomic
 
                     if !view.storage_texel_buffer() {
-                        return Err(RuntimeDescriptorSetError::MissingBufferUsage(
+                        return Err(DescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::StorageTexelBuffer,
                         ));
                     }
@@ -286,7 +294,7 @@ impl RuntimeDescriptorSetBuilder {
                     ));
                 } else {
                     if !view.uniform_texel_buffer() {
-                        return Err(RuntimeDescriptorSetError::MissingBufferUsage(
+                        return Err(DescriptorSetError::MissingBufferUsage(
                             MissingBufferUsage::UniformTexelBuffer,
                         ));
                     }
@@ -298,7 +306,7 @@ impl RuntimeDescriptorSetBuilder {
                     ));
                 }
             }
-            _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            _ => return Err(DescriptorSetError::WrongDescriptorType),
         }
 
         self.bound_resources
@@ -314,11 +322,11 @@ impl RuntimeDescriptorSetBuilder {
     pub fn add_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
-    ) -> Result<(), RuntimeDescriptorSetError> {
+    ) -> Result<(), DescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
             != self.device.internal_object()
         {
-            return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
+            return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
         let leave_array = if !self.in_array {
@@ -331,7 +339,7 @@ impl RuntimeDescriptorSetBuilder {
         let descriptor = &mut self.descriptors[self.cur_binding];
         let inner_desc = match descriptor.desc.as_ref() {
             Some(some) => some,
-            None => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            None => return Err(DescriptorSetError::WrongDescriptorType),
         };
 
         match inner_desc.ty {
@@ -345,7 +353,7 @@ impl RuntimeDescriptorSetBuilder {
                         &image_view,
                     )
                 } else if !image_view.component_mapping().is_identity() {
-                    return Err(RuntimeDescriptorSetError::NotIdentitySwizzled);
+                    return Err(DescriptorSetError::NotIdentitySwizzled);
                 } else {
                     DescriptorWrite::storage_image(
                         self.cur_binding as u32,
@@ -359,19 +367,19 @@ impl RuntimeDescriptorSetBuilder {
                 array_layers,
             } => {
                 if !image_view.image().inner().image.usage().input_attachment {
-                    return Err(RuntimeDescriptorSetError::MissingImageUsage(
+                    return Err(DescriptorSetError::MissingImageUsage(
                         MissingImageUsage::InputAttachment,
                     ));
                 }
 
                 if !image_view.component_mapping().is_identity() {
-                    return Err(RuntimeDescriptorSetError::NotIdentitySwizzled);
+                    return Err(DescriptorSetError::NotIdentitySwizzled);
                 }
 
                 if multisampled && image_view.image().samples() == SampleCount::Sample1 {
-                    return Err(RuntimeDescriptorSetError::ExpectedMultisampled);
+                    return Err(DescriptorSetError::ExpectedMultisampled);
                 } else if !multisampled && image_view.image().samples() != SampleCount::Sample1 {
-                    return Err(RuntimeDescriptorSetError::UnexpectedMultisampled);
+                    return Err(DescriptorSetError::UnexpectedMultisampled);
                 }
 
                 let image_layers = image_view.array_layers();
@@ -380,7 +388,7 @@ impl RuntimeDescriptorSetBuilder {
                 match array_layers {
                     DescriptorImageDescArray::NonArrayed => {
                         if num_layers != 1 {
-                            return Err(RuntimeDescriptorSetError::ArrayLayersMismatch {
+                            return Err(DescriptorSetError::ArrayLayersMismatch {
                                 expected: 1,
                                 obtained: num_layers,
                             });
@@ -391,7 +399,7 @@ impl RuntimeDescriptorSetBuilder {
                     } => {
                         if num_layers > max_layers {
                             // TODO: is this correct? "max" layers? or is it in fact min layers?
-                            return Err(RuntimeDescriptorSetError::ArrayLayersMismatch {
+                            return Err(DescriptorSetError::ArrayLayersMismatch {
                                 expected: max_layers,
                                 obtained: num_layers,
                             });
@@ -406,7 +414,7 @@ impl RuntimeDescriptorSetBuilder {
                     &image_view,
                 ));
             }
-            _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            _ => return Err(DescriptorSetError::WrongDescriptorType),
         }
 
         descriptor.array_element += 1;
@@ -424,19 +432,19 @@ impl RuntimeDescriptorSetBuilder {
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         sampler: Arc<Sampler>,
-    ) -> Result<(), RuntimeDescriptorSetError> {
+    ) -> Result<(), DescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
             != self.device.internal_object()
         {
-            return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
+            return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
         if sampler.device().internal_object() != self.device.internal_object() {
-            return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
+            return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
         if !image_view.can_be_sampled(&sampler) {
-            return Err(RuntimeDescriptorSetError::IncompatibleImageViewSampler);
+            return Err(DescriptorSetError::IncompatibleImageViewSampler);
         }
 
         let leave_array = if !self.in_array {
@@ -449,7 +457,7 @@ impl RuntimeDescriptorSetBuilder {
         let descriptor = &mut self.descriptors[self.cur_binding];
         let inner_desc = match descriptor.desc.as_ref() {
             Some(some) => some,
-            None => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            None => return Err(DescriptorSetError::WrongDescriptorType),
         };
 
         match inner_desc.ty {
@@ -464,7 +472,7 @@ impl RuntimeDescriptorSetBuilder {
                         &image_view,
                     ));
             }
-            _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            _ => return Err(DescriptorSetError::WrongDescriptorType),
         }
 
         descriptor.array_element += 1;
@@ -480,9 +488,9 @@ impl RuntimeDescriptorSetBuilder {
         }
     }
 
-    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<(), RuntimeDescriptorSetError> {
+    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<(), DescriptorSetError> {
         if sampler.device().internal_object() != self.device.internal_object() {
-            return Err(RuntimeDescriptorSetError::ResourceWrongDevice);
+            return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
         let leave_array = if !self.in_array {
@@ -495,7 +503,7 @@ impl RuntimeDescriptorSetBuilder {
         let descriptor = &mut self.descriptors[self.cur_binding];
         let inner_desc = match descriptor.desc.as_ref() {
             Some(some) => some,
-            None => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            None => return Err(DescriptorSetError::WrongDescriptorType),
         };
 
         match inner_desc.ty {
@@ -506,7 +514,7 @@ impl RuntimeDescriptorSetBuilder {
                     &sampler,
                 ));
             }
-            _ => return Err(RuntimeDescriptorSetError::WrongDescriptorType),
+            _ => return Err(DescriptorSetError::WrongDescriptorType),
         }
 
         descriptor.array_element += 1;
@@ -521,26 +529,23 @@ impl RuntimeDescriptorSetBuilder {
     }
 }
 
-unsafe impl DeviceOwned for RuntimeDescriptorSetBuilder {
+unsafe impl DeviceOwned for DescriptorSetBuilder {
     fn device(&self) -> &Arc<Device> {
         &self.device
     }
 }
 
 // Checks whether an image view matches the descriptor.
-fn image_match_desc<I>(
-    image_view: &I,
-    desc: &DescriptorImageDesc,
-) -> Result<(), RuntimeDescriptorSetError>
+fn image_match_desc<I>(image_view: &I, desc: &DescriptorImageDesc) -> Result<(), DescriptorSetError>
 where
     I: ?Sized + ImageViewAbstract,
 {
     if desc.sampled && !image_view.image().inner().image.usage().sampled {
-        return Err(RuntimeDescriptorSetError::MissingImageUsage(
+        return Err(DescriptorSetError::MissingImageUsage(
             MissingImageUsage::Sampled,
         ));
     } else if !desc.sampled && !image_view.image().inner().image.usage().storage {
-        return Err(RuntimeDescriptorSetError::MissingImageUsage(
+        return Err(DescriptorSetError::MissingImageUsage(
             MissingImageUsage::Storage,
         ));
     }
@@ -548,7 +553,7 @@ where
     let image_view_ty = DescriptorImageDescDimensions::from_image_view_type(image_view.ty());
 
     if image_view_ty != desc.dimensions {
-        return Err(RuntimeDescriptorSetError::ImageViewTypeMismatch {
+        return Err(DescriptorSetError::ImageViewTypeMismatch {
             expected: desc.dimensions,
             obtained: image_view_ty,
         });
@@ -556,7 +561,7 @@ where
 
     if let Some(format) = desc.format {
         if image_view.format() != format {
-            return Err(RuntimeDescriptorSetError::ImageViewFormatMismatch {
+            return Err(DescriptorSetError::ImageViewFormatMismatch {
                 expected: format,
                 obtained: image_view.format(),
             });
@@ -564,9 +569,9 @@ where
     }
 
     if desc.multisampled && image_view.image().samples() == SampleCount::Sample1 {
-        return Err(RuntimeDescriptorSetError::ExpectedMultisampled);
+        return Err(DescriptorSetError::ExpectedMultisampled);
     } else if !desc.multisampled && image_view.image().samples() != SampleCount::Sample1 {
-        return Err(RuntimeDescriptorSetError::UnexpectedMultisampled);
+        return Err(DescriptorSetError::UnexpectedMultisampled);
     }
 
     let image_layers = image_view.array_layers();
@@ -583,7 +588,7 @@ where
             };
 
             if num_layers != required_layers {
-                return Err(RuntimeDescriptorSetError::ArrayLayersMismatch {
+                return Err(DescriptorSetError::ArrayLayersMismatch {
                     expected: 1,
                     obtained: num_layers,
                 });
@@ -600,7 +605,7 @@ where
 
             // TODO: is this correct? "max" layers? or is it in fact min layers?
             if num_layers > required_layers {
-                return Err(RuntimeDescriptorSetError::ArrayLayersMismatch {
+                return Err(DescriptorSetError::ArrayLayersMismatch {
                     expected: max_layers,
                     obtained: num_layers,
                 });

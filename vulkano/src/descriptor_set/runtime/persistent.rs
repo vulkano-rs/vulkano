@@ -1,7 +1,17 @@
+// Copyright (c) 2017 The vulkano developers
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+
 use super::bound::BoundResources;
-use super::builder::RuntimeDescriptorSetBuilder;
-use super::builder::RuntimeDescriptorSetBuilderOutput;
-use super::RuntimeDescriptorSetError;
+use super::builder::DescriptorSetBuilder;
+use super::builder::DescriptorSetBuilderOutput;
+use super::DescriptorSetError;
+use crate::buffer::BufferView;
 use crate::descriptor_set::pool::standard::StdDescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
@@ -18,25 +28,27 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-pub struct RuntimePersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
+/// A simple, immutable descriptor set that is expected to be long-lived.
+pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
     inner: P,
     bound_resources: BoundResources,
     layout: Arc<DescriptorSetLayout>,
 }
 
-impl RuntimePersistentDescriptorSet {
+impl PersistentDescriptorSet {
+    /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
     pub fn start(
         layout: Arc<DescriptorSetLayout>,
         runtime_array_capacity: Option<usize>,
-    ) -> Result<RuntimePersistentDescriptorSetBuilder, RuntimeDescriptorSetError> {
-        Ok(RuntimePersistentDescriptorSetBuilder {
-            inner: RuntimeDescriptorSetBuilder::start(layout, runtime_array_capacity.unwrap_or(0))?,
+    ) -> Result<PersistentDescriptorSetBuilder, DescriptorSetError> {
+        Ok(PersistentDescriptorSetBuilder {
+            inner: DescriptorSetBuilder::start(layout, runtime_array_capacity.unwrap_or(0))?,
             poisoned: false,
         })
     }
 }
 
-unsafe impl<P> DescriptorSet for RuntimePersistentDescriptorSet<P>
+unsafe impl<P> DescriptorSet for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
@@ -71,14 +83,14 @@ where
     }
 }
 
-unsafe impl<P> DeviceOwned for RuntimePersistentDescriptorSet<P> {
+unsafe impl<P> DeviceOwned for PersistentDescriptorSet<P> {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.layout.device()
     }
 }
 
-impl<P> PartialEq for RuntimePersistentDescriptorSet<P>
+impl<P> PartialEq for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
@@ -89,9 +101,9 @@ where
     }
 }
 
-impl<P> Eq for RuntimePersistentDescriptorSet<P> where P: DescriptorPoolAlloc {}
+impl<P> Eq for PersistentDescriptorSet<P> where P: DescriptorPoolAlloc {}
 
-impl<P> Hash for RuntimePersistentDescriptorSet<P>
+impl<P> Hash for PersistentDescriptorSet<P>
 where
     P: DescriptorPoolAlloc,
 {
@@ -102,15 +114,25 @@ where
     }
 }
 
-pub struct RuntimePersistentDescriptorSetBuilder {
-    inner: RuntimeDescriptorSetBuilder,
+/// Prototype of a `PersistentDescriptorSet`.
+pub struct PersistentDescriptorSetBuilder {
+    inner: DescriptorSetBuilder,
     poisoned: bool,
 }
 
-impl RuntimePersistentDescriptorSetBuilder {
-    pub fn enter_array(&mut self) -> Result<&mut Self, RuntimeDescriptorSetError> {
+impl PersistentDescriptorSetBuilder {
+    /// Call this function if the next element of the set is an array in order to set the value of
+    /// each element.
+    ///
+    /// Returns an error if the descriptor is empty, there are no remaining descriptors, or if the
+    /// builder is already in an error.
+    ///
+    /// This function can be called even if the descriptor isn't an array, and it is valid to enter
+    /// the "array", add one element, then leave.
+    #[inline]
+    pub fn enter_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.enter_array() {
                 Ok(_) => Ok(self),
@@ -122,9 +144,13 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
-    pub fn leave_array(&mut self) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    /// Leaves the array. Call this once you added all the elements of the array.
+    ///
+    /// Returns an error if the array is missing elements, or if the builder is not in an array.
+    #[inline]
+    pub fn leave_array(&mut self) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.leave_array() {
                 Ok(_) => Ok(self),
@@ -136,9 +162,11 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
-    pub fn add_empty(&mut self) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    /// Skips the current descriptor if it is empty.
+    #[inline]
+    pub fn add_empty(&mut self) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.add_empty() {
                 Ok(_) => Ok(self),
@@ -150,12 +178,16 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
+    /// Binds a buffer as the next descriptor.
+    ///
+    /// An error is returned if the buffer isn't compatible with the descriptor.
+    #[inline]
     pub fn add_buffer(
         &mut self,
         buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    ) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.add_buffer(buffer) {
                 Ok(_) => Ok(self),
@@ -167,12 +199,40 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
+    /// Binds a buffer view as the next descriptor.
+    ///
+    /// An error is returned if the buffer isn't compatible with the descriptor.
+    #[inline]
+    pub fn add_buffer_view<B>(
+        &mut self,
+        view: Arc<BufferView<B>>,
+    ) -> Result<&mut Self, DescriptorSetError>
+    where
+        B: BufferAccess + 'static,
+    {
+        if self.poisoned {
+            Err(DescriptorSetError::BuilderPoisoned)
+        } else {
+            match self.inner.add_buffer_view(view) {
+                Ok(_) => Ok(self),
+                Err(e) => {
+                    self.poisoned = true;
+                    Err(e)
+                }
+            }
+        }
+    }
+
+    /// Binds an image view as the next descriptor.
+    ///
+    /// An error is returned if the image view isn't compatible with the descriptor.
+    #[inline]
     pub fn add_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    ) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.add_image(image_view) {
                 Ok(_) => Ok(self),
@@ -184,13 +244,17 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
+    /// Binds an image view with a sampler as the next descriptor.
+    ///
+    /// An error is returned if the image view isn't compatible with the descriptor.
+    #[inline]
     pub fn add_sampled_image(
         &mut self,
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         sampler: Arc<Sampler>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    ) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.add_sampled_image(image_view, sampler) {
                 Ok(_) => Ok(self),
@@ -202,12 +266,13 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
-    pub fn add_sampler(
-        &mut self,
-        sampler: Arc<Sampler>,
-    ) -> Result<&mut Self, RuntimeDescriptorSetError> {
+    /// Binds a sampler as the next descriptor.
+    ///
+    /// An error is returned if the sampler isn't compatible with the descriptor.
+    #[inline]
+    pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
-            Err(RuntimeDescriptorSetError::BuilderPoisoned)
+            Err(DescriptorSetError::BuilderPoisoned)
         } else {
             match self.inner.add_sampler(sampler) {
                 Ok(_) => Ok(self),
@@ -219,26 +284,28 @@ impl RuntimePersistentDescriptorSetBuilder {
         }
     }
 
+    /// Builds a `PersistentDescriptorSet` from the builder.
+    #[inline]
     pub fn build(
         self,
-    ) -> Result<RuntimePersistentDescriptorSet<StdDescriptorPoolAlloc>, RuntimeDescriptorSetError>
-    {
+    ) -> Result<PersistentDescriptorSet<StdDescriptorPoolAlloc>, DescriptorSetError> {
         let mut pool = Device::standard_descriptor_pool(self.inner.device());
         self.build_with_pool(&mut pool)
     }
 
+    /// Builds a `PersistentDescriptorSet` from the builder.
     pub fn build_with_pool<P>(
         self,
         pool: &mut P,
-    ) -> Result<RuntimePersistentDescriptorSet<P::Alloc>, RuntimeDescriptorSetError>
+    ) -> Result<PersistentDescriptorSet<P::Alloc>, DescriptorSetError>
     where
         P: ?Sized + DescriptorPool,
     {
         if self.poisoned {
-            return Err(RuntimeDescriptorSetError::BuilderPoisoned);
+            return Err(DescriptorSetError::BuilderPoisoned);
         }
 
-        let RuntimeDescriptorSetBuilderOutput {
+        let DescriptorSetBuilderOutput {
             layout,
             writes,
             bound_resources,
@@ -250,7 +317,7 @@ impl RuntimePersistentDescriptorSetBuilder {
             set
         };
 
-        Ok(RuntimePersistentDescriptorSet {
+        Ok(PersistentDescriptorSet {
             inner: set,
             bound_resources,
             layout,

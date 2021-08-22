@@ -1,17 +1,29 @@
+// Copyright (c) 2017 The vulkano developers
+// Licensed under the Apache License, Version 2.0
+// <LICENSE-APACHE or
+// https://www.apache.org/licenses/LICENSE-2.0> or the MIT
+// license <LICENSE-MIT or https://opensource.org/licenses/MIT>,
+// at your option. All files in the project carrying such
+// notice may not be copied, modified, or distributed except
+// according to those terms.
+
 mod bound;
 mod builder;
 pub mod persistent;
 pub mod pool;
 
+pub use self::persistent::PersistentDescriptorSet;
+pub use self::pool::DescriptorSetPool;
+
 use crate::descriptor_set::layout::DescriptorImageDescDimensions;
-use crate::descriptor_set::persistent::{MissingBufferUsage, MissingImageUsage};
 use crate::format::Format;
 use crate::OomError;
 use std::error;
 use std::fmt;
 
+/// Error related to descriptor sets.
 #[derive(Debug, Clone)]
-pub enum RuntimeDescriptorSetError {
+pub enum DescriptorSetError {
     /// Builder is already within an array.
     AlreadyInArray,
 
@@ -98,15 +110,15 @@ pub enum RuntimeDescriptorSetError {
     DescriptorIsEmpty,
 }
 
-impl From<OomError> for RuntimeDescriptorSetError {
+impl From<OomError> for DescriptorSetError {
     fn from(error: OomError) -> Self {
         Self::OomError(error)
     }
 }
 
-impl error::Error for RuntimeDescriptorSetError {}
+impl error::Error for DescriptorSetError {}
 
-impl fmt::Display for RuntimeDescriptorSetError {
+impl fmt::Display for DescriptorSetError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(
@@ -141,9 +153,27 @@ impl fmt::Display for RuntimeDescriptorSetError {
                 Self::BuilderPoisoned =>
                     "the builder has previously return an error and is an unknown state",
                 Self::OomError(_) => "out of memory",
-                Self::DescriptorIsEmpty =>
-                    "operation can not be performed on an empty descriptor",
+                Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
             }
         )
     }
+}
+
+// Part of the DescriptorSetError for the case
+// of missing usage on a buffer.
+#[derive(Debug, Clone)]
+pub enum MissingBufferUsage {
+    StorageBuffer,
+    UniformBuffer,
+    StorageTexelBuffer,
+    UniformTexelBuffer,
+}
+
+// Part of the DescriptorSetError for the case
+// of missing usage on an image.
+#[derive(Debug, Clone)]
+pub enum MissingImageUsage {
+    InputAttachment,
+    Sampled,
+    Storage,
 }
