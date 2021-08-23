@@ -309,7 +309,10 @@ impl PersistentDescriptorSetBuilder {
             layout,
             writes,
             bound_resources,
-        } = self.inner.output()?;
+            ..
+        } = self.inner.output(true)?;
+
+        let layout = layout.unwrap();
 
         let set = unsafe {
             let mut set = pool.alloc(&layout)?;

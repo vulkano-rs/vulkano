@@ -43,9 +43,10 @@ pub struct DescriptorSetBuilder {
 }
 
 pub struct DescriptorSetBuilderOutput {
-    pub layout: Arc<DescriptorSetLayout>,
+    pub layout: Option<Arc<DescriptorSetLayout>>,
     pub writes: Vec<DescriptorWrite>,
     pub bound_resources: BoundResources,
+    pub runtime_array_length: usize,
 }
 
 impl DescriptorSetBuilder {
@@ -134,31 +135,61 @@ impl DescriptorSetBuilder {
         })
     }
 
-    pub fn output(self) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
+    pub fn output(
+        self,
+        output_layout: bool,
+    ) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
         if self.cur_binding != self.descriptors.len() {
             Err(DescriptorSetError::DescriptorsMissing {
                 expected: self.descriptors.len(),
                 obtained: self.cur_binding,
             })
         } else {
-            let layout = Arc::new(DescriptorSetLayout::new(
-                self.device,
-                DescriptorSetDesc::new(self.descriptors.into_iter().map(|mut desc| {
-                    if let Some(inner_desc) = &mut desc.desc {
-                        if inner_desc.variable_count {
-                            inner_desc.descriptor_count = desc.array_element;
+            if output_layout {
+                let mut runtime_array_length = 0;
+
+                let layout = Some(Arc::new(DescriptorSetLayout::new(
+                    self.device,
+                    DescriptorSetDesc::new(self.descriptors.into_iter().map(|mut desc| {
+                        if let Some(inner_desc) = &mut desc.desc {
+                            if inner_desc.variable_count {
+                                inner_desc.descriptor_count = desc.array_element;
+                                runtime_array_length = desc.array_element as usize;
+                            }
                         }
-                    }
 
-                    desc.desc
-                })),
-            )?);
+                        desc.desc
+                    })),
+                )?));
 
-            Ok(DescriptorSetBuilderOutput {
-                layout,
-                writes: self.desc_writes,
-                bound_resources: self.bound_resources,
-            })
+                Ok(DescriptorSetBuilderOutput {
+                    layout,
+                    writes: self.desc_writes,
+                    bound_resources: self.bound_resources,
+                    runtime_array_length,
+                })
+            } else {
+                let runtime_array_length = match self.descriptors.last() {
+                    Some(last) => match &last.desc {
+                        Some(desc) => {
+                            if desc.variable_count {
+                                last.array_element as usize
+                            } else {
+                                0
+                            }
+                        }
+                        None => 0,
+                    },
+                    None => 0,
+                };
+
+                Ok(DescriptorSetBuilderOutput {
+                    layout: None,
+                    writes: self.desc_writes,
+                    bound_resources: self.bound_resources,
+                    runtime_array_length,
+                })
+            }
         }
     }
 

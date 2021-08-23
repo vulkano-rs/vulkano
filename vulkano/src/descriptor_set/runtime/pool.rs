@@ -14,7 +14,6 @@ use super::DescriptorSetError;
 use crate::buffer::BufferView;
 use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
-use crate::descriptor_set::pool::DescriptorPool;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPoolAllocError;
 use crate::descriptor_set::pool::UnsafeDescriptorPool;
@@ -36,48 +35,6 @@ use std::sync::Arc;
 /// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate `DescriptorSet`'s
 /// from and optimizes for a specific layout. For a more general purpose pool see `descriptor_set::pool::StdDescriptorPool`.
 pub struct DescriptorSetPool {
-    layout: Arc<DescriptorSetLayout>,
-    pool: Pool,
-}
-
-impl DescriptorSetPool {
-    /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
-    /// parameters passed to this function.
-    ///
-    /// `runtime_array_capacity` is the capacity that is reserved in a set for runtime arrays.
-    /// This capacity will automatically be adjusted if a set is created that exceeed this value.
-    /// If a set doesn't contain a runtime array this does nothing.
-    pub fn new(layout: Arc<DescriptorSetLayout>, runtime_array_capacity: usize) -> Self {
-        Self {
-            pool: Pool {
-                inner: None,
-                device: layout.device().clone(),
-                rt_arr_cap: runtime_array_capacity,
-                set_count: 4,
-            },
-            layout,
-        }
-    }
-
-    /// Starts the process of building a new descriptor set.
-    ///
-    /// The set will corresponds to the set layout that was passed to `new`.
-    pub fn next<'a>(&'a mut self) -> Result<DescriptorSetPoolSetBuilder<'a>, DescriptorSetError> {
-        let runtime_array_capacity = self.pool.rt_arr_cap;
-        let layout = self.layout.clone();
-
-        Ok(DescriptorSetPoolSetBuilder {
-            pool: &mut self.pool,
-            inner: DescriptorSetBuilder::start(layout, runtime_array_capacity)?,
-            poisoned: false,
-        })
-    }
-}
-
-// The fields of this struct can be considered as fields of the `FixedSizeDescriptorSet`. They are
-// in a separate struct because we don't want to expose the fact that we implement the
-// `DescriptorPool` trait.
-struct Pool {
     // The `PoolInner` struct contains an actual Vulkan pool. Every time it is full or additinal
     // runtime array capacity is needed, we create a new pool and replace the current one with the new one.
     inner: Option<Arc<PoolInner>>,
@@ -87,39 +44,65 @@ struct Pool {
     rt_arr_cap: usize,
     // The amount of sets available to use when we create a new Vulkan pool.
     set_count: usize,
+    // The descriptor layout that we target and alloc with
+    target_layout: Arc<DescriptorSetLayout>,
 }
 
-struct PoolInner {
-    // The actual Vulkan descriptor pool. This field isn't actually used anywhere, but we need to
-    // keep the pool alive in order to keep the descriptor sets valid.
-    inner: UnsafeDescriptorPool,
+impl DescriptorSetPool {
+    /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
+    /// parameters passed to this function.
+    ///
+    /// `runtime_array_capacity` is the capacity that is reserved in a set for runtime arrays.
+    /// This capacity will automatically be adjusted if a set is created that exceeed this value.
+    /// If a set doesn't contain a runtime array this does nothing.
+    pub fn new(
+        layout: Arc<DescriptorSetLayout>,
+        runtime_array_capacity: usize,
+    ) -> Result<Self, DescriptorSetError> {
+        let device = layout.device().clone();
+        let target_layout = Arc::new(DescriptorSetLayout::new(
+            device.clone(),
+            DescriptorSetDesc::new((0..layout.num_bindings()).into_iter().map(|binding_i| {
+                let mut desc = layout.descriptor(binding_i);
 
-    // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
-    // list. When a `LocalPoolAlloc` is dropped, its descriptor set is put back in this list.
-    reserve: SegQueue<UnsafeDescriptorSet>,
-}
-
-unsafe impl DescriptorPool for Pool {
-    type Alloc = PoolAlloc;
-
-    fn alloc(&mut self, layout: &DescriptorSetLayout) -> Result<Self::Alloc, OomError> {
-        assert!(layout.num_bindings() > 0);
-
-        let layout_rt_arr_cap = match layout.descriptor(layout.num_bindings() - 1) {
-            Some(desc) => {
-                if desc.variable_count {
-                    desc.descriptor_count as usize
-                } else {
-                    0
+                if let Some(desc) = &mut desc {
+                    if desc.variable_count {
+                        desc.descriptor_count = runtime_array_capacity as u32;
+                    }
                 }
-            }
-            None => 0,
-        };
 
+                desc
+            })),
+        )?);
+
+        Ok(Self {
+            inner: None,
+            device,
+            rt_arr_cap: runtime_array_capacity,
+            set_count: 4,
+            target_layout,
+        })
+    }
+
+    /// Starts the process of building a new descriptor set.
+    ///
+    /// The set will corresponds to the set layout that was passed to `new`.
+    pub fn next<'a>(&'a mut self) -> Result<DescriptorSetPoolSetBuilder<'a>, DescriptorSetError> {
+        let runtime_array_capacity = self.rt_arr_cap;
+        let layout = self.target_layout.clone();
+
+        Ok(DescriptorSetPoolSetBuilder {
+            pool: self,
+            inner: DescriptorSetBuilder::start(layout, runtime_array_capacity)?,
+            poisoned: false,
+        })
+    }
+
+    fn next_alloc(&mut self, runtime_array_length: usize) -> Result<PoolAlloc, OomError> {
         loop {
             let mut not_enough_sets = false;
 
-            if layout_rt_arr_cap <= self.rt_arr_cap {
+            if runtime_array_length <= self.rt_arr_cap {
                 if let Some(ref mut p_inner) = self.inner {
                     if let Some(existing) = p_inner.reserve.pop() {
                         return Ok(PoolAlloc {
@@ -132,38 +115,46 @@ unsafe impl DescriptorPool for Pool {
                 }
             }
 
-            while layout_rt_arr_cap > self.rt_arr_cap {
+            let mut not_enough_capacity = false;
+
+            while runtime_array_length > self.rt_arr_cap {
                 self.rt_arr_cap *= 2;
+                not_enough_capacity = true;
             }
 
             if not_enough_sets {
                 self.set_count *= 2;
             }
 
-            let target_layout = DescriptorSetLayout::new(
-                self.device.clone(),
-                DescriptorSetDesc::new((0..layout.num_bindings()).into_iter().map(|binding_i| {
-                    let mut desc = layout.descriptor(binding_i);
+            if not_enough_capacity {
+                self.target_layout = Arc::new(DescriptorSetLayout::new(
+                    self.device.clone(),
+                    DescriptorSetDesc::new((0..self.target_layout.num_bindings()).into_iter().map(
+                        |binding_i| {
+                            let mut desc = self.target_layout.descriptor(binding_i);
 
-                    if let Some(desc) = &mut desc {
-                        if desc.variable_count {
-                            desc.descriptor_count = self.rt_arr_cap as u32;
-                        }
-                    }
+                            if let Some(desc) = &mut desc {
+                                if desc.variable_count {
+                                    desc.descriptor_count = self.rt_arr_cap as u32;
+                                }
+                            }
 
-                    desc
-                })),
-            )?;
+                            desc
+                        },
+                    )),
+                )?);
+            }
 
-            let count = *layout.descriptors_count() * self.set_count as u32;
+            let count = *self.target_layout.descriptors_count() * self.set_count as u32;
             let mut unsafe_pool = UnsafeDescriptorPool::new(
                 self.device.clone(),
                 &count,
                 self.set_count as u32,
                 false,
             )?;
+
             let reserve = unsafe {
-                match unsafe_pool.alloc((0..self.set_count).map(|_| &target_layout)) {
+                match unsafe_pool.alloc((0..self.set_count).map(|_| &*self.target_layout)) {
                     Ok(alloc_iter) => {
                         let reserve = SegQueue::new();
 
@@ -195,11 +186,14 @@ unsafe impl DescriptorPool for Pool {
     }
 }
 
-unsafe impl DeviceOwned for Pool {
-    #[inline]
-    fn device(&self) -> &Arc<Device> {
-        &self.device
-    }
+struct PoolInner {
+    // The actual Vulkan descriptor pool. This field isn't actually used anywhere, but we need to
+    // keep the pool alive in order to keep the descriptor sets valid.
+    inner: UnsafeDescriptorPool,
+
+    // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
+    // list. When a `LocalPoolAlloc` is dropped, its descriptor set is put back in this list.
+    reserve: SegQueue<UnsafeDescriptorSet>,
 }
 
 struct PoolAlloc {
@@ -297,7 +291,7 @@ impl Hash for DescriptorSetPoolSet {
 
 /// Prototype of a `DescriptorSetPoolSet`.
 pub struct DescriptorSetPoolSetBuilder<'a> {
-    pool: &'a mut Pool,
+    pool: &'a mut DescriptorSetPool,
     inner: DescriptorSetBuilder,
     poisoned: bool,
 }
@@ -473,22 +467,23 @@ impl<'a> DescriptorSetPoolSetBuilder<'a> {
         }
 
         let DescriptorSetBuilderOutput {
-            layout,
             writes,
             bound_resources,
-        } = self.inner.output()?;
+            runtime_array_length,
+            ..
+        } = self.inner.output(false)?;
 
-        let set = unsafe {
-            let mut set = self.pool.alloc(&layout)?;
-            set.inner_mut()
-                .write(self.pool.device(), writes.into_iter());
-            set
-        };
+        let mut alloc = self.pool.next_alloc(runtime_array_length)?;
+        unsafe {
+            alloc
+                .inner_mut()
+                .write(&self.pool.device, writes.into_iter());
+        }
 
         Ok(DescriptorSetPoolSet {
-            inner: set,
+            inner: alloc,
             bound_resources,
-            layout,
+            layout: self.pool.target_layout.clone(),
         })
     }
 }
