@@ -132,6 +132,15 @@ impl BufferUsage {
         }
     }
 
+    /// Builds a `BufferUsage` with only `storage_buffer` set, while rest are not
+    #[inline]
+    pub const fn storage_buffer() -> BufferUsage {
+        BufferUsage {
+            storage_buffer: true,
+            ..BufferUsage::none()
+        }
+    }
+
     /// Builds a `BufferUsage` with `uniform_buffer` and `transfer_destination` set to true and the rest
     /// to false.
     #[inline]

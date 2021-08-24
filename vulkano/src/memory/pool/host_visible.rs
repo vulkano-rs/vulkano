@@ -127,8 +127,14 @@ impl StdHostVisibleMemoryTypePool {
         })
     }
 
-    /// Same as `alloc` but with exportable memory fd on Linux.
-    #[cfg(target_os = "linux")]
+    /// Same as `alloc` but with exportable memory fd on Linux/BSD.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn alloc_with_exportable_fd(
         me: &Arc<Self>,
         size: DeviceSize,

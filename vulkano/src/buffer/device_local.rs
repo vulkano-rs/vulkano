@@ -173,8 +173,14 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         }))
     }
 
-    /// Same as `raw` but with exportable fd option for the allocated memory on Linux
-    #[cfg(target_os = "linux")]
+    /// Same as `raw` but with exportable fd option for the allocated memory on Linux/BSD
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub unsafe fn raw_with_exportable_fd<'a, I>(
         device: Arc<Device>,
         size: DeviceSize,
@@ -245,8 +251,14 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    /// Only works on Linux.
-    #[cfg(target_os = "linux")]
+    /// Only works on Linux/BSD.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
         self.memory
             .memory()

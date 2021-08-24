@@ -543,6 +543,7 @@ fn descriptor_infos(
                         .next()
                         .expect("failed to find array length");
                     let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
+                    
                     Some((desc, mutable, len, false))
                 }
 

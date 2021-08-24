@@ -79,7 +79,7 @@ impl DescriptorSetLayout {
                 Some(ash::vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
                     descriptor_type: ty.into(),
-                    descriptor_count: descriptor_count,
+                    descriptor_count,
                     stage_flags: desc.stages.into(),
                     p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
                 })

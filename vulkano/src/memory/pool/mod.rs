@@ -102,7 +102,13 @@ pub unsafe trait MemoryPool: DeviceOwned {
     ) -> Result<Self::Alloc, DeviceMemoryAllocError>;
 
     /// Same as `alloc_generic` but with exportable memory option.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     fn alloc_generic_with_exportable_fd(
         &self,
         ty: MemoryType,
@@ -200,8 +206,14 @@ pub unsafe trait MemoryPool: DeviceOwned {
         }
     }
 
-    /// Same as `alloc_from_requirements` but with exportable fd option on Linux.
-    #[cfg(target_os = "linux")]
+    /// Same as `alloc_from_requirements` but with exportable fd option on Linux/BSD.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     fn alloc_from_requirements_with_exportable_fd<F>(
         &self,
         requirements: &MemoryRequirements,

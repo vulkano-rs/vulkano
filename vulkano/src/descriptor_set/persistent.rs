@@ -7,6 +7,20 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+//! A simple, immutable descriptor set that is expected to be long-lived.
+//!
+//! Creating a persistent descriptor set allocates from a pool, and can't be modified once created.
+//! You are therefore encouraged to create them at initialization and not the during
+//! performance-critical paths.
+//!
+//! > **Note**: You can control of the pool that is used to create the descriptor set, if you wish
+//! > so. By creating a implementation of the `DescriptorPool` trait that doesn't perform any
+//! > actual allocation, you can skip this allocation and make it acceptable to use a persistent
+//! > descriptor set in performance-critical paths..
+//!
+//! # Example
+//! TODO:
+
 use super::builder::DescriptorSetBuilder;
 use super::builder::DescriptorSetBuilderOutput;
 use super::resources::DescriptorSetResources;
