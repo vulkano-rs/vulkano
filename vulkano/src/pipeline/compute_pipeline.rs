@@ -457,9 +457,13 @@ mod tests {
         let data_buffer =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
         let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-        let set = PersistentDescriptorSet::start(layout.clone())
+        let mut builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+
+        builder
             .add_buffer(data_buffer.clone())
-            .unwrap()
+            .unwrap();
+
+        let set = builder
             .build()
             .unwrap();
 

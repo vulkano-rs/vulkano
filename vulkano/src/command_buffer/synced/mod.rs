@@ -723,13 +723,12 @@ mod tests {
                 PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
                     .unwrap(),
             );
-            let set = Arc::new(
-                PersistentDescriptorSet::start(set_layout)
-                    .add_sampler(Sampler::simple_repeat_linear(device))
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            );
+
+            let set = {
+                let mut builder = PersistentDescriptorSet::start(set_layout, None).unwrap();
+                builder.add_sampler(Sampler::simple_repeat_linear(device)).unwrap();
+                Arc::new(builder.build().unwrap())
+            };
 
             let mut set_builder = sync.bind_descriptor_sets();
             set_builder.add(set.clone());
