@@ -11,10 +11,23 @@
 - **Breaking** The `VertexSource` trait is removed, and has been replaced with the new `VertexBuffersCollection` trait, which works analogously to `DescriptorSetsCollection`. Vertex buffers can now be passed in as a tuple, just like descriptor sets.
 - **Breaking** Removed the vertex definition type parameter from `GraphicsPipeline`, which is no longer needed with the change above.
 - **Breaking** The `ComputePipelineAbstract` and `GraphicsPipelineAbstract` traits are no longer needed and have been removed, with their methods made available on the base `ComputePipeline` and `GraphicsPipeline` types.
+- **Breaking** Changes to `DescriptorDesc` and related changes:
+  - The variants of `DescriptorDescTy` now match those of `DescriptorType` and Vulkan.
+  - The `array_count` and `readonly` members are renamed to `descriptor_count` (to match Vulkan) and `mutable` (with the opposite sense, to match familiar Rust usage).
+  - `DescriptorImageDesc` is renamed to `DescriptorDescImage`. The `dimensions` and `arrayed` members have been combined into a single `ImageViewType` value.
+  - Removed the `arrayed` member of the `InputAttachment` variant as well, as the standard now explicitly disallows arrayed input attachments.
+  - The `ensure_superset_of` method has been split into two, one for shader compatibility and one for binding descriptor sets. The error return types of these methods have been revised.
+- **Breaking** The `Cubemap` and `CubemapArray` variants of `ImageViewType` are renamed to `Cube` and `CubeArray` to match Vulkan.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
 - The full Rust code is now generated from vk.xml by autogen directly, instead of using intermediate macros.
+- Added `storage_buffer()` method to `BufferUsage`.
+- Fixed mismatched types on Android.
+- Fixed bug in descriptor set validity checking that allowed drawing/dispatching with descriptor sets that didn't match the pipeline.
+- Fixed bug where the wrong functions were used for retrieving physical device info.
+- Fixed minor bug in retrieving features from the physical device.
+- Add BSD platforms to external memory (dma-buf fd) cfgs
 
 # Version 0.25.0 (2021-08-10)
 
