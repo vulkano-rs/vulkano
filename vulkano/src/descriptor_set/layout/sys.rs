@@ -93,7 +93,9 @@ impl DescriptorSetLayout {
                 // TODO: Check vulkan version & features
 
                 let mut flags = vec![ash::vk::DescriptorBindingFlags::empty(); bindings.len()];
-                *flags.last_mut().unwrap() = ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT | ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
+                *flags.last_mut().unwrap() =
+                    ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
+                        | ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
 
                 let binding_flags = ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
                     binding_count: bindings.len() as u32,
@@ -118,7 +120,7 @@ impl DescriptorSetLayout {
                     ptr::null(),
                     output.as_mut_ptr(),
                 ))?;
-                
+
                 output.assume_init()
             } else {
                 let infos = ash::vk::DescriptorSetLayoutCreateInfo {
@@ -137,7 +139,7 @@ impl DescriptorSetLayout {
                     ptr::null(),
                     output.as_mut_ptr(),
                 ))?;
-                
+
                 output.assume_init()
             }
         };

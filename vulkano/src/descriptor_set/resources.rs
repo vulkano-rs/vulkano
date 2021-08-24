@@ -19,7 +19,7 @@ use crate::sync::AccessError;
 use crate::DeviceSize;
 use std::sync::Arc;
 
-pub struct BoundResources {
+pub struct DescriptorSetResources {
     buffers: Vec<(Arc<dyn BufferAccess + Send + Sync + 'static>, u32)>,
     images: Vec<(Arc<dyn ImageViewAbstract + Send + Sync + 'static>, u32)>,
     samplers: Vec<(Arc<Sampler>, u32)>,
@@ -67,7 +67,7 @@ where
     }
 }
 
-impl BoundResources {
+impl DescriptorSetResources {
     pub fn new(buffer_capacity: usize, image_capacity: usize, sampler_capacity: usize) -> Self {
         Self {
             buffers: Vec::with_capacity(buffer_capacity),

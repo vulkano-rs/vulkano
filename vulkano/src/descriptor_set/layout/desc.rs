@@ -436,7 +436,7 @@ impl DescriptorDesc {
                 descriptor_count: cmp::max(first.descriptor_count, second.descriptor_count),
                 stages: first.stages | second.stages,
                 mutable: first.mutable || second.mutable,
-                variable_count: first.variable_count && second.variable_count // TODO: What is the correct behavior here?
+                variable_count: first.variable_count && second.variable_count, // TODO: What is the correct behavior here?
             }))
         } else {
             Ok(first.or(second).cloned())

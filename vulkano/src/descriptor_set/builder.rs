@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::bound::BoundResources;
+use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use super::MissingBufferUsage;
 use super::MissingFeature;
@@ -38,14 +38,14 @@ pub struct DescriptorSetBuilder {
     in_array: bool,
     descriptors: Vec<BuilderDescriptor>,
     cur_binding: usize,
-    bound_resources: BoundResources,
+    resources: DescriptorSetResources,
     desc_writes: Vec<DescriptorWrite>,
 }
 
 pub struct DescriptorSetBuilderOutput {
     pub layout: Option<Arc<DescriptorSetLayout>>,
     pub writes: Vec<DescriptorWrite>,
-    pub bound_resources: BoundResources,
+    pub resources: DescriptorSetResources,
     pub runtime_array_length: usize,
 }
 
@@ -130,7 +130,7 @@ impl DescriptorSetBuilder {
             in_array: false,
             cur_binding: 0,
             descriptors,
-            bound_resources: BoundResources::new(t_num_bufs, t_num_imgs, t_num_samplers),
+            resources: DescriptorSetResources::new(t_num_bufs, t_num_imgs, t_num_samplers),
             desc_writes: Vec::with_capacity(desc_writes_capacity),
         })
     }
@@ -165,7 +165,7 @@ impl DescriptorSetBuilder {
                 Ok(DescriptorSetBuilderOutput {
                     layout,
                     writes: self.desc_writes,
-                    bound_resources: self.bound_resources,
+                    resources: self.resources,
                     runtime_array_length,
                 })
             } else {
@@ -186,7 +186,7 @@ impl DescriptorSetBuilder {
                 Ok(DescriptorSetBuilderOutput {
                     layout: None,
                     writes: self.desc_writes,
-                    bound_resources: self.bound_resources,
+                    resources: self.resources,
                     runtime_array_length,
                 })
             }
@@ -277,7 +277,7 @@ impl DescriptorSetBuilder {
             DescriptorDescTy::StorageBuffer | DescriptorDescTy::StorageBufferDynamic => {
                 assert!(self.device.enabled_features().robust_buffer_access);
 
-                if buffer.inner().buffer.usage().storage_buffer {
+                if !buffer.inner().buffer.usage().storage_buffer {
                     return Err(DescriptorSetError::MissingBufferUsage(
                         MissingBufferUsage::StorageBuffer,
                     ));
@@ -328,8 +328,7 @@ impl DescriptorSetBuilder {
             _ => return Err(DescriptorSetError::WrongDescriptorType),
         });
 
-        self.bound_resources
-            .add_buffer(self.cur_binding as u32, buffer);
+        self.resources.add_buffer(self.cur_binding as u32, buffer);
         descriptor.array_element += 1;
 
         if leave_array {
@@ -392,7 +391,7 @@ impl DescriptorSetBuilder {
             _ => return Err(DescriptorSetError::WrongDescriptorType),
         });
 
-        self.bound_resources
+        self.resources
             .add_buffer_view(self.cur_binding as u32, view);
 
         if leave_array {
@@ -494,7 +493,7 @@ impl DescriptorSetBuilder {
         });
 
         descriptor.array_element += 1;
-        self.bound_resources
+        self.resources
             .add_image(self.cur_binding as u32, image_view);
 
         if leave_array {
@@ -557,10 +556,9 @@ impl DescriptorSetBuilder {
         });
 
         descriptor.array_element += 1;
-        self.bound_resources
+        self.resources
             .add_image(self.cur_binding as u32, image_view);
-        self.bound_resources
-            .add_sampler(self.cur_binding as u32, sampler);
+        self.resources.add_sampler(self.cur_binding as u32, sampler);
 
         if leave_array {
             self.leave_array()
@@ -597,8 +595,7 @@ impl DescriptorSetBuilder {
         });
 
         descriptor.array_element += 1;
-        self.bound_resources
-            .add_sampler(self.cur_binding as u32, sampler);
+        self.resources.add_sampler(self.cur_binding as u32, sampler);
 
         if leave_array {
             self.leave_array()

@@ -7,9 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::bound::BoundResources;
 use super::builder::DescriptorSetBuilder;
 use super::builder::DescriptorSetBuilderOutput;
+use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use crate::buffer::BufferView;
 use crate::descriptor_set::layout::DescriptorSetDesc;
@@ -31,24 +31,24 @@ use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// `DescriptorSetPool` is a convenience wrapper provided by Vulkano not to be confused with
+/// `SingleLayoutDescSetPool` is a convenience wrapper provided by Vulkano not to be confused with
 /// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate `DescriptorSet`'s
 /// from and optimizes for a specific layout. For a more general purpose pool see `descriptor_set::pool::StdDescriptorPool`.
-pub struct DescriptorSetPool {
-    // The `PoolInner` struct contains an actual Vulkan pool. Every time it is full or additinal
+pub struct SingleLayoutDescSetPool {
+    // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full or additional
     // runtime array capacity is needed, we create a new pool and replace the current one with the new one.
-    inner: Option<Arc<PoolInner>>,
+    inner: Option<Arc<SingleLayoutPool>>,
     // The Vulkan device.
     device: Arc<Device>,
-    // The capasity available to runtime arrays when we create a new Vulkan pool.
-    rt_arr_cap: usize,
+    // The capacity available to runtime arrays when we create a new Vulkan pool.
+    runtime_array_capacity: usize,
     // The amount of sets available to use when we create a new Vulkan pool.
     set_count: usize,
-    // The descriptor layout that we target and alloc with
+    // The descriptor layout that we target and allocate with
     target_layout: Arc<DescriptorSetLayout>,
 }
 
-impl DescriptorSetPool {
+impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
     ///
@@ -78,7 +78,7 @@ impl DescriptorSetPool {
         Ok(Self {
             inner: None,
             device,
-            rt_arr_cap: runtime_array_capacity,
+            runtime_array_capacity,
             set_count: 4,
             target_layout,
         })
@@ -87,25 +87,28 @@ impl DescriptorSetPool {
     /// Starts the process of building a new descriptor set.
     ///
     /// The set will corresponds to the set layout that was passed to `new`.
-    pub fn next<'a>(&'a mut self) -> Result<DescriptorSetPoolSetBuilder<'a>, DescriptorSetError> {
-        let runtime_array_capacity = self.rt_arr_cap;
+    pub fn next<'a>(&'a mut self) -> Result<SingleLayoutDescSetBuilder<'a>, DescriptorSetError> {
+        let runtime_array_capacity = self.runtime_array_capacity;
         let layout = self.target_layout.clone();
 
-        Ok(DescriptorSetPoolSetBuilder {
+        Ok(SingleLayoutDescSetBuilder {
             pool: self,
             inner: DescriptorSetBuilder::start(layout, runtime_array_capacity)?,
             poisoned: false,
         })
     }
 
-    fn next_alloc(&mut self, runtime_array_length: usize) -> Result<PoolAlloc, OomError> {
+    fn next_alloc(
+        &mut self,
+        runtime_array_length: usize,
+    ) -> Result<SingleLayoutPoolAlloc, OomError> {
         loop {
             let mut not_enough_sets = false;
 
-            if runtime_array_length <= self.rt_arr_cap {
+            if runtime_array_length <= self.runtime_array_capacity {
                 if let Some(ref mut p_inner) = self.inner {
                     if let Some(existing) = p_inner.reserve.pop() {
-                        return Ok(PoolAlloc {
+                        return Ok(SingleLayoutPoolAlloc {
                             pool: p_inner.clone(),
                             inner: Some(existing),
                         });
@@ -117,8 +120,8 @@ impl DescriptorSetPool {
 
             let mut not_enough_capacity = false;
 
-            while runtime_array_length > self.rt_arr_cap {
-                self.rt_arr_cap *= 2;
+            while runtime_array_length > self.runtime_array_capacity {
+                self.runtime_array_capacity *= 2;
                 not_enough_capacity = true;
             }
 
@@ -135,7 +138,7 @@ impl DescriptorSetPool {
 
                             if let Some(desc) = &mut desc {
                                 if desc.variable_count {
-                                    desc.descriptor_count = self.rt_arr_cap as u32;
+                                    desc.descriptor_count = self.runtime_array_capacity as u32;
                                 }
                             }
 
@@ -178,7 +181,7 @@ impl DescriptorSetPool {
                 }
             };
 
-            self.inner = Some(Arc::new(PoolInner {
+            self.inner = Some(Arc::new(SingleLayoutPool {
                 inner: unsafe_pool,
                 reserve,
             }));
@@ -186,27 +189,27 @@ impl DescriptorSetPool {
     }
 }
 
-struct PoolInner {
+struct SingleLayoutPool {
     // The actual Vulkan descriptor pool. This field isn't actually used anywhere, but we need to
     // keep the pool alive in order to keep the descriptor sets valid.
     inner: UnsafeDescriptorPool,
 
     // List of descriptor sets. When `alloc` is called, a descriptor will be extracted from this
-    // list. When a `LocalPoolAlloc` is dropped, its descriptor set is put back in this list.
+    // list. When a `SingleLayoutPoolAlloc` is dropped, its descriptor set is put back in this list.
     reserve: SegQueue<UnsafeDescriptorSet>,
 }
 
-struct PoolAlloc {
-    // The `PoolInner` we were allocated from. We need to keep a copy of it in each allocation
+struct SingleLayoutPoolAlloc {
+    // The `SingleLayoutPool` were we allocated from. We need to keep a copy of it in each allocation
     // so that we can put back the allocation in the list in our `Drop` impl.
-    pool: Arc<PoolInner>,
+    pool: Arc<SingleLayoutPool>,
 
     // The actual descriptor set, wrapped inside an `Option` so that we can extract it in our
     // `Drop` impl.
     inner: Option<UnsafeDescriptorSet>,
 }
 
-impl DescriptorPoolAlloc for PoolAlloc {
+impl DescriptorPoolAlloc for SingleLayoutPoolAlloc {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.as_ref().unwrap()
@@ -218,21 +221,21 @@ impl DescriptorPoolAlloc for PoolAlloc {
     }
 }
 
-impl Drop for PoolAlloc {
+impl Drop for SingleLayoutPoolAlloc {
     fn drop(&mut self) {
         let inner = self.inner.take().unwrap();
         self.pool.reserve.push(inner);
     }
 }
 
-/// A descriptor set created from a `DescriptorSetPool`.
-pub struct DescriptorSetPoolSet {
-    inner: PoolAlloc,
-    bound_resources: BoundResources,
+/// A descriptor set created from a `SingleLayoutDescSetPool`.
+pub struct SingleLayoutDescSet {
+    inner: SingleLayoutPoolAlloc,
+    resources: DescriptorSetResources,
     layout: Arc<DescriptorSetLayout>,
 }
 
-unsafe impl DescriptorSet for DescriptorSetPoolSet {
+unsafe impl DescriptorSet for SingleLayoutDescSet {
     #[inline]
     fn inner(&self) -> &UnsafeDescriptorSet {
         self.inner.inner()
@@ -245,33 +248,33 @@ unsafe impl DescriptorSet for DescriptorSetPoolSet {
 
     #[inline]
     fn num_buffers(&self) -> usize {
-        self.bound_resources.num_buffers()
+        self.resources.num_buffers()
     }
 
     #[inline]
     fn buffer(&self, index: usize) -> Option<(&dyn BufferAccess, u32)> {
-        self.bound_resources.buffer(index)
+        self.resources.buffer(index)
     }
 
     #[inline]
     fn num_images(&self) -> usize {
-        self.bound_resources.num_images()
+        self.resources.num_images()
     }
 
     #[inline]
     fn image(&self, index: usize) -> Option<(&dyn ImageViewAbstract, u32)> {
-        self.bound_resources.image(index)
+        self.resources.image(index)
     }
 }
 
-unsafe impl DeviceOwned for DescriptorSetPoolSet {
+unsafe impl DeviceOwned for SingleLayoutDescSet {
     #[inline]
     fn device(&self) -> &Arc<Device> {
         self.layout.device()
     }
 }
 
-impl PartialEq for DescriptorSetPoolSet {
+impl PartialEq for SingleLayoutDescSet {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner().internal_object() == other.inner().internal_object()
@@ -279,9 +282,9 @@ impl PartialEq for DescriptorSetPoolSet {
     }
 }
 
-impl Eq for DescriptorSetPoolSet {}
+impl Eq for SingleLayoutDescSet {}
 
-impl Hash for DescriptorSetPoolSet {
+impl Hash for SingleLayoutDescSet {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().internal_object().hash(state);
@@ -289,14 +292,14 @@ impl Hash for DescriptorSetPoolSet {
     }
 }
 
-/// Prototype of a `DescriptorSetPoolSet`.
-pub struct DescriptorSetPoolSetBuilder<'a> {
-    pool: &'a mut DescriptorSetPool,
+/// Prototype of a `SingleLayoutDescSet`.
+pub struct SingleLayoutDescSetBuilder<'a> {
+    pool: &'a mut SingleLayoutDescSetPool,
     inner: DescriptorSetBuilder,
     poisoned: bool,
 }
 
-impl<'a> DescriptorSetPoolSetBuilder<'a> {
+impl<'a> SingleLayoutDescSetBuilder<'a> {
     /// Call this function if the next element of the set is an array in order to set the value of
     /// each element.
     ///
@@ -460,15 +463,15 @@ impl<'a> DescriptorSetPoolSetBuilder<'a> {
         }
     }
 
-    /// Builds a `DescriptorSetPoolSet` from the builder.
-    pub fn build(self) -> Result<DescriptorSetPoolSet, DescriptorSetError> {
+    /// Builds a `SingleLayoutDescSet` from the builder.
+    pub fn build(self) -> Result<SingleLayoutDescSet, DescriptorSetError> {
         if self.poisoned {
             return Err(DescriptorSetError::BuilderPoisoned);
         }
 
         let DescriptorSetBuilderOutput {
             writes,
-            bound_resources,
+            resources,
             runtime_array_length,
             ..
         } = self.inner.output(false)?;
@@ -480,9 +483,9 @@ impl<'a> DescriptorSetPoolSetBuilder<'a> {
                 .write(&self.pool.device, writes.into_iter());
         }
 
-        Ok(DescriptorSetPoolSet {
+        Ok(SingleLayoutDescSet {
             inner: alloc,
-            bound_resources,
+            resources,
             layout: self.pool.target_layout.clone(),
         })
     }
