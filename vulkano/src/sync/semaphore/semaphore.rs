@@ -15,10 +15,22 @@ use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
 use std::fmt;
-#[cfg(target_os = "linux")]
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use std::fs::File;
 use std::mem::MaybeUninit;
-#[cfg(target_os = "linux")]
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 use std::os::unix::io::FromRawFd;
 use std::ptr;
 use std::sync::Arc;
@@ -153,16 +165,28 @@ where
         SemaphoreBuilder::new(device).build()
     }
 
-    /// Same as `alloc`, but allows exportable opaque file descriptor on Linux
+    /// Same as `alloc`, but allows exportable opaque file descriptor on Linux/BSD
     #[inline]
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn alloc_with_exportable_fd(device: D) -> Result<Semaphore<D>, SemaphoreError> {
         SemaphoreBuilder::new(device)
             .export_info(ExternalSemaphoreHandleType::posix())
             .build()
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn export_opaque_fd(&self) -> Result<File, SemaphoreError> {
         let fns = self.device.fns();
 
@@ -310,7 +334,13 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     fn semaphore_export() {
         let supported_ext = InstanceExtensions::supported_by_core().unwrap();
         if supported_ext.khr_get_display_properties2
