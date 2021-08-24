@@ -198,12 +198,16 @@ fn main() {
     let view = ImageView::new(image.clone()).unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+
+    set_builder
+        .add_image(view.clone())
+        .unwrap();
+
     let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_image(view.clone())
-            .unwrap()
+        set_builder
             .build()
-            .unwrap(),
+            .unwrap()
     );
 
     let buf = CpuAccessibleBuffer::from_iter(

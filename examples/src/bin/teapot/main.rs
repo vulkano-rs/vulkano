@@ -224,16 +224,20 @@ fn main() {
                         proj: proj.into(),
                     };
 
-                    uniform_buffer.next(uniform_data).unwrap()
+                    Arc::new(uniform_buffer.next(uniform_data).unwrap())
                 };
 
                 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+                let mut set_builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+
+                set_builder
+                    .add_buffer(uniform_buffer_subbuffer)
+                    .unwrap();
+
                 let set = Arc::new(
-                    PersistentDescriptorSet::start(layout.clone())
-                        .add_buffer(uniform_buffer_subbuffer)
-                        .unwrap()
+                    set_builder
                         .build()
-                        .unwrap(),
+                        .unwrap()
                 );
 
                 let (image_num, suboptimal, acquire_future) =

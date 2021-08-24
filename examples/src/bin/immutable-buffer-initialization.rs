@@ -139,15 +139,19 @@ void main() {
     };
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+
+    set_builder
+        .add_buffer(data_buffer.clone())
+        .unwrap()
+        // Now you can just add immutable buffer like other buffers.
+        .add_buffer(immutable_data_buffer.clone())
+        .unwrap();
+
     let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_buffer(data_buffer.clone())
-            .unwrap()
-            // Now you can just add immutable buffer like other buffers.
-            .add_buffer(immutable_data_buffer.clone())
-            .unwrap()
+        set_builder
             .build()
-            .unwrap(),
+            .unwrap()
     );
 
     let mut builder = AutoCommandBufferBuilder::primary(

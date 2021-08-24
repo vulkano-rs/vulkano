@@ -206,12 +206,16 @@ fn main() {
     );
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+
+    set_builder
+        .add_sampled_image(texture.clone(), sampler.clone())
+        .unwrap();
+
     let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_sampled_image(texture.clone(), sampler.clone())
-            .unwrap()
+        set_builder
             .build()
-            .unwrap(),
+            .unwrap()
     );
 
     let mut dynamic_state = DynamicState {
