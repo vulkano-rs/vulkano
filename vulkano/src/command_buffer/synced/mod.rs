@@ -711,9 +711,9 @@ mod tests {
                     device.clone(),
                     [Some(DescriptorDesc {
                         ty: DescriptorDescTy::Sampler,
-                        array_count: 1,
+                        descriptor_count: 1,
                         stages: ShaderStages::all(),
-                        readonly: true,
+                        mutable: false,
                     })],
                 )
                 .unwrap(),

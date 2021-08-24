@@ -181,12 +181,10 @@ where
             (ImageViewType::Dim1dArray, ImageDimensions::Dim1d { .. }, _, _) => (),
             (ImageViewType::Dim2d, ImageDimensions::Dim2d { .. }, 1, _) => (),
             (ImageViewType::Dim2dArray, ImageDimensions::Dim2d { .. }, _, _) => (),
-            (ImageViewType::Cubemap, ImageDimensions::Dim2d { .. }, 6, _)
-                if flags.cube_compatible =>
-            {
+            (ImageViewType::Cube, ImageDimensions::Dim2d { .. }, 6, _) if flags.cube_compatible => {
                 ()
             }
-            (ImageViewType::CubemapArray, ImageDimensions::Dim2d { .. }, n, _)
+            (ImageViewType::CubeArray, ImageDimensions::Dim2d { .. }, n, _)
                 if flags.cube_compatible && n % 6 == 0 =>
             {
                 ()
@@ -407,8 +405,18 @@ pub enum ImageViewType {
     Dim2d = ash::vk::ImageViewType::TYPE_2D.as_raw(),
     Dim2dArray = ash::vk::ImageViewType::TYPE_2D_ARRAY.as_raw(),
     Dim3d = ash::vk::ImageViewType::TYPE_3D.as_raw(),
-    Cubemap = ash::vk::ImageViewType::CUBE.as_raw(),
-    CubemapArray = ash::vk::ImageViewType::CUBE_ARRAY.as_raw(),
+    Cube = ash::vk::ImageViewType::CUBE.as_raw(),
+    CubeArray = ash::vk::ImageViewType::CUBE_ARRAY.as_raw(),
+}
+
+impl ImageViewType {
+    #[inline]
+    pub fn is_arrayed(&self) -> bool {
+        match self {
+            Self::Dim1d | Self::Dim2d | Self::Dim3d | Self::Cube => false,
+            Self::Dim1dArray | Self::Dim2dArray | Self::CubeArray => true,
+        }
+    }
 }
 
 impl From<ImageViewType> for ash::vk::ImageViewType {
