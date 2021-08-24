@@ -82,6 +82,7 @@ struct FeaturesMember {
     requires_features: Vec<Ident>,
     conflicts_features: Vec<Ident>,
     required_by_extensions: Vec<Ident>,
+    optional: bool,
 }
 
 fn write_features(members: &[FeaturesMember]) -> TokenStream {
@@ -187,15 +188,27 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
              name,
              ffi_name,
              ffi_members,
+             optional,
              ..
          }| {
-            let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
-                quote! { self.#ffi_member.as_mut().map(|s| &mut s #ffi_member_field .#ffi_name) }
-            });
-            quote! {
-                std::array::IntoIter::new([
-                    #(#ffi_members),*
-                ]).flatten().next().map(|f| *f = features.#name as ash::vk::Bool32);
+            if *optional {
+                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                    quote! { self.#ffi_member.as_mut().map(|s| &mut s #ffi_member_field .#ffi_name) }
+                });
+                quote! {
+                    std::array::IntoIter::new([
+                        #(#ffi_members),*
+                    ]).flatten().next().map(|f| *f = features.#name as ash::vk::Bool32);
+                }
+            } else {
+                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                    quote! { &mut self.#ffi_member #ffi_member_field .#ffi_name }
+                });
+                quote! {
+                    std::array::IntoIter::new([
+                        #(#ffi_members),*
+                    ]).next().map(|f| *f = features.#name as ash::vk::Bool32);
+                }
             }
         },
     );
@@ -205,15 +218,27 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
              name,
              ffi_name,
              ffi_members,
+             optional,
              ..
          }| {
-            let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
-                quote! { features_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
-            });
-            quote! {
-                #name: std::array::IntoIter::new([
-                    #(#ffi_members),*
-                ]).flatten().next().unwrap_or(0) != 0,
+            if *optional {
+                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                    quote! { features_ffi.#ffi_member.map(|s| s #ffi_member_field .#ffi_name) }
+                });
+                quote! {
+                    #name: std::array::IntoIter::new([
+                        #(#ffi_members),*
+                    ]).flatten().next().unwrap_or(0) != 0,
+                }
+            } else {
+                let ffi_members = ffi_members.iter().map(|(ffi_member, ffi_member_field)| {
+                    quote! { features_ffi.#ffi_member #ffi_member_field .#ffi_name }
+                });
+                quote! {
+                    #name: std::array::IntoIter::new([
+                        #(#ffi_members),*
+                    ]).next().unwrap_or(0) != 0,
+                }
             }
         },
     );
@@ -341,10 +366,16 @@ fn make_features(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMembe
         .for_each(|(ty, _)| {
             let vulkan_ty_name = ty.name.as_ref().unwrap();
 
-            let ty_name = if vulkan_ty_name == "VkPhysicalDeviceFeatures" {
-                (format_ident!("features_vulkan10"), quote! { .features })
+            let (ty_name, optional) = if vulkan_ty_name == "VkPhysicalDeviceFeatures" {
+                (
+                    (format_ident!("features_vulkan10"), quote! { .features }),
+                    false,
+                )
             } else {
-                (format_ident!("{}", ffi_member(vulkan_ty_name)), quote! {})
+                (
+                    (format_ident!("{}", ffi_member(vulkan_ty_name)), quote! {}),
+                    true,
+                )
             };
 
             members(ty).into_iter().for_each(|vulkan_name| {
@@ -377,6 +408,7 @@ fn make_features(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMembe
                                     )
                                 })
                                 .collect(),
+                            optional,
                         };
                         make_doc(&mut member, vulkan_ty_name);
                         entry.insert(member);
@@ -496,7 +528,7 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
     quote! {
         #[derive(Default)]
         pub struct FeaturesFfi {
-            features_vulkan10: Option<ash::vk::PhysicalDeviceFeatures2KHR>,
+            features_vulkan10: ash::vk::PhysicalDeviceFeatures2KHR,
             #(#struct_items)*
         }
 
@@ -507,17 +539,17 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
                 device_extensions: &DeviceExtensions,
                 instance_extensions: &InstanceExtensions,
             ) {
-                self.features_vulkan10 = Some(Default::default());
-                let head = self.features_vulkan10.as_mut().unwrap();
+                self.features_vulkan10 = Default::default();
+                let head = &mut self.features_vulkan10;
                 #(#make_chain_items)*
             }
 
             pub(crate) fn head_as_ref(&self) -> &ash::vk::PhysicalDeviceFeatures2KHR {
-                self.features_vulkan10.as_ref().unwrap()
+                &self.features_vulkan10
             }
 
             pub(crate) fn head_as_mut(&mut self) -> &mut ash::vk::PhysicalDeviceFeatures2KHR {
-                self.features_vulkan10.as_mut().unwrap()
+                &mut self.features_vulkan10
             }
         }
     }
