@@ -16,7 +16,7 @@
 //! members there are, what types they have, and in what order.
 //! One could imagine a Rust definition somewhat like this:
 //!
-//! ```no_run
+//! ```text
 //! #[repr(C)]
 //! struct MyPipelineLayout {
 //!     push_constants: Pc,
