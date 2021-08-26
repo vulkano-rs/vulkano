@@ -7,35 +7,67 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! A pipeline layout describes the layout of descriptors and push constants used by a graphics
-//! pipeline or a compute pipeline.
+//! A pipeline layout describes the layout of descriptors and push constants used by a pipeline.
+//!
+//! # Overview
 //!
 //! The layout itself only *describes* the descriptors and push constants, and does not contain
-//! the content of the push constants or the actual list of resources that are going to be
-//! available through the descriptors. Push constants are set when you submit a draw command, and
-//! the list of resources is set by creating *descriptor set* objects and passing these sets when
-//! you submit a draw command.
+//! their content itself. Instead, you can think of it as a `struct` definition that states which
+//! members there are, what types they have, and in what order.
+//! One could imagine a Rust definition somewhat like this:
 //!
-//! # Pipeline layout objects
+//! ```no_run
+//! #[repr(C)]
+//! struct MyPipelineLayout {
+//!     push_constants: Pc,
+//!     descriptor_set0: Ds0,
+//!     descriptor_set1: Ds1,
+//!     descriptor_set2: Ds2,
+//!     descriptor_set3: Ds3,
+//! }
+//! ```
 //!
-//! A pipeline layout is something that you must describe to the Vulkan implementation by creating
-//! a **pipeline layout object**, represented by the `PipelineLayout` struct in vulkano.
+//! Of course, a pipeline layout is created at runtime, unlike a Rust type.
 //!
-//! Each graphics pipeline or compute pipeline that you create therefore holds a
-//! **pipeline layout object** By default, creating a pipeline automatically builds a new pipeline
-//! layout object describing the union of all the descriptors and push constants of all the shaders
-//! used by the pipeline.
+//! # Layout compatibility
 //!
-//! The `PipelineLayout` struct describes the pipeline layout to both the Vulkan implementation and
-//! to vulkano. It holds a `PipelineLayoutDesc` value.
+//! When binding descriptor sets or setting push constants, you must provide a pipeline layout.
+//! This pipeline is used to decide where in memory Vulkan should write the new data. The
+//! descriptor sets and push constants can later be read by dispatch or draw calls, but only if
+//! the bound pipeline being used for the command has a layout that is *compatible* with the layout
+//! that was used to bind the resources.
 //!
-//! # Custom pipeline layouts
+//! *Compatible* means that the pipeline layout must be the same object, or a different layout in
+//! which the push constant ranges and descriptor set layouts were be identically defined.
+//! However, Vulkan allows for partial compatibility as well. In the `struct` analogy used above,
+//! one could imagine that using a different definition would leave some members with the same
+//! offset and size within the struct as in the old definition, while others are no longer
+//! positioned correctly. For example, if a new, incompatible type were used for `Ds1`, then the
+//! `descriptor_set1`, `descriptor_set2` and `descriptor_set3` members would no longer be correct,
+//! but `descriptor_set0` and `push_constants` would remain accessible in the new layout.
+//! Because of this behaviour, the following rules apply to compatibility between the layouts used
+//! in subsequent descriptor set binding calls:
 //!
-//! In some situations, it is better (as in, faster) to share the same descriptor set or sets
-//! between multiple pipelines that each use different descriptors. To do so, you have to create a
-//! pipeline layout object in advance and pass it when you create the pipelines.
+//! - An incompatible definition of `Pc` invalidates all bound descriptor sets.
+//! - An incompatible definition of `DsN` invalidates all bound descriptor sets *N* and higher.
+//! - If *N* is the highest set being assigned in a bind command, and it and all lower sets
+//!   have compatible definitions, including the push constants, then descriptor sets above *N*
+//!   remain valid.
 //!
-//! TODO: write this section
+//! [`SyncCommandBufferBuilder`](crate::command_buffer::synced::SyncCommandBufferBuilder) keeps
+//! track of this state and will automatically remove descriptor sets that have been invalidated
+//! by incompatible layouts in subsequent binding commands.
+//!
+//! # Creating pipeline layouts
+//!
+//! A pipeline layout is a Vulkan object type, represented in Vulkano with the `PipelineLayout`
+//! type. Each pipeline that you create holds a pipeline layout object.
+//!
+//! By default, creating a pipeline automatically builds a new pipeline layout object describing the
+//! union of all the descriptors and push constants of all the shaders used by the pipeline.
+//! However, it is also possible to create a pipeline layout separately, and provide that to the
+//! pipeline constructor. This can in some cases be more efficient than using the auto-generated
+//! pipeline layouts.
 
 pub use self::limits_check::PipelineLayoutLimitsError;
 pub use self::sys::PipelineLayout;

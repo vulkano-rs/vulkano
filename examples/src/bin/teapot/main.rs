@@ -9,15 +9,12 @@
 
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
 use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
-use std::iter;
 use std::sync::Arc;
 use std::time::Instant;
 use vulkano::buffer::cpu_pool::CpuBufferPool;
 use vulkano::buffer::TypedBufferAccess;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
-};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -28,7 +25,7 @@ use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
@@ -263,19 +260,16 @@ fn main() {
                         vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
                     )
                     .unwrap()
-                    .draw_indexed(
-                        index_buffer.len() as u32,
-                        1,
+                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        pipeline.layout().clone(),
                         0,
-                        0,
-                        0,
-                        pipeline.clone(),
-                        &DynamicState::none(),
-                        (vertex_buffer.clone(), normals_buffer.clone()),
-                        index_buffer.clone(),
                         set.clone(),
-                        (),
                     )
+                    .bind_vertex_buffers(0, (vertex_buffer.clone(), normals_buffer.clone()))
+                    .bind_index_buffer(index_buffer.clone())
+                    .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -357,11 +351,11 @@ fn window_size_dependent_setup(
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)
-            .viewports(iter::once(Viewport {
+            .viewports([Viewport {
                 origin: [0.0, 0.0],
                 dimensions: [dimensions[0] as f32, dimensions[1] as f32],
                 depth_range: 0.0..1.0,
-            }))
+            }])
             .fragment_shader(fs.main_entry_point(), ())
             .depth_stencil_simple_depth()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

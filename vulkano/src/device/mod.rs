@@ -401,8 +401,8 @@ impl Device {
     /// Returns the Vulkan version supported by the device.
     ///
     /// This is the lower of the
-    /// [physical device's supported version](crate::instance::PhysicalDevice::api_version) and
-    /// the instance's [`max_api_version`](crate::instance::Instance::max_api_version).
+    /// [physical device's supported version](crate::device::physical::PhysicalDevice::api_version)
+    /// and the instance's [`max_api_version`](crate::instance::Instance::max_api_version).
     #[inline]
     pub fn api_version(&self) -> Version {
         self.api_version

@@ -20,9 +20,7 @@
 
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
-};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::image::view::ImageView;
@@ -294,16 +292,12 @@ fn main() {
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
-    let mut dynamic_state = DynamicState {
-        line_width: None,
-        viewports: None,
-        scissors: None,
-        compare_mask: None,
-        write_mask: None,
-        reference: None,
+    let mut viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [0.0, 0.0],
+        depth_range: 0.0..1.0,
     };
-    let mut framebuffers =
-        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -331,11 +325,8 @@ fn main() {
                     };
 
                 swapchain = new_swapchain;
-                framebuffers = window_size_dependent_setup(
-                    &new_images,
-                    render_pass.clone(),
-                    &mut dynamic_state,
-                );
+                framebuffers =
+                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
                 recreate_swapchain = false;
             }
 
@@ -366,17 +357,10 @@ fn main() {
                     vec![[0.0, 0.0, 0.0, 1.0].into()],
                 )
                 .unwrap()
-                .draw(
-                    vertex_buffer.len() as u32,
-                    1,
-                    0,
-                    0,
-                    pipeline.clone(),
-                    &dynamic_state,
-                    vertex_buffer.clone(),
-                    (),
-                    (),
-                )
+                .set_viewport(0, [viewport.clone()])
+                .bind_pipeline_graphics(pipeline.clone())
+                .bind_vertex_buffers(0, vertex_buffer.clone())
+                .draw(vertex_buffer.len() as u32, 1, 0, 0)
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
@@ -413,16 +397,10 @@ fn main() {
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-    dynamic_state: &mut DynamicState,
+    viewport: &mut Viewport,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
-
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0..1.0,
-    };
-    dynamic_state.viewports = Some(vec![viewport]);
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()

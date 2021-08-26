@@ -71,8 +71,7 @@ use std::path::Path;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryCommandBuffer,
-    SubpassContents,
+    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
 };
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -281,13 +280,10 @@ fn main() {
             .unwrap(),
     );
 
-    let dynamic_state = DynamicState {
-        viewports: Some(vec![Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [1024.0, 1024.0],
-            depth_range: 0.0..1.0,
-        }]),
-        ..DynamicState::none()
+    let viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [1024.0, 1024.0],
+        depth_range: 0.0..1.0,
     };
 
     let buf = CpuAccessibleBuffer::from_iter(
@@ -311,17 +307,10 @@ fn main() {
             vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None],
         )
         .unwrap()
-        .draw(
-            vertex_buffer.len() as u32,
-            1,
-            0,
-            0,
-            pipeline.clone(),
-            &dynamic_state,
-            vertex_buffer.clone(),
-            (),
-            (),
-        )
+        .set_viewport(0, [viewport.clone()])
+        .bind_pipeline_graphics(pipeline.clone())
+        .bind_vertex_buffers(0, vertex_buffer.clone())
+        .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
         .end_render_pass()
         .unwrap()

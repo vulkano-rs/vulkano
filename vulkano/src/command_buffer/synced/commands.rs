@@ -55,13 +55,55 @@ use crate::sync::PipelineStages;
 use crate::DeviceSize;
 use crate::SafeDeref;
 use crate::VulkanObject;
+use fnv::FnvHashMap;
 use smallvec::SmallVec;
 use std::borrow::Cow;
+use std::collections::hash_map::Entry;
 use std::ffi::CStr;
 use std::mem;
 use std::ops::Range;
 use std::ptr;
 use std::sync::{Arc, Mutex};
+
+/// Holds the current binding and setting state.
+#[derive(Debug, Default)]
+pub(super) struct CurrentState {
+    descriptor_sets: FnvHashMap<PipelineBindPoint, DescriptorSetState>,
+    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
+    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
+    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
+    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
+
+    push_constants: Option<PushConstantState>,
+
+    blend_constants: Option<[f32; 4]>,
+    depth_bias: Option<(f32, f32, f32)>,
+    depth_bounds: Option<(f32, f32)>,
+    line_width: Option<f32>,
+    stencil_compare_mask: StencilState,
+    stencil_reference: StencilState,
+    stencil_write_mask: StencilState,
+    scissor: FnvHashMap<u32, Scissor>,
+    viewport: FnvHashMap<u32, Viewport>,
+}
+
+#[derive(Debug)]
+struct DescriptorSetState {
+    descriptor_sets: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
+    pipeline_layout: Arc<PipelineLayout>,
+}
+
+#[derive(Debug)]
+struct PushConstantState {
+    pipeline_layout: Arc<PipelineLayout>,
+}
+
+/// Holds the current stencil state of a `SyncCommandBufferBuilder`.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct StencilState {
+    pub front: Option<u32>,
+    pub back: Option<u32>,
+}
 
 impl SyncCommandBufferBuilder {
     /// Calls `vkCmdBeginQuery` on the builder.
@@ -206,13 +248,42 @@ impl SyncCommandBufferBuilder {
         }
     }
 
+    /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
+    /// been bound yet.
+    pub fn bound_descriptor_set(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+        set_num: u32,
+    ) -> Option<(&dyn DescriptorSet, &[u32])> {
+        self.current_state
+            .descriptor_sets
+            .get(&pipeline_bind_point)
+            .and_then(|state| {
+                state
+                    .descriptor_sets
+                    .get(&set_num)
+                    .map(|cmd| cmd.bound_descriptor_set(set_num))
+            })
+    }
+
+    /// Returns the pipeline layout that describes all currently bound descriptor sets.
+    ///
+    /// This can be the layout used to perform the last bind operation, but it can also be the
+    /// layout of an earlier bind if it was compatible with more recent binds.
+    #[inline]
+    pub fn bound_descriptor_sets_pipeline_layout(
+        &self,
+        pipeline_bind_point: PipelineBindPoint,
+    ) -> Option<&Arc<PipelineLayout>> {
+        self.current_state
+            .descriptor_sets
+            .get(&pipeline_bind_point)
+            .map(|state| &state.pipeline_layout)
+    }
+
     /// Calls `vkCmdBindIndexBuffer` on the builder.
     #[inline]
-    pub unsafe fn bind_index_buffer<B>(
-        &mut self,
-        buffer: B,
-        index_ty: IndexType,
-    ) -> Result<(), SyncCommandBufferBuilderError>
+    pub unsafe fn bind_index_buffer<B>(&mut self, buffer: B, index_ty: IndexType)
     where
         B: BufferAccess + Send + Sync + 'static,
     {
@@ -233,15 +304,21 @@ impl SyncCommandBufferBuilder {
                 out.bind_index_buffer(&self.buffer, self.index_ty);
             }
 
-            fn bound_index_buffer(&self) -> &dyn BufferAccess {
-                &self.buffer
+            fn bound_index_buffer(&self) -> (&dyn BufferAccess, IndexType) {
+                (&self.buffer, self.index_ty)
             }
         }
 
-        self.append_command(Cmd { buffer, index_ty }, &[])?;
-        self.bindings.index_buffer = self.commands.last().cloned();
+        self.append_command(Cmd { buffer, index_ty }, &[]).unwrap();
+        self.current_state.index_buffer = self.commands.last().cloned();
+    }
 
-        Ok(())
+    /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
+    pub fn bound_index_buffer(&self) -> Option<(&dyn BufferAccess, IndexType)> {
+        self.current_state
+            .index_buffer
+            .as_ref()
+            .map(|cmd| cmd.bound_index_buffer())
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
@@ -266,7 +343,15 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { pipeline }, &[]).unwrap();
-        self.bindings.pipeline_compute = self.commands.last().cloned();
+        self.current_state.pipeline_compute = self.commands.last().cloned();
+    }
+
+    /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
+    pub fn bound_pipeline_compute(&self) -> Option<&Arc<ComputePipeline>> {
+        self.current_state
+            .pipeline_compute
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_compute())
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
@@ -291,7 +376,15 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { pipeline }, &[]).unwrap();
-        self.bindings.pipeline_graphics = self.commands.last().cloned();
+        self.current_state.pipeline_graphics = self.commands.last().cloned();
+    }
+
+    /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
+    pub fn bound_pipeline_graphics(&self) -> Option<&Arc<GraphicsPipeline>> {
+        self.current_state
+            .pipeline_graphics
+            .as_ref()
+            .map(|cmd| cmd.bound_pipeline_graphics())
     }
 
     /// Starts the process of binding vertex buffers. Returns an intermediate struct which can be
@@ -303,6 +396,15 @@ impl SyncCommandBufferBuilder {
             inner: UnsafeCommandBufferBuilderBindVertexBuffer::new(),
             buffers: SmallVec::new(),
         }
+    }
+
+    /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
+    /// nothing has been bound yet.
+    pub fn bound_vertex_buffer(&self, binding_num: u32) -> Option<&dyn BufferAccess> {
+        self.current_state
+            .vertex_buffers
+            .get(&binding_num)
+            .map(|cmd| cmd.bound_vertex_buffer(binding_num))
     }
 
     /// Calls `vkCmdCopyImage` on the builder.
@@ -1214,7 +1316,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let pipeline = self
-            .bindings
+            .current_state
             .pipeline_compute
             .as_ref()
             .unwrap()
@@ -1333,7 +1435,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let pipeline = self
-            .bindings
+            .current_state
             .pipeline_compute
             .as_ref()
             .unwrap()
@@ -1478,7 +1580,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let pipeline = self
-            .bindings
+            .current_state
             .pipeline_graphics
             .as_ref()
             .unwrap()
@@ -1568,7 +1670,7 @@ impl SyncCommandBufferBuilder {
                 }
 
                 if num == 0 {
-                    return self.index_buffer.bound_index_buffer();
+                    return self.index_buffer.bound_index_buffer().0;
                 }
 
                 panic!()
@@ -1639,7 +1741,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let pipeline = self
-            .bindings
+            .current_state
             .pipeline_graphics
             .as_ref()
             .unwrap()
@@ -1798,7 +1900,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let pipeline = self
-            .bindings
+            .current_state
             .pipeline_graphics
             .as_ref()
             .unwrap()
@@ -1885,7 +1987,7 @@ impl SyncCommandBufferBuilder {
                 }
 
                 if num == 0 {
-                    return self.index_buffer.bound_index_buffer();
+                    return self.index_buffer.bound_index_buffer().0;
                 } else if num == 1 {
                     return &self.indirect_buffer;
                 }
@@ -1960,7 +2062,7 @@ impl SyncCommandBufferBuilder {
         }
 
         let pipeline = self
-            .bindings
+            .current_state
             .pipeline_graphics
             .as_ref()
             .unwrap()
@@ -2169,7 +2271,7 @@ impl SyncCommandBufferBuilder {
 
         self.append_command(
             Cmd {
-                pipeline_layout,
+                pipeline_layout: pipeline_layout.clone(),
                 stages,
                 offset,
                 size,
@@ -2178,6 +2280,24 @@ impl SyncCommandBufferBuilder {
             &[],
         )
         .unwrap();
+
+        // TODO: Track the state of which push constant bytes are set, and potential invalidations.
+        // The Vulkan spec currently is unclear about this, so Vulkano can't do much more for the
+        // moment. See:
+        // https://github.com/KhronosGroup/Vulkan-Docs/issues/1485
+        // https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/2711
+        self.current_state.push_constants = Some(PushConstantState { pipeline_layout });
+    }
+
+    /// Returns the pipeline layout that describes the current push constants.
+    ///
+    /// This is the layout used to perform the last push constant write operation.
+    #[inline]
+    pub fn current_push_constants_pipeline_layout(&self) -> Option<&Arc<PipelineLayout>> {
+        self.current_state
+            .push_constants
+            .as_ref()
+            .map(|state| &state.pipeline_layout)
     }
 
     /// Calls `vkCmdResetEvent` on the builder.
@@ -2247,6 +2367,13 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { constants }, &[]).unwrap();
+        self.current_state.blend_constants = Some(constants);
+    }
+
+    /// Returns the current blend constants, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn current_blend_constants(&self) -> Option<[f32; 4]> {
+        self.current_state.blend_constants
     }
 
     /// Calls `vkCmdSetDepthBias` on the builder.
@@ -2277,6 +2404,13 @@ impl SyncCommandBufferBuilder {
             &[],
         )
         .unwrap();
+        self.current_state.depth_bias = Some((constant_factor, clamp, slope_factor));
+    }
+
+    /// Returns the current depth bias settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn current_depth_bias(&self) -> Option<(f32, f32, f32)> {
+        self.current_state.depth_bias
     }
 
     /// Calls `vkCmdSetDepthBounds` on the builder.
@@ -2298,6 +2432,13 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { min, max }, &[]).unwrap();
+        self.current_state.depth_bounds = Some((min, max));
+    }
+
+    /// Returns the current depth bounds settings, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn current_depth_bounds(&self) -> Option<(f32, f32)> {
+        self.current_state.depth_bounds
     }
 
     /// Calls `vkCmdSetEvent` on the builder.
@@ -2339,13 +2480,20 @@ impl SyncCommandBufferBuilder {
         }
 
         self.append_command(Cmd { line_width }, &[]).unwrap();
+        self.current_state.line_width = Some(line_width);
+    }
+
+    /// Returns the current line width, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn current_line_width(&self) -> Option<f32> {
+        self.current_state.line_width
     }
 
     /// Calls `vkCmdSetStencilCompareMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_compare_mask(&mut self, face_mask: StencilFaces, compare_mask: u32) {
+    pub unsafe fn set_stencil_compare_mask(&mut self, faces: StencilFaces, compare_mask: u32) {
         struct Cmd {
-            face_mask: StencilFaces,
+            faces: StencilFaces,
             compare_mask: u32,
         }
 
@@ -2355,25 +2503,41 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_compare_mask(self.face_mask, self.compare_mask);
+                out.set_stencil_compare_mask(self.faces, self.compare_mask);
             }
         }
 
         self.append_command(
             Cmd {
-                face_mask,
+                faces,
                 compare_mask,
             },
             &[],
         )
         .unwrap();
+
+        let faces = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.current_state.stencil_compare_mask.front = Some(compare_mask);
+        }
+
+        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.current_state.stencil_compare_mask.back = Some(compare_mask);
+        }
+    }
+
+    /// Returns the current stencil compare masks.
+    #[inline]
+    pub fn current_stencil_compare_mask(&self) -> StencilState {
+        self.current_state.stencil_compare_mask
     }
 
     /// Calls `vkCmdSetStencilReference` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_reference(&mut self, face_mask: StencilFaces, reference: u32) {
+    pub unsafe fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) {
         struct Cmd {
-            face_mask: StencilFaces,
+            faces: StencilFaces,
             reference: u32,
         }
 
@@ -2383,25 +2547,34 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_reference(self.face_mask, self.reference);
+                out.set_stencil_reference(self.faces, self.reference);
             }
         }
 
-        self.append_command(
-            Cmd {
-                face_mask,
-                reference,
-            },
-            &[],
-        )
-        .unwrap();
+        self.append_command(Cmd { faces, reference }, &[]).unwrap();
+
+        let faces = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.current_state.stencil_reference.front = Some(reference);
+        }
+
+        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.current_state.stencil_reference.back = Some(reference);
+        }
+    }
+
+    /// Returns the current stencil references.
+    #[inline]
+    pub fn current_stencil_reference(&self) -> StencilState {
+        self.current_state.stencil_reference
     }
 
     /// Calls `vkCmdSetStencilWriteMask` on the builder.
     #[inline]
-    pub unsafe fn set_stencil_write_mask(&mut self, face_mask: StencilFaces, write_mask: u32) {
+    pub unsafe fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) {
         struct Cmd {
-            face_mask: StencilFaces,
+            faces: StencilFaces,
             write_mask: u32,
         }
 
@@ -2411,18 +2584,27 @@ impl SyncCommandBufferBuilder {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_stencil_write_mask(self.face_mask, self.write_mask);
+                out.set_stencil_write_mask(self.faces, self.write_mask);
             }
         }
 
-        self.append_command(
-            Cmd {
-                face_mask,
-                write_mask,
-            },
-            &[],
-        )
-        .unwrap();
+        self.append_command(Cmd { faces, write_mask }, &[]).unwrap();
+
+        let faces = ash::vk::StencilFaceFlags::from(faces);
+
+        if faces.intersects(ash::vk::StencilFaceFlags::FRONT) {
+            self.current_state.stencil_write_mask.front = Some(write_mask);
+        }
+
+        if faces.intersects(ash::vk::StencilFaceFlags::BACK) {
+            self.current_state.stencil_write_mask.back = Some(write_mask);
+        }
+    }
+
+    /// Returns the current stencil write masks.
+    #[inline]
+    pub fn current_stencil_write_mask(&self) -> StencilState {
+        self.current_state.stencil_write_mask
     }
 
     /// Calls `vkCmdSetScissor` on the builder.
@@ -2431,37 +2613,44 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I)
     where
-        I: IntoIterator<Item = Scissor> + Send + Sync + 'static,
+        I: IntoIterator<Item = Scissor>,
     {
-        struct Cmd<I> {
+        struct Cmd {
             first_scissor: u32,
-            scissors: Mutex<Option<I>>,
+            scissors: Mutex<SmallVec<[Scissor; 2]>>,
         }
 
-        impl<I> Command for Cmd<I>
-        where
-            I: IntoIterator<Item = Scissor>,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdSetScissor"
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.set_scissor(
-                    self.first_scissor,
-                    self.scissors.lock().unwrap().take().unwrap(),
-                );
+                out.set_scissor(self.first_scissor, self.scissors.lock().unwrap().drain(..));
             }
+        }
+
+        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+
+        for (num, scissor) in scissors.iter().enumerate() {
+            let num = num as u32 + first_scissor;
+            self.current_state.scissor.insert(num, scissor.clone());
         }
 
         self.append_command(
             Cmd {
                 first_scissor,
-                scissors: Mutex::new(Some(scissors)),
+                scissors: Mutex::new(scissors),
             },
             &[],
         )
         .unwrap();
+    }
+
+    /// Returns the current scissor for a given viewport slot, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn current_scissor(&self, num: u32) -> Option<&Scissor> {
+        self.current_state.scissor.get(&num)
     }
 
     /// Calls `vkCmdSetViewport` on the builder.
@@ -2470,17 +2659,14 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I)
     where
-        I: IntoIterator<Item = Viewport> + Send + Sync + 'static,
+        I: IntoIterator<Item = Viewport>,
     {
-        struct Cmd<I> {
+        struct Cmd {
             first_viewport: u32,
-            viewports: Mutex<Option<I>>,
+            viewports: Mutex<SmallVec<[Viewport; 2]>>,
         }
 
-        impl<I> Command for Cmd<I>
-        where
-            I: IntoIterator<Item = Viewport>,
-        {
+        impl Command for Cmd {
             fn name(&self) -> &'static str {
                 "vkCmdSetViewport"
             }
@@ -2488,19 +2674,32 @@ impl SyncCommandBufferBuilder {
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
                 out.set_viewport(
                     self.first_viewport,
-                    self.viewports.lock().unwrap().take().unwrap(),
+                    self.viewports.lock().unwrap().drain(..),
                 );
             }
+        }
+
+        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
+
+        for (num, viewport) in viewports.iter().enumerate() {
+            let num = num as u32 + first_viewport;
+            self.current_state.viewport.insert(num, viewport.clone());
         }
 
         self.append_command(
             Cmd {
                 first_viewport,
-                viewports: Mutex::new(Some(viewports)),
+                viewports: Mutex::new(viewports),
             },
             &[],
         )
         .unwrap();
+    }
+
+    /// Returns the current viewport for a given viewport slot, or `None` if nothing has been set yet.
+    #[inline]
+    pub fn current_viewport(&self, num: u32) -> Option<&Viewport> {
+        self.current_state.viewport.get(&num)
     }
 
     /// Calls `vkCmdUpdateBuffer` on the builder.
@@ -2614,12 +2813,14 @@ impl SyncCommandBufferBuilder {
         pipeline_layout: &PipelineLayout,
         pipeline_bind_point: PipelineBindPoint,
     ) -> SmallVec<[Arc<dyn Command + Send + Sync>; 12]> {
-        let descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]> = (0..pipeline_layout
-            .descriptor_set_layouts()
-            .len()
-            as u32)
-            .map(|set_num| self.bindings.descriptor_sets[&pipeline_bind_point][&set_num].clone())
-            .collect();
+        let descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]> =
+            (0..pipeline_layout.descriptor_set_layouts().len() as u32)
+                .map(|set_num| {
+                    self.current_state.descriptor_sets[&pipeline_bind_point].descriptor_sets
+                        [&set_num]
+                        .clone()
+                })
+                .collect();
 
         for ds in descriptor_sets
             .iter()
@@ -2629,7 +2830,7 @@ impl SyncCommandBufferBuilder {
             for buf_num in 0..ds.num_buffers() {
                 let desc = ds
                     .layout()
-                    .descriptor(ds.buffer(buf_num).unwrap().1 as usize)
+                    .descriptor(ds.buffer(buf_num).unwrap().1)
                     .unwrap();
                 let exclusive = desc.mutable;
                 let (stages, access) = desc.pipeline_stages_and_access();
@@ -2649,7 +2850,7 @@ impl SyncCommandBufferBuilder {
             }
             for img_num in 0..ds.num_images() {
                 let (image_view, desc_num) = ds.image(img_num).unwrap();
-                let desc = ds.layout().descriptor(desc_num as usize).unwrap();
+                let desc = ds.layout().descriptor(desc_num).unwrap();
                 let exclusive = desc.mutable;
                 let (stages, access) = desc.pipeline_stages_and_access();
                 let mut ignore_me_hack = false;
@@ -2713,7 +2914,7 @@ impl SyncCommandBufferBuilder {
             .map(|(binding_num, _)| {
                 (
                     binding_num,
-                    self.bindings.vertex_buffers[&binding_num].clone(),
+                    self.current_state.vertex_buffers[&binding_num].clone(),
                 )
             })
             .collect();
@@ -2755,7 +2956,7 @@ impl SyncCommandBufferBuilder {
             )>,
         )>,
     ) -> Arc<dyn Command + Send + Sync> {
-        let index_buffer = self.bindings.index_buffer.as_ref().unwrap().clone();
+        let index_buffer = self.current_state.index_buffer.as_ref().unwrap().clone();
 
         resources.push((
             KeyTy::Buffer,
@@ -2834,17 +3035,17 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
         self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: Arc<PipelineLayout>,
-        first_binding: u32,
-    ) -> Result<(), SyncCommandBufferBuilderError> {
+        first_set: u32,
+    ) {
         if self.descriptor_sets.is_empty() {
-            return Ok(());
+            return;
         }
 
         struct Cmd {
             descriptor_sets: SmallVec<[DescriptorSetWithOffsets; 12]>,
             pipeline_bind_point: PipelineBindPoint,
             pipeline_layout: Arc<PipelineLayout>,
-            first_binding: u32,
+            first_set: u32,
         }
 
         impl Command for Cmd {
@@ -2863,43 +3064,84 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
                 out.bind_descriptor_sets(
                     self.pipeline_bind_point,
                     &self.pipeline_layout,
-                    self.first_binding,
+                    self.first_set,
                     descriptor_sets,
                     dynamic_offsets,
                 );
             }
 
             fn bound_descriptor_set(&self, set_num: u32) -> (&dyn DescriptorSet, &[u32]) {
-                let index = set_num.checked_sub(self.first_binding).unwrap() as usize;
+                let index = set_num.checked_sub(self.first_set).unwrap() as usize;
                 self.descriptor_sets[index].as_ref()
             }
         }
 
         let num_descriptor_sets = self.descriptor_sets.len() as u32;
-        self.builder.append_command(
-            Cmd {
-                descriptor_sets: self.descriptor_sets,
-                pipeline_bind_point,
-                pipeline_layout,
-                first_binding,
-            },
-            &[],
-        )?;
+        self.builder
+            .append_command(
+                Cmd {
+                    descriptor_sets: self.descriptor_sets,
+                    pipeline_bind_point,
+                    pipeline_layout: pipeline_layout.clone(),
+                    first_set,
+                },
+                &[],
+            )
+            .unwrap();
 
         let cmd = self.builder.commands.last().unwrap();
-        let sets = self
+        let state = match self
             .builder
-            .bindings
+            .current_state
             .descriptor_sets
             .entry(pipeline_bind_point)
-            .or_default();
-        sets.retain(|&set_num, _| set_num < first_binding); // Remove all descriptor sets with a higher number
+        {
+            Entry::Vacant(entry) => entry.insert(DescriptorSetState {
+                descriptor_sets: Default::default(),
+                pipeline_layout,
+            }),
+            Entry::Occupied(entry) => {
+                let state = entry.into_mut();
+
+                let invalidate_from = if state.pipeline_layout.internal_object()
+                    == pipeline_layout.internal_object()
+                {
+                    // If we're still using the exact same layout, then of course it's compatible.
+                    None
+                } else if state.pipeline_layout.push_constant_ranges()
+                    != pipeline_layout.push_constant_ranges()
+                {
+                    // If the push constant ranges don't match,
+                    // all bound descriptor sets are disturbed.
+                    Some(0)
+                } else {
+                    // Find the first descriptor set layout in the current pipeline layout that
+                    // isn't compatible with the corresponding set in the new pipeline layout.
+                    // If an incompatible set was found, all bound sets from that slot onwards will
+                    // be disturbed.
+                    let current_layouts = state.pipeline_layout.descriptor_set_layouts();
+                    let new_layouts = pipeline_layout.descriptor_set_layouts();
+                    (0..first_set + num_descriptor_sets).find(|&num| {
+                        let num = num as usize;
+                        !current_layouts[num].is_compatible_with(&new_layouts[num])
+                    })
+                };
+
+                // Remove disturbed sets and set new pipeline layout.
+                if let Some(invalidate_from) = invalidate_from {
+                    state
+                        .descriptor_sets
+                        .retain(|&num, _| num < invalidate_from);
+                    state.pipeline_layout = pipeline_layout;
+                }
+
+                state
+            }
+        };
 
         for i in 0..num_descriptor_sets {
-            sets.insert(first_binding + i, cmd.clone());
+            state.descriptor_sets.insert(first_set + i, cmd.clone());
         }
-
-        Ok(())
     }
 }
 
@@ -2922,9 +3164,9 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
     }
 
     #[inline]
-    pub unsafe fn submit(self, first_binding: u32) -> Result<(), SyncCommandBufferBuilderError> {
+    pub unsafe fn submit(self, first_set: u32) {
         struct Cmd {
-            first_binding: u32,
+            first_set: u32,
             inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
             buffers: SmallVec<[Box<dyn BufferAccess + Send + Sync>; 4]>,
         }
@@ -2935,37 +3177,34 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
             }
 
             unsafe fn send(&self, out: &mut UnsafeCommandBufferBuilder) {
-                out.bind_vertex_buffers(
-                    self.first_binding,
-                    self.inner.lock().unwrap().take().unwrap(),
-                );
+                out.bind_vertex_buffers(self.first_set, self.inner.lock().unwrap().take().unwrap());
             }
 
             fn bound_vertex_buffer(&self, binding_num: u32) -> &dyn BufferAccess {
-                let index = binding_num.checked_sub(self.first_binding).unwrap() as usize;
+                let index = binding_num.checked_sub(self.first_set).unwrap() as usize;
                 &self.buffers[index]
             }
         }
 
         let num_buffers = self.buffers.len() as u32;
-        self.builder.append_command(
-            Cmd {
-                first_binding,
-                inner: Mutex::new(Some(self.inner)),
-                buffers: self.buffers,
-            },
-            &[],
-        )?;
+        self.builder
+            .append_command(
+                Cmd {
+                    first_set,
+                    inner: Mutex::new(Some(self.inner)),
+                    buffers: self.buffers,
+                },
+                &[],
+            )
+            .unwrap();
 
         let cmd = self.builder.commands.last().unwrap();
         for i in 0..num_buffers {
             self.builder
-                .bindings
+                .current_state
                 .vertex_buffers
-                .insert(first_binding + i, cmd.clone());
+                .insert(first_set + i, cmd.clone());
         }
-
-        Ok(())
     }
 }
 

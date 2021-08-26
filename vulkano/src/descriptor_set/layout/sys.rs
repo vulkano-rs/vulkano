@@ -114,14 +114,28 @@ impl DescriptorSetLayout {
 
     /// Returns the number of binding slots in the set.
     #[inline]
-    pub fn num_bindings(&self) -> usize {
-        self.desc.bindings().len()
+    pub fn num_bindings(&self) -> u32 {
+        self.desc.bindings().len() as u32
     }
 
     /// Returns a description of a descriptor, or `None` if out of range.
     #[inline]
-    pub fn descriptor(&self, binding: usize) -> Option<DescriptorDesc> {
-        self.desc.bindings().get(binding).cloned().unwrap_or(None)
+    pub fn descriptor(&self, binding: u32) -> Option<DescriptorDesc> {
+        self.desc
+            .bindings()
+            .get(binding as usize)
+            .cloned()
+            .unwrap_or(None)
+    }
+
+    /// Returns whether `self` is compatible with `other`.
+    ///
+    /// "Compatible" in this sense is defined by the Vulkan specification under the section
+    /// "Pipeline layout compatibility": either the two are the same descriptor set layout, or they
+    /// must be identically defined to the Vulkan API.
+    #[inline]
+    pub fn is_compatible_with(&self, other: &DescriptorSetLayout) -> bool {
+        self.handle == other.handle || self.desc.is_compatible_with(&other.desc)
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
@@ -130,7 +144,7 @@ impl DescriptorSetLayout {
         &self,
         other: &DescriptorSetLayout,
     ) -> Result<(), DescriptorSetCompatibilityError> {
-        if self.internal_object() == other.internal_object() {
+        if self.handle == other.handle {
             return Ok(());
         }
 

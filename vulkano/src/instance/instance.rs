@@ -69,7 +69,7 @@ use std::sync::Arc;
 /// before creation with
 /// [`FunctionPointers::api_version`](crate::instance::loader::FunctionPointers::api_version),
 /// while for a device it can be retrieved with
-/// [`PhysicalDevice::api_version`](crate::instance::PhysicalDevice::api_version).
+/// [`PhysicalDevice::api_version`](crate::device::physical::PhysicalDevice::api_version).
 ///
 /// When creating an `Instance`, you have to specify a maximum API version that you will use.
 /// This restricts the API version that is available for the instance and any devices created from
