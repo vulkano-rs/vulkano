@@ -107,7 +107,7 @@ pub(super) fn write_push_constant_ranges(
         };
 
         let (_, size, _) = crate::structs::type_from_id(doc, type_id, types_meta);
-        let size = size.expect("Found runtime-sized push constants");
+        let size = size.expect("Found runtime-sized push constants") as u32;
         push_constants_size = cmp::max(push_constants_size, size);
     }
 

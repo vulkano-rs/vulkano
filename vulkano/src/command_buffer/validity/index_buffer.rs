@@ -7,15 +7,9 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::command_buffer::synced::SyncCommandBufferBuilder;
 use std::error;
 use std::fmt;
-
-use crate::buffer::BufferAccess;
-use crate::buffer::TypedBufferAccess;
-use crate::device::Device;
-use crate::device::DeviceOwned;
-use crate::pipeline::input_assembly::Index;
-use crate::VulkanObject;
 
 /// Checks whether an index buffer can be bound.
 ///
@@ -23,24 +17,26 @@ use crate::VulkanObject;
 ///
 /// - Panics if the buffer was not created with `device`.
 ///
-pub fn check_index_buffer<B, I>(device: &Device, buffer: &B) -> Result<(), CheckIndexBufferError>
-where
-    B: ?Sized + BufferAccess + TypedBufferAccess<Content = [I]>,
-    I: Index,
-{
-    assert_eq!(
-        buffer.inner().buffer.device().internal_object(),
-        device.internal_object()
-    );
+pub(in super::super) fn check_index_buffer(
+    builder: &SyncCommandBufferBuilder,
+    indices: Option<(u32, u32)>,
+) -> Result<(), CheckIndexBufferError> {
+    let (index_buffer, index_type) = match builder.bound_index_buffer() {
+        Some(x) => x,
+        None => return Err(CheckIndexBufferError::BufferNotBound),
+    };
 
-    if !buffer.inner().buffer.usage().index_buffer {
-        return Err(CheckIndexBufferError::BufferMissingUsage);
+    if let Some((first_index, index_count)) = indices {
+        let max_index_count = (index_buffer.size() / index_type.size()) as u32;
+
+        if first_index + index_count > max_index_count {
+            return Err(CheckIndexBufferError::TooManyIndices {
+                index_count,
+                max_index_count,
+            }
+            .into());
+        }
     }
-
-    // TODO: The sum of offset and the address of the range of VkDeviceMemory object that is
-    //       backing buffer, must be a multiple of the type indicated by indexType
-
-    // TODO: full_draw_index_uint32 feature
 
     Ok(())
 }
@@ -48,6 +44,15 @@ where
 /// Error that can happen when checking whether binding an index buffer is valid.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckIndexBufferError {
+    /// No index buffer was bound.
+    BufferNotBound,
+    /// A draw command requested too many indices.
+    TooManyIndices {
+        /// The used amount of indices.
+        index_count: u32,
+        /// The allowed amount of indices.
+        max_index_count: u32,
+    },
     /// The "index buffer" usage must be enabled on the index buffer.
     BufferMissingUsage,
     /// The data or size must be 4-bytes aligned.
@@ -65,6 +70,12 @@ impl fmt::Display for CheckIndexBufferError {
             fmt,
             "{}",
             match *self {
+                CheckIndexBufferError::BufferNotBound => {
+                    "no index buffer was bound"
+                }
+                CheckIndexBufferError::TooManyIndices { .. } => {
+                    "the draw command requested too many indices"
+                }
                 CheckIndexBufferError::BufferMissingUsage => {
                     "the index buffer usage must be enabled on the index buffer"
                 }
@@ -77,42 +88,5 @@ impl fmt::Display for CheckIndexBufferError {
                 }
             }
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::buffer::BufferUsage;
-    use crate::buffer::CpuAccessibleBuffer;
-
-    #[test]
-    fn missing_usage() {
-        let (device, queue) = gfx_dev_and_queue!();
-        let buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
-            BufferUsage::vertex_buffer(),
-            false,
-            0..500u32,
-        )
-        .unwrap();
-
-        match check_index_buffer(&device, &buffer) {
-            Err(CheckIndexBufferError::BufferMissingUsage) => (),
-            _ => panic!(),
-        }
-    }
-
-    #[test]
-    fn wrong_device() {
-        let (dev1, queue) = gfx_dev_and_queue!();
-        let (dev2, _) = gfx_dev_and_queue!();
-
-        let buffer =
-            CpuAccessibleBuffer::from_iter(dev1, BufferUsage::all(), false, 0..500u32).unwrap();
-
-        assert_should_panic!({
-            let _ = check_index_buffer(&dev2, &buffer);
-        });
     }
 }

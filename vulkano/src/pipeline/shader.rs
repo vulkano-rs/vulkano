@@ -704,6 +704,19 @@ impl ShaderStages {
             || (self.fragment && other.fragment)
             || (self.compute && other.compute)
     }
+
+    /// Returns the union of the stages in `self` and `other`.
+    #[inline]
+    pub const fn union(&self, other: &Self) -> Self {
+        Self {
+            vertex: self.vertex || other.vertex,
+            tessellation_control: self.tessellation_control || other.tessellation_control,
+            tessellation_evaluation: self.tessellation_evaluation || other.tessellation_evaluation,
+            geometry: self.geometry || other.geometry,
+            fragment: self.fragment || other.fragment,
+            compute: self.compute || other.compute,
+        }
+    }
 }
 
 impl From<ShaderStages> for ash::vk::ShaderStageFlags {

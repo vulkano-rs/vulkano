@@ -318,7 +318,7 @@ impl UnsafeCommandBufferBuilder {
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
-        first_binding: u32,
+        first_set: u32,
         sets: S,
         dynamic_offsets: I,
     ) where
@@ -336,14 +336,14 @@ impl UnsafeCommandBufferBuilder {
 
         let num_bindings = sets.len() as u32;
         debug_assert!(
-            first_binding + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
+            first_set + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
         );
 
         fns.v1_0.cmd_bind_descriptor_sets(
             cmd,
             pipeline_bind_point.into(),
             pipeline_layout.internal_object(),
-            first_binding,
+            first_set,
             num_bindings,
             sets.as_ptr(),
             dynamic_offsets.len() as u32,
@@ -1400,11 +1400,7 @@ impl UnsafeCommandBufferBuilder {
                 || self.device().enabled_features().multi_viewport
         );
         debug_assert!({
-            let max = self
-                .device()
-                .physical_device()
-                .properties()
-                .max_viewports;
+            let max = self.device().physical_device().properties().max_viewports;
             first_scissor + scissors.len() as u32 <= max
         });
 
@@ -1435,11 +1431,7 @@ impl UnsafeCommandBufferBuilder {
                 || self.device().enabled_features().multi_viewport
         );
         debug_assert!({
-            let max = self
-                .device()
-                .physical_device()
-                .properties()
-                .max_viewports;
+            let max = self.device().physical_device().properties().max_viewports;
             first_viewport + viewports.len() as u32 <= max
         });
 

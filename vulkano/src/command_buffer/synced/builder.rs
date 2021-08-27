@@ -15,7 +15,6 @@ use super::ResourceFinalState;
 use super::ResourceKey;
 use super::ResourceLocation;
 use super::SyncCommandBuffer;
-use crate::buffer::BufferAccess;
 use crate::command_buffer::pool::UnsafeCommandPoolAlloc;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilder;
 use crate::command_buffer::sys::UnsafeCommandBufferBuilderPipelineBarrier;
@@ -23,16 +22,16 @@ use crate::command_buffer::CommandBufferExecError;
 use crate::command_buffer::CommandBufferLevel;
 use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::ImageUninitializedSafe;
-use crate::descriptor_set::DescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageLayout;
-use crate::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use crate::render_pass::FramebufferAbstract;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineMemoryAccess;
 use crate::sync::PipelineStages;
 use crate::OomError;
+use commands::CurrentState;
+pub use commands::StencilState;
 use fnv::FnvHashMap;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
@@ -97,8 +96,8 @@ pub struct SyncCommandBufferBuilder {
         ImageUninitializedSafe,
     )>,
 
-    // State of bindings.
-    bindings: BindingState,
+    // Current binding/setting state.
+    current_state: CurrentState,
 
     // `true` if the builder has been put in an inconsistent state. This happens when
     // `append_command` throws an error, because some changes to the internal state have already
@@ -168,10 +167,19 @@ impl SyncCommandBufferBuilder {
             resources: FnvHashMap::default(),
             buffers: Vec::new(),
             images: Vec::new(),
-            bindings: Default::default(),
+            current_state: Default::default(),
             is_poisoned: false,
             is_secondary,
         }
+    }
+
+    /// Resets the binding/setting state.
+    ///
+    /// This must be called after any command that changes the state in an undefined way, e.g.
+    /// executing a secondary command buffer.
+    #[inline]
+    pub fn reset_state(&mut self) {
+        self.current_state = Default::default();
     }
 
     // Adds a command to be processed by the builder.
@@ -601,55 +609,6 @@ impl SyncCommandBufferBuilder {
             barriers: self.barriers,
         })
     }
-
-    /// Returns the descriptor set currently bound to a given set number, or `None` if nothing has
-    /// been bound yet.
-    pub(crate) fn bound_descriptor_set(
-        &self,
-        pipeline_bind_point: PipelineBindPoint,
-        set_num: u32,
-    ) -> Option<(&dyn DescriptorSet, &[u32])> {
-        self.bindings
-            .descriptor_sets
-            .get(&pipeline_bind_point)
-            .and_then(|sets| {
-                sets.get(&set_num)
-                    .map(|cmd| cmd.bound_descriptor_set(set_num))
-            })
-    }
-
-    /// Returns the index buffer currently bound, or `None` if nothing has been bound yet.
-    pub(crate) fn bound_index_buffer(&self) -> Option<&dyn BufferAccess> {
-        self.bindings
-            .index_buffer
-            .as_ref()
-            .map(|cmd| cmd.bound_index_buffer())
-    }
-
-    /// Returns the compute pipeline currently bound, or `None` if nothing has been bound yet.
-    pub(crate) fn bound_pipeline_compute(&self) -> Option<&Arc<ComputePipeline>> {
-        self.bindings
-            .pipeline_compute
-            .as_ref()
-            .map(|cmd| cmd.bound_pipeline_compute())
-    }
-
-    /// Returns the graphics pipeline currently bound, or `None` if nothing has been bound yet.
-    pub(crate) fn bound_pipeline_graphics(&self) -> Option<&Arc<GraphicsPipeline>> {
-        self.bindings
-            .pipeline_graphics
-            .as_ref()
-            .map(|cmd| cmd.bound_pipeline_graphics())
-    }
-
-    /// Returns the vertex buffer currently bound to a given binding slot number, or `None` if
-    /// nothing has been bound yet.
-    pub(crate) fn bound_vertex_buffer(&self, binding_num: u32) -> Option<&dyn BufferAccess> {
-        self.bindings
-            .vertex_buffers
-            .get(&binding_num)
-            .map(|cmd| cmd.bound_vertex_buffer(binding_num))
-    }
 }
 
 unsafe impl DeviceOwned for SyncCommandBufferBuilder {
@@ -734,15 +693,4 @@ struct ResourceState {
 
     // Extra context of how the image will be used
     image_uninitialized_safe: ImageUninitializedSafe,
-}
-
-/// Holds the index of the most recent command that binds a particular resource, or `None` if
-/// nothing has been bound yet.
-#[derive(Debug, Default)]
-struct BindingState {
-    descriptor_sets: FnvHashMap<PipelineBindPoint, FnvHashMap<u32, Arc<dyn Command + Send + Sync>>>,
-    index_buffer: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_compute: Option<Arc<dyn Command + Send + Sync>>,
-    pipeline_graphics: Option<Arc<dyn Command + Send + Sync>>,
-    vertex_buffers: FnvHashMap<u32, Arc<dyn Command + Send + Sync>>,
 }

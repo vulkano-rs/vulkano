@@ -51,7 +51,7 @@ impl PipelineLayout {
         let fns = device.fns();
         let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]> =
             descriptor_set_layouts.into_iter().collect();
-        let push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
+        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
             push_constant_ranges.into_iter().collect();
 
         // Check for overlapping stages
@@ -65,6 +65,17 @@ impl PipelineLayout {
                 }
             }
         }
+
+        // Sort the ranges for the purpose of comparing for equality.
+        // The stage mask is guaranteed to be unique by the above check, so it's a suitable
+        // sorting key.
+        push_constant_ranges.sort_unstable_by_key(|range| {
+            (
+                range.offset,
+                range.size,
+                ash::vk::ShaderStageFlags::from(range.stages),
+            )
+        });
 
         // Check against device limits
         limits_check::check_desc_against_limits(
@@ -95,8 +106,8 @@ impl PipelineLayout {
 
                 out.push(ash::vk::PushConstantRange {
                     stage_flags: stages.into(),
-                    offset: offset as u32,
-                    size: size as u32,
+                    offset,
+                    size,
                 });
             }
 
@@ -150,9 +161,7 @@ impl PipelineLayout {
             push_constant_ranges,
         })
     }
-}
 
-impl PipelineLayout {
     /// Returns the descriptor set layouts this pipeline layout was created from.
     #[inline]
     pub fn descriptor_set_layouts(&self) -> &[Arc<DescriptorSetLayout>] {
@@ -160,6 +169,9 @@ impl PipelineLayout {
     }
 
     /// Returns a slice containing the push constant ranges this pipeline layout was created from.
+    ///
+    /// The ranges are guaranteed to be sorted deterministically by offset, size, then stages.
+    /// This means that two slices containing the same elements will always have the same order.
     #[inline]
     pub fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
         &self.push_constant_ranges
@@ -393,15 +405,14 @@ impl fmt::Display for PipelineLayoutSupersetError {
 }
 
 /// Description of a range of the push constants of a pipeline layout.
-// TODO: should contain the layout as well
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct PipelineLayoutPcRange {
     /// Offset in bytes from the start of the push constants to this range.
-    pub offset: usize,
+    pub offset: u32,
     /// Size in bytes of the range.
-    pub size: usize,
-    /// The stages which can access this range. Note that the same shader stage can't access two
-    /// different ranges.
+    pub size: u32,
+    /// The stages which can access this range.
+    /// A stage can access at most one push constant range.
     pub stages: ShaderStages,
 }
 

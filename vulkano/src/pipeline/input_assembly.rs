@@ -12,6 +12,8 @@
 //! The input assembly is the stage where lists of vertices are turned into primitives.
 //!
 
+use crate::DeviceSize;
+
 /// How the input assembly stage should behave.
 #[derive(Copy, Clone, Debug)]
 #[deprecated]
@@ -105,6 +107,13 @@ pub unsafe trait Index {
     fn ty() -> IndexType;
 }
 
+unsafe impl Index for u8 {
+    #[inline(always)]
+    fn ty() -> IndexType {
+        IndexType::U8
+    }
+}
+
 unsafe impl Index for u16 {
     #[inline(always)]
     fn ty() -> IndexType {
@@ -124,8 +133,21 @@ unsafe impl Index for u32 {
 #[allow(missing_docs)]
 #[repr(i32)]
 pub enum IndexType {
+    U8 = ash::vk::IndexType::UINT8_EXT.as_raw(),
     U16 = ash::vk::IndexType::UINT16.as_raw(),
     U32 = ash::vk::IndexType::UINT32.as_raw(),
+}
+
+impl IndexType {
+    /// Returns the size in bytes of indices of this type.
+    #[inline]
+    pub fn size(&self) -> DeviceSize {
+        match self {
+            IndexType::U8 => 1,
+            IndexType::U16 => 2,
+            IndexType::U32 => 4,
+        }
+    }
 }
 
 impl From<IndexType> for ash::vk::IndexType {

@@ -18,6 +18,10 @@
   - Removed the `arrayed` member of the `InputAttachment` variant as well, as the standard now explicitly disallows arrayed input attachments.
   - The `ensure_superset_of` method has been split into two, one for shader compatibility and one for binding descriptor sets. The error return types of these methods have been revised.
 - **Breaking** The `Cubemap` and `CubemapArray` variants of `ImageViewType` are renamed to `Cube` and `CubeArray` to match Vulkan.
+- **Breaking** Setting state in `AutoCommandBufferBuilder` is now done via separate commands (e.g. `bind_descriptor_sets`, `bind_vertex_buffers`) instead of being provided with dispatch/draw commands. This matches how these commands work in Vulkan.
+  - Validity of the state is checked by the dispatch/draw commands.
+  - `DynamicState` is removed; each individual state now has its own command to set it. This includes some states that were not previously included in `DynamicState`.
+- **Breaking** `StateCacher` is removed; its task is now partially handled by `SyncCommandBufferBuilder`.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
@@ -28,6 +32,9 @@
 - Fixed bug where the wrong functions were used for retrieving physical device info.
 - Fixed minor bug in retrieving features from the physical device.
 - Add BSD platforms to external memory (dma-buf fd) cfgs
+- `SyncCommandBufferBuilder` now has methods to return the state set by previous commands.
+- Added support for `u8` index buffers with the `ext_index_buffer_uint8` extension.
+
 
 # Version 0.25.0 (2021-08-10)
 

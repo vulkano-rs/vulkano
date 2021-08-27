@@ -101,28 +101,16 @@ impl GraphicsPipeline {
         &self.vertex_input
     }
 
-    /// Returns true if the line width used by this pipeline is dynamic.
-    #[inline]
-    pub fn has_dynamic_line_width(&self) -> bool {
-        self.dynamic_line_width
-    }
-
     /// Returns the number of viewports and scissors of this pipeline.
     #[inline]
     pub fn num_viewports(&self) -> u32 {
         self.num_viewports
     }
 
-    /// Returns true if the viewports used by this pipeline are dynamic.
+    /// Returns true if the blend constants used by this pipeline are dynamic.
     #[inline]
-    pub fn has_dynamic_viewports(&self) -> bool {
-        self.dynamic_viewport
-    }
-
-    /// Returns true if the scissors used by this pipeline are dynamic.
-    #[inline]
-    pub fn has_dynamic_scissors(&self) -> bool {
-        self.dynamic_scissor
+    pub fn has_dynamic_blend_constants(&self) -> bool {
+        self.dynamic_blend_constants
     }
 
     /// Returns true if the depth bounds used by this pipeline are dynamic.
@@ -131,10 +119,28 @@ impl GraphicsPipeline {
         self.dynamic_depth_bounds
     }
 
+    /// Returns true if the line width used by this pipeline is dynamic.
+    #[inline]
+    pub fn has_dynamic_line_width(&self) -> bool {
+        self.dynamic_line_width
+    }
+
+    /// Returns true if the scissors used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_scissor(&self) -> bool {
+        self.dynamic_scissor
+    }
+
     /// Returns true if the stencil compare masks used by this pipeline are dynamic.
     #[inline]
     pub fn has_dynamic_stencil_compare_mask(&self) -> bool {
         self.dynamic_stencil_compare_mask
+    }
+
+    /// Returns true if the stencil references used by this pipeline are dynamic.
+    #[inline]
+    pub fn has_dynamic_stencil_reference(&self) -> bool {
+        self.dynamic_stencil_reference
     }
 
     /// Returns true if the stencil write masks used by this pipeline are dynamic.
@@ -143,10 +149,10 @@ impl GraphicsPipeline {
         self.dynamic_stencil_write_mask
     }
 
-    /// Returns true if the stencil references used by this pipeline are dynamic.
+    /// Returns true if the viewports used by this pipeline are dynamic.
     #[inline]
-    pub fn has_dynamic_stencil_reference(&self) -> bool {
-        self.dynamic_stencil_reference
+    pub fn has_dynamic_viewport(&self) -> bool {
+        self.dynamic_viewport
     }
 }
 

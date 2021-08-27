@@ -56,7 +56,7 @@ impl DescriptorSetBuilder {
     ) -> Result<Self, DescriptorSetError> {
         let device = layout.device().clone();
         let enabled_features = device.enabled_features();
-        let mut descriptors = Vec::with_capacity(layout.num_bindings());
+        let mut descriptors = Vec::with_capacity(layout.num_bindings() as usize);
         let mut desc_writes_capacity = 0;
         let mut t_num_bufs = 0;
         let mut t_num_imgs = 0;

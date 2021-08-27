@@ -26,7 +26,7 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::ComputePipeline;
+use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -225,16 +225,18 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch(
-            [
-                1024 / local_size_x, // Note that dispatch dimensions must be
-                1024 / local_size_y, // proportional to local size
-                1,
-            ],
-            pipeline.clone(),
+        .bind_pipeline_compute(pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
             set.clone(),
-            (),
         )
+        .dispatch([
+            1024 / local_size_x, // Note that dispatch dimensions must be
+            1024 / local_size_y, // proportional to local size
+            1,
+        ])
         .unwrap()
         .copy_image_to_buffer(image.clone(), buf.clone())
         .unwrap();

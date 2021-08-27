@@ -187,6 +187,23 @@ impl DescriptorSetDesc {
         }
     }
 
+    /// Returns whether `self` is compatible with `other`.
+    ///
+    /// "Compatible" in this sense is defined by the Vulkan specification under the section
+    /// "Pipeline layout compatibility": the two must be identically defined to the Vulkan API,
+    /// meaning that all descriptors are compatible.
+    #[inline]
+    pub fn is_compatible_with(&self, other: &DescriptorSetDesc) -> bool {
+        let num_bindings = cmp::max(self.descriptors.len(), other.descriptors.len());
+        (0..num_bindings).all(|binding_num| {
+            match (self.descriptor(binding_num), other.descriptor(binding_num)) {
+                (None, None) => true,
+                (Some(first), Some(second)) => first.is_compatible_with(second),
+                _ => false,
+            }
+        })
+    }
+
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
     /// of a shader `other`.
     pub fn ensure_compatible_with_shader(
@@ -304,11 +321,25 @@ pub struct DescriptorDesc {
 
     /// True if the descriptor has a variable descriptor count.
     pub variable_count: bool,
+
     /// True if the attachment can be written by the shader.
     pub mutable: bool,
 }
 
 impl DescriptorDesc {
+    /// Returns whether `self` is compatible with `other`.
+    ///
+    /// "Compatible" in this sense is defined by the Vulkan specification under the section
+    /// "Pipeline layout compatibility": the two must be identically defined to the Vulkan API,
+    /// meaning they have identical `VkDescriptorSetLayoutBinding` values.
+    #[inline]
+    pub fn is_compatible_with(&self, other: &DescriptorDesc) -> bool {
+        self.ty.ty() == other.ty.ty()
+            && self.stages == other.stages
+            && ((self.variable_count && other.variable_count)
+                || (self.descriptor_count == other.descriptor_count))
+    }
+
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
     /// of a shader `other`.
     #[inline]
@@ -546,6 +577,7 @@ pub enum DescriptorDescTy {
 impl DescriptorDescTy {
     /// Returns the type of descriptor.
     // TODO: add example
+    #[inline]
     pub fn ty(&self) -> DescriptorType {
         match *self {
             DescriptorDescTy::Sampler => DescriptorType::Sampler,

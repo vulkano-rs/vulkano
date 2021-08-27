@@ -13,7 +13,7 @@ use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
 use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SecondaryAutoCommandBuffer,
+    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
@@ -23,6 +23,7 @@ use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
+use vulkano::pipeline::PipelineBindPoint;
 use vulkano::render_pass::Subpass;
 
 /// Allows applying a directional light source to a scene.
@@ -148,13 +149,10 @@ impl DirectionalLightingSystem {
             .build()
             .unwrap();
 
-        let dynamic_state = DynamicState {
-            viewports: Some(vec![Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            }]),
-            ..DynamicState::none()
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+            depth_range: 0.0..1.0,
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
@@ -165,17 +163,17 @@ impl DirectionalLightingSystem {
         )
         .unwrap();
         builder
-            .draw(
-                self.vertex_buffer.len() as u32,
-                1,
+            .set_viewport(0, [viewport.clone()])
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
                 0,
-                0,
-                self.pipeline.clone(),
-                &dynamic_state,
-                self.vertex_buffer.clone(),
                 descriptor_set,
-                push_constants,
             )
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }

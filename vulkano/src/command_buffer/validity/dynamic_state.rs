@@ -7,93 +7,73 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::command_buffer::DynamicState;
+use crate::command_buffer::synced::SyncCommandBufferBuilder;
 use crate::pipeline::GraphicsPipeline;
 use std::error;
 use std::fmt;
 
 /// Checks whether states that are about to be set are correct.
-pub fn check_dynamic_state_validity(
+pub(in super::super) fn check_dynamic_state_validity(
+    builder: &SyncCommandBufferBuilder,
     pipeline: &GraphicsPipeline,
-    state: &DynamicState,
 ) -> Result<(), CheckDynamicStateValidityError> {
     let device = pipeline.device();
 
+    if pipeline.has_dynamic_blend_constants() {
+        if builder.current_blend_constants().is_none() {
+            return Err(CheckDynamicStateValidityError::BlendConstantsNotSet);
+        }
+    }
+
+    if pipeline.has_dynamic_depth_bounds() {
+        if builder.current_blend_constants().is_none() {
+            return Err(CheckDynamicStateValidityError::BlendConstantsNotSet);
+        }
+    }
+
     if pipeline.has_dynamic_line_width() {
-        if let Some(value) = state.line_width {
-            if value != 1.0 && !pipeline.device().enabled_features().wide_lines {
-                return Err(CheckDynamicStateValidityError::LineWidthMissingExtension);
-            }
-        } else {
-            return Err(CheckDynamicStateValidityError::LineWidthMissing);
-        }
-    } else {
-        if state.line_width.is_some() {
-            return Err(CheckDynamicStateValidityError::LineWidthNotDynamic);
+        if builder.current_line_width().is_none() {
+            return Err(CheckDynamicStateValidityError::LineWidthNotSet);
         }
     }
 
-    if pipeline.has_dynamic_viewports() {
-        if let Some(ref viewports) = state.viewports {
-            if viewports.len() != pipeline.num_viewports() as usize {
-                return Err(CheckDynamicStateValidityError::ViewportsCountMismatch {
-                    expected: pipeline.num_viewports() as usize,
-                    obtained: viewports.len(),
-                });
+    if pipeline.has_dynamic_scissor() {
+        for num in 0..pipeline.num_viewports() {
+            if builder.current_scissor(num).is_none() {
+                return Err(CheckDynamicStateValidityError::ScissorNotSet { num });
             }
-        } else {
-            return Err(CheckDynamicStateValidityError::ViewportsMissing);
-        }
-    } else {
-        if state.viewports.is_some() {
-            return Err(CheckDynamicStateValidityError::ViewportsNotDynamic);
-        }
-    }
-
-    if pipeline.has_dynamic_scissors() {
-        if let Some(ref scissors) = state.scissors {
-            if scissors.len() != pipeline.num_viewports() as usize {
-                return Err(CheckDynamicStateValidityError::ScissorsCountMismatch {
-                    expected: pipeline.num_viewports() as usize,
-                    obtained: scissors.len(),
-                });
-            }
-        } else {
-            return Err(CheckDynamicStateValidityError::ScissorsMissing);
-        }
-    } else {
-        if state.scissors.is_some() {
-            return Err(CheckDynamicStateValidityError::ScissorsNotDynamic);
         }
     }
 
     if pipeline.has_dynamic_stencil_compare_mask() {
-        if let None = state.compare_mask {
-            return Err(CheckDynamicStateValidityError::CompareMaskMissing);
-        }
-    } else {
-        if state.compare_mask.is_some() {
-            return Err(CheckDynamicStateValidityError::CompareMaskNotDynamic);
-        }
-    }
+        let state = builder.current_stencil_compare_mask();
 
-    if pipeline.has_dynamic_stencil_write_mask() {
-        if let None = state.write_mask {
-            return Err(CheckDynamicStateValidityError::WriteMaskMissing);
-        }
-    } else {
-        if state.write_mask.is_some() {
-            return Err(CheckDynamicStateValidityError::WriteMaskNotDynamic);
+        if state.front.is_none() || state.back.is_none() {
+            return Err(CheckDynamicStateValidityError::StencilCompareMaskNotSet);
         }
     }
 
     if pipeline.has_dynamic_stencil_reference() {
-        if let None = state.reference {
-            return Err(CheckDynamicStateValidityError::ReferenceMissing);
+        let state = builder.current_stencil_reference();
+
+        if state.front.is_none() || state.back.is_none() {
+            return Err(CheckDynamicStateValidityError::StencilReferenceNotSet);
         }
-    } else {
-        if state.reference.is_some() {
-            return Err(CheckDynamicStateValidityError::ReferenceNotDynamic);
+    }
+
+    if pipeline.has_dynamic_stencil_write_mask() {
+        let state = builder.current_stencil_write_mask();
+
+        if state.front.is_none() || state.back.is_none() {
+            return Err(CheckDynamicStateValidityError::StencilWriteMaskNotSet);
+        }
+    }
+
+    if pipeline.has_dynamic_viewport() {
+        for num in 0..pipeline.num_viewports() {
+            if builder.current_viewport(num).is_none() {
+                return Err(CheckDynamicStateValidityError::ViewportNotSet { num });
+            }
         }
     }
 
@@ -103,47 +83,22 @@ pub fn check_dynamic_state_validity(
 /// Error that can happen when validating dynamic states.
 #[derive(Debug, Copy, Clone)]
 pub enum CheckDynamicStateValidityError {
-    /// Passed a dynamic line width, while the pipeline doesn't have line width set as dynamic.
-    LineWidthNotDynamic,
-    /// The pipeline has a dynamic line width, but no line width value was passed.
-    LineWidthMissing,
-    /// The `wide_lines` extension must be enabled in order to use line width values different
-    /// from 1.0.
-    LineWidthMissingExtension,
-    /// Passed dynamic viewports, while the pipeline doesn't have viewports set as dynamic.
-    ViewportsNotDynamic,
-    /// The pipeline has dynamic viewports, but no viewports were passed.
-    ViewportsMissing,
-    /// The number of dynamic viewports doesn't match the expected number of viewports.
-    ViewportsCountMismatch {
-        /// Expected number of viewports.
-        expected: usize,
-        /// Number of viewports that were passed.
-        obtained: usize,
-    },
-    /// Passed dynamic scissors, while the pipeline doesn't have scissors set as dynamic.
-    ScissorsNotDynamic,
-    /// The pipeline has dynamic scissors, but no scissors were passed.
-    ScissorsMissing,
-    /// The number of dynamic scissors doesn't match the expected number of scissors.
-    ScissorsCountMismatch {
-        /// Expected number of scissors.
-        expected: usize,
-        /// Number of scissors that were passed.
-        obtained: usize,
-    },
-    /// Passed dynamic compare mask, while the pipeline doesn't have the compare mask set as dynamic.
-    CompareMaskNotDynamic,
-    /// The pipeline has dynamic compare mask, but no compare mask was passed.
-    CompareMaskMissing,
-    /// Passed dynamic write mask, while the pipeline doesn't have the write mask set as dynamic.
-    WriteMaskNotDynamic,
-    /// The pipeline has dynamic write mask, but no write mask was passed.
-    WriteMaskMissing,
-    /// Passed dynamic reference, while the pipeline doesn't have the reference set as dynamic.
-    ReferenceNotDynamic,
-    /// The pipeline has dynamic reference, but no reference was passed.
-    ReferenceMissing,
+    /// The pipeline has dynamic blend constants, but no blend constants value was set.
+    BlendConstantsNotSet,
+    /// The pipeline has dynamic depth bounds, but no depth bounds value was set.
+    DepthBoundsNotSet,
+    /// The pipeline has a dynamic line width, but no line width value was set.
+    LineWidthNotSet,
+    /// The pipeline has a dynamic scissor, but the scissor for a slot used by the pipeline was not set.
+    ScissorNotSet { num: u32 },
+    /// The pipeline has dynamic stencil compare mask, but no compare mask was set for the front or back face.
+    StencilCompareMaskNotSet,
+    /// The pipeline has dynamic stencil reference, but no reference was set for the front or back face.
+    StencilReferenceNotSet,
+    /// The pipeline has dynamic stencil write mask, but no write mask was set for the front or back face.
+    StencilWriteMaskNotSet,
+    /// The pipeline has a dynamic viewport, but the viewport for a slot used by the pipeline was not set.
+    ViewportNotSet { num: u32 },
 }
 
 impl error::Error for CheckDynamicStateValidityError {}
@@ -155,53 +110,29 @@ impl fmt::Display for CheckDynamicStateValidityError {
             fmt,
             "{}",
             match *self {
-                CheckDynamicStateValidityError::LineWidthNotDynamic => {
-                    "passed a dynamic line width, while the pipeline doesn't have line width set as \
-                 dynamic"
+                CheckDynamicStateValidityError::BlendConstantsNotSet => {
+                    "the pipeline has dynamic blend constants, but no blend constants value was set"
                 }
-                CheckDynamicStateValidityError::LineWidthMissing => {
-                    "the pipeline has a dynamic line width, but no line width value was passed"
+                CheckDynamicStateValidityError::DepthBoundsNotSet => {
+                    "the pipeline has dynamic depth bounds, but no depth bounds value was set"
                 }
-                CheckDynamicStateValidityError::LineWidthMissingExtension => {
-                    "the `wide_lines` extension must be enabled in order to use line width values \
-                 different from 1.0"
+                CheckDynamicStateValidityError::LineWidthNotSet => {
+                    "the pipeline has a dynamic line width, but no line width value was set"
                 }
-                CheckDynamicStateValidityError::ViewportsNotDynamic => {
-                    "passed dynamic viewports, while the pipeline doesn't have viewports set as \
-                 dynamic"
+                CheckDynamicStateValidityError::ScissorNotSet { .. } => {
+                    "The pipeline has a dynamic scissor, but the scissor for a slot used by the pipeline was not set"
                 }
-                CheckDynamicStateValidityError::ViewportsMissing => {
-                    "the pipeline has dynamic viewports, but no viewports were passed"
+                CheckDynamicStateValidityError::StencilCompareMaskNotSet => {
+                    "the pipeline has dynamic stencil compare mask, but no compare mask was set for the front or back face"
                 }
-                CheckDynamicStateValidityError::ViewportsCountMismatch { .. } => {
-                    "the number of dynamic viewports doesn't match the expected number of viewports"
+                CheckDynamicStateValidityError::StencilReferenceNotSet => {
+                    "the pipeline has dynamic stencil reference, but no reference was set for the front or back face"
                 }
-                CheckDynamicStateValidityError::ScissorsNotDynamic => {
-                    "passed dynamic scissors, while the pipeline doesn't have scissors set as dynamic"
+                CheckDynamicStateValidityError::StencilWriteMaskNotSet => {
+                    "the pipeline has dynamic stencil write mask, but no write mask was set for the front or back face"
                 }
-                CheckDynamicStateValidityError::ScissorsMissing => {
-                    "the pipeline has dynamic scissors, but no scissors were passed"
-                }
-                CheckDynamicStateValidityError::ScissorsCountMismatch { .. } => {
-                    "the number of dynamic scissors doesn't match the expected number of scissors"
-                }
-                CheckDynamicStateValidityError::CompareMaskNotDynamic => {
-                    "passed dynamic compare mask, while the pipeline doesn't have compare mask set as dynamic"
-                }
-                CheckDynamicStateValidityError::CompareMaskMissing => {
-                    "the pipeline has dynamic compare mask, but no compare mask was passed"
-                }
-                CheckDynamicStateValidityError::WriteMaskNotDynamic => {
-                    "passed dynamic write mask, while the pipeline doesn't have write mask set as dynamic"
-                }
-                CheckDynamicStateValidityError::WriteMaskMissing => {
-                    "the pipeline has dynamic write mask, but no write mask was passed"
-                }
-                CheckDynamicStateValidityError::ReferenceNotDynamic => {
-                    "passed dynamic Reference, while the pipeline doesn't have reference set as dynamic"
-                }
-                CheckDynamicStateValidityError::ReferenceMissing => {
-                    "the pipeline has dynamic reference, but no reference was passed"
+                CheckDynamicStateValidityError::ViewportNotSet { .. } => {
+                    "the pipeline has a dynamic viewport, but the viewport for a slot used by the pipeline was not set"
                 }
             }
         )

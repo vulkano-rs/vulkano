@@ -25,7 +25,7 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
 use vulkano::pipeline::layout::PipelineLayout;
 use vulkano::pipeline::shader::EntryPointAbstract;
-use vulkano::pipeline::ComputePipeline;
+use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::OomError;
@@ -221,26 +221,30 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch(
-            [12, 1, 1],
-            pipeline.clone(),
+        .bind_pipeline_compute(pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
             set.clone().offsets([0 * align as u32]),
-            (),
         )
+        .dispatch([12, 1, 1])
         .unwrap()
-        .dispatch(
-            [12, 1, 1],
-            pipeline.clone(),
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
             set.clone().offsets([1 * align as u32]),
-            (),
         )
+        .dispatch([12, 1, 1])
         .unwrap()
-        .dispatch(
-            [12, 1, 1],
-            pipeline.clone(),
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
             set.clone().offsets([2 * align as u32]),
-            (),
         )
+        .dispatch([12, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();
 

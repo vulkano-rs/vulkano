@@ -20,7 +20,7 @@ use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::ComputePipeline;
+use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -169,7 +169,14 @@ fn main() {
         // `Arc`, this only clones the `Arc` and not the whole pipeline or set (which aren't
         // cloneable anyway). In this example we would avoid cloning them since this is the last
         // time we use them, but in a real code you would probably need to clone them.
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), ())
+        .bind_pipeline_compute(pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
+            set.clone(),
+        )
+        .dispatch([1024, 1, 1])
         .unwrap();
     // Finish building the command buffer by calling `build`.
     let command_buffer = builder.build().unwrap();

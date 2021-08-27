@@ -34,8 +34,7 @@ use std::iter;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuBufferPool};
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, DynamicState,
-    SubpassContents,
+    AutoCommandBufferBuilder, CommandBufferUsage, DrawIndirectCommand, SubpassContents,
 };
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
@@ -44,7 +43,7 @@ use vulkano::image::view::ImageView;
 use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
@@ -245,16 +244,12 @@ fn main() {
             .unwrap(),
     );
 
-    let mut dynamic_state = DynamicState {
-        line_width: None,
-        viewports: None,
-        scissors: None,
-        compare_mask: None,
-        write_mask: None,
-        reference: None,
+    let mut viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [0.0, 0.0],
+        depth_range: 0.0..1.0,
     };
-    let mut framebuffers =
-        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
@@ -288,7 +283,7 @@ fn main() {
                     framebuffers = window_size_dependent_setup(
                         &new_images,
                         render_pass.clone(),
-                        &mut dynamic_state,
+                        &mut viewport,
                     );
                     recreate_swapchain = false;
                 }
@@ -356,12 +351,14 @@ fn main() {
                 // First in the command buffer we dispatch the compute shader to generate the vertices and fill out the draw
                 // call arguments
                 builder
-                    .dispatch(
-                        [1, 1, 1],
-                        compute_pipeline.clone(),
+                    .bind_pipeline_compute(compute_pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Compute,
+                        compute_pipeline.layout().clone(),
+                        0,
                         cs_desciptor_set.clone(),
-                        (),
                     )
+                    .dispatch([1, 1, 1])
                     .unwrap()
                     .begin_render_pass(
                         framebuffers[image_num].clone(),
@@ -371,14 +368,10 @@ fn main() {
                     .unwrap()
                     // The indirect draw call is placed in the command buffer with a reference to the GPU buffer that will
                     // contain the arguments when the draw is executed on the GPU
-                    .draw_indirect(
-                        render_pipeline.clone(),
-                        &dynamic_state,
-                        vertices.clone(),
-                        indirect_args.clone(),
-                        (),
-                        (),
-                    )
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(render_pipeline.clone())
+                    .bind_vertex_buffers(0, vertices.clone())
+                    .draw_indirect(indirect_args.clone())
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -416,16 +409,10 @@ fn main() {
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-    dynamic_state: &mut DynamicState,
+    viewport: &mut Viewport,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
-
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0..1.0,
-    };
-    dynamic_state.viewports = Some(vec![viewport]);
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()
