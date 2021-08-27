@@ -103,14 +103,10 @@ pub use self::auto::ResetQueryPoolError;
 pub use self::auto::SecondaryAutoCommandBuffer;
 pub use self::auto::UpdateBufferError;
 pub use self::auto::WriteTimestampError;
-pub use self::state_cacher::StateCacher;
-pub use self::state_cacher::StateCacherOutcome;
 pub use self::traits::CommandBufferExecError;
 pub use self::traits::CommandBufferExecFuture;
 pub use self::traits::PrimaryCommandBuffer;
 pub use self::traits::SecondaryCommandBuffer;
-use crate::pipeline::depth_stencil::DynamicStencilValue;
-use crate::pipeline::viewport::{Scissor, Viewport};
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
 use crate::render_pass::{Framebuffer, Subpass};
@@ -118,7 +114,6 @@ use std::sync::Arc;
 
 mod auto;
 pub mod pool;
-mod state_cacher;
 pub mod submit;
 pub mod synced;
 pub mod sys;
@@ -165,39 +160,6 @@ pub struct DispatchIndirectCommand {
     pub x: u32,
     pub y: u32,
     pub z: u32,
-}
-
-/// The dynamic state to use for a draw command.
-// TODO: probably not the right location
-#[derive(Debug, Clone)]
-pub struct DynamicState {
-    pub line_width: Option<f32>,
-    pub viewports: Option<Vec<Viewport>>,
-    pub scissors: Option<Vec<Scissor>>,
-    pub compare_mask: Option<DynamicStencilValue>,
-    pub write_mask: Option<DynamicStencilValue>,
-    pub reference: Option<DynamicStencilValue>,
-}
-
-impl DynamicState {
-    #[inline]
-    pub fn none() -> DynamicState {
-        DynamicState {
-            line_width: None,
-            viewports: None,
-            scissors: None,
-            compare_mask: None,
-            write_mask: None,
-            reference: None,
-        }
-    }
-}
-
-impl Default for DynamicState {
-    #[inline]
-    fn default() -> DynamicState {
-        DynamicState::none()
-    }
 }
 
 /// Describes what a subpass in a command buffer will contain.

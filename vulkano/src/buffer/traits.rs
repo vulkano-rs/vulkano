@@ -225,6 +225,15 @@ where
     type Content = <T::Target as TypedBufferAccess>::Content;
 }
 
+impl PartialEq for &dyn BufferAccess {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.inner() == other.inner() && self.size() == other.size()
+    }
+}
+
+impl Eq for &dyn BufferAccess {}
+
 impl PartialEq for dyn BufferAccess + Send + Sync {
     #[inline]
     fn eq(&self, other: &Self) -> bool {

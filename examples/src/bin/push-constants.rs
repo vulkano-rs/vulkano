@@ -16,7 +16,7 @@ use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::ComputePipeline;
+use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -129,7 +129,15 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), push_constants)
+        .bind_pipeline_compute(pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
+            set.clone(),
+        )
+        .push_constants(pipeline.layout().clone(), 0, push_constants)
+        .dispatch([1024, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();
 

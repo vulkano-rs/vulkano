@@ -7,26 +7,46 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::command_buffer::synced::SyncCommandBufferBuilder;
 use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
-use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::PipelineBindPoint;
+use crate::VulkanObject;
 use std::error;
 use std::fmt;
 
 /// Checks whether descriptor sets are compatible with the pipeline.
-pub fn check_descriptor_sets_validity(
+pub(in super::super) fn check_descriptor_sets_validity(
+    builder: &SyncCommandBufferBuilder,
     pipeline_layout: &PipelineLayout,
-    descriptor_sets: &[DescriptorSetWithOffsets],
+    pipeline_bind_point: PipelineBindPoint,
 ) -> Result<(), CheckDescriptorSetsValidityError> {
-    for (set_index, pipeline_set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
-        let set_num = set_index as u32;
+    if pipeline_layout.descriptor_set_layouts().is_empty() {
+        return Ok(());
+    }
 
-        let descriptor_set = match descriptor_sets.get(set_index) {
+    let bindings_pipeline_layout = match builder
+        .bound_descriptor_sets_pipeline_layout(pipeline_bind_point)
+    {
+        Some(x) => x,
+        None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num: 0 }),
+    };
+
+    if bindings_pipeline_layout.internal_object() != pipeline_layout.internal_object()
+        && bindings_pipeline_layout.push_constant_ranges() != pipeline_layout.push_constant_ranges()
+    {
+        return Err(CheckDescriptorSetsValidityError::IncompatiblePushConstants);
+    }
+
+    for (set_num, pipeline_set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
+        let set_num = set_num as u32;
+
+        let descriptor_set = match builder.bound_descriptor_set(pipeline_bind_point, set_num) {
             Some(s) => s,
             None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num }),
         };
 
-        match pipeline_set.ensure_compatible_with_bind(descriptor_set.as_ref().0.layout()) {
+        match pipeline_set.ensure_compatible_with_bind(descriptor_set.0.layout()) {
             Ok(_) => (),
             Err(error) => {
                 return Err(
@@ -51,6 +71,7 @@ pub enum CheckDescriptorSetsValidityError {
         /// The index of the set of the descriptor.
         set_num: u32,
     },
+    IncompatiblePushConstants,
 }
 
 impl error::Error for CheckDescriptorSetsValidityError {
@@ -72,6 +93,9 @@ impl fmt::Display for CheckDescriptorSetsValidityError {
             }
             Self::IncompatibleDescriptorSet { set_num, .. } => {
                 write!(fmt, "compatibility error in descriptor set {}", set_num)
+            }
+            Self::IncompatiblePushConstants => {
+                write!(fmt, "the push constant ranges in the bound pipeline do not match the ranges of layout used to bind the descriptor sets")
             }
         }
     }

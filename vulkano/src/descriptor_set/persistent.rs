@@ -69,7 +69,7 @@ impl PersistentDescriptorSet<()> {
     /// - Panics if the set id is out of range.
     ///
     pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder<()> {
-        let cap = layout.num_bindings();
+        let cap = layout.num_bindings() as usize;
 
         PersistentDescriptorSetBuilder {
             layout,
@@ -163,7 +163,7 @@ pub struct PersistentDescriptorSetBuilder<R> {
     // The descriptor set layout.
     layout: Arc<DescriptorSetLayout>,
     // Binding currently being filled.
-    binding_id: usize,
+    binding_id: u32,
     // The writes to perform on a descriptor set in order to put the resources in it.
     writes: Vec<DescriptorWrite>,
     // Holds the resources alive.

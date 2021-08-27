@@ -213,6 +213,15 @@ impl fmt::Debug for ComputePipeline {
     }
 }
 
+impl PartialEq for ComputePipeline {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.internal_object() == other.internal_object()
+    }
+}
+
+impl Eq for ComputePipeline {}
+
 /// Opaque object that represents the inside of the compute pipeline. Can be made into a trait
 /// object.
 #[derive(Debug, Copy, Clone)]
@@ -352,6 +361,7 @@ mod tests {
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
+    use crate::pipeline::PipelineBindPoint;
     use crate::sync::now;
     use crate::sync::GpuFuture;
     use std::ffi::CStr;
@@ -468,7 +478,15 @@ mod tests {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-        cbb.dispatch([1, 1, 1], pipeline.clone(), set, ()).unwrap();
+        cbb.bind_pipeline_compute(pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                pipeline.layout().clone(),
+                0,
+                set,
+            )
+            .dispatch([1, 1, 1])
+            .unwrap();
         let cb = cbb.build().unwrap();
 
         let future = now(device.clone())

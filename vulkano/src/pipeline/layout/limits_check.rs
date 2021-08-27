@@ -207,9 +207,9 @@ pub fn check_desc_against_limits(
     }
 
     for &PipelineLayoutPcRange { offset, size, .. } in push_constants_ranges {
-        if offset + size > properties.max_push_constants_size as usize {
+        if offset + size > properties.max_push_constants_size {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
-                limit: properties.max_push_constants_size as usize,
+                limit: properties.max_push_constants_size,
                 requested: offset + size,
             });
         }
@@ -232,9 +232,9 @@ pub enum PipelineLayoutLimitsError {
     /// The maximum size of push constants has been exceeded.
     MaxPushConstantsSizeExceeded {
         /// The limit that must be fulfilled.
-        limit: usize,
+        limit: u32,
         /// What was requested.
-        requested: usize,
+        requested: u32,
     },
 
     /// The `max_per_stage_resources()` limit has been exceeded.
