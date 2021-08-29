@@ -20,7 +20,7 @@ use crate::DeviceSize;
 use std::sync::Arc;
 
 pub struct DescriptorSetResources {
-    buffers: Vec<(Arc<dyn BufferAccess + Send + Sync + 'static>, u32)>,
+    buffers: Vec<(Arc<dyn BufferAccess + 'static>, u32)>,
     images: Vec<(Arc<dyn ImageViewAbstract + Send + Sync + 'static>, u32)>,
     samplers: Vec<(Arc<Sampler>, u32)>,
 }
@@ -91,7 +91,7 @@ impl DescriptorSetResources {
     pub fn add_buffer(
         &mut self,
         desc_index: u32,
-        buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
+        buffer: Arc<dyn BufferAccess + 'static>,
     ) {
         self.buffers.push((buffer, desc_index));
     }

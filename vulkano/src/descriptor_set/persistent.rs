@@ -198,7 +198,7 @@ impl PersistentDescriptorSetBuilder {
     #[inline]
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
+        buffer: Arc<dyn BufferAccess + 'static>,
     ) -> Result<&mut Self, DescriptorSetError> {
         if self.poisoned {
             Err(DescriptorSetError::BuilderPoisoned)

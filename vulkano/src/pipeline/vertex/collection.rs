@@ -13,32 +13,32 @@ use crate::buffer::BufferAccess;
 pub unsafe trait VertexBuffersCollection {
     /// Converts `self` into a list of buffers.
     // TODO: better than a Vec
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess + Send + Sync>>;
+    fn into_vec(self) -> Vec<Box<dyn BufferAccess>>;
 }
 
 unsafe impl VertexBuffersCollection for () {
     #[inline]
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
         vec![]
     }
 }
 
 unsafe impl<T> VertexBuffersCollection for T
 where
-    T: BufferAccess + Send + Sync + 'static,
+    T: BufferAccess + 'static,
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
         vec![Box::new(self) as Box<_>]
     }
 }
 
 unsafe impl<T> VertexBuffersCollection for Vec<T>
 where
-    T: BufferAccess + Send + Sync + 'static,
+    T: BufferAccess + 'static,
 {
     #[inline]
-    fn into_vec(self) -> Vec<Box<dyn BufferAccess + Send + Sync>> {
+    fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
         self.into_iter()
             .map(|source| Box::new(source) as Box<_>)
             .collect()
@@ -48,11 +48,11 @@ where
 macro_rules! impl_collection {
     ($first:ident $(, $others:ident)+) => (
         unsafe impl<$first$(, $others)+> VertexBuffersCollection for ($first, $($others),+)
-            where $first: BufferAccess + Send + Sync + 'static
-                  $(, $others: BufferAccess + Send + Sync + 'static)*
+            where $first: BufferAccess + 'static
+                  $(, $others: BufferAccess + 'static)*
         {
             #[inline]
-            fn into_vec(self) -> Vec<Box<dyn BufferAccess + Send + Sync>> {
+            fn into_vec(self) -> Vec<Box<dyn BufferAccess>> {
                 #![allow(non_snake_case)]
 
                 let ($first, $($others,)*) = self;

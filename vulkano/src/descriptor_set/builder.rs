@@ -244,7 +244,7 @@ impl DescriptorSetBuilder {
 
     pub fn add_buffer(
         &mut self,
-        buffer: Arc<dyn BufferAccess + Send + Sync + 'static>,
+        buffer: Arc<dyn BufferAccess + 'static>,
     ) -> Result<(), DescriptorSetError> {
         if buffer.inner().buffer.device().internal_object() != self.device.internal_object() {
             return Err(DescriptorSetError::ResourceWrongDevice);
