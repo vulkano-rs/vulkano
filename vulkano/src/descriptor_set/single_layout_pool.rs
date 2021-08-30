@@ -87,7 +87,7 @@ impl SingleLayoutDescSetPool {
     /// Starts the process of building a new descriptor set.
     ///
     /// The set will corresponds to the set layout that was passed to `new`.
-    pub fn next<'a>(&'a mut self) -> Result<SingleLayoutDescSetBuilder<'a>, DescriptorSetError> {
+    pub fn next(&mut self) -> Result<SingleLayoutDescSetBuilder, DescriptorSetError> {
         let runtime_array_capacity = self.runtime_array_capacity;
         let layout = self.target_layout.clone();
 
