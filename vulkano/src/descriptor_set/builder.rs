@@ -24,6 +24,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::image::ImageViewAbstract;
 use crate::image::SampleCount;
+use crate::image::view::ImageViewType;
 use crate::sampler::Sampler;
 use crate::VulkanObject;
 use std::sync::Arc;
@@ -616,7 +617,12 @@ fn image_match_desc<I>(image_view: &I, desc: &DescriptorDescImage) -> Result<(),
 where
     I: ?Sized + ImageViewAbstract,
 {
-    if image_view.ty() != desc.view_type {
+    if image_view.ty() != desc.view_type && match desc.view_type {
+        ImageViewType::Dim1dArray => image_view.ty() != ImageViewType::Dim1d,
+        ImageViewType::Dim2dArray => image_view.ty() != ImageViewType::Dim2d,
+        ImageViewType::CubeArray => image_view.ty() != ImageViewType::Cube,
+        _ => true
+    } {
         return Err(DescriptorSetError::ImageViewTypeMismatch {
             expected: desc.view_type,
             obtained: image_view.ty(),
