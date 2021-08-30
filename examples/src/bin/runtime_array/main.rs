@@ -303,13 +303,6 @@ fn main() {
 
     let set = Arc::new(set_builder.build().unwrap());
 
-    let pipeline_layout = {
-        use vulkano::descriptor_set::DescriptorSet;
-        use vulkano::pipeline::layout::PipelineLayout;
-
-        Arc::new(PipelineLayout::new(device.clone(), vec![set.layout().clone()], vec![]).unwrap())
-    };
-
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
         dimensions: [0.0, 0.0],
@@ -384,7 +377,7 @@ fn main() {
                 .bind_pipeline_graphics(pipeline.clone())
                 .bind_descriptor_sets(
                     PipelineBindPoint::Graphics,
-                    pipeline_layout.clone(),
+                    pipeline.layout().clone(),
                     0,
                     set.clone(),
                 )
