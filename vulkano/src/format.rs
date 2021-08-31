@@ -7,90 +7,91 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-//! All the formats of images supported by Vulkan.
+//! All the formats supported by Vulkan.
 //!
-//! # Formats
+//! A format is mostly used to describe the texel data of an image. However, formats also show up in
+//! a few other places, most notably to describe the format of vertex buffers.
 //!
-//! List of suffixes:
+//! # Format support
 //!
-//! - `Unorm` means that the values are unsigned integers that are converted into floating points.
-//!   The maximum possible representable value becomes `1.0`, and the minimum representable value
-//!   becomes `0.0`. For example the value `255` in a `R8Unorm` will be interpreted as `1.0`.
+//! Not all formats are supported by every device. Those that devices do support may only be
+//! supported for certain use cases. It is an error to use a format where it is not supported, but
+//! you can query a device beforehand for its support by calling the `properties` method on a format
+//! value. You can use this to select a usable format from one or more suitable alternatives.
+//! Some formats are required to be always supported for a particular usage. These are listed in the
+//! [tables in the Vulkan specification](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#features-required-format-support).
 //!
-//! - `Snorm` is the same as `Unorm`, but the integers are signed and the range is from `-1.0` to
-//!   `1.0` instead.
+//! # Special format types
 //!
-//! - `Uscaled` means that the values are unsigned integers that are converted into floating points.
-//!   No change in the value is done. For example the value `255` in a `R8Uscaled` will be
-//!   interpreted as `255.0`.
+//! ## Depth/stencil formats
 //!
-//! - `Sscaled` is the same as `Uscaled` expect that the integers are signed.
+//! Depth/stencil formats can be identified by the `D` and `S` components in their names. They are
+//! used primarily as the format for framebuffer attachments, for the purposes of depth and stencil
+//! testing.
 //!
-//! - `Uint` means that the values are unsigned integers. No conversion is performed.
+//! Some formats have only a depth or stencil component, while others combine both. The two
+//! components are represented as separate *aspects*, which means that they can be accessed
+//! individually as separate images. These pseudo-images have the same resolution, but different
+//! bit depth and numeric representation.
 //!
-//! - `Sint` means that the values are signed integers. No conversion is performed.
+//! Depth/stencil formats deviate from the others in a few more ways. Their data representation is
+//! considered opaque, meaning that they do not have a fixed layout in memory nor a fixed size per
+//! texel. They also have special limitations in several operations such as copying; a depth/stencil
+//! format is not compatible with any other format, only with itself.
 //!
-//! - `Ufloat` means that the values are unsigned floating points. No conversion is performed. This
-//!   format is very unusual.
+//! ## Block-compressed formats
 //!
-//! - `Sfloat` means that the values are regular floating points. No conversion is performed.
+//! A block-compressed format uses compression to encode a larger block of texels into a smaller
+//! number of bytes. Individual texels are no longer represented in memory, only the block as a
+//! whole. An image must consist of a whole number of blocks, so the dimensions of an image must be
+//! a whole multiple of the block dimensions. Vulkan supports several different compression schemes,
+//! represented in Vulkano by the `CompressionType` enum.
 //!
-//! - `Srgb` is the same as `Unorm`, except that the value is interpreted as being in the sRGB
-//!   color space. This means that its value will be converted to fit in the RGB color space when
-//!   it is read. The fourth channel (usually used for alpha), if present, is not concerned by the
-//!   conversion.
+//! Overall, block-compressed formats do not behave significantly differently from regular formats.
+//! They are mostly restricted in terms of compatibility. Because of the compression, the notion of
+//! bits per component does not apply, so the `components` method will only return whether a
+//! component is present or not.
 //!
-//! # Choosing a format
+//! ## YCbCr formats
 //!
-//! The following formats are guaranteed to be supported for everything that is related to
-//! texturing (ie. blitting source and sampling them linearly). You should choose one of these
-//! formats if you have an image that you are going to sample from:
+//! YCbCr, also known as YUV, is an alternative image representation with three components:
+//! Y for luminance or *luma* (overall brightness) and two color or *chroma* components Cb and Cr
+//! encoding the blueness and redness respectively. YCbCr formats are primarily used in video
+//! applications. In Vulkan, the formats used to encode YCbCr data use the green channel to
+//! represent the luma component, while the blue and red components hold the chroma.
 //!
-//! - B4G4R4A4UnormPack16
-//! - R5G6B5UnormPack16
-//! - A1R5G5B5UnormPack16
-//! - R8Unorm
-//! - R8Snorm
-//! - R8G8Unorm
-//! - R8G8Snorm
-//! - R8G8B8A8Unorm
-//! - R8G8B8A8Snorm
-//! - R8G8B8A8Srgb
-//! - B8G8R8A8Unorm
-//! - B8G8R8A8Srgb
-//! - A8B8G8R8UnormPack32
-//! - A8B8G8R8SnormPack32
-//! - A8B8G8R8SrgbPack32
-//! - A2B10G10R10UnormPack32
-//! - R16Sfloat
-//! - R16G16Sfloat
-//! - R16G16B16A16Sfloat
-//! - B10G11R11UfloatPack32
-//! - E5B9G9R9UfloatPack32
+//! To use most YCbCr formats in an [image view](crate::image::view), a feature known as
+//! *sampler YCbCr conversion* is needed. It must be enabled on both the image view and any
+//! combined image samplers in shaders that the image view is attached to. This feature handles
+//! the correct conversion between YCbCr input data and RGB data inside the shader. To query whether
+//! a format requires the conversion, you can call `requires_sampler_ycbcr_conversion` on a format.
+//! As a rule, any format with `444`, `422`, `420`, `3PACK` or `4PACK` in the name requires it.
 //!
-//! The following formats are guaranteed to be supported for everything that is related to
-//! intermediate render targets (ie. blitting destination, color attachment and sampling linearly):
+//! Almost all YCbCr formats make use of **chroma subsampling**. This is a technique whereby the two
+//! chroma components are encoded using a lower resolution than the luma component. The human eye is
+//! less sensitive to color detail than to detail in brightness, so this allows more detail to be
+//! encoded in less data. Chroma subsampling is indicated with one of three numbered suffixes in a
+//! format name:
+//! - `444` indicates a YCbCr format without chroma subsampling. All components have the same
+//!   resolution.
+//! - `422` indicates horizontal chroma subsampling. The horizontal resolution of the chroma
+//!   components is halved, so a single value is shared within a 2x1 block of texels.
+//! - `420` indicates horizontal and vertical chroma subsampling. Both dimensions of the chroma
+//!   components are halved, so a single value is shared within a 2x2 block of texels.
 //!
-//! - R5G6B5UnormPack16
-//! - A1R5G5B5UnormPack16
-//! - R8Unorm
-//! - R8G8Unorm
-//! - R8G8B8A8Unorm
-//! - R8G8B8A8Srgb
-//! - B8G8R8A8Unorm
-//! - B8G8R8A8Srgb
-//! - A8B8G8R8UnormPack32
-//! - A8B8G8R8SrgbPack32
-//! - A2B10G10R10UnormPack32
-//! - R16Sfloat
-//! - R16G16Sfloat
-//! - R16G16B16A16Sfloat
+//! Most YCbCr formats, including all of the `444` and `420` formats, are **multi-planar**. Instead
+//! of storing the components of a single texel together in memory, the components are separated
+//! into *planes*, which act like independent images. In 3-plane formats, the planes hold the Y,
+//! Cb and Cr components respectively, while in 2-plane formats, Cb and Cr are combined into a
+//! two-component plane. Where chroma subsampling is applied, plane 0 has the full resolution, while
+//! planes 1 and 2 have reduced resolution. Effectively, they are standalone images with half the
+//! resolution of the original.
 //!
-//! For depth images, only `D16Unorm` is guaranteed to be supported. For depth-stencil images,
-//! it is guaranteed that either `D24Unorm_S8Uint` or `D32Sfloat_S8Uint` are supported.
-//!
-//! // TODO: storage formats
-//!
+//! The texels of multi-planar images cannot be accessed individually, for example to copy or blit,
+//! since the components of each texel are split across the planes. Instead, you must access each
+//! plane as an individual *aspect* of the image. A single-plane aspect of a multi-planar image
+//! behaves as a regular image, and even has its own format, which can be queried with the `plane`
+//! method on a format.
 
 pub use crate::autogen::Format;
 use crate::device::physical::PhysicalDevice;
@@ -220,9 +221,9 @@ pub enum NumericType {
     SINT,
     /// Unsigned integer.
     UINT,
-    /// Signed integer that represents a normalized floating-point value in the range [-1,1].
+    /// Signed integer that represents a normalized floating-point value in the range \[-1,1].
     SNORM,
-    /// Unsigned integer that represents a normalized floating-point value in the range [0,1].
+    /// Unsigned integer that represents a normalized floating-point value in the range \[0,1].
     UNORM,
     /// Signed integer that is converted to a floating-point value directly.
     SSCALED,
@@ -267,18 +268,6 @@ pub(crate) enum FormatCompatibilityInner {
         bits: u8,
         block_texels: u8,
     },
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub enum FormatTy {
-    Float,
-    Uint,
-    Sint,
-    Depth,
-    Stencil,
-    DepthStencil,
-    Compressed,
-    Ycbcr,
 }
 
 /// Trait for Rust types that can represent a pixel in an image.
@@ -350,11 +339,11 @@ impl_pixel! {
 pub enum ClearValue {
     /// Entry for attachments that aren't cleared.
     None,
-    /// Value for floating-point attachments, including `Unorm`, `Snorm`, `Sfloat`.
+    /// Value for floating-point attachments, including `UNORM`, `SNORM`, `SFLOAT`.
     Float([f32; 4]),
-    /// Value for integer attachments, including `Int`.
+    /// Value for integer attachments, including `SINT`.
     Int([i32; 4]),
-    /// Value for unsigned integer attachments, including `Uint`.
+    /// Value for unsigned integer attachments, including `UINT`.
     Uint([u32; 4]),
     /// Value for depth attachments.
     Depth(f32),
@@ -524,7 +513,7 @@ pub struct FormatProperties {
     pub buffer_features: FormatFeatures,
 }
 
-/// The features supported by images with a particular format.
+/// The features supported by a device for images with a particular format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[allow(missing_docs)]
 pub struct FormatFeatures {
