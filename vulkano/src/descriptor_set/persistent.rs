@@ -53,10 +53,9 @@ impl PersistentDescriptorSet {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
     pub fn start(
         layout: Arc<DescriptorSetLayout>,
-        runtime_array_capacity: Option<usize>,
     ) -> Result<PersistentDescriptorSetBuilder, DescriptorSetError> {
         Ok(PersistentDescriptorSetBuilder {
-            inner: DescriptorSetBuilder::start(layout, runtime_array_capacity.unwrap_or(0))?,
+            inner: DescriptorSetBuilder::start(layout)?,
             poisoned: false,
         })
     }
@@ -323,10 +322,7 @@ impl PersistentDescriptorSetBuilder {
             layout,
             writes,
             resources,
-            ..
-        } = self.inner.output(true)?;
-
-        let layout = layout.unwrap();
+        } = self.inner.output()?;
 
         let set = unsafe {
             let mut set = pool.alloc(&layout)?;

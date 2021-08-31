@@ -112,7 +112,7 @@ fn main() {
     };
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
 
     set_builder
         .add_buffer(data_buffer.clone())

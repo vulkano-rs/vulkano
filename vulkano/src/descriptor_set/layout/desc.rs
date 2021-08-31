@@ -187,6 +187,24 @@ impl DescriptorSetDesc {
         }
     }
 
+    pub fn set_variable_descriptor_count(&mut self, binding_num: u32, descriptor_count: u32) {
+        // TODO: Errors instead of panic
+
+        match self.descriptors.get_mut(binding_num as usize) {
+            Some(desc_op) => match desc_op.as_mut() {
+                Some(desc) => {
+                    if desc.variable_count {
+                        desc.descriptor_count = descriptor_count;
+                    } else {
+                        panic!("descriptor isn't variable count")
+                    }
+                }
+                None => panic!("descriptor is empty"),
+            },
+            None => panic!("descriptor doesn't exist"),
+        }
+    }
+
     /// Returns whether `self` is compatible with `other`.
     ///
     /// "Compatible" in this sense is defined by the Vulkan specification under the section
@@ -336,8 +354,7 @@ impl DescriptorDesc {
     pub fn is_compatible_with(&self, other: &DescriptorDesc) -> bool {
         self.ty.ty() == other.ty.ty()
             && self.stages == other.stages
-            && ((self.variable_count && other.variable_count)
-                || (self.descriptor_count == other.descriptor_count))
+            && self.descriptor_count == other.descriptor_count
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor

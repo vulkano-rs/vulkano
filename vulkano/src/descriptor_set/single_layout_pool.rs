@@ -12,7 +12,6 @@ use super::builder::DescriptorSetBuilderOutput;
 use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use crate::buffer::BufferView;
-use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::descriptor_set::pool::DescriptorPoolAlloc;
 use crate::descriptor_set::pool::DescriptorPoolAllocError;
@@ -35,52 +34,28 @@ use std::sync::Arc;
 /// `VkDescriptorPool`. Its function is to provide access to pool(s) to allocate `DescriptorSet`'s
 /// from and optimizes for a specific layout. For a more general purpose pool see `descriptor_set::pool::StdDescriptorPool`.
 pub struct SingleLayoutDescSetPool {
-    // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full or additional
-    // runtime array capacity is needed, we create a new pool and replace the current one with the new one.
+    // The `SingleLayoutPool` struct contains an actual Vulkan pool. Every time it is full we create
+    // a new pool and replace the current one with the new one.
     inner: Option<Arc<SingleLayoutPool>>,
     // The Vulkan device.
     device: Arc<Device>,
-    // The capacity available to runtime arrays when we create a new Vulkan pool.
-    runtime_array_capacity: usize,
     // The amount of sets available to use when we create a new Vulkan pool.
     set_count: usize,
-    // The descriptor layout that we target and allocate with
-    target_layout: Arc<DescriptorSetLayout>,
+    // The descriptor layout that this pool is for.
+    layout: Arc<DescriptorSetLayout>,
 }
 
 impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    ///
-    /// `runtime_array_capacity` is the capacity that is reserved in a set for runtime arrays.
-    /// This capacity will automatically be adjusted if a set is created that exceeed this value.
-    /// If a set doesn't contain a runtime array this does nothing.
-    pub fn new(
-        layout: Arc<DescriptorSetLayout>,
-        runtime_array_capacity: usize,
-    ) -> Result<Self, DescriptorSetError> {
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, DescriptorSetError> {
         let device = layout.device().clone();
-        let target_layout = Arc::new(DescriptorSetLayout::new(
-            device.clone(),
-            DescriptorSetDesc::new((0..layout.num_bindings()).into_iter().map(|binding_i| {
-                let mut desc = layout.descriptor(binding_i);
-
-                if let Some(desc) = &mut desc {
-                    if desc.variable_count {
-                        desc.descriptor_count = runtime_array_capacity as u32;
-                    }
-                }
-
-                desc
-            })),
-        )?);
 
         Ok(Self {
             inner: None,
             device,
-            runtime_array_capacity,
             set_count: 4,
-            target_layout,
+            layout,
         })
     }
 
@@ -88,67 +63,35 @@ impl SingleLayoutDescSetPool {
     ///
     /// The set will corresponds to the set layout that was passed to `new`.
     pub fn next(&mut self) -> Result<SingleLayoutDescSetBuilder, DescriptorSetError> {
-        let runtime_array_capacity = self.runtime_array_capacity;
-        let layout = self.target_layout.clone();
+        let layout = self.layout.clone();
 
         Ok(SingleLayoutDescSetBuilder {
             pool: self,
-            inner: DescriptorSetBuilder::start(layout, runtime_array_capacity)?,
+            inner: DescriptorSetBuilder::start(layout)?,
             poisoned: false,
         })
     }
 
-    fn next_alloc(
-        &mut self,
-        runtime_array_length: usize,
-    ) -> Result<SingleLayoutPoolAlloc, OomError> {
+    fn next_alloc(&mut self) -> Result<SingleLayoutPoolAlloc, OomError> {
         loop {
             let mut not_enough_sets = false;
 
-            if runtime_array_length <= self.runtime_array_capacity {
-                if let Some(ref mut p_inner) = self.inner {
-                    if let Some(existing) = p_inner.reserve.pop() {
-                        return Ok(SingleLayoutPoolAlloc {
-                            pool: p_inner.clone(),
-                            inner: Some(existing),
-                        });
-                    } else {
-                        not_enough_sets = true;
-                    }
+            if let Some(ref mut p_inner) = self.inner {
+                if let Some(existing) = p_inner.reserve.pop() {
+                    return Ok(SingleLayoutPoolAlloc {
+                        pool: p_inner.clone(),
+                        inner: Some(existing),
+                    });
+                } else {
+                    not_enough_sets = true;
                 }
-            }
-
-            let mut not_enough_capacity = false;
-
-            while runtime_array_length > self.runtime_array_capacity {
-                self.runtime_array_capacity *= 2;
-                not_enough_capacity = true;
             }
 
             if not_enough_sets {
                 self.set_count *= 2;
             }
 
-            if not_enough_capacity {
-                self.target_layout = Arc::new(DescriptorSetLayout::new(
-                    self.device.clone(),
-                    DescriptorSetDesc::new((0..self.target_layout.num_bindings()).into_iter().map(
-                        |binding_i| {
-                            let mut desc = self.target_layout.descriptor(binding_i);
-
-                            if let Some(desc) = &mut desc {
-                                if desc.variable_count {
-                                    desc.descriptor_count = self.runtime_array_capacity as u32;
-                                }
-                            }
-
-                            desc
-                        },
-                    )),
-                )?);
-            }
-
-            let count = *self.target_layout.descriptors_count() * self.set_count as u32;
+            let count = *self.layout.descriptors_count() * self.set_count as u32;
             let mut unsafe_pool = UnsafeDescriptorPool::new(
                 self.device.clone(),
                 &count,
@@ -157,7 +100,7 @@ impl SingleLayoutDescSetPool {
             )?;
 
             let reserve = unsafe {
-                match unsafe_pool.alloc((0..self.set_count).map(|_| &*self.target_layout)) {
+                match unsafe_pool.alloc((0..self.set_count).map(|_| &*self.layout)) {
                     Ok(alloc_iter) => {
                         let reserve = SegQueue::new();
 
@@ -470,13 +413,12 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
         }
 
         let DescriptorSetBuilderOutput {
+            layout,
             writes,
             resources,
-            runtime_array_length,
-            ..
-        } = self.inner.output(false)?;
+        } = self.inner.output()?;
 
-        let mut alloc = self.pool.next_alloc(runtime_array_length)?;
+        let mut alloc = self.pool.next_alloc()?;
         unsafe {
             alloc
                 .inner_mut()
@@ -486,7 +428,7 @@ impl<'a> SingleLayoutDescSetBuilder<'a> {
         Ok(SingleLayoutDescSet {
             inner: alloc,
             resources,
-            layout: self.pool.target_layout.clone(),
+            layout,
         })
     }
 }

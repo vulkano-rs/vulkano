@@ -559,7 +559,7 @@ fn descriptor_infos(
                     assert_eq!(arr, 1); // TODO: implement?
                     assert!(!variable_count); // TODO: Don't think this is possible?
 
-                    Some((desc, mutable, 0, true))
+                    Some((desc, mutable, 1, true))
                 }
 
                 _ => None, // TODO: other types

@@ -84,6 +84,7 @@ use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::image::view::ImageViewAbstract;
 use crate::image::view::ImageViewType;
+use crate::instance::Version;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
@@ -309,6 +310,14 @@ pub enum DescriptorSetError {
         obtained: u32,
     },
 
+    /// Runtime array contains too many descriptors
+    ArrayTooManyDescriptors {
+        /// Capacity of array
+        capacity: u32,
+        /// Obtained length
+        obtained: u32,
+    },
+
     /// Builder doesn't expect anymore descriptors
     TooManyDescriptors,
 
@@ -385,6 +394,12 @@ pub enum DescriptorSetError {
 
     /// A required feature is missing from the Device
     MissingFeature(MissingFeature),
+
+    /// Insufficient vulkan api version
+    InsufficientApiVersion {
+        requires: Version,
+        obtained: Version,
+    },
 }
 
 impl From<OomError> for DescriptorSetError {
@@ -433,6 +448,9 @@ impl fmt::Display for DescriptorSetError {
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
                 Self::MissingFeature(_) => "a required feature is missing from the Device",
+                Self::ArrayTooManyDescriptors { .. } =>
+                    "runtime array contains too many descriptors",
+                Self::InsufficientApiVersion { .. } => "insufficient vulkan api version",
             }
         )
     }

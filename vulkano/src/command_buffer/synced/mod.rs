@@ -727,7 +727,7 @@ mod tests {
             );
 
             let set = {
-                let mut builder = PersistentDescriptorSet::start(set_layout.clone(), None).unwrap();
+                let mut builder = PersistentDescriptorSet::start(set_layout.clone()).unwrap();
                 builder.add_sampler(Sampler::simple_repeat_linear(device.clone())).unwrap();
                 Arc::new(builder.build().unwrap())
             };
@@ -773,7 +773,7 @@ mod tests {
             );
 
             let set = {
-                let mut builder = PersistentDescriptorSet::start(set_layout.clone(), None).unwrap();
+                let mut builder = PersistentDescriptorSet::start(set_layout.clone()).unwrap();
                 builder.add_sampler(Sampler::simple_repeat_linear(device.clone())).unwrap();
                 Arc::new(builder.build().unwrap())
             };

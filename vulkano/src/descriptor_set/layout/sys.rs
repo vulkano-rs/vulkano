@@ -11,7 +11,6 @@ use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
-use crate::descriptor_set::layout::DescriptorType;
 use crate::descriptor_set::pool::DescriptorsCount;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -31,11 +30,8 @@ pub struct DescriptorSetLayout {
     device: Arc<Device>,
     // Descriptors.
     desc: DescriptorSetDesc,
-    // Number of descriptors. If a variable count descriptor is present this only valid if the
-    // descriptor defines a descriptor_count.
+    // Number of descriptors.
     descriptors_count: DescriptorsCount,
-    // True if a variable count descriptor is present and the descriptor count is undefined
-    variable_count_undefined: bool,
 }
 
 impl DescriptorSetLayout {
@@ -51,7 +47,6 @@ impl DescriptorSetLayout {
         let desc = desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
         let mut variable_descriptor_count = false;
-        let mut variable_count_undefined = false;
 
         let bindings = desc
             .bindings()
@@ -67,53 +62,13 @@ impl DescriptorSetLayout {
                 //        doesn't have tess shaders enabled
 
                 let ty = desc.ty.ty();
-                let descriptor_count = if desc.variable_count {
-                    variable_descriptor_count = true;
-
-                    if desc.descriptor_count == 0 {
-                        variable_count_undefined = true;
-                        0
-                    } else {
-                        desc.descriptor_count
-                    }
-                } else {
-                    desc.descriptor_count
-                };
-
-                descriptors_count.add_num(ty, descriptor_count);
-
-                // TODO: is this correct? What are the memory implications of this?
-                let sys_desc_count = if desc.variable_count {
-                    let physical_device = device.physical_device();
-                    let device_properties = physical_device.properties();
-
-                    match ty {
-                        DescriptorType::Sampler => device_properties.max_descriptor_set_samplers,
-                        DescriptorType::CombinedImageSampler => {
-                            if device_properties.max_descriptor_set_samplers < device_properties.max_descriptor_set_sampled_images {
-                                device_properties.max_descriptor_set_samplers
-                            } else {
-                                device_properties.max_descriptor_set_sampled_images
-                            }
-                        },
-                        DescriptorType::SampledImage => device_properties.max_descriptor_set_sampled_images,
-                        DescriptorType::StorageImage => device_properties.max_descriptor_set_storage_images,
-                        DescriptorType::UniformTexelBuffer => device_properties.max_descriptor_set_uniform_buffers, // TODO: is this the correct limit?
-                        DescriptorType::StorageTexelBuffer => device_properties.max_descriptor_set_storage_buffers, // TODOL is this the correct limit?
-                        DescriptorType::UniformBuffer => device_properties.max_descriptor_set_uniform_buffers,
-                        DescriptorType::StorageBuffer => device_properties.max_descriptor_set_storage_buffers,
-                        DescriptorType::UniformBufferDynamic => device_properties.max_descriptor_set_uniform_buffers_dynamic,
-                        DescriptorType::StorageBufferDynamic => device_properties.max_descriptor_set_storage_buffers_dynamic,
-                        DescriptorType::InputAttachment => device_properties.max_descriptor_set_input_attachments,
-                    }
-                } else {
-                    desc.descriptor_count
-                };
+                descriptors_count.add_num(ty, desc.descriptor_count);
+                variable_descriptor_count |= desc.variable_count;
 
                 Some(ash::vk::DescriptorSetLayoutBinding {
                     binding: binding as u32,
                     descriptor_type: ty.into(),
-                    descriptor_count: sys_desc_count,
+                    descriptor_count: desc.descriptor_count,
                     stage_flags: desc.stages.into(),
                     p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
                 })
@@ -183,7 +138,6 @@ impl DescriptorSetLayout {
             device,
             desc,
             descriptors_count,
-            variable_count_undefined,
         })
     }
 
@@ -194,7 +148,6 @@ impl DescriptorSetLayout {
     /// Returns the number of descriptors of each type.
     #[inline]
     pub fn descriptors_count(&self) -> &DescriptorsCount {
-        assert!(!self.variable_count_undefined);
         &self.descriptors_count
     }
 

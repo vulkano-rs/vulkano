@@ -33,6 +33,10 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
+use vulkano::pipeline::shader::EntryPointAbstract;
+use vulkano::pipeline::layout::PipelineLayout;
+use vulkano::OomError;
+use vulkano::descriptor_set::layout::DescriptorSetLayout;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -276,6 +280,41 @@ fn main() {
     )
     .unwrap();
 
+    let pipeline_layout = {
+        let mut descriptor_set_descs: Vec<_> =
+            (&fs.main_entry_point() as &dyn EntryPointAbstract)
+                .descriptor_set_layout_descs()
+                .iter()
+                .cloned()
+                .collect();
+        
+        // Set 0, Binding 0
+        descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
+
+        let descriptor_set_layouts = descriptor_set_descs
+            .into_iter()
+            .map(|desc| {
+                Ok(Arc::new(DescriptorSetLayout::new(
+                    device.clone(),
+                    desc.clone(),
+                )?))
+            })
+            .collect::<Result<Vec<_>, OomError>>()
+            .unwrap();
+        
+        Arc::new(
+            PipelineLayout::new(
+                device.clone(),
+                descriptor_set_layouts,
+                (&fs.main_entry_point() as &dyn EntryPointAbstract)
+                    .push_constant_range()
+                    .iter()
+                    .cloned(),
+            )
+            .unwrap()
+        )
+    };
+
     let pipeline = Arc::new(
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
@@ -284,12 +323,12 @@ fn main() {
             .fragment_shader(fs.main_entry_point(), ())
             .blend_alpha_blending()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
+            .with_pipeline_layout(device.clone(), pipeline_layout)
             .unwrap(),
     );
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone(), None).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
 
     set_builder
         .enter_array()

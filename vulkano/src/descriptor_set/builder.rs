@@ -16,17 +16,18 @@ use crate::buffer::BufferView;
 use crate::descriptor_set::layout::DescriptorDesc;
 use crate::descriptor_set::layout::DescriptorDescImage;
 use crate::descriptor_set::layout::DescriptorDescTy;
-use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::sys::DescriptorWrite;
 use crate::descriptor_set::BufferAccess;
 use crate::descriptor_set::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
+use crate::image::view::ImageViewType;
 use crate::image::ImageViewAbstract;
 use crate::image::SampleCount;
-use crate::image::view::ImageViewType;
+use crate::instance::Version;
 use crate::sampler::Sampler;
 use crate::VulkanObject;
+
 use std::sync::Arc;
 
 struct BuilderDescriptor {
@@ -35,7 +36,7 @@ struct BuilderDescriptor {
 }
 
 pub struct DescriptorSetBuilder {
-    device: Arc<Device>,
+    layout: Arc<DescriptorSetLayout>,
     in_array: bool,
     descriptors: Vec<BuilderDescriptor>,
     cur_binding: usize,
@@ -44,19 +45,15 @@ pub struct DescriptorSetBuilder {
 }
 
 pub struct DescriptorSetBuilderOutput {
-    pub layout: Option<Arc<DescriptorSetLayout>>,
+    pub layout: Arc<DescriptorSetLayout>,
     pub writes: Vec<DescriptorWrite>,
     pub resources: DescriptorSetResources,
-    pub runtime_array_length: usize,
 }
 
 impl DescriptorSetBuilder {
-    pub fn start(
-        layout: Arc<DescriptorSetLayout>,
-        runtime_array_capacity: usize,
-    ) -> Result<Self, DescriptorSetError> {
-        let device = layout.device().clone();
-        let enabled_features = device.enabled_features();
+    pub fn start(layout: Arc<DescriptorSetLayout>) -> Result<Self, DescriptorSetError> {
+        let enabled_features = layout.device().enabled_features();
+        let api_version = layout.device().api_version();
         let mut descriptors = Vec::with_capacity(layout.num_bindings() as usize);
         let mut desc_writes_capacity = 0;
         let mut t_num_bufs = 0;
@@ -68,8 +65,11 @@ impl DescriptorSetBuilder {
 
             let descriptor_count = if let Some(desc) = &desc {
                 if desc.variable_count {
-                    if binding_i != layout.num_bindings() - 1 {
-                        return Err(DescriptorSetError::RuntimeArrayMustBeLast);
+                    if api_version.major < 1 || api_version.minor < 2 {
+                        return Err(DescriptorSetError::InsufficientApiVersion {
+                            requires: Version::major_minor(1, 2),
+                            obtained: api_version,
+                        });
                     }
 
                     if !enabled_features.runtime_descriptor_array {
@@ -90,10 +90,12 @@ impl DescriptorSetBuilder {
                         ));
                     }
 
-                    runtime_array_capacity
-                } else {
-                    desc.descriptor_count as usize
+                    if binding_i != layout.num_bindings() - 1 {
+                        return Err(DescriptorSetError::RuntimeArrayMustBeLast);
+                    }
                 }
+
+                desc.descriptor_count as usize
             } else {
                 0
             };
@@ -127,7 +129,7 @@ impl DescriptorSetBuilder {
         }
 
         Ok(Self {
-            device,
+            layout,
             in_array: false,
             cur_binding: 0,
             descriptors,
@@ -136,61 +138,18 @@ impl DescriptorSetBuilder {
         })
     }
 
-    pub fn output(
-        self,
-        output_layout: bool,
-    ) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
+    pub fn output(self) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {
         if self.cur_binding != self.descriptors.len() {
             Err(DescriptorSetError::DescriptorsMissing {
                 expected: self.descriptors.len(),
                 obtained: self.cur_binding,
             })
         } else {
-            if output_layout {
-                let mut runtime_array_length = 0;
-
-                let layout = Some(Arc::new(DescriptorSetLayout::new(
-                    self.device,
-                    DescriptorSetDesc::new(self.descriptors.into_iter().map(|mut desc| {
-                        if let Some(inner_desc) = &mut desc.desc {
-                            if inner_desc.variable_count {
-                                inner_desc.descriptor_count = desc.array_element;
-                                runtime_array_length = desc.array_element as usize;
-                            }
-                        }
-
-                        desc.desc
-                    })),
-                )?));
-
-                Ok(DescriptorSetBuilderOutput {
-                    layout,
-                    writes: self.desc_writes,
-                    resources: self.resources,
-                    runtime_array_length,
-                })
-            } else {
-                let runtime_array_length = match self.descriptors.last() {
-                    Some(last) => match &last.desc {
-                        Some(desc) => {
-                            if desc.variable_count {
-                                last.array_element as usize
-                            } else {
-                                0
-                            }
-                        }
-                        None => 0,
-                    },
-                    None => 0,
-                };
-
-                Ok(DescriptorSetBuilderOutput {
-                    layout: None,
-                    writes: self.desc_writes,
-                    resources: self.resources,
-                    runtime_array_length,
-                })
-            }
+            Ok(DescriptorSetBuilderOutput {
+                layout: self.layout,
+                writes: self.desc_writes,
+                resources: self.resources,
+            })
         }
     }
 
@@ -217,8 +176,14 @@ impl DescriptorSetBuilder {
                 None => unreachable!(),
             };
 
-            if !inner_desc.variable_count && descriptor.array_element != inner_desc.descriptor_count
-            {
+            if inner_desc.variable_count {
+                if descriptor.array_element > inner_desc.descriptor_count {
+                    return Err(DescriptorSetError::ArrayTooManyDescriptors {
+                        capacity: inner_desc.descriptor_count,
+                        obtained: descriptor.array_element,
+                    });
+                }
+            } else if descriptor.array_element != inner_desc.descriptor_count {
                 return Err(DescriptorSetError::ArrayLengthMismatch {
                     expected: inner_desc.descriptor_count,
                     obtained: descriptor.array_element,
@@ -247,7 +212,9 @@ impl DescriptorSetBuilder {
         &mut self,
         buffer: Arc<dyn BufferAccess + 'static>,
     ) -> Result<(), DescriptorSetError> {
-        if buffer.inner().buffer.device().internal_object() != self.device.internal_object() {
+        if buffer.inner().buffer.device().internal_object()
+            != self.layout.device().internal_object()
+        {
             return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
@@ -276,7 +243,7 @@ impl DescriptorSetBuilder {
 
         self.desc_writes.push(match inner_desc.ty {
             DescriptorDescTy::StorageBuffer | DescriptorDescTy::StorageBufferDynamic => {
-                assert!(self.device.enabled_features().robust_buffer_access);
+                assert!(self.layout.device().enabled_features().robust_buffer_access);
 
                 if !buffer.inner().buffer.usage().storage_buffer {
                     return Err(DescriptorSetError::MissingBufferUsage(
@@ -293,7 +260,7 @@ impl DescriptorSetBuilder {
                 }
             }
             DescriptorDescTy::UniformBuffer => {
-                assert!(self.device.enabled_features().robust_buffer_access);
+                assert!(self.layout.device().enabled_features().robust_buffer_access);
 
                 if !buffer.inner().buffer.usage().uniform_buffer {
                     return Err(DescriptorSetError::MissingBufferUsage(
@@ -310,7 +277,7 @@ impl DescriptorSetBuilder {
                 }
             }
             DescriptorDescTy::UniformBufferDynamic => {
-                assert!(self.device.enabled_features().robust_buffer_access);
+                assert!(self.layout.device().enabled_features().robust_buffer_access);
 
                 if !buffer.inner().buffer.usage().uniform_buffer {
                     return Err(DescriptorSetError::MissingBufferUsage(
@@ -343,7 +310,7 @@ impl DescriptorSetBuilder {
     where
         B: BufferAccess + 'static,
     {
-        if view.device().internal_object() != self.device.internal_object() {
+        if view.device().internal_object() != self.layout.device().internal_object() {
             return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
@@ -407,7 +374,7 @@ impl DescriptorSetBuilder {
         image_view: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
     ) -> Result<(), DescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
-            != self.device.internal_object()
+            != self.layout.device().internal_object()
         {
             return Err(DescriptorSetError::ResourceWrongDevice);
         }
@@ -510,12 +477,12 @@ impl DescriptorSetBuilder {
         sampler: Arc<Sampler>,
     ) -> Result<(), DescriptorSetError> {
         if image_view.image().inner().image.device().internal_object()
-            != self.device.internal_object()
+            != self.layout.device().internal_object()
         {
             return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
-        if sampler.device().internal_object() != self.device.internal_object() {
+        if sampler.device().internal_object() != self.layout.device().internal_object() {
             return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
@@ -569,7 +536,7 @@ impl DescriptorSetBuilder {
     }
 
     pub fn add_sampler(&mut self, sampler: Arc<Sampler>) -> Result<(), DescriptorSetError> {
-        if sampler.device().internal_object() != self.device.internal_object() {
+        if sampler.device().internal_object() != self.layout.device().internal_object() {
             return Err(DescriptorSetError::ResourceWrongDevice);
         }
 
@@ -608,7 +575,7 @@ impl DescriptorSetBuilder {
 
 unsafe impl DeviceOwned for DescriptorSetBuilder {
     fn device(&self) -> &Arc<Device> {
-        &self.device
+        self.layout.device()
     }
 }
 
@@ -617,12 +584,14 @@ fn image_match_desc<I>(image_view: &I, desc: &DescriptorDescImage) -> Result<(),
 where
     I: ?Sized + ImageViewAbstract,
 {
-    if image_view.ty() != desc.view_type && match desc.view_type {
-        ImageViewType::Dim1dArray => image_view.ty() != ImageViewType::Dim1d,
-        ImageViewType::Dim2dArray => image_view.ty() != ImageViewType::Dim2d,
-        ImageViewType::CubeArray => image_view.ty() != ImageViewType::Cube,
-        _ => true
-    } {
+    if image_view.ty() != desc.view_type
+        && match desc.view_type {
+            ImageViewType::Dim1dArray => image_view.ty() != ImageViewType::Dim1d,
+            ImageViewType::Dim2dArray => image_view.ty() != ImageViewType::Dim2d,
+            ImageViewType::CubeArray => image_view.ty() != ImageViewType::Cube,
+            _ => true,
+        }
+    {
         return Err(DescriptorSetError::ImageViewTypeMismatch {
             expected: desc.view_type,
             obtained: image_view.ty(),

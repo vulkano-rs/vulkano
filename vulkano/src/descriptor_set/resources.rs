@@ -88,11 +88,7 @@ impl DescriptorSetResources {
         self.samplers.len()
     }
 
-    pub fn add_buffer(
-        &mut self,
-        desc_index: u32,
-        buffer: Arc<dyn BufferAccess + 'static>,
-    ) {
+    pub fn add_buffer(&mut self, desc_index: u32, buffer: Arc<dyn BufferAccess + 'static>) {
         self.buffers.push((buffer, desc_index));
     }
 
