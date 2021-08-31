@@ -168,7 +168,7 @@ fn main() {
             image_data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
-            Format::R8G8B8A8Srgb,
+            Format::R8G8B8A8_SRGB,
             queue.clone(),
         )
         .unwrap();

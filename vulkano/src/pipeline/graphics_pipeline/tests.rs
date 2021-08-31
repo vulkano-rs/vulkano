@@ -66,7 +66,7 @@ fn create() {
             render_pass: Subpass::from(
                 simple_rp::CustomRenderPass::new(&device, &{
                     simple_rp::Formats {
-                        color: (Format::R8G8B8A8Unorm, 1),
+                        color: (Format::R8G8B8A8_UNORM, 1),
                     }
                 })
                 .unwrap(),
@@ -119,7 +119,7 @@ fn bad_primitive_restart() {
             render_pass: Subpass::from(
                 simple_rp::CustomRenderPass::new(&device, &{
                     simple_rp::Formats {
-                        color: (Format::R8G8B8A8Unorm, 1),
+                        color: (Format::R8G8B8A8_UNORM, 1),
                     }
                 })
                 .unwrap(),
@@ -173,7 +173,7 @@ fn multi_viewport_feature() {
             render_pass: Subpass::from(
                 simple_rp::CustomRenderPass::new(&device, &{
                     simple_rp::Formats {
-                        color: (Format::R8G8B8A8Unorm, 1),
+                        color: (Format::R8G8B8A8_UNORM, 1),
                     }
                 })
                 .unwrap(),
@@ -227,7 +227,7 @@ fn max_viewports() {
             render_pass: Subpass::from(
                 simple_rp::CustomRenderPass::new(&device, &{
                     simple_rp::Formats {
-                        color: (Format::R8G8B8A8Unorm, 1),
+                        color: (Format::R8G8B8A8_UNORM, 1),
                     }
                 })
                 .unwrap(),
@@ -281,7 +281,7 @@ fn no_depth_attachment() {
             render_pass: Subpass::from(
                 simple_rp::CustomRenderPass::new(&device, &{
                     simple_rp::Formats {
-                        color: (Format::R8G8B8A8Unorm, 1),
+                        color: (Format::R8G8B8A8_UNORM, 1),
                     }
                 })
                 .unwrap(),

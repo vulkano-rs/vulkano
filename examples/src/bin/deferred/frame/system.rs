@@ -110,21 +110,21 @@ impl FrameSystem {
                     diffuse: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::A2B10G10R10UnormPack32,
+                        format: Format::A2B10G10R10_UNORM_PACK32,
                         samples: 1,
                     },
                     // Will be bound to `self.normals_buffer`.
                     normals: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R16G16B16A16Sfloat,
+                        format: Format::R16G16B16A16_SFLOAT,
                         samples: 1,
                     },
                     // Will be bound to `self.depth_buffer`.
                     depth: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::D16Unorm,
+                        format: Format::D16_UNORM,
                         samples: 1,
                     }
                 },
@@ -158,7 +158,7 @@ impl FrameSystem {
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
-                Format::A2B10G10R10UnormPack32,
+                Format::A2B10G10R10_UNORM_PACK32,
                 atch_usage,
             )
             .unwrap(),
@@ -168,7 +168,7 @@ impl FrameSystem {
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
-                Format::R16G16B16A16Sfloat,
+                Format::R16G16B16A16_SFLOAT,
                 atch_usage,
             )
             .unwrap(),
@@ -178,7 +178,7 @@ impl FrameSystem {
             AttachmentImage::with_usage(
                 gfx_queue.device().clone(),
                 [1, 1],
-                Format::D16Unorm,
+                Format::D16_UNORM,
                 atch_usage,
             )
             .unwrap(),
@@ -254,7 +254,7 @@ impl FrameSystem {
                 AttachmentImage::with_usage(
                     self.gfx_queue.device().clone(),
                     img_dims,
-                    Format::A2B10G10R10UnormPack32,
+                    Format::A2B10G10R10_UNORM_PACK32,
                     atch_usage,
                 )
                 .unwrap(),
@@ -264,7 +264,7 @@ impl FrameSystem {
                 AttachmentImage::with_usage(
                     self.gfx_queue.device().clone(),
                     img_dims,
-                    Format::R16G16B16A16Sfloat,
+                    Format::R16G16B16A16_SFLOAT,
                     atch_usage,
                 )
                 .unwrap(),
@@ -274,7 +274,7 @@ impl FrameSystem {
                 AttachmentImage::with_usage(
                     self.gfx_queue.device().clone(),
                     img_dims,
-                    Format::D16Unorm,
+                    Format::D16_UNORM,
                     atch_usage,
                 )
                 .unwrap(),

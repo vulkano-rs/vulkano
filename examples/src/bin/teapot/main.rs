@@ -135,7 +135,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: Format::D16_UNORM,
                     samples: 1,
                 }
             },
@@ -317,7 +317,7 @@ fn window_size_dependent_setup(
     let dimensions = images[0].dimensions();
 
     let depth_buffer = ImageView::new(
-        AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap(),
+        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
     )
     .unwrap();
 

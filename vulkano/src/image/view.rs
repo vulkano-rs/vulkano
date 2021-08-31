@@ -16,7 +16,6 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::format::Format;
-use crate::format::FormatTy;
 use crate::image::sys::UnsafeImage;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
@@ -311,7 +310,7 @@ impl UnsafeImageView {
         debug_assert!(array_layers.end > array_layers.start);
         debug_assert!(array_layers.end <= image.dimensions().array_layers());
 
-        if image.format().ty() == FormatTy::Ycbcr {
+        if image.format().requires_sampler_ycbcr_conversion() {
             unimplemented!();
         }
 

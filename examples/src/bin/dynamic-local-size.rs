@@ -191,7 +191,7 @@ fn main() {
             height: 1024,
             array_layers: 1,
         },
-        Format::R8G8B8A8Unorm,
+        Format::R8G8B8A8_UNORM,
         Some(queue.family()),
     )
     .unwrap();

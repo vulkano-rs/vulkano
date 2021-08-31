@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::device::Device;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
 use crate::VulkanObject;
@@ -64,29 +64,26 @@ where
         return Err(CheckCopyImageError::SampleCountMismatch);
     }
 
-    let source_format_ty = source.format().ty();
-    let destination_format_ty = destination.format().ty();
-
-    if matches!(
-        source_format_ty,
-        FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+    if let (Some(source_type), Some(destination_type)) = (
+        source.format().type_color(),
+        destination.format().type_color(),
     ) {
+        // TODO: The correct check here is that the uncompressed element size of the source is
+        // equal to the compressed element size of the destination.  However, format doesn't
+        // currently expose this information, so to be safe, we simply disallow compressed formats.
+        if source.format().compression().is_some()
+            || destination.format().compression().is_some()
+            || (source.format().size() != destination.format().size())
+        {
+            return Err(CheckCopyImageError::SizeIncompatibleFormatTypes {
+                source_type,
+                destination_type,
+            });
+        }
+    } else {
         if source.format() != destination.format() {
             return Err(CheckCopyImageError::DepthStencilFormatMismatch);
         }
-    }
-
-    // TODO: The correct check here is that the uncompressed element size of the source is
-    // equal to the compressed element size of the destination.  However, format doesn't
-    // currently expose this information, so to be safe, we simply disallow compressed formats.
-    if source.format().ty() == FormatTy::Compressed
-        || destination.format().ty() == FormatTy::Compressed
-        || (source.format().size() != destination.format().size())
-    {
-        return Err(CheckCopyImageError::SizeIncompatibleFormatsTypes {
-            source_format_ty: source.format().ty(),
-            destination_format_ty: destination.format().ty(),
-        });
     }
 
     let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
@@ -189,9 +186,9 @@ pub enum CheckCopyImageError {
     /// The format of the source and destination must be equal when copying depth/stencil images.
     DepthStencilFormatMismatch,
     /// The types of the source format and the destination format aren't size-compatible.
-    SizeIncompatibleFormatsTypes {
-        source_format_ty: FormatTy,
-        destination_format_ty: FormatTy,
+    SizeIncompatibleFormatTypes {
+        source_type: NumericType,
+        destination_type: NumericType,
     },
     /// The offsets, array layers and/or mipmap levels are out of range in the source image.
     SourceCoordinatesOutOfRange,
@@ -223,7 +220,7 @@ impl fmt::Display for CheckCopyImageError {
                     "the format of the source and destination must be equal when copying \
                  depth/stencil images"
                 }
-                CheckCopyImageError::SizeIncompatibleFormatsTypes { .. } => {
+                CheckCopyImageError::SizeIncompatibleFormatTypes { .. } => {
                     "the types of the source format and the destination format aren't size-compatible"
                 }
                 CheckCopyImageError::SourceCoordinatesOutOfRange => {

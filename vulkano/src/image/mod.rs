@@ -676,7 +676,7 @@ mod tests {
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::One,
-                Format::R8Unorm,
+                Format::R8_UNORM,
                 queue.clone(),
             )
             .unwrap();
@@ -691,7 +691,7 @@ mod tests {
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::Log2,
-                Format::R8Unorm,
+                Format::R8_UNORM,
                 queue.clone(),
             )
             .unwrap();

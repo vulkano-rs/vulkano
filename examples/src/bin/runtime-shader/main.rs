@@ -168,12 +168,12 @@ fn main() {
         ShaderInterface::new_unchecked(vec![
             ShaderInterfaceEntry {
                 location: 1..2,
-                format: Format::R32G32B32Sfloat,
+                format: Format::R32G32B32_SFLOAT,
                 name: Some(Cow::Borrowed("color")),
             },
             ShaderInterfaceEntry {
                 location: 0..1,
-                format: Format::R32G32Sfloat,
+                format: Format::R32G32_SFLOAT,
                 name: Some(Cow::Borrowed("position")),
             },
         ])
@@ -184,7 +184,7 @@ fn main() {
     let vertex_output = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
-            format: Format::R32G32B32Sfloat,
+            format: Format::R32G32B32_SFLOAT,
             name: Some(Cow::Borrowed("v_color")),
         }])
     };
@@ -193,7 +193,7 @@ fn main() {
     let fragment_input = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
-            format: Format::R32G32B32Sfloat,
+            format: Format::R32G32B32_SFLOAT,
             name: Some(Cow::Borrowed("v_color")),
         }])
     };
@@ -203,7 +203,7 @@ fn main() {
     let fragment_output = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
-            format: Format::R32G32B32A32Sfloat,
+            format: Format::R32G32B32A32_SFLOAT,
             name: Some(Cow::Borrowed("f_color")),
         }])
     };

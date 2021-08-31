@@ -225,7 +225,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: Format::D16_UNORM,
                     samples: 1,
                 }
             },
@@ -448,7 +448,7 @@ fn window_size_dependent_setup(
         AttachmentImage::with_usage(
             render_pass.device().clone(),
             dimensions,
-            Format::D16Unorm,
+            Format::D16_UNORM,
             ImageUsage {
                 depth_stencil_attachment: true,
                 transient_attachment: true,

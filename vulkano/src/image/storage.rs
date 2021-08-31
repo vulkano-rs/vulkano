@@ -11,7 +11,6 @@ use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::format::ClearValue;
 use crate::format::Format;
-use crate::format::FormatTy;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
@@ -79,13 +78,12 @@ impl StorageImage {
     where
         I: IntoIterator<Item = QueueFamily<'a>>,
     {
-        let is_depth = match format.ty() {
-            FormatTy::Depth => true,
-            FormatTy::DepthStencil => true,
-            FormatTy::Stencil => true,
-            FormatTy::Compressed => panic!(),
-            _ => false,
-        };
+        let aspects = format.aspects();
+        let is_depth = aspects.depth || aspects.stencil;
+
+        if format.compression().is_some() {
+            panic!() // TODO: message?
+        }
 
         let usage = ImageUsage {
             transfer_source: true,
@@ -328,7 +326,7 @@ mod tests {
                 height: 32,
                 array_layers: 1,
             },
-            Format::R8G8B8A8Unorm,
+            Format::R8G8B8A8_UNORM,
             Some(queue.family()),
         )
         .unwrap();
