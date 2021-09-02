@@ -35,7 +35,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::layout::PipelineLayout;
-use vulkano::OomError;
+use vulkano::descriptor_set::layout::DescriptorSetLayoutError;
 use vulkano::descriptor_set::layout::DescriptorSetLayout;
 
 fn main() {
@@ -299,7 +299,7 @@ fn main() {
                     desc.clone(),
                 )?))
             })
-            .collect::<Result<Vec<_>, OomError>>()
+            .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
             .unwrap();
         
         Arc::new(
@@ -328,7 +328,7 @@ fn main() {
     );
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
     set_builder
         .enter_array()

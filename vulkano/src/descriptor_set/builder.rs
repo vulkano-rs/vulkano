@@ -10,7 +10,6 @@
 use super::resources::DescriptorSetResources;
 use super::DescriptorSetError;
 use super::MissingBufferUsage;
-use super::MissingFeature;
 use super::MissingImageUsage;
 use crate::buffer::BufferView;
 use crate::descriptor_set::layout::DescriptorDesc;
@@ -24,7 +23,6 @@ use crate::device::DeviceOwned;
 use crate::image::view::ImageViewType;
 use crate::image::ImageViewAbstract;
 use crate::image::SampleCount;
-use crate::instance::Version;
 use crate::sampler::Sampler;
 use crate::VulkanObject;
 
@@ -51,9 +49,7 @@ pub struct DescriptorSetBuilderOutput {
 }
 
 impl DescriptorSetBuilder {
-    pub fn start(layout: Arc<DescriptorSetLayout>) -> Result<Self, DescriptorSetError> {
-        let enabled_features = layout.device().enabled_features();
-        let api_version = layout.device().api_version();
+    pub fn start(layout: Arc<DescriptorSetLayout>) -> Self {
         let mut descriptors = Vec::with_capacity(layout.num_bindings() as usize);
         let mut desc_writes_capacity = 0;
         let mut t_num_bufs = 0;
@@ -61,50 +57,13 @@ impl DescriptorSetBuilder {
         let mut t_num_samplers = 0;
 
         for binding_i in 0..layout.num_bindings() {
-            let desc = layout.descriptor(binding_i);
-
-            let descriptor_count = if let Some(desc) = &desc {
-                if desc.variable_count {
-                    if api_version.major < 1 || api_version.minor < 2 {
-                        return Err(DescriptorSetError::InsufficientApiVersion {
-                            requires: Version::major_minor(1, 2),
-                            obtained: api_version,
-                        });
-                    }
-
-                    if !enabled_features.runtime_descriptor_array {
-                        return Err(DescriptorSetError::MissingFeature(
-                            MissingFeature::RuntimeDescriptorArray,
-                        ));
-                    }
-
-                    if !enabled_features.descriptor_binding_variable_descriptor_count {
-                        return Err(DescriptorSetError::MissingFeature(
-                            MissingFeature::DescriptorBindingVariableDescriptorCount,
-                        ));
-                    }
-
-                    if !enabled_features.descriptor_binding_partially_bound {
-                        return Err(DescriptorSetError::MissingFeature(
-                            MissingFeature::DescriptorBindingPartiallyBound,
-                        ));
-                    }
-
-                    if binding_i != layout.num_bindings() - 1 {
-                        return Err(DescriptorSetError::RuntimeArrayMustBeLast);
-                    }
-                }
-
-                desc.descriptor_count as usize
-            } else {
-                0
-            };
-
-            let (num_bufs, num_imgs, num_samplers) = match &desc {
-                Some(desc) => match desc.ty {
+            if let Some(desc) = layout.descriptor(binding_i) {
+                let descriptor_count = desc.descriptor_count as usize;
+                let (num_bufs, num_imgs, num_samplers) = match desc.ty {
                     DescriptorDescTy::Sampler => (0, 0, 1),
                     DescriptorDescTy::CombinedImageSampler(_) => (0, 1, 1),
                     DescriptorDescTy::SampledImage(_) => (0, 1, 0),
+                    DescriptorDescTy::InputAttachment { .. } => (0, 1, 0),
                     DescriptorDescTy::StorageImage(_) => (0, 1, 0),
                     DescriptorDescTy::UniformTexelBuffer { .. } => (1, 0, 0),
                     DescriptorDescTy::StorageTexelBuffer { .. } => (1, 0, 0),
@@ -112,30 +71,33 @@ impl DescriptorSetBuilder {
                     DescriptorDescTy::StorageBuffer => (1, 0, 0),
                     DescriptorDescTy::UniformBufferDynamic => (1, 0, 0),
                     DescriptorDescTy::StorageBufferDynamic => (1, 0, 0),
-                    DescriptorDescTy::InputAttachment { .. } => (0, 1, 0),
-                },
-                None => (0, 0, 0),
-            };
+                };
 
-            t_num_bufs += num_bufs * descriptor_count;
-            t_num_imgs += num_imgs * descriptor_count;
-            t_num_samplers += num_samplers * descriptor_count;
-            desc_writes_capacity += descriptor_count;
+                t_num_bufs += num_bufs * descriptor_count;
+                t_num_imgs += num_imgs * descriptor_count;
+                t_num_samplers += num_samplers * descriptor_count;
+                desc_writes_capacity += descriptor_count;
 
-            descriptors.push(BuilderDescriptor {
-                desc,
-                array_element: 0,
-            });
+                descriptors.push(BuilderDescriptor {
+                    desc: Some(desc),
+                    array_element: 0,
+                });
+            } else {
+                descriptors.push(BuilderDescriptor {
+                    desc: None,
+                    array_element: 0,
+                });
+            }
         }
 
-        Ok(Self {
+        Self {
             layout,
             in_array: false,
             cur_binding: 0,
             descriptors,
             resources: DescriptorSetResources::new(t_num_bufs, t_num_imgs, t_num_samplers),
             desc_writes: Vec::with_capacity(desc_writes_capacity),
-        })
+        }
     }
 
     pub fn output(self) -> Result<DescriptorSetBuilderOutput, DescriptorSetError> {

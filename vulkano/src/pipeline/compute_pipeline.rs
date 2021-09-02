@@ -71,7 +71,7 @@ impl ComputePipeline {
                         desc.clone(),
                     )?))
                 })
-                .collect::<Result<Vec<_>, OomError>>()?;
+                .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
             let pipeline_layout = Arc::new(PipelineLayout::new(
                 device.clone(),
                 descriptor_set_layouts,
@@ -467,15 +467,11 @@ mod tests {
         let data_buffer =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
         let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-        let mut builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
+        let mut builder = PersistentDescriptorSet::start(layout.clone());
 
-        builder
-            .add_buffer(data_buffer.clone())
-            .unwrap();
+        builder.add_buffer(data_buffer.clone()).unwrap();
 
-        let set = builder
-            .build()
-            .unwrap();
+        let set = builder.build().unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device.clone(),

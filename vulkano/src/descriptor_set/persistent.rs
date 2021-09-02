@@ -51,13 +51,11 @@ pub struct PersistentDescriptorSet<P = StdDescriptorPoolAlloc> {
 
 impl PersistentDescriptorSet {
     /// Starts the process of building a `PersistentDescriptorSet`. Returns a builder.
-    pub fn start(
-        layout: Arc<DescriptorSetLayout>,
-    ) -> Result<PersistentDescriptorSetBuilder, DescriptorSetError> {
-        Ok(PersistentDescriptorSetBuilder {
-            inner: DescriptorSetBuilder::start(layout)?,
+    pub fn start(layout: Arc<DescriptorSetLayout>) -> PersistentDescriptorSetBuilder {
+        PersistentDescriptorSetBuilder {
+            inner: DescriptorSetBuilder::start(layout),
             poisoned: false,
-        })
+        }
     }
 }
 

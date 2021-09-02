@@ -142,7 +142,7 @@ fn main() {
     // If you want to run the pipeline on multiple different buffers, you need to create multiple
     // descriptor sets that each contain the buffer you want to run the shader on.
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let mut set_builder = PersistentDescriptorSet::start(layout.clone()).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
     set_builder
         .add_buffer(data_buffer.clone())

@@ -48,28 +48,28 @@ pub struct SingleLayoutDescSetPool {
 impl SingleLayoutDescSetPool {
     /// Initializes a new pool. The pool is configured to allocate sets that corresponds to the
     /// parameters passed to this function.
-    pub fn new(layout: Arc<DescriptorSetLayout>) -> Result<Self, DescriptorSetError> {
+    pub fn new(layout: Arc<DescriptorSetLayout>) -> Self {
         let device = layout.device().clone();
 
-        Ok(Self {
+        Self {
             inner: None,
             device,
             set_count: 4,
             layout,
-        })
+        }
     }
 
     /// Starts the process of building a new descriptor set.
     ///
     /// The set will corresponds to the set layout that was passed to `new`.
-    pub fn next(&mut self) -> Result<SingleLayoutDescSetBuilder, DescriptorSetError> {
+    pub fn next(&mut self) -> SingleLayoutDescSetBuilder {
         let layout = self.layout.clone();
 
-        Ok(SingleLayoutDescSetBuilder {
+        SingleLayoutDescSetBuilder {
             pool: self,
-            inner: DescriptorSetBuilder::start(layout)?,
+            inner: DescriptorSetBuilder::start(layout),
             poisoned: false,
-        })
+        }
     }
 
     fn next_alloc(&mut self) -> Result<SingleLayoutPoolAlloc, OomError> {

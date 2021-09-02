@@ -84,7 +84,6 @@ use crate::device::DeviceOwned;
 use crate::format::Format;
 use crate::image::view::ImageViewAbstract;
 use crate::image::view::ImageViewType;
-use crate::instance::Version;
 use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
@@ -321,9 +320,6 @@ pub enum DescriptorSetError {
     /// Builder doesn't expect anymore descriptors
     TooManyDescriptors,
 
-    /// Runtime arrays must be the last binding in a set.
-    RuntimeArrayMustBeLast,
-
     /// Not all descriptors have been added.
     DescriptorsMissing {
         /// Expected bindings
@@ -391,15 +387,6 @@ pub enum DescriptorSetError {
 
     /// Expected a non-arrayed image, but got an arrayed image.
     UnexpectedArrayed,
-
-    /// A required feature is missing from the Device
-    MissingFeature(MissingFeature),
-
-    /// Insufficient vulkan api version
-    InsufficientApiVersion {
-        requires: Version,
-        obtained: Version,
-    },
 }
 
 impl From<OomError> for DescriptorSetError {
@@ -422,7 +409,6 @@ impl fmt::Display for DescriptorSetError {
                 Self::ArrayLengthMismatch { .. } =>
                     "array doesn't contain the correct amount of descriptors",
                 Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
-                Self::RuntimeArrayMustBeLast => "runtime arrays must be the last binding in a set",
                 Self::DescriptorsMissing { .. } => "not all descriptors have been added",
                 Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
                 Self::MissingImageUsage(_) => "the image is missing the correct usage",
@@ -447,10 +433,8 @@ impl fmt::Display for DescriptorSetError {
                 Self::OomError(_) => "out of memory",
                 Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
-                Self::MissingFeature(_) => "a required feature is missing from the Device",
                 Self::ArrayTooManyDescriptors { .. } =>
                     "runtime array contains too many descriptors",
-                Self::InsufficientApiVersion { .. } => "insufficient vulkan api version",
             }
         )
     }
@@ -473,13 +457,4 @@ pub enum MissingImageUsage {
     InputAttachment,
     Sampled,
     Storage,
-}
-
-// Part of the DescriptorSetError for the case
-// of missing features on a device.
-#[derive(Debug, Clone)]
-pub enum MissingFeature {
-    RuntimeDescriptorArray,
-    DescriptorBindingVariableDescriptorCount,
-    DescriptorBindingPartiallyBound,
 }

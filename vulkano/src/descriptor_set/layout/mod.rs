@@ -21,6 +21,7 @@ pub use self::desc::DescriptorSetCompatibilityError;
 pub use self::desc::DescriptorSetDesc;
 pub use self::desc::DescriptorType;
 pub use self::sys::DescriptorSetLayout;
+pub use self::sys::DescriptorSetLayoutError;
 
 mod desc;
 mod sys;

@@ -355,6 +355,7 @@ impl DescriptorDesc {
         self.ty.ty() == other.ty.ty()
             && self.stages == other.stages
             && self.descriptor_count == other.descriptor_count
+            && self.variable_count == other.variable_count
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
@@ -381,6 +382,13 @@ impl DescriptorDesc {
             return Err(DescriptorCompatibilityError::DescriptorCount {
                 first: self.descriptor_count,
                 second: other.descriptor_count,
+            });
+        }
+
+        if self.variable_count != other.variable_count {
+            return Err(DescriptorCompatibilityError::VariableCount {
+                first: self.variable_count,
+                second: other.variable_count,
             });
         }
 
@@ -414,6 +422,13 @@ impl DescriptorDesc {
             return Err(DescriptorCompatibilityError::DescriptorCount {
                 first: self.descriptor_count,
                 second: other.descriptor_count,
+            });
+        }
+
+        if self.variable_count != other.variable_count {
+            return Err(DescriptorCompatibilityError::VariableCount {
+                first: self.variable_count,
+                second: other.variable_count,
             });
         }
 
@@ -772,6 +787,12 @@ pub enum DescriptorCompatibilityError {
         second: u32,
     },
 
+    /// The variable counts of the descriptors is not compatible.
+    VariableCount {
+        first: bool,
+        second: bool,
+    },
+
     /// The presence or absence of a descriptor in a binding is not compatible.
     Empty {
         first: bool,
@@ -826,6 +847,9 @@ impl fmt::Display for DescriptorCompatibilityError {
             match *self {
                 DescriptorCompatibilityError::DescriptorCount { .. } => {
                     "the number of descriptors is not compatible"
+                }
+                DescriptorCompatibilityError::VariableCount { .. } => {
+                    "the variable counts of the descriptors is not compatible"
                 }
                 DescriptorCompatibilityError::Empty { .. } => {
                     "the presence or absence of a descriptor in a binding is not compatible"
