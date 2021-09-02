@@ -11,13 +11,14 @@ use indexmap::IndexMap;
 use quote::quote;
 use std::{collections::HashMap, io::Write, path::Path};
 use vk_parse::{
-    Extension, ExtensionChild, Feature, InterfaceItem, Registry, RegistryChild, Type,
-    TypeCodeMarkup, TypeSpec, TypesChild,
+    EnumSpec, EnumsChild, Extension, ExtensionChild, Feature, InterfaceItem, Registry,
+    RegistryChild, Type, TypeCodeMarkup, TypeSpec, TypesChild,
 };
 
 mod extensions;
 mod features;
 mod fns;
+mod formats;
 mod properties;
 
 pub fn write<W: Write>(writer: &mut W) {
@@ -25,11 +26,17 @@ pub fn write<W: Write>(writer: &mut W) {
     let aliases = get_aliases(&registry);
     let extensions = get_extensions(&registry);
     let features = get_features(&registry);
+    let formats = get_formats(
+        &registry,
+        features.values().map(|x| x.children.iter()).flatten(),
+        extensions.values().map(|x| x.children.iter()).flatten(),
+    );
     let types = get_types(&registry, &aliases, &features, &extensions);
     let header_version = get_header_version(&registry);
 
     let out_extensions = extensions::write(&extensions);
     let out_features = features::write(&types, &extensions);
+    let out_formats = formats::write(&formats);
     let out_fns = fns::write(&extensions);
     let out_properties = properties::write(&types, &extensions);
 
@@ -44,6 +51,7 @@ pub fn write<W: Write>(writer: &mut W) {
         quote! {
             #out_extensions
             #out_features
+            #out_formats
             #out_fns
             #out_properties
         }
@@ -132,6 +140,54 @@ fn get_features(registry: &Registry) -> IndexMap<&str, &Feature> {
 
             None
         })
+        .collect()
+}
+
+fn get_formats<'a>(
+    registry: &'a Registry,
+    features: impl IntoIterator<Item = &'a ExtensionChild>,
+    extensions: impl IntoIterator<Item = &'a ExtensionChild>,
+) -> Vec<&'a str> {
+    registry
+        .0
+        .iter()
+        .filter_map(|child| {
+            if let RegistryChild::Enums(enums) = child {
+                if enums.name.as_ref().map(|s| s.as_str()) == Some("VkFormat") {
+                    return Some(enums.children.iter().filter_map(|en| {
+                        if let EnumsChild::Enum(en) = en {
+                            if en.name != "VK_FORMAT_UNDEFINED" {
+                                return Some(en.name.as_str());
+                            }
+                        }
+                        None
+                    }));
+                }
+            }
+            None
+        })
+        .flatten()
+        .chain(
+            features
+                .into_iter()
+                .chain(extensions.into_iter())
+                .filter_map(|child| {
+                    if let ExtensionChild::Require { items, .. } = child {
+                        return Some(items.iter().filter_map(|item| {
+                            if let InterfaceItem::Enum(en) = item {
+                                if let EnumSpec::Offset { extends, .. } = &en.spec {
+                                    if extends == "VkFormat" {
+                                        return Some(en.name.as_str());
+                                    }
+                                }
+                            }
+                            None
+                        }));
+                    }
+                    None
+                })
+                .flatten(),
+        )
         .collect()
 }
 

@@ -21,7 +21,7 @@ use crate::descriptor_set::sys::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
@@ -455,17 +455,16 @@ impl UnsafeCommandBufferBuilder {
         // TODO: The correct check here is that the uncompressed element size of the source is
         // equal to the compressed element size of the destination.
         debug_assert!(
-            source.format().ty() == FormatTy::Compressed
-                || destination.format().ty() == FormatTy::Compressed
+            source.format().compression().is_some()
+                || destination.format().compression().is_some()
                 || source.format().size() == destination.format().size()
         );
 
         // Depth/Stencil formats are required to match exactly.
+        let source_aspects = source.format().aspects();
         debug_assert!(
-            !matches!(
-                source.format().ty(),
-                FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
-            ) || source.format() == destination.format()
+            !source_aspects.depth && !source_aspects.stencil
+                || source.format() == destination.format()
         );
 
         debug_assert_eq!(source.samples(), destination.samples());
@@ -569,28 +568,22 @@ impl UnsafeCommandBufferBuilder {
         D: ?Sized + ImageAccess,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
     {
-        debug_assert!(
-            filter == Filter::Nearest
-                || !matches!(
-                    source.format().ty(),
-                    FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
-                )
-        );
-        debug_assert!(
-            (source.format().ty() == FormatTy::Uint)
-                == (destination.format().ty() == FormatTy::Uint)
-        );
-        debug_assert!(
-            (source.format().ty() == FormatTy::Sint)
-                == (destination.format().ty() == FormatTy::Sint)
-        );
-        debug_assert!(
-            source.format() == destination.format()
-                || !matches!(
-                    source.format().ty(),
-                    FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
-                )
-        );
+        let source_aspects = source.format().aspects();
+
+        if let (Some(source_type), Some(destination_type)) = (
+            source.format().type_color(),
+            destination.format().type_color(),
+        ) {
+            debug_assert!(
+                (source_type == NumericType::UINT) == (destination_type == NumericType::UINT)
+            );
+            debug_assert!(
+                (source_type == NumericType::SINT) == (destination_type == NumericType::SINT)
+            );
+        } else {
+            debug_assert!(source.format() == destination.format());
+            debug_assert!(filter == Filter::Nearest);
+        }
 
         debug_assert_eq!(source.samples(), SampleCount::Sample1);
         let source = source.inner();
@@ -726,11 +719,9 @@ impl UnsafeCommandBufferBuilder {
         I: ?Sized + ImageAccess,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>,
     {
-        debug_assert!(
-            image.format().ty() == FormatTy::Float
-                || image.format().ty() == FormatTy::Uint
-                || image.format().ty() == FormatTy::Sint
-        );
+        let image_aspects = image.format().aspects();
+        debug_assert!(image_aspects.color && !image_aspects.plane0);
+        debug_assert!(image.format().compression().is_none());
 
         let image = image.inner();
         debug_assert!(image.image.usage().transfer_destination);
@@ -1896,7 +1887,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
 
-        if image.format().ty() == FormatTy::Ycbcr {
+        if image.format().requires_sampler_ycbcr_conversion() {
             unimplemented!();
         }
 

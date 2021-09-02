@@ -33,7 +33,7 @@
 //!
 //! let (buffer, _future) = ImmutableBuffer::<[u32]>::from_iter((0..128).map(|n| n), usage,
 //!                                                             queue.clone()).unwrap();
-//! let _view = BufferView::new(buffer, Format::R32Uint).unwrap();
+//! let _view = BufferView::new(buffer, Format::R32_UINT).unwrap();
 //! ```
 
 use crate::buffer::BufferAccess;
@@ -60,7 +60,7 @@ pub struct BufferView<B>
 where
     B: BufferAccess + ?Sized,
 {
-    view: ash::vk::BufferView,
+    handle: ash::vk::BufferView,
     buffer: Box<B>,
     atomic_accesses: bool,
 }
@@ -87,64 +87,52 @@ where
     where
         B: BufferAccess,
     {
-        let (view, format_props) = {
-            let size = org_buffer.size();
-            let BufferInner { buffer, offset } = org_buffer.inner();
+        let size = org_buffer.size();
+        let BufferInner { buffer, offset } = org_buffer.inner();
 
-            let device = buffer.device();
+        let device = buffer.device();
 
-            if (offset
-                % device
-                    .physical_device()
-                    .properties()
-                    .min_texel_buffer_offset_alignment)
-                != 0
-            {
-                return Err(BufferViewCreationError::WrongBufferAlignment);
+        if (offset
+            % device
+                .physical_device()
+                .properties()
+                .min_texel_buffer_offset_alignment)
+            != 0
+        {
+            return Err(BufferViewCreationError::WrongBufferAlignment);
+        }
+
+        if !(buffer.usage().uniform_texel_buffer || buffer.usage().storage_texel_buffer) {
+            return Err(BufferViewCreationError::WrongBufferUsage);
+        }
+
+        let buffer_features = format.properties(device.physical_device()).buffer_features;
+
+        if buffer.usage().uniform_texel_buffer {
+            if !buffer_features.uniform_texel_buffer {
+                return Err(BufferViewCreationError::UnsupportedFormat);
             }
+        }
 
-            if !buffer.usage().uniform_texel_buffer && !buffer.usage().storage_texel_buffer {
-                return Err(BufferViewCreationError::WrongBufferUsage);
+        if buffer.usage().storage_texel_buffer {
+            if !buffer_features.storage_texel_buffer {
+                return Err(BufferViewCreationError::UnsupportedFormat);
             }
+        }
 
-            {
-                let nb = size
-                    / format
-                        .size()
-                        .expect("Can't use a compressed format for buffer views");
-                let l = device
-                    .physical_device()
-                    .properties()
-                    .max_texel_buffer_elements;
+        let elements = size / format.size().expect(
+            "Format has no size. If you see this error, please submit a new bug report to Vulkano.",
+        );
+        if elements as u32
+            > device
+                .physical_device()
+                .properties()
+                .max_texel_buffer_elements
+        {
+            return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
+        }
 
-                if nb as u32 > l {
-                    return Err(BufferViewCreationError::MaxTexelBufferElementsExceeded);
-                }
-            }
-
-            let format_props = {
-                let fns_i = device.instance().fns();
-                let mut output = MaybeUninit::uninit();
-                fns_i.v1_0.get_physical_device_format_properties(
-                    device.physical_device().internal_object(),
-                    format.into(),
-                    output.as_mut_ptr(),
-                );
-                output.assume_init().buffer_features
-            };
-
-            if buffer.usage().uniform_texel_buffer {
-                if (format_props & ash::vk::FormatFeatureFlags::UNIFORM_TEXEL_BUFFER).is_empty() {
-                    return Err(BufferViewCreationError::UnsupportedFormat);
-                }
-            }
-
-            if buffer.usage().storage_texel_buffer {
-                if (format_props & ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER).is_empty() {
-                    return Err(BufferViewCreationError::UnsupportedFormat);
-                }
-            }
-
+        let handle = {
             let infos = ash::vk::BufferViewCreateInfo {
                 flags: ash::vk::BufferViewCreateFlags::empty(),
                 buffer: buffer.internal_object(),
@@ -162,15 +150,13 @@ where
                 ptr::null(),
                 output.as_mut_ptr(),
             ))?;
-            (output.assume_init(), format_props)
+            output.assume_init()
         };
 
         Ok(BufferView {
-            view,
+            handle,
             buffer: Box::new(org_buffer),
-            atomic_accesses: !(format_props
-                & ash::vk::FormatFeatureFlags::STORAGE_TEXEL_BUFFER_ATOMIC)
-                .is_empty(),
+            atomic_accesses: buffer_features.storage_texel_buffer_atomic,
         })
     }
 
@@ -207,7 +193,7 @@ where
 
     #[inline]
     fn internal_object(&self) -> ash::vk::BufferView {
-        self.view
+        self.handle
     }
 }
 
@@ -227,7 +213,7 @@ where
 {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         fmt.debug_struct("BufferView")
-            .field("raw", &self.view)
+            .field("raw", &self.handle)
             .field("buffer", &self.buffer)
             .finish()
     }
@@ -243,7 +229,7 @@ where
             let fns = self.buffer.inner().buffer.device().fns();
             fns.v1_0.destroy_buffer_view(
                 self.buffer.inner().buffer.device().internal_object(),
-                self.view,
+                self.handle,
                 ptr::null(),
             );
         }
@@ -373,7 +359,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, Format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
 
         assert!(view.uniform_texel_buffer());
     }
@@ -391,7 +377,7 @@ mod tests {
         let (buffer, _) =
             ImmutableBuffer::<[[u8; 4]]>::from_iter((0..128).map(|_| [0; 4]), usage, queue.clone())
                 .unwrap();
-        let view = BufferView::new(buffer, Format::R8G8B8A8Unorm).unwrap();
+        let view = BufferView::new(buffer, Format::R8G8B8A8_UNORM).unwrap();
 
         assert!(view.storage_texel_buffer());
     }
@@ -408,7 +394,7 @@ mod tests {
 
         let (buffer, _) =
             ImmutableBuffer::<[u32]>::from_iter((0..128).map(|_| 0), usage, queue.clone()).unwrap();
-        let view = BufferView::new(buffer, Format::R32Uint).unwrap();
+        let view = BufferView::new(buffer, Format::R32_UINT).unwrap();
 
         assert!(view.storage_texel_buffer());
         assert!(view.storage_texel_buffer_atomic());
@@ -426,7 +412,7 @@ mod tests {
         )
         .unwrap();
 
-        match BufferView::new(buffer, Format::R8G8B8A8Unorm) {
+        match BufferView::new(buffer, Format::R8G8B8A8_UNORM) {
             Err(BufferViewCreationError::WrongBufferUsage) => (),
             _ => panic!(),
         }
@@ -449,8 +435,8 @@ mod tests {
         )
         .unwrap();
 
-        // TODO: what if R64G64B64A64Sfloat is supported?
-        match BufferView::new(buffer, Format::R64G64B64A64Sfloat) {
+        // TODO: what if R64G64B64A64_SFLOAT is supported?
+        match BufferView::new(buffer, Format::R64G64B64A64_SFLOAT) {
             Err(BufferViewCreationError::UnsupportedFormat) => (),
             _ => panic!(),
         }

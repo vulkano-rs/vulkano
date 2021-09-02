@@ -592,7 +592,7 @@ impl<W> SwapchainBuilder<W> {
                 }
                 format
             } else {
-                if let Some(format) = [Format::R8G8B8A8Unorm, Format::B8G8R8A8Unorm]
+                if let Some(format) = [Format::R8G8B8A8_UNORM, Format::B8G8R8A8_UNORM]
                     .iter()
                     .copied()
                     .find(|&format| {

@@ -138,7 +138,7 @@ fn main() {
             device.clone(),
             [1024, 1024],
             SampleCount::Sample4,
-            Format::R8G8B8A8Unorm,
+            Format::R8G8B8A8_UNORM,
         )
         .unwrap(),
     )
@@ -152,7 +152,7 @@ fn main() {
             height: 1024,
             array_layers: 1,
         },
-        Format::R8G8B8A8Unorm,
+        Format::R8G8B8A8_UNORM,
         Some(queue.family()),
     )
     .unwrap();
@@ -170,14 +170,14 @@ fn main() {
                 intermediary: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 4,     // This has to match the image definition.
                 },
                 // The second framebuffer attachment is the final image.
                 color: {
                     load: DontCare,
                     store: Store,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 1,     // Same here, this has to match.
                 }
             },

@@ -134,7 +134,7 @@ fn required_len_for_format<Px>(
 where
     Px: Pixel,
 {
-    let (block_width, block_height) = format.block_dimensions();
+    let [block_width, block_height] = format.block_dimensions();
     let num_blocks = (image_size[0] + block_width - 1) / block_width
         * ((image_size[1] + block_height - 1) / block_height)
         * image_size[2]
@@ -153,40 +153,40 @@ mod tests {
     fn test_required_len_for_format() {
         // issue #1292
         assert_eq!(
-            required_len_for_format::<u8>(Format::BC1_RGBUnormBlock, [2048, 2048, 1], 1),
+            required_len_for_format::<u8>(Format::BC1_RGB_UNORM_BLOCK, [2048, 2048, 1], 1),
             2097152
         );
         // other test cases
         assert_eq!(
-            required_len_for_format::<u8>(Format::R8G8B8A8Unorm, [2048, 2048, 1], 1),
+            required_len_for_format::<u8>(Format::R8G8B8A8_UNORM, [2048, 2048, 1], 1),
             16777216
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::R4G4UnormPack8, [512, 512, 1], 1),
+            required_len_for_format::<u8>(Format::R4G4_UNORM_PACK8, [512, 512, 1], 1),
             262144
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::R8G8B8Uscaled, [512, 512, 1], 1),
+            required_len_for_format::<u8>(Format::R8G8B8_USCALED, [512, 512, 1], 1),
             786432
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::R32G32Uint, [512, 512, 1], 1),
+            required_len_for_format::<u8>(Format::R32G32_UINT, [512, 512, 1], 1),
             2097152
         );
         assert_eq!(
-            required_len_for_format::<u32>(Format::R32G32Uint, [512, 512, 1], 1),
+            required_len_for_format::<u32>(Format::R32G32_UINT, [512, 512, 1], 1),
             524288
         );
         assert_eq!(
-            required_len_for_format::<[u32; 2]>(Format::R32G32Uint, [512, 512, 1], 1),
+            required_len_for_format::<[u32; 2]>(Format::R32G32_UINT, [512, 512, 1], 1),
             262144
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::ASTC_8x8UnormBlock, [512, 512, 1], 1),
+            required_len_for_format::<u8>(Format::ASTC_8x8_UNORM_BLOCK, [512, 512, 1], 1),
             65536
         );
         assert_eq!(
-            required_len_for_format::<u8>(Format::ASTC_12x12SrgbBlock, [512, 512, 1], 1),
+            required_len_for_format::<u8>(Format::ASTC_12x12_SRGB_BLOCK, [512, 512, 1], 1),
             29584
         );
     }

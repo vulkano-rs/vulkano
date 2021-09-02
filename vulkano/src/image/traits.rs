@@ -9,7 +9,6 @@
 
 use crate::format::ClearValue;
 use crate::format::Format;
-use crate::format::FormatTy;
 use crate::image::sys::UnsafeImage;
 use crate::image::ImageDescriptorLayouts;
 use crate::image::ImageDimensions;
@@ -29,32 +28,6 @@ pub unsafe trait ImageAccess {
     #[inline]
     fn format(&self) -> Format {
         self.inner().image.format()
-    }
-
-    /// Returns true if the image is a color image.
-    #[inline]
-    fn has_color(&self) -> bool {
-        matches!(
-            self.format().ty(),
-            FormatTy::Float | FormatTy::Uint | FormatTy::Sint | FormatTy::Compressed
-        )
-    }
-
-    /// Returns true if the image has a depth component. In other words, if it is a depth or a
-    /// depth-stencil format.
-    #[inline]
-    fn has_depth(&self) -> bool {
-        matches!(self.format().ty(), FormatTy::Depth | FormatTy::DepthStencil)
-    }
-
-    /// Returns true if the image has a stencil component. In other words, if it is a stencil or a
-    /// depth-stencil format.
-    #[inline]
-    fn has_stencil(&self) -> bool {
-        matches!(
-            self.format().ty(),
-            FormatTy::Stencil | FormatTy::DepthStencil
-        )
     }
 
     /// Returns the number of mipmap levels of this image.

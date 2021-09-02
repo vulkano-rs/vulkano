@@ -28,6 +28,7 @@ smallvec = "1.6"
 [build-dependencies]
 heck = "0.3"
 indexmap = "1.7"
+lazy_static = "1.4"
 proc-macro2 = "1.0"
 quote = "1.0"
 regex = "1.5"

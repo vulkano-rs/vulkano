@@ -10,7 +10,6 @@
 use crate::device::Device;
 use crate::format::ClearValue;
 use crate::format::Format;
-use crate::format::FormatTy;
 use crate::image::sys::ImageCreationError;
 use crate::image::sys::UnsafeImage;
 use crate::image::traits::ImageAccess;
@@ -410,13 +409,12 @@ impl AttachmentImage {
     ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
         // TODO: check dimensions against the max_framebuffer_width/height/layers limits
 
-        let is_depth = match format.ty() {
-            FormatTy::Depth => true,
-            FormatTy::DepthStencil => true,
-            FormatTy::Stencil => true,
-            FormatTy::Compressed => panic!(),
-            _ => false,
-        };
+        let aspects = format.aspects();
+        let is_depth = aspects.depth || aspects.stencil;
+
+        if format.compression().is_some() {
+            panic!() // TODO: message?
+        }
 
         let usage = ImageUsage {
             color_attachment: !is_depth,
@@ -642,18 +640,18 @@ mod tests {
     #[test]
     fn create_regular() {
         let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+        let _img = AttachmentImage::new(device, [32, 32], Format::R8G8B8A8_UNORM).unwrap();
     }
 
     #[test]
     fn create_transient() {
         let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::transient(device, [32, 32], Format::R8G8B8A8Unorm).unwrap();
+        let _img = AttachmentImage::transient(device, [32, 32], Format::R8G8B8A8_UNORM).unwrap();
     }
 
     #[test]
     fn d16_unorm_always_supported() {
         let (device, _) = gfx_dev_and_queue!();
-        let _img = AttachmentImage::new(device, [32, 32], Format::D16Unorm).unwrap();
+        let _img = AttachmentImage::new(device, [32, 32], Format::D16_UNORM).unwrap();
     }
 }

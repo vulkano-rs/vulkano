@@ -116,7 +116,7 @@ fn main() {
             height: 512,
             array_layers: 2,
         },
-        Format::B8G8R8A8Srgb,
+        Format::B8G8R8A8_SRGB,
         ImageUsage {
             transfer_source: true,
             color_attachment: true,

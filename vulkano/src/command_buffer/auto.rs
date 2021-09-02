@@ -40,7 +40,7 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::format::ClearValue;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::format::Pixel;
 use crate::image::ImageAccess;
 use crate::image::ImageAspect;
@@ -852,7 +852,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let blit = UnsafeCommandBufferBuilderImageBlit {
                 // TODO:
-                aspects: if source.has_color() {
+                aspects: if source.format().aspects().color {
                     ImageAspects {
                         color: true,
                         ..ImageAspects::none()
@@ -1072,7 +1072,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_aspect: if destination.has_color() {
+                image_aspect: if destination.format().aspects().color {
                     ImageAspect::Color
                 } else {
                     unimplemented!()
@@ -1150,15 +1150,19 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 layer_count,
             )?;
 
+            let source_aspects = source.format().aspects();
+            let destination_aspects = destination.format().aspects();
             let copy = UnsafeCommandBufferBuilderImageCopy {
                 // TODO: Allowing choosing a subset of the image aspects, but note that if color
                 // is included, neither depth nor stencil may.
                 aspects: ImageAspects {
-                    color: source.has_color(),
-                    depth: !source.has_color() && source.has_depth() && destination.has_depth(),
-                    stencil: !source.has_color()
-                        && source.has_stencil()
-                        && destination.has_stencil(),
+                    color: source_aspects.color,
+                    depth: !source_aspects.color
+                        && source_aspects.depth
+                        && destination_aspects.depth,
+                    stencil: !source_aspects.color
+                        && source_aspects.stencil
+                        && destination_aspects.stencil,
                     ..ImageAspects::none()
                 },
                 source_mip_level,
@@ -1234,16 +1238,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 mipmap,
             )?;
 
+            let source_aspects = source.format().aspects();
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
                 // TODO: Allow the user to choose aspect
-                image_aspect: if source.has_color() {
+                image_aspect: if source_aspects.color {
                     ImageAspect::Color
-                } else if source.has_depth() {
+                } else if source_aspects.depth {
                     ImageAspect::Depth
-                } else if source.has_stencil() {
+                } else if source_aspects.stencil {
                     ImageAspect::Stencil
                 } else {
                     unimplemented!()
@@ -2182,39 +2187,79 @@ where
                 match clear_values_copy.next() {
                     Some((clear_i, clear_value)) => {
                         if atch_desc.load == LoadOp::Clear {
-                            match clear_value {
-                                ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None",
-                                    clear_i, atch_i, atch_desc.format.ty()),
-                                ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
-                                   panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float",
-                                       clear_i, atch_i, atch_desc.format.ty());
+                            let aspects = atch_desc.format.aspects();
+
+                            if aspects.depth && aspects.stencil {
+                                assert!(
+                                    matches!(clear_value, ClearValue::DepthStencil(_)),
+                                    "Bad ClearValue! index: {}, attachment index: {}, expected: DepthStencil, got: {:?}",
+                                    clear_i,
+                                    atch_i,
+                                    clear_value,
+                                );
+                            } else if aspects.depth {
+                                assert!(
+                                    matches!(clear_value, ClearValue::Depth(_)),
+                                    "Bad ClearValue! index: {}, attachment index: {}, expected: Depth, got: {:?}",
+                                    clear_i,
+                                    atch_i,
+                                    clear_value,
+                                );
+                            } else if aspects.depth {
+                                assert!(
+                                    matches!(clear_value, ClearValue::Stencil(_)),
+                                    "Bad ClearValue! index: {}, attachment index: {}, expected: Stencil, got: {:?}",
+                                    clear_i,
+                                    atch_i,
+                                    clear_value,
+                                );
+                            } else if let Some(numeric_type) = atch_desc.format.type_color() {
+                                match numeric_type {
+                                    NumericType::SFLOAT
+                                    | NumericType::UFLOAT
+                                    | NumericType::SNORM
+                                    | NumericType::UNORM
+                                    | NumericType::SSCALED
+                                    | NumericType::USCALED
+                                    | NumericType::SRGB => {
+                                        assert!(
+                                            matches!(clear_value, ClearValue::Float(_)),
+                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Float, got: {:?}",
+                                            clear_i,
+                                            atch_i,
+                                            clear_value,
+                                        );
+                                    }
+                                    NumericType::SINT => {
+                                        assert!(
+                                            matches!(clear_value, ClearValue::Int(_)),
+                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Int, got: {:?}",
+                                            clear_i,
+                                            atch_i,
+                                            clear_value,
+                                        );
+                                    }
+                                    NumericType::UINT => {
+                                        assert!(
+                                            matches!(clear_value, ClearValue::Uint(_)),
+                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Uint, got: {:?}",
+                                            clear_i,
+                                            atch_i,
+                                            clear_value,
+                                        );
+                                    }
                                 }
-                                ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStencil",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
+                            } else {
+                                panic!("Shouldn't happen!");
                             }
                         } else {
-                            if clear_value != ClearValue::None {
-                                panic!("Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
-                                   clear_i, atch_i, clear_value);
-                            }
+                            assert!(
+                                matches!(clear_value, ClearValue::None),
+                                "Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
+                                clear_i,
+                                atch_i,
+                                clear_value,
+                            );
                         }
                     }
                     None => panic!("Not enough clear values"),

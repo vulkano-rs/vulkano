@@ -10,7 +10,6 @@
 use crate::check_errors;
 use crate::device::Device;
 use crate::device::DeviceOwned;
-use crate::format::FormatTy;
 use crate::image::ImageLayout;
 use crate::image::SampleCount;
 use crate::pipeline::shader::ShaderInterface;
@@ -69,7 +68,7 @@ use std::sync::Mutex;
 ///         foo: {
 ///             load: Clear,
 ///             store: Store,
-///             format: Format::R8G8B8A8Unorm,
+///             format: Format::R8G8B8A8_UNORM,
 ///             samples: 1,
 ///         }
 ///     },
@@ -286,10 +285,7 @@ impl RenderPass {
 
             for pass in description.subpasses() {
                 if pass.color_attachments.len() as u32
-                    > device
-                        .physical_device()
-                        .properties()
-                        .max_color_attachments
+                    > device.physical_device().properties().max_color_attachments
                 {
                     return Err(RenderPassCreationError::ColorAttachmentsLimitExceeded);
                 }
@@ -706,12 +702,7 @@ impl Subpass {
             None => return false,
         };
 
-        match self.attachment_desc(atch_num).format.ty() {
-            FormatTy::Depth => true,
-            FormatTy::Stencil => false,
-            FormatTy::DepthStencil => true,
-            _ => unreachable!(),
-        }
+        self.attachment_desc(atch_num).format.aspects().depth
     }
 
     /// Returns true if the subpass has a depth attachment or a depth-stencil attachment whose
@@ -729,12 +720,7 @@ impl Subpass {
             None => return false,
         };
 
-        match self.attachment_desc(atch_num).format.ty() {
-            FormatTy::Depth => true,
-            FormatTy::Stencil => false,
-            FormatTy::DepthStencil => true,
-            _ => unreachable!(),
-        }
+        self.attachment_desc(atch_num).format.aspects().depth
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment.
@@ -746,12 +732,7 @@ impl Subpass {
             None => return false,
         };
 
-        match self.attachment_desc(atch_num).format.ty() {
-            FormatTy::Depth => false,
-            FormatTy::Stencil => true,
-            FormatTy::DepthStencil => true,
-            _ => unreachable!(),
-        }
+        self.attachment_desc(atch_num).format.aspects().stencil
     }
 
     /// Returns true if the subpass has a stencil attachment or a depth-stencil attachment whose
@@ -770,12 +751,7 @@ impl Subpass {
             None => return false,
         };
 
-        match self.attachment_desc(atch_num).format.ty() {
-            FormatTy::Depth => false,
-            FormatTy::Stencil => true,
-            FormatTy::DepthStencil => true,
-            _ => unreachable!(),
-        }
+        self.attachment_desc(atch_num).format.aspects().stencil
     }
 
     /// Returns true if the subpass has any color or depth/stencil attachment.
@@ -853,28 +829,23 @@ mod tests {
     fn too_many_color_atch() {
         let (device, _) = gfx_dev_and_queue!();
 
-        if device
-            .physical_device()
-            .properties()
-            .max_color_attachments
-            >= 10
-        {
+        if device.physical_device().properties().max_color_attachments >= 10 {
             return; // test ignored
         }
 
         let rp = single_pass_renderpass! {
             device.clone(),
             attachments: {
-                a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a2: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a3: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a4: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a5: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a6: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a7: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a8: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a9: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, },
-                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
+                a1: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a2: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a3: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a4: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a5: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a6: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a7: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a8: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a9: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, },
+                a10: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, }
             },
             pass: {
                 color: [a1, a2, a3, a4, a5, a6, a7, a8, a9, a10],
@@ -895,7 +866,7 @@ mod tests {
         let rp = single_pass_renderpass! {
             device.clone(),
             attachments: {
-                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8Unorm, samples: 1, }
+                a: { load: Clear, store: DontCare, format: Format::R8G8B8A8_UNORM, samples: 1, }
             },
             pass: {
                 color: [a],

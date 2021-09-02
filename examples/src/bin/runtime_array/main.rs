@@ -12,6 +12,8 @@ use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::descriptor_set::layout::DescriptorSetLayout;
+use vulkano::descriptor_set::layout::DescriptorSetLayoutError;
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -20,6 +22,8 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
+use vulkano::pipeline::layout::PipelineLayout;
+use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -33,10 +37,6 @@ use vulkano_win::VkSurfaceBuild;
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
-use vulkano::pipeline::shader::EntryPointAbstract;
-use vulkano::pipeline::layout::PipelineLayout;
-use vulkano::descriptor_set::layout::DescriptorSetLayoutError;
-use vulkano::descriptor_set::layout::DescriptorSetLayout;
 
 fn main() {
     // The start of this example is exactly the same as `triangle`. You should read the
@@ -229,7 +229,7 @@ fn main() {
             image_data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
-            Format::R8G8B8A8Srgb,
+            Format::R8G8B8A8_SRGB,
             queue.clone(),
         )
         .unwrap()
@@ -256,7 +256,7 @@ fn main() {
             image_data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
-            Format::R8G8B8A8Srgb,
+            Format::R8G8B8A8_SRGB,
             queue.clone(),
         )
         .unwrap()
@@ -281,13 +281,12 @@ fn main() {
     .unwrap();
 
     let pipeline_layout = {
-        let mut descriptor_set_descs: Vec<_> =
-            (&fs.main_entry_point() as &dyn EntryPointAbstract)
-                .descriptor_set_layout_descs()
-                .iter()
-                .cloned()
-                .collect();
-        
+        let mut descriptor_set_descs: Vec<_> = (&fs.main_entry_point() as &dyn EntryPointAbstract)
+            .descriptor_set_layout_descs()
+            .iter()
+            .cloned()
+            .collect();
+
         // Set 0, Binding 0
         descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
 
@@ -301,7 +300,7 @@ fn main() {
             })
             .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
             .unwrap();
-        
+
         Arc::new(
             PipelineLayout::new(
                 device.clone(),
@@ -311,7 +310,7 @@ fn main() {
                     .iter()
                     .cloned(),
             )
-            .unwrap()
+            .unwrap(),
         )
     };
 

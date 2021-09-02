@@ -55,13 +55,15 @@ where
         return Err(IncompatibleRenderPassAttachmentError::NotIdentitySwizzled);
     }
 
+    let aspects = image_view.image().format().aspects(); // TODO: should use view format?
+
     for subpass in render_pass_desc.subpasses() {
         if subpass
             .color_attachments
             .iter()
             .any(|&(n, _)| n == attachment_num)
         {
-            debug_assert!(image_view.image().has_color()); // Was normally checked by the render pass.
+            debug_assert!(aspects.color); // Was normally checked by the render pass.
             if !image_view.image().inner().image.usage().color_attachment {
                 return Err(IncompatibleRenderPassAttachmentError::MissingColorAttachmentUsage);
             }
@@ -70,7 +72,7 @@ where
         if let Some((ds, _)) = subpass.depth_stencil {
             if ds == attachment_num {
                 // Was normally checked by the render pass.
-                debug_assert!(image_view.image().has_depth() || image_view.image().has_stencil());
+                debug_assert!(aspects.depth || aspects.stencil);
                 if !image_view
                     .image()
                     .inner()
@@ -191,7 +193,7 @@ mod tests {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 1,
                 }
             },
@@ -203,7 +205,7 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -219,7 +221,7 @@ mod tests {
                 color: {
                     load: Clear,
                     store: Store,
-                    format: Format::R16G16Sfloat,
+                    format: Format::R16G16_SFLOAT,
                     samples: 1,
                 }
             },
@@ -231,14 +233,14 @@ mod tests {
         .unwrap();
 
         let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
         match ensure_image_view_compatible(rp.desc(), 0, &view) {
             Err(IncompatibleRenderPassAttachmentError::FormatMismatch {
-                expected: Format::R16G16Sfloat,
-                obtained: Format::R8G8B8A8Unorm,
+                expected: Format::R16G16_SFLOAT,
+                obtained: Format::R8G8B8A8_UNORM,
             }) => (),
             e => panic!("{:?}", e),
         }
@@ -250,7 +252,7 @@ mod tests {
 
         let rp = RenderPassDesc::empty();
         let view = ImageView::new(
-            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device, [128, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
