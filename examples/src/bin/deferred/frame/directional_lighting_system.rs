@@ -118,18 +118,14 @@ impl DirectionalLightingSystem {
     /// - `direction` is the direction of the light in world coordinates.
     /// - `color` is the color to apply.
     ///
-    pub fn draw<C, N>(
+    pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: C,
-        normals_input: N,
+        color_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        normals_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         direction: Vector3<f32>,
         color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer
-    where
-        C: ImageViewAbstract + Send + Sync + 'static,
-        N: ImageViewAbstract + Send + Sync + 'static,
-    {
+    ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::ty::PushConstants {
             color: [color[0], color[1], color[2], 1.0],
             direction: direction.extend(0.0).into(),
@@ -141,11 +137,15 @@ impl DirectionalLightingSystem {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let descriptor_set = PersistentDescriptorSet::start(layout.clone())
+        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        descriptor_set_builder
             .add_image(color_input)
             .unwrap()
             .add_image(normals_input)
-            .unwrap()
+            .unwrap();
+
+        let descriptor_set = descriptor_set_builder
             .build()
             .unwrap();
 

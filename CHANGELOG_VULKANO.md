@@ -22,6 +22,13 @@
   - Validity of the state is checked by the dispatch/draw commands.
   - `DynamicState` is removed; each individual state now has its own command to set it. This includes some states that were not previously included in `DynamicState`.
 - **Breaking** `StateCacher` is removed; its task is now partially handled by `SyncCommandBufferBuilder`.
+- **BREAKING** `BufferAccess` now requires Send + Sync. This cascades into `TypedBufferAccess`, `BufferSlice`, `ImmutableBufferInitialization`, `ImmutableBuffer`, `DeviceLocalBuffer`, `CpuBufferPoolSubbuffer`, `CpuBufferPoolChunk`, `CpuAccessibleBuffer`, and `BufferView` now requiring their types to be `Send + Sync`.
+- **BREAKING** `DescriptorSetLayout::new()` now returns `Result<Self, DescriptorSetLayoutError>` instead of Result<Self, OomError>`
+- **BREAKING** `DescriptorCompatibilityError` additional variant `VariableCount`.
+- **BREAKING** `GraphicsPipelineCreationError` additional variant `PipelineLayoutCreationError`.
+- **BREAKING** `PipelineLayoutCreationError` additional variant `SetLayoutError`.
+- **BREAKING** `FixedSizeDescriptorSetsPool` has been replaced by `SingleLayoutDescSetPool`.
+- **BREAKING** Set builders now return `&mut Self` instead of `Self` & methods take values wrapped in an `Arc`.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
@@ -34,7 +41,8 @@
 - Add BSD platforms to external memory (dma-buf fd) cfgs
 - `SyncCommandBufferBuilder` now has methods to return the state set by previous commands.
 - Added support for `u8` index buffers with the `ext_index_buffer_uint8` extension.
-
+- Descriptor sets now support variable count descriptors.
+    - e.g. `layout(set = 0, binding = 0) uniform sampler2D textures[];`
 
 # Version 0.25.0 (2021-08-10)
 

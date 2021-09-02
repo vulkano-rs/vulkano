@@ -225,15 +225,14 @@ impl FrameSystem {
     /// - `world_to_framebuffer` is the matrix that will be used to convert from 3D coordinates in
     ///   the world into 2D coordinates on the framebuffer.
     ///
-    pub fn frame<F, I>(
+    pub fn frame<F>(
         &mut self,
         before_future: F,
-        final_image: I,
+        final_image: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         world_to_framebuffer: Matrix4<f32>,
     ) -> Frame
     where
         F: GpuFuture + 'static,
-        I: ImageViewAbstract + Clone + Send + Sync + 'static,
     {
         // First of all we recreate `self.diffuse_buffer`, `self.normals_buffer` and
         // `self.depth_buffer` if their dimensions doesn't match the dimensions of the final image.

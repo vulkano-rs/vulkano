@@ -213,9 +213,10 @@ impl<T, B> BufferSlice<[T], B> {
     }
 }
 
-unsafe impl<T: ?Sized, B> BufferAccess for BufferSlice<T, B>
+unsafe impl<T, B> BufferAccess for BufferSlice<T, B>
 where
     B: BufferAccess,
+    T: Send + Sync + ?Sized,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -252,8 +253,9 @@ where
     }
 }
 
-unsafe impl<T: ?Sized, B> TypedBufferAccess for BufferSlice<T, B>
+unsafe impl<T, B> TypedBufferAccess for BufferSlice<T, B>
 where
+    T: ?Sized + Send + Sync,
     B: BufferAccess,
 {
     type Content = T;
@@ -283,6 +285,7 @@ impl<T, B> From<BufferSlice<T, B>> for BufferSlice<[T], B> {
 
 impl<T: ?Sized, B> PartialEq for BufferSlice<T, B>
 where
+    T: Send + Sync,
     B: BufferAccess,
 {
     #[inline]
@@ -291,10 +294,16 @@ where
     }
 }
 
-impl<T: ?Sized, B> Eq for BufferSlice<T, B> where B: BufferAccess {}
+impl<T: ?Sized, B> Eq for BufferSlice<T, B>
+where
+    B: BufferAccess,
+    T: Send + Sync,
+{
+}
 
 impl<T: ?Sized, B> Hash for BufferSlice<T, B>
 where
+    T: Send + Sync,
     B: BufferAccess,
 {
     #[inline]

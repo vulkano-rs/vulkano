@@ -12,6 +12,8 @@ use std::io::Cursor;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use vulkano::descriptor_set::layout::DescriptorSetLayout;
+use vulkano::descriptor_set::layout::DescriptorSetLayoutError;
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -20,6 +22,8 @@ use vulkano::image::{
     view::ImageView, ImageDimensions, ImageUsage, ImmutableImage, MipmapsCount, SwapchainImage,
 };
 use vulkano::instance::Instance;
+use vulkano::pipeline::layout::PipelineLayout;
+use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
@@ -39,7 +43,7 @@ fn main() {
     // `triangle` example if you haven't done so yet.
 
     let required_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, Version::V1_1, &required_extensions, None).unwrap();
+    let instance = Instance::new(None, Version::V1_2, &required_extensions, None).unwrap();
 
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
@@ -74,7 +78,14 @@ fn main() {
 
     let (device, mut queues) = Device::new(
         physical_device,
-        &Features::none(),
+        &Features {
+            descriptor_indexing: true,
+            shader_uniform_buffer_array_non_uniform_indexing: true,
+            runtime_descriptor_array: true,
+            descriptor_binding_variable_descriptor_count: true,
+            descriptor_binding_partially_bound: true,
+            ..Features::none()
+        },
         &physical_device
             .required_extensions()
             .union(&device_extensions),
@@ -103,8 +114,10 @@ fn main() {
     #[derive(Default, Debug, Clone)]
     struct Vertex {
         position: [f32; 2],
+        tex_i: u32,
+        coords: [f32; 2],
     }
-    vulkano::impl_vertex!(Vertex, position);
+    vulkano::impl_vertex!(Vertex, position, tex_i, coords);
 
     let vertex_buffer = CpuAccessibleBuffer::<[Vertex]>::from_iter(
         device.clone(),
@@ -112,16 +125,64 @@ fn main() {
         false,
         [
             Vertex {
-                position: [-0.5, -0.5],
+                position: [-0.1, -0.9],
+                tex_i: 0,
+                coords: [1.0, 0.0],
             },
             Vertex {
-                position: [-0.5, 0.5],
+                position: [-0.9, -0.9],
+                tex_i: 0,
+                coords: [0.0, 0.0],
             },
             Vertex {
-                position: [0.5, -0.5],
+                position: [-0.9, -0.1],
+                tex_i: 0,
+                coords: [0.0, 1.0],
             },
             Vertex {
-                position: [0.5, 0.5],
+                position: [-0.1, -0.9],
+                tex_i: 0,
+                coords: [1.0, 0.0],
+            },
+            Vertex {
+                position: [-0.9, -0.1],
+                tex_i: 0,
+                coords: [0.0, 1.0],
+            },
+            Vertex {
+                position: [-0.1, -0.1],
+                tex_i: 0,
+                coords: [1.0, 1.0],
+            },
+            Vertex {
+                position: [0.9, -0.9],
+                tex_i: 1,
+                coords: [1.0, 0.0],
+            },
+            Vertex {
+                position: [0.1, -0.9],
+                tex_i: 1,
+                coords: [0.0, 0.0],
+            },
+            Vertex {
+                position: [0.1, -0.1],
+                tex_i: 1,
+                coords: [0.0, 1.0],
+            },
+            Vertex {
+                position: [0.9, -0.9],
+                tex_i: 1,
+                coords: [1.0, 0.0],
+            },
+            Vertex {
+                position: [0.1, -0.1],
+                tex_i: 1,
+                coords: [0.0, 1.0],
+            },
+            Vertex {
+                position: [0.9, -0.1],
+                tex_i: 1,
+                coords: [1.0, 1.0],
             },
         ]
         .iter()
@@ -150,8 +211,8 @@ fn main() {
         .unwrap(),
     );
 
-    let (texture, tex_future) = {
-        let png_bytes = include_bytes!("image_img.png").to_vec();
+    let mascot_texture = {
+        let png_bytes = include_bytes!("rust_mascot.png").to_vec();
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
         let (info, mut reader) = decoder.read_info().unwrap();
@@ -164,15 +225,44 @@ fn main() {
         image_data.resize((info.width * info.height * 4) as usize, 0);
         reader.next_frame(&mut image_data).unwrap();
 
-        let (image, future) = ImmutableImage::from_iter(
+        let image = ImmutableImage::from_iter(
             image_data.iter().cloned(),
             dimensions,
             MipmapsCount::One,
             Format::R8G8B8A8_SRGB,
             queue.clone(),
         )
-        .unwrap();
-        (ImageView::new(image).unwrap(), future)
+        .unwrap()
+        .0;
+
+        ImageView::new(image).unwrap()
+    };
+
+    let vulkano_texture = {
+        let png_bytes = include_bytes!("vulkano_logo.png").to_vec();
+        let cursor = Cursor::new(png_bytes);
+        let decoder = png::Decoder::new(cursor);
+        let (info, mut reader) = decoder.read_info().unwrap();
+        let dimensions = ImageDimensions::Dim2d {
+            width: info.width,
+            height: info.height,
+            array_layers: 1,
+        };
+        let mut image_data = Vec::new();
+        image_data.resize((info.width * info.height * 4) as usize, 0);
+        reader.next_frame(&mut image_data).unwrap();
+
+        let image = ImmutableImage::from_iter(
+            image_data.iter().cloned(),
+            dimensions,
+            MipmapsCount::One,
+            Format::R8G8B8A8_SRGB,
+            queue.clone(),
+        )
+        .unwrap()
+        .0;
+
+        ImageView::new(image).unwrap()
     };
 
     let sampler = Sampler::new(
@@ -190,16 +280,49 @@ fn main() {
     )
     .unwrap();
 
+    let pipeline_layout = {
+        let mut descriptor_set_descs: Vec<_> = (&fs.main_entry_point() as &dyn EntryPointAbstract)
+            .descriptor_set_layout_descs()
+            .iter()
+            .cloned()
+            .collect();
+
+        // Set 0, Binding 0
+        descriptor_set_descs[0].set_variable_descriptor_count(0, 2);
+
+        let descriptor_set_layouts = descriptor_set_descs
+            .into_iter()
+            .map(|desc| {
+                Ok(Arc::new(DescriptorSetLayout::new(
+                    device.clone(),
+                    desc.clone(),
+                )?))
+            })
+            .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
+            .unwrap();
+
+        Arc::new(
+            PipelineLayout::new(
+                device.clone(),
+                descriptor_set_layouts,
+                (&fs.main_entry_point() as &dyn EntryPointAbstract)
+                    .push_constant_range()
+                    .iter()
+                    .cloned(),
+            )
+            .unwrap(),
+        )
+    };
+
     let pipeline = Arc::new(
         GraphicsPipeline::start()
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
-            .triangle_strip()
             .viewports_dynamic_scissors_irrelevant(1)
             .fragment_shader(fs.main_entry_point(), ())
             .blend_alpha_blending()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-            .build(device.clone())
+            .with_pipeline_layout(device.clone(), pipeline_layout)
             .unwrap(),
     );
 
@@ -207,14 +330,16 @@ fn main() {
     let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
     set_builder
-        .add_sampled_image(texture.clone(), sampler.clone())
+        .enter_array()
+        .unwrap()
+        .add_sampled_image(mascot_texture.clone(), sampler.clone())
+        .unwrap()
+        .add_sampled_image(vulkano_texture.clone(), sampler.clone())
+        .unwrap()
+        .leave_array()
         .unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
@@ -224,7 +349,8 @@ fn main() {
     let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(tex_future.boxed());
+    let mut previous_frame_end: Option<Box<dyn GpuFuture>> =
+        Some(Box::new(vulkano::sync::now(device.clone())));
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -354,15 +480,22 @@ fn window_size_dependent_setup(
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
+        vulkan_version: "1.2",
+        spirv_version: "1.5",
         src: "
 #version 450
 
 layout(location = 0) in vec2 position;
-layout(location = 0) out vec2 tex_coords;
+layout(location = 1) in uint tex_i;
+layout(location = 2) in vec2 coords;
+
+layout(location = 0) out flat uint out_tex_i;
+layout(location = 1) out vec2 out_coords;
 
 void main() {
     gl_Position = vec4(position, 0.0, 1.0);
-    tex_coords = position + vec2(0.5);
+    out_tex_i = tex_i;
+    out_coords = coords;
 }"
     }
 }
@@ -370,16 +503,22 @@ void main() {
 mod fs {
     vulkano_shaders::shader! {
         ty: "fragment",
+        vulkan_version: "1.2",
+        spirv_version: "1.5",
         src: "
 #version 450
 
-layout(location = 0) in vec2 tex_coords;
+#extension GL_EXT_nonuniform_qualifier : enable
+
+layout(location = 0) in flat uint tex_i;
+layout(location = 1) in vec2 coords;
+
 layout(location = 0) out vec4 f_color;
 
-layout(set = 0, binding = 0) uniform sampler2D tex;
+layout(set = 0, binding = 0) uniform sampler2D tex[];
 
 void main() {
-    f_color = texture(tex, tex_coords);
+    f_color = texture(tex[tex_i], coords);
 }"
     }
 }

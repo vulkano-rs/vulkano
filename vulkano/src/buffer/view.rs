@@ -58,10 +58,10 @@ use std::sync::Arc;
 /// `view` module.
 pub struct BufferView<B>
 where
-    B: BufferAccess,
+    B: BufferAccess + ?Sized,
 {
     handle: ash::vk::BufferView,
-    buffer: B,
+    buffer: Box<B>,
     atomic_accesses: bool,
 }
 
@@ -155,7 +155,7 @@ where
 
         Ok(BufferView {
             handle,
-            buffer: org_buffer,
+            buffer: Box::new(org_buffer),
             atomic_accesses: buffer_features.storage_texel_buffer_atomic,
         })
     }
@@ -221,7 +221,7 @@ where
 
 impl<B> Drop for BufferView<B>
 where
-    B: BufferAccess,
+    B: BufferAccess + ?Sized,
 {
     #[inline]
     fn drop(&mut self) {

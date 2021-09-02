@@ -368,6 +368,7 @@ where
 unsafe impl<T: ?Sized, A> BufferAccess for CpuAccessibleBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -484,6 +485,7 @@ where
 unsafe impl<T: ?Sized, A> TypedBufferAccess for CpuAccessibleBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     type Content = T;
 }
@@ -498,6 +500,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for CpuAccessibleBuffer<T, A> {
 impl<T: ?Sized, A> PartialEq for CpuAccessibleBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -505,11 +508,17 @@ where
     }
 }
 
-impl<T: ?Sized, A> Eq for CpuAccessibleBuffer<T, A> where T: 'static + Send + Sync {}
+impl<T: ?Sized, A> Eq for CpuAccessibleBuffer<T, A>
+where
+    T: 'static + Send + Sync,
+    A: Send + Sync,
+{
+}
 
 impl<T: ?Sized, A> Hash for CpuAccessibleBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {

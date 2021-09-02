@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::pipeline::input_assembly::PrimitiveTopology;
+use crate::pipeline::layout::PipelineLayoutCreationError;
 use crate::pipeline::layout::PipelineLayoutSupersetError;
 use crate::pipeline::shader::ShaderInterfaceMismatchError;
 use crate::pipeline::vertex::IncompatibleVertexDefinitionError;
@@ -22,6 +23,9 @@ use std::u32;
 pub enum GraphicsPipelineCreationError {
     /// Not enough memory.
     OomError(OomError),
+
+    /// Error while creating the pipeline layout object.
+    PipelineLayoutCreationError(PipelineLayoutCreationError),
 
     /// The pipeline layout is not compatible with what the shaders expect.
     IncompatiblePipelineLayout(PipelineLayoutSupersetError),
@@ -194,6 +198,7 @@ impl error::Error for GraphicsPipelineCreationError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match *self {
             GraphicsPipelineCreationError::OomError(ref err) => Some(err),
+            GraphicsPipelineCreationError::PipelineLayoutCreationError(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatiblePipelineLayout(ref err) => Some(err),
             GraphicsPipelineCreationError::ShaderStagesMismatch(ref err) => Some(err),
             GraphicsPipelineCreationError::IncompatibleVertexDefinition(ref err) => Some(err),
@@ -213,6 +218,9 @@ impl fmt::Display for GraphicsPipelineCreationError {
                 GraphicsPipelineCreationError::OomError(_) => "not enough memory available",
                 GraphicsPipelineCreationError::ShaderStagesMismatch(_) => {
                     "the output interface of one shader and the input interface of the next shader does not match"
+                }
+                GraphicsPipelineCreationError::PipelineLayoutCreationError(_) => {
+                    "error while creating the pipeline layout object"
                 }
                 GraphicsPipelineCreationError::IncompatiblePipelineLayout(_) => {
                     "the pipeline layout is not compatible with what the shaders expect"
@@ -347,6 +355,13 @@ impl From<OomError> for GraphicsPipelineCreationError {
     #[inline]
     fn from(err: OomError) -> GraphicsPipelineCreationError {
         GraphicsPipelineCreationError::OomError(err)
+    }
+}
+
+impl From<PipelineLayoutCreationError> for GraphicsPipelineCreationError {
+    #[inline]
+    fn from(err: PipelineLayoutCreationError) -> GraphicsPipelineCreationError {
+        GraphicsPipelineCreationError::PipelineLayoutCreationError(err)
     }
 }
 

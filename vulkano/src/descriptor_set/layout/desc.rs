@@ -187,6 +187,24 @@ impl DescriptorSetDesc {
         }
     }
 
+    pub fn set_variable_descriptor_count(&mut self, binding_num: u32, descriptor_count: u32) {
+        // TODO: Errors instead of panic
+
+        match self.descriptors.get_mut(binding_num as usize) {
+            Some(desc_op) => match desc_op.as_mut() {
+                Some(desc) => {
+                    if desc.variable_count {
+                        desc.descriptor_count = descriptor_count;
+                    } else {
+                        panic!("descriptor isn't variable count")
+                    }
+                }
+                None => panic!("descriptor is empty"),
+            },
+            None => panic!("descriptor doesn't exist"),
+        }
+    }
+
     /// Returns whether `self` is compatible with `other`.
     ///
     /// "Compatible" in this sense is defined by the Vulkan specification under the section
@@ -319,6 +337,9 @@ pub struct DescriptorDesc {
     /// Which shader stages are going to access this descriptor.
     pub stages: ShaderStages,
 
+    /// True if the descriptor has a variable descriptor count.
+    pub variable_count: bool,
+
     /// True if the attachment can be written by the shader.
     pub mutable: bool,
 }
@@ -332,8 +353,9 @@ impl DescriptorDesc {
     #[inline]
     pub fn is_compatible_with(&self, other: &DescriptorDesc) -> bool {
         self.ty.ty() == other.ty.ty()
-            && self.descriptor_count == other.descriptor_count
             && self.stages == other.stages
+            && self.descriptor_count == other.descriptor_count
+            && self.variable_count == other.variable_count
     }
 
     /// Checks whether the descriptor of a pipeline layout `self` is compatible with the descriptor
@@ -360,6 +382,13 @@ impl DescriptorDesc {
             return Err(DescriptorCompatibilityError::DescriptorCount {
                 first: self.descriptor_count,
                 second: other.descriptor_count,
+            });
+        }
+
+        if self.variable_count != other.variable_count {
+            return Err(DescriptorCompatibilityError::VariableCount {
+                first: self.variable_count,
+                second: other.variable_count,
             });
         }
 
@@ -396,6 +425,13 @@ impl DescriptorDesc {
             });
         }
 
+        if self.variable_count != other.variable_count {
+            return Err(DescriptorCompatibilityError::VariableCount {
+                first: self.variable_count,
+                second: other.variable_count,
+            });
+        }
+
         if self.mutable && !other.mutable {
             return Err(DescriptorCompatibilityError::Mutability {
                 first: self.mutable,
@@ -426,7 +462,7 @@ impl DescriptorDesc {
     ///  geometry: true,
     ///  fragment: false,
     ///  compute: true
-    ///}, mutable: true };
+    ///}, mutable: true, variable_count: false };
     ///
     ///let desc_part2 = DescriptorDesc{ ty: Sampler, descriptor_count: 1, stages: ShaderStages{
     ///  vertex: true,
@@ -435,7 +471,7 @@ impl DescriptorDesc {
     ///  geometry: false,
     ///  fragment: true,
     ///  compute: true
-    ///}, mutable: false };
+    ///}, mutable: false, variable_count: false };
     ///
     ///let desc_union = DescriptorDesc{ ty: Sampler, descriptor_count: 2, stages: ShaderStages{
     ///  vertex: true,
@@ -444,7 +480,7 @@ impl DescriptorDesc {
     ///  geometry: true,
     ///  fragment: true,
     ///  compute: true
-    ///}, mutable: true };
+    ///}, mutable: true, variable_count: false };
     ///
     ///assert_eq!(DescriptorDesc::union(Some(&desc_part1), Some(&desc_part2)), Ok(Some(desc_union)));
     ///```
@@ -463,6 +499,7 @@ impl DescriptorDesc {
                 descriptor_count: cmp::max(first.descriptor_count, second.descriptor_count),
                 stages: first.stages | second.stages,
                 mutable: first.mutable || second.mutable,
+                variable_count: first.variable_count && second.variable_count, // TODO: What is the correct behavior here?
             }))
         } else {
             Ok(first.or(second).cloned())
@@ -750,6 +787,12 @@ pub enum DescriptorCompatibilityError {
         second: u32,
     },
 
+    /// The variable counts of the descriptors is not compatible.
+    VariableCount {
+        first: bool,
+        second: bool,
+    },
+
     /// The presence or absence of a descriptor in a binding is not compatible.
     Empty {
         first: bool,
@@ -804,6 +847,9 @@ impl fmt::Display for DescriptorCompatibilityError {
             match *self {
                 DescriptorCompatibilityError::DescriptorCount { .. } => {
                     "the number of descriptors is not compatible"
+                }
+                DescriptorCompatibilityError::VariableCount { .. } => {
+                    "the variable counts of the descriptors is not compatible"
                 }
                 DescriptorCompatibilityError::Empty { .. } => {
                     "the presence or absence of a descriptor in a binding is not compatible"

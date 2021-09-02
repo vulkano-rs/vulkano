@@ -285,7 +285,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn bind_index_buffer<B>(&mut self, buffer: B, index_ty: IndexType)
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         struct Cmd<B> {
             buffer: B,
@@ -294,7 +294,7 @@ impl SyncCommandBufferBuilder {
 
         impl<B> Command for Cmd<B>
         where
-            B: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdBindIndexBuffer"
@@ -748,8 +748,8 @@ impl SyncCommandBufferBuilder {
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: BufferAccess + Send + Sync + 'static,
-        D: BufferAccess + Send + Sync + 'static,
+        S: BufferAccess + 'static,
+        D: BufferAccess + 'static,
         R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
@@ -760,8 +760,8 @@ impl SyncCommandBufferBuilder {
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
-            S: BufferAccess + Send + Sync + 'static,
-            D: BufferAccess + Send + Sync + 'static,
+            S: BufferAccess + 'static,
+            D: BufferAccess + 'static,
             R: IntoIterator<Item = (DeviceSize, DeviceSize, DeviceSize)>,
         {
             fn name(&self) -> &'static str {
@@ -857,7 +857,7 @@ impl SyncCommandBufferBuilder {
         regions: R,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        S: BufferAccess + Send + Sync + 'static,
+        S: BufferAccess + 'static,
         D: ImageAccess + Send + Sync + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
@@ -870,7 +870,7 @@ impl SyncCommandBufferBuilder {
 
         impl<S, D, R> Command for Cmd<S, D, R>
         where
-            S: BufferAccess + Send + Sync + 'static,
+            S: BufferAccess + 'static,
             D: ImageAccess + Send + Sync + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
         {
@@ -974,7 +974,7 @@ impl SyncCommandBufferBuilder {
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
         S: ImageAccess + Send + Sync + 'static,
-        D: BufferAccess + Send + Sync + 'static,
+        D: BufferAccess + 'static,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy> + Send + Sync + 'static,
     {
         struct Cmd<S, D, R> {
@@ -987,7 +987,7 @@ impl SyncCommandBufferBuilder {
         impl<S, D, R> Command for Cmd<S, D, R>
         where
             S: ImageAccess + Send + Sync + 'static,
-            D: BufferAccess + Send + Sync + 'static,
+            D: BufferAccess + 'static,
             R: IntoIterator<Item = UnsafeCommandBufferBuilderBufferImageCopy>,
         {
             fn name(&self) -> &'static str {
@@ -1346,7 +1346,7 @@ impl SyncCommandBufferBuilder {
         indirect_buffer: B,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         struct Cmd<B> {
             descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
@@ -1355,7 +1355,7 @@ impl SyncCommandBufferBuilder {
 
         impl<B> Command for Cmd<B>
         where
-            B: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdDispatchIndirect"
@@ -1782,7 +1782,7 @@ impl SyncCommandBufferBuilder {
         stride: u32,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         struct Cmd<B> {
             descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
@@ -1794,7 +1794,7 @@ impl SyncCommandBufferBuilder {
 
         impl<B> Command for Cmd<B>
         where
-            B: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdDrawIndirect"
@@ -1939,7 +1939,7 @@ impl SyncCommandBufferBuilder {
         stride: u32,
     ) -> Result<(), SyncCommandBufferBuilderError>
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         struct Cmd<B> {
             descriptor_sets: SmallVec<[Arc<dyn Command + Send + Sync>; 12]>,
@@ -1952,7 +1952,7 @@ impl SyncCommandBufferBuilder {
 
         impl<B> Command for Cmd<B>
         where
-            B: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdDrawIndexedIndirect"
@@ -2149,7 +2149,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn fill_buffer<B>(&mut self, buffer: B, data: u32)
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         struct Cmd<B> {
             buffer: B,
@@ -2158,7 +2158,7 @@ impl SyncCommandBufferBuilder {
 
         impl<B> Command for Cmd<B>
         where
-            B: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + 'static,
         {
             fn name(&self) -> &'static str {
                 "vkCmdFillBuffer"
@@ -2706,7 +2706,7 @@ impl SyncCommandBufferBuilder {
     #[inline]
     pub unsafe fn update_buffer<B, D, Dd>(&mut self, buffer: B, data: Dd)
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
         D: ?Sized,
         Dd: SafeDeref<Target = D> + Send + Sync + 'static,
     {
@@ -2717,7 +2717,7 @@ impl SyncCommandBufferBuilder {
 
         impl<B, D, Dd> Command for Cmd<B, Dd>
         where
-            B: BufferAccess + Send + Sync + 'static,
+            B: BufferAccess + 'static,
             D: ?Sized,
             Dd: SafeDeref<Target = D> + Send + Sync + 'static,
         {
@@ -3149,7 +3149,7 @@ impl<'b> SyncCommandBufferBuilderBindDescriptorSets<'b> {
 pub struct SyncCommandBufferBuilderBindVertexBuffer<'a> {
     builder: &'a mut SyncCommandBufferBuilder,
     inner: UnsafeCommandBufferBuilderBindVertexBuffer,
-    buffers: SmallVec<[Box<dyn BufferAccess + Send + Sync>; 4]>,
+    buffers: SmallVec<[Box<dyn BufferAccess>; 4]>,
 }
 
 impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
@@ -3157,7 +3157,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
     #[inline]
     pub fn add<B>(&mut self, buffer: B)
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         self.inner.add(&buffer);
         self.buffers.push(Box::new(buffer));
@@ -3168,7 +3168,7 @@ impl<'a> SyncCommandBufferBuilderBindVertexBuffer<'a> {
         struct Cmd {
             first_set: u32,
             inner: Mutex<Option<UnsafeCommandBufferBuilderBindVertexBuffer>>,
-            buffers: SmallVec<[Box<dyn BufferAccess + Send + Sync>; 4]>,
+            buffers: SmallVec<[Box<dyn BufferAccess>; 4]>,
         }
 
         impl Command for Cmd {
