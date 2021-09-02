@@ -113,7 +113,14 @@ fn main() {
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), None).unwrap()
+        ComputePipeline::new(
+            device.clone(),
+            &shader.main_entry_point(),
+            &(),
+            None,
+            |_| {},
+        )
+        .unwrap()
     });
 
     // We start by creating the buffer that will store the data.
@@ -144,15 +151,9 @@ fn main() {
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-    set_builder
-        .add_buffer(data_buffer.clone())
-        .unwrap();
+    set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     // In order to execute our operation, we have to build a command buffer.
     let mut builder = AutoCommandBufferBuilder::primary(

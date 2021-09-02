@@ -101,6 +101,7 @@ fn main() {
             &shader.main_entry_point(),
             &spec_consts,
             None,
+            |_| {},
         )
         .unwrap(),
     );
@@ -114,15 +115,9 @@ fn main() {
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-    set_builder
-        .add_buffer(data_buffer.clone())
-        .unwrap();
+    set_builder.add_buffer(data_buffer.clone()).unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),

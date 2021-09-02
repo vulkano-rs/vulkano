@@ -18,7 +18,6 @@ use crate::device::DeviceOwned;
 use crate::OomError;
 use crate::Version;
 use crate::VulkanObject;
-use smallvec::SmallVec;
 use std::mem::MaybeUninit;
 use std::ptr;
 use std::sync::Arc;
@@ -51,9 +50,10 @@ impl DescriptorSetLayout {
     {
         let desc = desc.into();
         let mut descriptors_count = DescriptorsCount::zero();
-        let mut variable_descriptor_count = false;
         let bindings = desc.bindings();
-        let mut bindings_vk: SmallVec<[_; 32]> = SmallVec::new();
+        let mut bindings_vk = Vec::with_capacity(bindings.len());
+        let mut binding_flags_vk = Vec::with_capacity(bindings.len());
+        let mut immutable_samplers_vk: Vec<Box<[ash::vk::Sampler]>> = Vec::new(); // only to keep the arrays of handles alive
 
         for (binding, desc) in bindings.iter().enumerate() {
             let desc = match desc {
@@ -66,6 +66,33 @@ impl DescriptorSetLayout {
 
             let ty = desc.ty.ty();
             descriptors_count.add_num(ty, desc.descriptor_count);
+            let mut binding_flags = ash::vk::DescriptorBindingFlags::empty();
+            let immutable_samplers = desc.ty.immutable_samplers();
+
+            let p_immutable_samplers = if !immutable_samplers.is_empty() {
+                if desc.descriptor_count != immutable_samplers.len() as u32 {
+                    return Err(DescriptorSetLayoutError::ImmutableSamplersCountMismatch {
+                        descriptor_count: desc.descriptor_count,
+                        sampler_count: immutable_samplers.len() as u32,
+                    });
+                }
+
+                // TODO: VUID-VkDescriptorSetLayoutBinding-pImmutableSamplers-04009
+                // The sampler objects indicated by pImmutableSamplers must not have a borderColor
+                // with one of the values VK_BORDER_COLOR_FLOAT_CUSTOM_EXT or
+                // VK_BORDER_COLOR_INT_CUSTOM_EXT
+
+                let sampler_handles = immutable_samplers
+                    .iter()
+                    .map(|s| s.internal_object())
+                    .collect::<Vec<_>>()
+                    .into_boxed_slice();
+                let p_immutable_samplers = sampler_handles.as_ptr();
+                immutable_samplers_vk.push(sampler_handles);
+                p_immutable_samplers
+            } else {
+                ptr::null()
+            };
 
             if desc.variable_count {
                 if binding != bindings.len() - 1 {
@@ -78,48 +105,16 @@ impl DescriptorSetLayout {
                     return Err(DescriptorSetLayoutError::VariableCountDescMustNotBeDynamic);
                 }
 
-                variable_descriptor_count = true;
-            }
-
-            bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
-                binding: binding as u32,
-                descriptor_type: ty.into(),
-                descriptor_count: desc.descriptor_count,
-                stage_flags: desc.stages.into(),
-                p_immutable_samplers: ptr::null(), // FIXME: not yet implemented
-            });
-        }
-
-        // Note that it seems legal to have no descriptor at all in the set.
-
-        let handle = unsafe {
-            if variable_descriptor_count {
-                let enabled_features = device.enabled_features();
-                let api_version = device.api_version();
-                let enabled_extensions = device.enabled_extensions();
-
-                if api_version.major < 1 {
-                    return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
-                        IncompatibleDevice::InsufficientApiVersion {
-                            required: Version::major_minor(1, 1),
-                            obtained: api_version,
-                        },
-                    ));
-                }
-
-                if api_version.minor < 2 && !enabled_extensions.ext_descriptor_indexing {
-                    return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
-                        IncompatibleDevice::MissingExtension(MissingExtension::DescriptorIndexing),
-                    ));
-                }
-
-                if !enabled_features.runtime_descriptor_array {
+                if !device.enabled_features().runtime_descriptor_array {
                     return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
                         IncompatibleDevice::MissingFeature(MissingFeature::RuntimeDescriptorArray),
                     ));
                 }
 
-                if !enabled_features.descriptor_binding_variable_descriptor_count {
+                if !device
+                    .enabled_features()
+                    .descriptor_binding_variable_descriptor_count
+                {
                     return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
                         IncompatibleDevice::MissingFeature(
                             MissingFeature::DescriptorBindingVariableDescriptorCount,
@@ -127,7 +122,7 @@ impl DescriptorSetLayout {
                     ));
                 }
 
-                if !enabled_features.descriptor_binding_partially_bound {
+                if !device.enabled_features().descriptor_binding_partially_bound {
                     return Err(DescriptorSetLayoutError::VariableCountIncompatibleDevice(
                         IncompatibleDevice::MissingFeature(
                             MissingFeature::DescriptorBindingPartiallyBound,
@@ -135,58 +130,60 @@ impl DescriptorSetLayout {
                     ));
                 }
 
-                let mut flags = vec![ash::vk::DescriptorBindingFlags::empty(); bindings_vk.len()];
-                *flags.last_mut().unwrap() =
-                    ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT
-                        | ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
-
-                let binding_flags = ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
-                    binding_count: bindings_vk.len() as u32,
-                    p_binding_flags: flags.as_ptr(),
-                    ..Default::default()
-                };
-
-                let infos = ash::vk::DescriptorSetLayoutCreateInfo {
-                    flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
-                    binding_count: bindings_vk.len() as u32,
-                    p_bindings: bindings_vk.as_ptr(),
-                    p_next: &binding_flags as *const _ as *const _,
-                    ..Default::default()
-                };
-
-                let mut output = MaybeUninit::uninit();
-                let fns = device.fns();
-
-                check_errors(fns.v1_0.create_descriptor_set_layout(
-                    device.internal_object(),
-                    &infos,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                ))
-                .map_err(|e| OomError::from(e))?;
-
-                output.assume_init()
-            } else {
-                let infos = ash::vk::DescriptorSetLayoutCreateInfo {
-                    flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
-                    binding_count: bindings_vk.len() as u32,
-                    p_bindings: bindings_vk.as_ptr(),
-                    ..Default::default()
-                };
-
-                let mut output = MaybeUninit::uninit();
-                let fns = device.fns();
-
-                check_errors(fns.v1_0.create_descriptor_set_layout(
-                    device.internal_object(),
-                    &infos,
-                    ptr::null(),
-                    output.as_mut_ptr(),
-                ))
-                .map_err(|e| OomError::from(e))?;
-
-                output.assume_init()
+                // TODO: should these be settable separately by the user?
+                binding_flags |= ash::vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
+                binding_flags |= ash::vk::DescriptorBindingFlags::PARTIALLY_BOUND;
             }
+
+            bindings_vk.push(ash::vk::DescriptorSetLayoutBinding {
+                binding: binding as u32,
+                descriptor_type: ty.into(),
+                descriptor_count: desc.descriptor_count,
+                stage_flags: desc.stages.into(),
+                p_immutable_samplers,
+            });
+            binding_flags_vk.push(binding_flags);
+        }
+
+        // Note that it seems legal to have no descriptor at all in the set.
+
+        let handle = unsafe {
+            let binding_flags_infos = if device.api_version() >= Version::V1_2
+                || device.enabled_extensions().ext_descriptor_indexing
+            {
+                Some(ash::vk::DescriptorSetLayoutBindingFlagsCreateInfo {
+                    binding_count: binding_flags_vk.len() as u32,
+                    p_binding_flags: binding_flags_vk.as_ptr(),
+                    ..Default::default()
+                })
+            } else {
+                None
+            };
+
+            let infos = ash::vk::DescriptorSetLayoutCreateInfo {
+                flags: ash::vk::DescriptorSetLayoutCreateFlags::empty(),
+                binding_count: bindings_vk.len() as u32,
+                p_bindings: bindings_vk.as_ptr(),
+                p_next: if let Some(next) = binding_flags_infos.as_ref() {
+                    next as *const _ as *const _
+                } else {
+                    ptr::null()
+                },
+                ..Default::default()
+            };
+
+            let mut output = MaybeUninit::uninit();
+            let fns = device.fns();
+
+            check_errors(fns.v1_0.create_descriptor_set_layout(
+                device.internal_object(),
+                &infos,
+                ptr::null(),
+                output.as_mut_ptr(),
+            ))
+            .map_err(|e| OomError::from(e))?;
+
+            output.assume_init()
         };
 
         Ok(DescriptorSetLayout {
@@ -283,6 +280,12 @@ pub enum DescriptorSetLayoutError {
     /// Out of Memory
     OomError(OomError),
 
+    /// The number of immutable samplers does not match the descriptor count.
+    ImmutableSamplersCountMismatch {
+        descriptor_count: u32,
+        sampler_count: u32,
+    },
+
     /// Variable count descriptor must be last binding
     VariableCountDescMustBeLast,
 
@@ -337,6 +340,8 @@ impl std::fmt::Display for DescriptorSetLayoutError {
             "{}",
             match *self {
                 Self::OomError(_) => "out of memory",
+                Self::ImmutableSamplersCountMismatch { .. } =>
+                    "the number of immutable samplers does not match the descriptor count",
                 Self::VariableCountDescMustBeLast =>
                     "variable count descriptor must be last binding",
                 Self::VariableCountDescMustNotBeDynamic =>

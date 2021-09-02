@@ -90,7 +90,14 @@ void main() {
             }
         }
         let shader = cs::Shader::load(device.clone()).unwrap();
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), None).unwrap()
+        ComputePipeline::new(
+            device.clone(),
+            &shader.main_entry_point(),
+            &(),
+            None,
+            |_| {},
+        )
+        .unwrap()
     });
 
     let data_buffer = {
@@ -148,11 +155,7 @@ void main() {
         .add_buffer(immutable_data_buffer.clone())
         .unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),

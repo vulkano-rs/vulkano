@@ -139,18 +139,20 @@ where
         self,
         device: Arc<Device>,
     ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
-        self.with_auto_layout(device, &[])
+        self.with_auto_layout(device, |_| {})
     }
 
-    /// Builds the graphics pipeline, using an inferred pipeline layout with some dynamic buffers.
-    ///
-    /// Configures the inferred layout for each descriptor `(set, binding)` in `dynamic_buffers` to accept dynamic
-    /// buffers.
-    pub fn with_auto_layout(
+    /// The same as `new`, but allows you to provide a closure that is given a mutable reference to
+    /// the inferred descriptor set definitions. This can be used to make changes to the layout
+    /// before it's created, for example to add dynamic buffers or immutable samplers.
+    pub fn with_auto_layout<F>(
         self,
         device: Arc<Device>,
-        dynamic_buffers: &[(usize, usize)],
-    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
+        func: F,
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError>
+    where
+        F: FnOnce(&mut [DescriptorSetDesc]),
+    {
         let (descriptor_set_layout_descs, push_constant_ranges) = {
             let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
@@ -178,10 +180,7 @@ where
                     DescriptorSetDesc::union_multiple(&total, shader.descriptor_set_layout_descs())
                 })
                 .expect("Can't be union'd");
-            DescriptorSetDesc::tweak_multiple(
-                &mut descriptor_set_layout_descs,
-                dynamic_buffers.into_iter().cloned(),
-            );
+            func(&mut descriptor_set_layout_descs);
 
             // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
             // e.g. The range [0, 16) is either made available to Vertex | Fragment or we only make [0, 16) available to

@@ -712,7 +712,9 @@ mod tests {
                 DescriptorSetLayout::new(
                     device.clone(),
                     [Some(DescriptorDesc {
-                        ty: DescriptorDescTy::Sampler,
+                        ty: DescriptorDescTy::Sampler {
+                            immutable_samplers: vec![],
+                        },
                         descriptor_count: 1,
                         stages: ShaderStages::all(),
                         mutable: false,
