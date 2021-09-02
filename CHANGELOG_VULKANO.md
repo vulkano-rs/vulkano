@@ -29,6 +29,11 @@
 - **BREAKING** `PipelineLayoutCreationError` additional variant `SetLayoutError`.
 - **BREAKING** `FixedSizeDescriptorSetsPool` has been replaced by `SingleLayoutDescSetPool`.
 - **BREAKING** Set builders now return `&mut Self` instead of `Self` & methods take values wrapped in an `Arc`.
+- **Breaking** Changes to `Format`:
+  - `Format` variants are now all uppercase with underscores. This avoids interpretation problems where the underscore is significant for the meaning.
+  - The `ty` method and the `FormatTy` enum are removed. They are replaced with the `NumericType` enum, which concerns itself only with the numeric representation and not with other properties. There are now three `type_*` methods to retrieve it, for colour, depth and stencil respectively.
+  - The `planes` method now returns a slice containing the equivalent single-plane formats of each plane.
+- **Breaking** The `ImageAccess` trait no longer has the `has_color`, `has_depth` and `has_stencil` methods. This information can be queried using the `aspects` or `type_*` methods of `Format`.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
@@ -43,6 +48,12 @@
 - Added support for `u8` index buffers with the `ext_index_buffer_uint8` extension.
 - Descriptor sets now support variable count descriptors.
     - e.g. `layout(set = 0, binding = 0) uniform sampler2D textures[];`
+- Non-breaking `Format` additions:
+  - Formats and their metadata are now auto-generated from vk.xml. This significantly expands the support for YCbCr formats in particular.
+  - The `compatibility` method returns an object that can be used to check the compatibility of two formats, explained [here](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#formats-compatibility-classes).
+  - The `components` method returns the number of bits in each colour component.
+  - The `compression` method returns the compression scheme as a new enum, `CompressionType`.
+  - The `requires_sampler_ycbcr_conversion` method returns whether the "sampler YCbCr conversion" must be enabled on an image view and sampler in order to use this format.
 
 # Version 0.25.0 (2021-08-10)
 
