@@ -29,6 +29,7 @@ use crate::pipeline::graphics_pipeline::GraphicsPipelineCreationError;
 use crate::pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::layout::PipelineLayoutCreationError;
 use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::pipeline::raster::CullMode;
 use crate::pipeline::raster::DepthBiasControl;
@@ -47,7 +48,6 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::viewport::ViewportsState;
 use crate::render_pass::Subpass;
-use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::collections::hash_map::{Entry, HashMap};
@@ -214,7 +214,7 @@ where
         let descriptor_set_layouts = descriptor_set_layout_descs
             .into_iter()
             .map(|desc| Ok(Arc::new(DescriptorSetLayout::new(device.clone(), desc)?)))
-            .collect::<Result<Vec<_>, OomError>>()?;
+            .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
         let pipeline_layout = Arc::new(
             PipelineLayout::new(device.clone(), descriptor_set_layouts, push_constant_ranges)
                 .unwrap(),

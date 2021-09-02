@@ -12,6 +12,7 @@ use crate::check_errors;
 use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorSetLayoutError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
@@ -283,6 +284,8 @@ pub enum PipelineLayoutCreationError {
         first_range: PipelineLayoutPcRange,
         second_range: PipelineLayoutPcRange,
     },
+    /// One of the set layouts has an error.
+    SetLayoutError(DescriptorSetLayoutError),
 }
 
 impl error::Error for PipelineLayoutCreationError {
@@ -291,6 +294,7 @@ impl error::Error for PipelineLayoutCreationError {
         match *self {
             PipelineLayoutCreationError::OomError(ref err) => Some(err),
             PipelineLayoutCreationError::LimitsError(ref err) => Some(err),
+            PipelineLayoutCreationError::SetLayoutError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -313,6 +317,9 @@ impl fmt::Display for PipelineLayoutCreationError {
                 PipelineLayoutCreationError::PushConstantsConflict { .. } => {
                     "conflict between different push constants ranges"
                 }
+                PipelineLayoutCreationError::SetLayoutError(_) => {
+                    "one of the sets has an error"
+                }
             }
         )
     }
@@ -329,6 +336,13 @@ impl From<PipelineLayoutLimitsError> for PipelineLayoutCreationError {
     #[inline]
     fn from(err: PipelineLayoutLimitsError) -> PipelineLayoutCreationError {
         PipelineLayoutCreationError::LimitsError(err)
+    }
+}
+
+impl From<DescriptorSetLayoutError> for PipelineLayoutCreationError {
+    #[inline]
+    fn from(err: DescriptorSetLayoutError) -> PipelineLayoutCreationError {
+        PipelineLayoutCreationError::SetLayoutError(err)
     }
 }
 

@@ -110,15 +110,12 @@ impl AmbientLightingSystem {
     ///   result of the deferred pass.
     /// - `ambient_color` is the color to apply.
     ///
-    pub fn draw<C>(
+    pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: C,
+        color_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         ambient_color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer
-    where
-        C: ImageViewAbstract + Send + Sync + 'static,
-    {
+    ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::ty::PushConstants {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
@@ -129,9 +126,13 @@ impl AmbientLightingSystem {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let descriptor_set = PersistentDescriptorSet::start(layout.clone())
+        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        descriptor_set_builder
             .add_image(color_input)
-            .unwrap()
+            .unwrap();
+
+        let descriptor_set = descriptor_set_builder
             .build()
             .unwrap();
 

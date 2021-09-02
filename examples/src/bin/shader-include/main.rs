@@ -100,14 +100,20 @@ fn main() {
         CpuAccessibleBuffer::from_iter(device.clone(), BufferUsage::all(), false, data_iter)
             .unwrap()
     };
+
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+    set_builder
+        .add_buffer(data_buffer.clone())
+        .unwrap();
+
     let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_buffer(data_buffer.clone())
-            .unwrap()
+        set_builder
             .build()
-            .unwrap(),
+            .unwrap()
     );
+
     let mut builder = AutoCommandBufferBuilder::primary(
         device.clone(),
         queue.family(),

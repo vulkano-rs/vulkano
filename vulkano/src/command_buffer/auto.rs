@@ -1606,7 +1606,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn fill_buffer<B>(&mut self, buffer: B, data: u32) -> Result<&mut Self, FillBufferError>
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;

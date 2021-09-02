@@ -5,5 +5,6 @@ examples/**/triangle.png
 examples/**/mandelbrot.png
 examples/**/multiview1.png
 examples/**/multiview2.png
+examples/**/pipeline_cache.bin
 .idea
 *.swp

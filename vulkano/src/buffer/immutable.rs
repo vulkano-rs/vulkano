@@ -353,7 +353,11 @@ impl<T: ?Sized, A> ImmutableBuffer<T, A> {
     }
 }
 
-unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
+unsafe impl<T, A> BufferAccess for ImmutableBuffer<T, A>
+where
+    T: Send + Sync + ?Sized,
+    A: Send + Sync,
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         BufferInner {
@@ -392,7 +396,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBuffer<T, A> {
     unsafe fn unlock(&self) {}
 }
 
-unsafe impl<T: ?Sized, A> TypedBufferAccess for ImmutableBuffer<T, A> {
+unsafe impl<T, A> TypedBufferAccess for ImmutableBuffer<T, A>
+where
+    T: Send + Sync + ?Sized,
+    A: Send + Sync,
+{
     type Content = T;
 }
 
@@ -403,16 +411,29 @@ unsafe impl<T: ?Sized, A> DeviceOwned for ImmutableBuffer<T, A> {
     }
 }
 
-impl<T: ?Sized, A> PartialEq for ImmutableBuffer<T, A> {
+impl<T: ?Sized, A> PartialEq for ImmutableBuffer<T, A>
+where
+    T: Send + Sync,
+    A: Send + Sync,
+{
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl<T: ?Sized, A> Eq for ImmutableBuffer<T, A> {}
+impl<T: ?Sized, A> Eq for ImmutableBuffer<T, A>
+where
+    T: Send + Sync,
+    A: Send + Sync,
+{
+}
 
-impl<T: ?Sized, A> Hash for ImmutableBuffer<T, A> {
+impl<T: ?Sized, A> Hash for ImmutableBuffer<T, A>
+where
+    T: Send + Sync,
+    A: Send + Sync,
+{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);
@@ -430,7 +451,11 @@ pub struct ImmutableBufferInitialization<
     used: Arc<AtomicBool>,
 }
 
-unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
+unsafe impl<T, A> BufferAccess for ImmutableBufferInitialization<T, A>
+where
+    T: Send + Sync + ?Sized,
+    A: Send + Sync,
+{
     #[inline]
     fn inner(&self) -> BufferInner {
         self.buffer.inner()
@@ -474,7 +499,11 @@ unsafe impl<T: ?Sized, A> BufferAccess for ImmutableBufferInitialization<T, A> {
     }
 }
 
-unsafe impl<T: ?Sized, A> TypedBufferAccess for ImmutableBufferInitialization<T, A> {
+unsafe impl<T, A> TypedBufferAccess for ImmutableBufferInitialization<T, A>
+where
+    T: Send + Sync + ?Sized,
+    A: Send + Sync,
+{
     type Content = T;
 }
 
@@ -495,16 +524,29 @@ impl<T: ?Sized, A> Clone for ImmutableBufferInitialization<T, A> {
     }
 }
 
-impl<T: ?Sized, A> PartialEq for ImmutableBufferInitialization<T, A> {
+impl<T: ?Sized, A> PartialEq for ImmutableBufferInitialization<T, A>
+where
+    T: Send + Sync,
+    A: Send + Sync,
+{
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl<T: ?Sized, A> Eq for ImmutableBufferInitialization<T, A> {}
+impl<T: ?Sized, A> Eq for ImmutableBufferInitialization<T, A>
+where
+    T: Send + Sync,
+    A: Send + Sync,
+{
+}
 
-impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A> {
+impl<T: ?Sized, A> Hash for ImmutableBufferInitialization<T, A>
+where
+    T: Send + Sync,
+    A: Send + Sync,
+{
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

@@ -620,7 +620,9 @@ where
 
 unsafe impl<T, A> BufferAccess for CpuBufferPoolChunk<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -731,7 +733,9 @@ where
 
 unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolChunk<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     type Content = [T];
 }
@@ -748,7 +752,9 @@ where
 
 impl<T, A> PartialEq for CpuBufferPoolChunk<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -756,11 +762,19 @@ where
     }
 }
 
-impl<T, A> Eq for CpuBufferPoolChunk<T, A> where A: MemoryPool {}
+impl<T, A> Eq for CpuBufferPoolChunk<T, A>
+where
+    T: Send + Sync,
+    A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
+{
+}
 
 impl<T, A> Hash for CpuBufferPoolChunk<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -782,7 +796,9 @@ where
 
 unsafe impl<T, A> BufferAccess for CpuBufferPoolSubbuffer<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -817,7 +833,9 @@ where
 
 unsafe impl<T, A> TypedBufferAccess for CpuBufferPoolSubbuffer<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     type Content = T;
 }
@@ -834,7 +852,9 @@ where
 
 impl<T, A> PartialEq for CpuBufferPoolSubbuffer<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -842,11 +862,19 @@ where
     }
 }
 
-impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A> where A: MemoryPool {}
+impl<T, A> Eq for CpuBufferPoolSubbuffer<T, A>
+where
+    T: Send + Sync,
+    A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
+{
+}
 
 impl<T, A> Hash for CpuBufferPoolSubbuffer<T, A>
 where
+    T: Send + Sync,
     A: MemoryPool,
+    <A as MemoryPool>::Alloc: Send + Sync,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {

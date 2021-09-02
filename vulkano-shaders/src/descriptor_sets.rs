@@ -20,6 +20,7 @@ struct Descriptor {
     binding: u32,
     desc_ty: TokenStream,
     descriptor_count: u64,
+    variable_count: bool,
     mutable: bool,
 }
 
@@ -53,11 +54,13 @@ pub(super) fn write_descriptor_set_layout_descs(
                             let desc_ty = &d.desc_ty;
                             let descriptor_count = d.descriptor_count as u32;
                             let mutable = d.mutable;
+                            let variable_count = d.variable_count;
                             quote! {
                                 Some(DescriptorDesc {
                                     ty: #desc_ty,
                                     descriptor_count: #descriptor_count,
                                     stages: #stages,
+                                    variable_count: #variable_count,
                                     mutable: #mutable,
                                 }),
                             }
@@ -177,7 +180,7 @@ fn find_descriptors(
             .is_some();
 
         // Find information about the kind of binding for this descriptor.
-        let (desc_ty, mutable, descriptor_count) =
+        let (desc_ty, mutable, descriptor_count, variable_count) =
             descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
                 "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
                 name, pointed_ty
@@ -188,6 +191,7 @@ fn find_descriptors(
             binding,
             descriptor_count,
             mutable: !nonwritable && mutable,
+            variable_count: variable_count,
         });
     }
 
@@ -372,7 +376,7 @@ fn descriptor_infos(
     pointed_ty: u32,
     pointer_storage: StorageClass,
     force_combined_image_sampled: bool,
-) -> Option<(TokenStream, bool, u64)> {
+) -> Option<(TokenStream, bool, u64, bool)> {
     doc.instructions
         .iter()
         .filter_map(|i| {
@@ -401,8 +405,8 @@ fn descriptor_infos(
                         // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
                         (quote! { DescriptorDescTy::UniformBuffer }, false) // Uniforms are never mutable.
                     };
-                    
-                    Some((ty, mutable, 1))
+
+                    Some((ty, mutable, 1, false))
                 }
                 &Instruction::TypeImage {
                     result_id,
@@ -442,7 +446,7 @@ fn descriptor_infos(
                                 }
                             };
 
-                            Some((desc, true, 1)) // Never writable.
+                            Some((desc, true, 1, false)) // Never writable.
                         }
                         Dim::DimBuffer => {
                             let (ty, mutable) = if sampled {
@@ -459,8 +463,7 @@ fn descriptor_infos(
                                 }
                             };
 
-                            Some((desc, mutable, 1))
-                            
+                            Some((desc, mutable, 1, false))
                         }
                         _ => {
                             let (ty, mutable) = if force_combined_image_sampled {
@@ -498,7 +501,7 @@ fn descriptor_infos(
                                 })
                             };
 
-                            Some((desc, mutable, 1))
+                            Some((desc, mutable, 1, false))
                         }
                     }
                 }
@@ -512,19 +515,20 @@ fn descriptor_infos(
 
                 &Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
                     let desc = quote! { DescriptorDescTy::Sampler };
-                    Some((desc, false, 1))
+                    Some((desc, false, 1, false))
                 }
                 &Instruction::TypeArray {
                     result_id,
                     type_id,
                     length_id,
                 } if result_id == pointed_ty => {
-                    let (desc, mutable, arr) =
+                    let (desc, mutable, arr, variable_count) =
                         match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
                             None => return None,
                             Some(v) => v,
                         };
                     assert_eq!(arr, 1); // TODO: implement?
+                    assert!(!variable_count); // TODO: Is this even a thing?
                     let len = doc
                         .instructions
                         .iter()
@@ -539,8 +543,25 @@ fn descriptor_infos(
                         .next()
                         .expect("failed to find array length");
                     let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
-                    Some((desc, mutable, len))
+                    
+                    Some((desc, mutable, len, false))
                 }
+
+                &Instruction::TypeRuntimeArray {
+                    result_id,
+                    type_id,
+                } if result_id == pointed_ty => {
+                    let (desc, mutable, arr, variable_count) =
+                        match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
+                            None => return None,
+                            Some(v) => v,
+                        };
+                    assert_eq!(arr, 1); // TODO: implement?
+                    assert!(!variable_count); // TODO: Don't think this is possible?
+
+                    Some((desc, mutable, 1, true))
+                }
+
                 _ => None, // TODO: other types
             }
         })

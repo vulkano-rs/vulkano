@@ -28,7 +28,7 @@ use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use vulkano::OomError;
+use vulkano::descriptor_set::layout::DescriptorSetLayoutError;
 use vulkano::Version;
 
 fn main() {
@@ -130,7 +130,7 @@ fn main() {
                             desc.clone(),
                         )?))
                     })
-                    .collect::<Result<Vec<_>, OomError>>()
+                    .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
                     .unwrap();
 
                 Arc::new(
@@ -199,14 +199,18 @@ fn main() {
     .unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+    set_builder
+        .add_buffer(input_buffer.clone())
+        .unwrap()
+        .add_buffer(output_buffer.clone())
+        .unwrap();
+
     let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_buffer(input_buffer.clone())
-            .unwrap()
-            .add_buffer(output_buffer.clone())
-            .unwrap()
+        set_builder
             .build()
-            .unwrap(),
+            .unwrap()
     );
 
     // Build the command buffer, using different offsets for each call.
