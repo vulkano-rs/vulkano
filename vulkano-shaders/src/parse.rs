@@ -8,7 +8,7 @@
 // according to those terms.
 
 use num_traits::FromPrimitive;
-use spirv_headers::{
+use spirv::{
     AccessQualifier, AddressingModel, Capability, Decoration, Dim, ExecutionMode, ExecutionModel,
     ImageFormat, MemoryModel, Op, StorageClass,
 };

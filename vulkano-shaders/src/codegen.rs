@@ -18,7 +18,7 @@ use crate::TypesMeta;
 use proc_macro2::{Span, TokenStream};
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
-use spirv_headers::{Capability, StorageClass};
+use spirv::{Capability, StorageClass};
 use std::iter::Iterator;
 use std::path::Path;
 use std::{
@@ -463,15 +463,15 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
             DeviceRequirement::Feature("shader_buffer_float16_atomic_add"),
             DeviceRequirement::Feature("shader_shared_float16_atomic_add"),
         ], */
-        /* Capability::AtomicFloat32AddEXT => &[
+        Capability::AtomicFloat32AddEXT => &[
             DeviceRequirement::Feature("shader_buffer_float32_atomic_add"),
             DeviceRequirement::Feature("shader_shared_float32_atomic_add"),
             DeviceRequirement::Feature("shader_image_float32_atomic_add"),
-        ], */
-        /* Capability::AtomicFloat64AddEXT => &[
+        ],
+        Capability::AtomicFloat64AddEXT => &[
             DeviceRequirement::Feature("shader_buffer_float64_atomic_add"),
             DeviceRequirement::Feature("shader_shared_float64_atomic_add"),
-        ], */
+        ],
         /* Capability::AtomicFloat16MinMaxEXT => &[
             DeviceRequirement::Feature("shader_buffer_float16_atomic_min_max"),
             DeviceRequirement::Feature("shader_shared_float16_atomic_min_max"),
@@ -485,7 +485,7 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
             DeviceRequirement::Feature("shader_buffer_float64_atomic_min_max"),
             DeviceRequirement::Feature("shader_shared_float64_atomic_min_max"),
         ], */
-        // Capability::Int64ImageEXT => &[DeviceRequirement::Feature("shader_image_int64_atomics")],
+        Capability::Int64ImageEXT => &[DeviceRequirement::Feature("shader_image_int64_atomics")],
         Capability::Int16 => &[DeviceRequirement::Feature("shader_int16")],
         Capability::TessellationPointSize => &[DeviceRequirement::Feature(
             "shader_tessellation_and_geometry_point_size",
@@ -667,11 +667,11 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
         }
         Capability::ImageFootprintNV => &[DeviceRequirement::Feature("image_footprint")],
         Capability::MeshShadingNV => &[DeviceRequirement::Extension("nv_mesh_shader")],
-        Capability::RayTracingProvisionalKHR => {
+        Capability::RayTracingKHR | Capability::RayTracingProvisionalKHR => {
             &[DeviceRequirement::Feature("ray_tracing_pipeline")]
         }
-        Capability::RayQueryProvisionalKHR => &[DeviceRequirement::Feature("ray_query")],
-        Capability::RayTraversalPrimitiveCullingProvisionalKHR => &[DeviceRequirement::Feature(
+        Capability::RayQueryKHR | Capability::RayQueryProvisionalKHR => &[DeviceRequirement::Feature("ray_query")],
+        Capability::RayTraversalPrimitiveCullingKHR => &[DeviceRequirement::Feature(
             "ray_traversal_primitive_culling",
         )],
         Capability::RayTracingNV => &[DeviceRequirement::Extension("nv_ray_tracing")],
@@ -703,7 +703,11 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
         Capability::DemoteToHelperInvocationEXT => &[DeviceRequirement::Feature(
             "shader_demote_to_helper_invocation",
         )],
-        // Capability::FragmentShadingRateKHR => &[DeviceRequirement::Feature("pipeline_fragment_shading_rate"), DeviceRequirement::Feature("primitive_fragment_shading_rate"), DeviceRequirement::Feature("attachment_fragment_shading_rate")],
+        Capability::FragmentShadingRateKHR => &[
+            DeviceRequirement::Feature("pipeline_fragment_shading_rate"),
+            DeviceRequirement::Feature("primitive_fragment_shading_rate"),
+            DeviceRequirement::Feature("attachment_fragment_shading_rate"),
+        ],
         // Capability::WorkgroupMemoryExplicitLayoutKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout")],
         // Capability::WorkgroupMemoryExplicitLayout8BitAccessKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout8_bit_access")],
         // Capability::WorkgroupMemoryExplicitLayout16BitAccessKHR => &[DeviceRequirement::Feature("workgroup_memory_explicit_layout16_bit_access")],
@@ -723,20 +727,29 @@ fn capability_requirement(cap: &Capability) -> &'static [DeviceRequirement] {
         Capability::ImageRect => panic!(),        // not supported
         Capability::SampledRect => panic!(),      // not supported
         Capability::GenericPointer => panic!(),   // not supported
-        Capability::SubgroupDispatch => panic!(), // not supported,
-        Capability::NamedBarrier => panic!(),     // not supported,
-        Capability::PipeStorage => panic!(),      // not supported,
-        Capability::AtomicStorageOps => panic!(), // not supported,
-        Capability::Float16ImageAMD => panic!(),  // not supported,
-        Capability::ShaderStereoViewNV => panic!(), // not supported,
-        Capability::FragmentFullyCoveredEXT => panic!(), // not supported,
-        Capability::SubgroupShuffleINTEL => panic!(), // not supported,
-        Capability::SubgroupBufferBlockIOINTEL => panic!(), // not supported,
-        Capability::SubgroupImageBlockIOINTEL => panic!(), // not supported,
-        Capability::SubgroupImageMediaBlockIOINTEL => panic!(), // not supported,
-        Capability::SubgroupAvcMotionEstimationINTEL => panic!(), // not supported,
-        Capability::SubgroupAvcMotionEstimationIntraINTEL => panic!(), // not supported,
-        Capability::SubgroupAvcMotionEstimationChromaINTEL => panic!(), // not supported,
+        Capability::SubgroupDispatch => panic!(), // not supported
+        Capability::NamedBarrier => panic!(),     // not supported
+        Capability::PipeStorage => panic!(),      // not supported
+        Capability::AtomicStorageOps => panic!(), // not supported
+        Capability::Float16ImageAMD => panic!(),  // not supported
+        Capability::ShaderStereoViewNV => panic!(), // not supported
+        Capability::FragmentFullyCoveredEXT => panic!(), // not supported
+        Capability::SubgroupShuffleINTEL => panic!(), // not supported
+        Capability::SubgroupBufferBlockIOINTEL => panic!(), // not supported
+        Capability::SubgroupImageBlockIOINTEL => panic!(), // not supported
+        Capability::SubgroupImageMediaBlockIOINTEL => panic!(), // not supported
+        Capability::SubgroupAvcMotionEstimationINTEL => panic!(), // not supported
+        Capability::SubgroupAvcMotionEstimationIntraINTEL => panic!(), // not supported
+        Capability::SubgroupAvcMotionEstimationChromaINTEL => panic!(), // not supported
+        Capability::FunctionPointersINTEL => panic!(), // not supported
+        Capability::IndirectReferencesINTEL => panic!(), // not supported
+        Capability::FPGAKernelAttributesINTEL => panic!(), // not supported
+        Capability::FPGALoopControlsINTEL => panic!(), // not supported
+        Capability::FPGAMemoryAttributesINTEL => panic!(), // not supported
+        Capability::FPGARegINTEL => panic!(), // not supported
+        Capability::UnstructuredLoopControlsINTEL => panic!(), // not supported
+        Capability::KernelAttributesINTEL => panic!(), // not supported
+        Capability::BlockingPipesINTEL => panic!(), // not supported
     }
 }
 
@@ -765,6 +778,7 @@ fn storage_class_requirement(storage_class: &StorageClass) -> &'static [DeviceRe
         StorageClass::IncomingRayPayloadNV => todo!(),
         StorageClass::ShaderRecordBufferNV => todo!(),
         StorageClass::PhysicalStorageBuffer => todo!(),
+        StorageClass::CodeSectionINTEL => todo!(),
     }
 }
 

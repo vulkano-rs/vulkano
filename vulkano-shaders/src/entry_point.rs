@@ -11,7 +11,7 @@ use crate::descriptor_sets::{write_descriptor_set_layout_descs, write_push_const
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::{Span, TokenStream};
-use spirv_headers::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
+use spirv::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use syn::Ident;
 
 pub(super) fn write_entry_point(
