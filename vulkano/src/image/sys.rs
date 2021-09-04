@@ -15,6 +15,7 @@
 
 use crate::check_errors;
 use crate::device::Device;
+use crate::format::CompressionType;
 use crate::format::Format;
 use crate::format::FormatFeatures;
 use crate::format::NumericType;
@@ -136,11 +137,7 @@ impl UnsafeImage {
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError> {
         // TODO: doesn't check that the proper features are enabled
 
-        if flags.sparse_binding
-            || flags.sparse_residency
-            || flags.sparse_aliased
-            || flags.mutable_format
-        {
+        if flags.sparse_binding || flags.sparse_residency || flags.sparse_aliased {
             unimplemented!();
         }
 
@@ -417,11 +414,35 @@ impl UnsafeImage {
             }
         }
 
+        if flags.block_texel_view_compatible {
+            if !flags.mutable_format {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+
+            if !matches!(
+                format.compression(),
+                Some(
+                    CompressionType::BC1
+                        | CompressionType::BC2
+                        | CompressionType::BC3
+                        | CompressionType::BC4
+                        | CompressionType::BC5
+                        | CompressionType::BC6H
+                        | CompressionType::BC7
+                        | CompressionType::ETC2
+                        | CompressionType::ASTC
+                )
+            ) {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+        }
+
         // Checking the dimensions against the limits.
         if array_layers > device.physical_device().properties().max_image_array_layers {
             let err = ImageCreationError::UnsupportedDimensions { dimensions };
             capabilities_error = Some(err);
         }
+
         match ty {
             ash::vk::ImageType::TYPE_1D => {
                 if extent.width > device.physical_device().properties().max_image_dimension1_d {
