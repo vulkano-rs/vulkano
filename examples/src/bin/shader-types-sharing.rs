@@ -154,9 +154,6 @@ fn main() {
         // `MultSpecializationConstants` Rust struct for the first shader's constants.
         // `AddSpecializationConstants` Rust struct for the first shader's constants.
         // `ty` submodule with `Parameters` Rust struct common for both shaders.
-
-        // Reexporting generated `ty` module for later use in the parent code.
-        pub use ty::*;
     }
 
     // We introducing generic function responsible for running any of the shaders above with
@@ -166,7 +163,7 @@ fn main() {
         pipeline: Arc<ComputePipeline>,
         queue: Arc<Queue>,
         data_buffer: Arc<CpuAccessibleBuffer<[u32]>>,
-        parameters: shaders::Parameters,
+        parameters: shaders::ty::Parameters,
     ) {
         let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
         let mut set_builder = PersistentDescriptorSet::start(layout.clone());
@@ -241,7 +238,7 @@ fn main() {
         mult_pipeline.clone(),
         queue.clone(),
         data_buffer.clone(),
-        shaders::Parameters { value: 2 },
+        shaders::ty::Parameters { value: 2 },
     );
 
     // Then add 1 to each value
@@ -249,7 +246,7 @@ fn main() {
         add_pipeline,
         queue.clone(),
         data_buffer.clone(),
-        shaders::Parameters { value: 1 },
+        shaders::ty::Parameters { value: 1 },
     );
 
     // Then multiply each value by 3
@@ -257,7 +254,7 @@ fn main() {
         mult_pipeline,
         queue.clone(),
         data_buffer.clone(),
-        shaders::Parameters { value: 3 },
+        shaders::ty::Parameters { value: 3 },
     );
 
     let data_buffer_content = data_buffer.read().unwrap();

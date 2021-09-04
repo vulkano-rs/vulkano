@@ -133,7 +133,7 @@
 //! **Note**: If your shader contains multiple entrypoints with different
 //! descriptor sets, you may also need to enable `exact_entrypoint_interface`.
 //!
-//! ## `shaders`: { First: {src: "...", ty: "..."}, ... }
+//! ## `shaders: { First: {src: "...", ty: "..."}, ... }`
 //!
 //! Within these option the user can compile several shaders at a single macro invocation.
 //! Each entry key is a prefix that will be put in from of generated `Shader`
@@ -927,7 +927,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             #shaders_code
         )*
 
-        mod ty {
+        pub mod ty {
             #( #uses )*
 
             #(

@@ -785,7 +785,7 @@ mod tests {
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| {
-            structs::write_structs("", &doc, &TypesMeta::default(), None)
+            structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new())
         });
         assert!(res.is_err());
     }
@@ -814,7 +814,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs("", &doc, &TypesMeta::default(), None);
+        structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new());
     }
     #[test]
     fn test_wrap_alignment() {
@@ -846,7 +846,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs("", &doc, &TypesMeta::default(), None);
+        structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new());
     }
 
     #[test]
