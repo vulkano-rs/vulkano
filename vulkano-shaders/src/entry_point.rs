@@ -20,6 +20,7 @@ pub(super) fn write_entry_point(
     instruction: &Instruction,
     types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
+    shared_constants: bool,
 ) -> TokenStream {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
@@ -88,7 +89,7 @@ pub(super) fn write_entry_point(
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         let spec_consts_struct_name = Ident::new(
-            &format!("{}SpecializationConstants", shader),
+            &format!("{}SpecializationConstants", if shared_constants {""} else {shader}),
             Span::call_site(),
         );
         quote! { #spec_consts_struct_name }

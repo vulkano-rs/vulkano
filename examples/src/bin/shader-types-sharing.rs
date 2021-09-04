@@ -95,6 +95,11 @@ fn main() {
             // such types, and include it in each shader entry-point files using "#include"
             // directive.
             shaders: {
+                // Generate single unique `SpecializationConstants` struct for all shaders since
+                // their specialization interfaces are the same. This option is turned off
+                // by default and the macro by default producing unique
+                // structs(`MultSpecializationConstants`, `AddSpecializationConstants`)
+                shared_constants: true,
                 Mult: {
                     ty: "compute",
                     src: "
@@ -151,8 +156,7 @@ fn main() {
         // The macro will create the following things in this module:
         // - `ShaderMult` for the first shader loader/entry-point.
         // - `ShaderAdd` for the second shader loader/entry-point.
-        // `MultSpecializationConstants` Rust struct for the first shader's constants.
-        // `AddSpecializationConstants` Rust struct for the first shader's constants.
+        // `SpecializationConstants` Rust struct for both shader's specialization constants.
         // `ty` submodule with `Parameters` Rust struct common for both shaders.
     }
 
@@ -214,7 +218,7 @@ fn main() {
             &shaders::MultShader::load(device.clone())
                 .unwrap()
                 .main_entry_point(),
-            &shaders::MultSpecializationConstants { enabled: 1 },
+            &shaders::SpecializationConstants { enabled: 1 },
             None,
         )
         .unwrap(),
@@ -227,7 +231,7 @@ fn main() {
             &shaders::AddShader::load(device.clone())
                 .unwrap()
                 .main_entry_point(),
-            &shaders::AddSpecializationConstants { enabled: 1 },
+            &shaders::SpecializationConstants { enabled: 1 },
             None,
         )
         .unwrap(),

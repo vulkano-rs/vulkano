@@ -212,6 +212,7 @@ pub(super) fn reflect<'a, I>(
     types_meta: &TypesMeta,
     input_paths: I,
     exact_entrypoint_interface: bool,
+    shared_constants: bool,
     types_registry: &'a mut HashMap<String, RegisteredType>,
 ) -> Result<(TokenStream, TokenStream), Error>
 where
@@ -317,6 +318,7 @@ where
                 instruction,
                 types_meta,
                 exact_entrypoint_interface,
+                shared_constants,
             );
             entry_points_inside_impl.push(entry_point);
         }
@@ -332,7 +334,7 @@ where
 
     let structs = structs::write_structs(prefix, &doc, types_meta, types_registry);
     let specialization_constants =
-        spec_consts::write_specialization_constants(prefix, &doc, types_meta);
+        spec_consts::write_specialization_constants(prefix, &doc, types_meta, shared_constants, types_registry);
     let shader_code = quote! {
         pub struct #struct_name {
             shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,

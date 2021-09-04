@@ -145,6 +145,10 @@
 //!
 //! Each entry values expecting `src`, `path`, `bytes`, and `ty` pairs same as above.
 //!
+//! Also `SpecializationConstants` can all be shared between shaders by specifying
+//! `shared_constants: true,` entry-flag of the `shaders` map. This feature is turned-off by
+//! default.
+//!
 //! ## `include: ["...", "...", ..., "..."]`
 //!
 //! Specifies the standard include directories to be searched through when using the
@@ -314,8 +318,8 @@ impl RegisteredType {
         if self.signature.len() > target_type.signature.len() {
             panic!(
                 "Shaders {shader_a:} and {shader_b:} declare structs with the \
-                same name {type_name:}, but the struct from {shader_a:} shader \
-                contains extra field {field:}",
+                same name \"`{type_name:}\", but the struct from {shader_a:} shader \
+                contains extra field \"{field:}\"",
                 shader_a = self.shader,
                 shader_b = target_type.shader,
                 type_name = type_name,
@@ -326,8 +330,8 @@ impl RegisteredType {
         if self.signature.len() < target_type.signature.len() {
             panic!(
                 "Shaders {shader_a:} and {shader_b:} declare structs with the \
-                same name {type_name:}, but the struct from {shader_b:} shader \
-                contains extra field {field:}",
+                same name \"{type_name:}\", but the struct from {shader_b:} shader \
+                contains extra field \"{field:}\"",
                 shader_a = self.shader,
                 shader_b = target_type.shader,
                 type_name = type_name,
@@ -345,10 +349,10 @@ impl RegisteredType {
             if a_name != b_name || a_type != b_type {
                 panic!(
                     "Shaders {shader_a:} and {shader_b:} declare structs with the \
-                    same name {type_name:}, but the struct from {shader_a:} shader \
-                    contains field {a_name:} of type {a_type:} in position {index:}, \
-                    whereas the struct from {shader_b:} contains field {b_name:} \
-                    of type {b_type:} in the same position",
+                    same name \"{type_name:}\", but the struct from {shader_a:} shader \
+                    contains field \"{a_name:}\" of type \"{a_type:}\" in position {index:}, \
+                    whereas the same struct from {shader_b:} contains field \"{b_name:}\" \
+                    of type \"{b_type:}\" in the same position",
                     shader_a = self.shader,
                     shader_b = target_type.shader,
                     type_name = type_name,
@@ -368,6 +372,7 @@ struct MacroInput {
     exact_entrypoint_interface: bool,
     include_directories: Vec<String>,
     macro_defines: Vec<(String, String)>,
+    shared_constants: bool,
     shaders: HashMap<String, (ShaderKind, SourceKind)>,
     spirv_version: Option<SpirvVersion>,
     types_meta: TypesMeta,
@@ -380,6 +385,7 @@ impl Parse for MacroInput {
         let mut exact_entrypoint_interface = None;
         let mut include_directories = Vec::new();
         let mut macro_defines = Vec::new();
+        let mut shared_constants = None;
         let mut shaders = HashMap::new();
         let mut spirv_version = None;
         let mut types_meta = None;
@@ -477,6 +483,22 @@ impl Parse for MacroInput {
                     while !in_braces.is_empty() {
                         let prefix: Ident = in_braces.parse()?;
                         let prefix = prefix.to_string();
+
+                        if prefix.to_string().as_str() == "shared_constants" {
+                            in_braces.parse::<Token![:]>()?;
+
+                            if shared_constants.is_some() {
+                                panic!("Only one `shared_constants` can be defined")
+                            }
+                            let independent_constants_lit: LitBool = in_braces.parse()?;
+                            shared_constants = Some(independent_constants_lit.value);
+
+                            if !in_braces.is_empty() {
+                                in_braces.parse::<Token![,]>()?;
+                            }
+
+                            continue;
+                        }
 
                         if shaders.contains_key(&prefix) {
                             panic!("Shader entry {:?} already defined", prefix);
@@ -756,6 +778,7 @@ impl Parse for MacroInput {
             exact_entrypoint_interface: exact_entrypoint_interface.unwrap_or(false),
             include_directories,
             macro_defines,
+            shared_constants: shared_constants.unwrap_or(false),
             shaders: shaders
                 .into_iter()
                 .map(|(key, (shader_kind, shader_source))| {
@@ -809,6 +832,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 &input.types_meta,
                 empty(),
                 input.exact_entrypoint_interface,
+                input.shared_constants,
                 &mut types_registry,
             )
             .unwrap()
@@ -874,6 +898,7 @@ pub fn shader(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 &input.types_meta,
                 input_paths,
                 input.exact_entrypoint_interface,
+                input.shared_constants,
                 &mut types_registry,
             )
             .unwrap()
