@@ -34,6 +34,14 @@
   - The `ty` method and the `FormatTy` enum are removed. They are replaced with the `NumericType` enum, which concerns itself only with the numeric representation and not with other properties. There are now three `type_*` methods to retrieve it, for colour, depth and stencil respectively.
   - The `planes` method now returns a slice containing the equivalent single-plane formats of each plane.
 - **Breaking** The `ImageAccess` trait no longer has the `has_color`, `has_depth` and `has_stencil` methods. This information can be queried using the `aspects` or `type_*` methods of `Format`.
+- **Breaking** Changes made to `DescriptorDescTy` to support immutable samplers.
+- **Breaking** `DescriptorWrite::combined_image_sampler` now takes the sampler in an `Option`. Use `None` when the descriptor has immutable samplers.
+- **Breaking** Changes to pipeline layout tweaks:
+  - `DescriptorSetDesc::tweak` is renamed to `set_buffer_dynamic`, and now takes only a single binding index.
+  - `DescriptorSetDesc::tweak_multiple` is removed.
+  - The dynamic buffers parameter of `GraphicsPipelineBuilder::with_auto_layout` has been replaced with a closure that can be used to make tweaks to the descriptor set layouts as needed.
+  - `ComputePipeline::new` has an additional closure parameter identical to the one described above.
+- **Breaking** `AttachmentImage::dimensions()` now returns `[u32; 3]` which includes the layer count.
 - Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
 - Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
 - Bug fixed. Image layout passed to SubImage is now being respected
@@ -54,6 +62,16 @@
   - The `components` method returns the number of bits in each colour component.
   - The `compression` method returns the compression scheme as a new enum, `CompressionType`.
   - The `requires_sampler_ycbcr_conversion` method returns whether the "sampler YCbCr conversion" must be enabled on an image view and sampler in order to use this format.
+  - `GraphicsPipelineBuilder` now uses `Vec` instead of `SmallVec` internally to reduced stack usage.
+- Added support for descriptors with immutable samplers.
+  - They are included as separate members on the appropriate variants of `DescriptorDescTy`.
+  - Added a `set_immutable_samplers` method to `DescriptorSetDesc`, which lets you set the immutable samplers for a descriptor. This can be used together with the closure provided to pipeline constructors.
+  - `add_image` can be used when building a descriptor set, to provide an image to a combined image sampler descriptor that has immutable samplers.
+- Updated dependencies:
+  - png 0.16 > 0.17
+  - spirv_headers 1.5 > spirv 0.2 (crate was renamed and reversioned)
+  - time 0.2 > 0.3
+- `AttachmentImage::current_layer_levels_access()` now returns the correct range which solves pipeline barriers only affecting the first layers of of a multi-layer `AttachmentImage`.
 
 # Version 0.25.0 (2021-08-10)
 
