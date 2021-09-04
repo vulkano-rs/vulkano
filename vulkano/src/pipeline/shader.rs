@@ -26,7 +26,6 @@ use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::sync::PipelineStages;
 use crate::OomError;
 use crate::VulkanObject;
-use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
@@ -231,7 +230,7 @@ pub struct GraphicsEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
 
-    descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
+    descriptor_set_layout_descs: Vec<DescriptorSetDesc>,
     push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
     input: ShaderInterface,
@@ -344,7 +343,7 @@ impl GeometryShaderExecutionMode {
 pub struct ComputeEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
+    descriptor_set_layout_descs: Vec<DescriptorSetDesc>,
     push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
 }
