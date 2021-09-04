@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -51,32 +52,41 @@ struct Inner {
 
 impl ComputePipeline {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Cs, Css>(
+    ///
+    /// `func` is a closure that is given a mutable reference to the inferred descriptor set
+    /// definitions. This can be used to make changes to the layout before it's created, for example
+    /// to add dynamic buffers or immutable samplers.
+    pub fn new<Cs, Css, F>(
         device: Arc<Device>,
         shader: &Cs,
         spec_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
+        func: F,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
         Css: SpecializationConstants,
+        F: FnOnce(&mut [DescriptorSetDesc]),
     {
+        let mut descriptor_set_layout_descs = shader.descriptor_set_layout_descs().to_owned();
+        func(&mut descriptor_set_layout_descs);
+
+        let descriptor_set_layouts = descriptor_set_layout_descs
+            .iter()
+            .map(|desc| {
+                Ok(Arc::new(DescriptorSetLayout::new(
+                    device.clone(),
+                    desc.clone(),
+                )?))
+            })
+            .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
+        let pipeline_layout = Arc::new(PipelineLayout::new(
+            device.clone(),
+            descriptor_set_layouts,
+            shader.push_constant_range().iter().cloned(),
+        )?);
+
         unsafe {
-            let descriptor_set_layouts = shader
-                .descriptor_set_layout_descs()
-                .iter()
-                .map(|desc| {
-                    Ok(Arc::new(DescriptorSetLayout::new(
-                        device.clone(),
-                        desc.clone(),
-                    )?))
-                })
-                .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
-            let pipeline_layout = Arc::new(PipelineLayout::new(
-                device.clone(),
-                descriptor_set_layouts,
-                shader.push_constant_range().iter().cloned(),
-            )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -460,6 +470,7 @@ mod tests {
                 &shader,
                 &SpecConsts { VALUE: 0x12345678 },
                 None,
+                |_| {},
             )
             .unwrap(),
         );

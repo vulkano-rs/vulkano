@@ -180,6 +180,7 @@ fn main() {
             &shader.main_entry_point(),
             &spec_consts,
             None,
+            |_| {},
         )
         .unwrap(),
     );
@@ -200,15 +201,9 @@ fn main() {
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
     let mut set_builder = PersistentDescriptorSet::start(layout.clone());
 
-    set_builder
-        .add_image(view.clone())
-        .unwrap();
+    set_builder.add_image(view.clone()).unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -257,7 +252,7 @@ fn main() {
     let file = File::create(path).unwrap();
     let ref mut w = BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024);
-    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();

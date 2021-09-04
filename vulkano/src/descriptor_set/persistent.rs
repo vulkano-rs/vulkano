@@ -257,6 +257,9 @@ impl PersistentDescriptorSetBuilder {
 
     /// Binds an image view with a sampler as the next descriptor.
     ///
+    /// If the descriptor set layout contains immutable samplers for this descriptor, use
+    /// `add_image` instead.
+    ///
     /// An error is returned if the image view isn't compatible with the descriptor.
     #[inline]
     pub fn add_sampled_image(

@@ -77,7 +77,7 @@ use std::sync::Arc;
 
 /// Describes how to retrieve data from an image within a shader.
 pub struct Sampler {
-    sampler: ash::vk::Sampler,
+    handle: ash::vk::Sampler,
     device: Arc<Device>,
     compare_mode: bool,
     unnormalized: bool,
@@ -266,10 +266,7 @@ impl Sampler {
                 return Err(SamplerCreationError::SamplerAnisotropyFeatureNotEnabled);
             }
 
-            let limit = device
-                .physical_device()
-                .properties()
-                .max_sampler_anisotropy;
+            let limit = device.physical_device().properties().max_sampler_anisotropy;
             if max_anisotropy > limit {
                 return Err(SamplerCreationError::AnisotropyLimitExceeded {
                     requested: max_anisotropy,
@@ -280,10 +277,7 @@ impl Sampler {
 
         // Check mip_lod_bias value.
         {
-            let limit = device
-                .physical_device()
-                .properties()
-                .max_sampler_lod_bias;
+            let limit = device.physical_device().properties().max_sampler_lod_bias;
             if mip_lod_bias > limit {
                 return Err(SamplerCreationError::MipLodBiasLimitExceeded {
                     requested: mip_lod_bias,
@@ -322,7 +316,7 @@ impl Sampler {
         };
 
         let fns = device.fns();
-        let sampler = unsafe {
+        let handle = unsafe {
             let infos = ash::vk::SamplerCreateInfo {
                 flags: ash::vk::SamplerCreateFlags::empty(),
                 mag_filter: mag_filter.into(),
@@ -366,7 +360,7 @@ impl Sampler {
         };
 
         Ok(Arc::new(Sampler {
-            sampler: sampler,
+            handle,
             device: device.clone(),
             compare_mode: compare.is_some(),
             unnormalized: false,
@@ -424,7 +418,7 @@ impl Sampler {
             (b, None) => b,
         };
 
-        let sampler = unsafe {
+        let handle = unsafe {
             let infos = ash::vk::SamplerCreateInfo {
                 flags: ash::vk::SamplerCreateFlags::empty(),
                 mag_filter: filter.into(),
@@ -458,7 +452,7 @@ impl Sampler {
         };
 
         Ok(Arc::new(Sampler {
-            sampler: sampler,
+            handle,
             device: device.clone(),
             compare_mode: false,
             unnormalized: true,
@@ -530,16 +524,25 @@ unsafe impl VulkanObject for Sampler {
 
     #[inline]
     fn internal_object(&self) -> ash::vk::Sampler {
-        self.sampler
+        self.handle
     }
 }
 
 impl fmt::Debug for Sampler {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(fmt, "<Vulkan sampler {:?}>", self.sampler)
+        write!(fmt, "<Vulkan sampler {:?}>", self.handle)
     }
 }
+
+impl PartialEq for Sampler {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.handle == other.handle
+    }
+}
+
+impl Eq for Sampler {}
 
 impl Drop for Sampler {
     #[inline]
@@ -547,7 +550,7 @@ impl Drop for Sampler {
         unsafe {
             let fns = self.device.fns();
             fns.v1_0
-                .destroy_sampler(self.device.internal_object(), self.sampler, ptr::null());
+                .destroy_sampler(self.device.internal_object(), self.handle, ptr::null());
         }
     }
 }

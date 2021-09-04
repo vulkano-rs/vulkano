@@ -11,7 +11,7 @@ use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use crate::{structs, RegisteredType};
 use proc_macro2::{Span, TokenStream};
-use spirv_headers::Decoration;
+use spirv::Decoration;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::mem;

@@ -81,9 +81,11 @@ fn main() {
 
     mod shaders {
         vulkano_shaders::shader! {
-            // We declaring two compute simple shaders with push constants in the layout interfaces.
-            // First one just multiplies each value from the input array of ints to provided value
-            // in push constants struct. And the second one in turn adds this value instead of
+            // We declaring two simple compute shaders with push and specialization constants in
+            // their layout interfaces.
+            //
+            // First one is just multiplying each value from the input array of ints to provided
+            // value in push constants struct. And the second one in turn adds this value instead of
             // multiplying.
             //
             // However both shaders declare glsl struct `Parameters` for push constants in each
@@ -220,6 +222,7 @@ fn main() {
                 .main_entry_point(),
             &shaders::SpecializationConstants { enabled: 1 },
             None,
+            |_| {},
         )
         .unwrap(),
     );
@@ -233,6 +236,7 @@ fn main() {
                 .main_entry_point(),
             &shaders::SpecializationConstants { enabled: 1 },
             None,
+            |_| {},
         )
         .unwrap(),
     );

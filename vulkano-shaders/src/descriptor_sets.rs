@@ -10,7 +10,7 @@
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::TokenStream;
-use spirv_headers::{Decoration, Dim, ImageFormat, StorageClass};
+use spirv::{Decoration, Dim, ImageFormat, StorageClass};
 use std::cmp;
 use std::collections::HashSet;
 
@@ -467,20 +467,6 @@ fn descriptor_infos(
                             Some((desc, mutable, 1, false))
                         }
                         _ => {
-                            let (ty, mutable) = if force_combined_image_sampled {
-                                // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-                                // Never writable.
-                                assert!(sampled, "A combined image sampler must not reference a storage image");
-                                (quote! { DescriptorDescTy::CombinedImageSampler }, false) // Sampled images are never mutable.
-                            } else {
-                                if sampled {
-                                    // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                                    (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never mutable.
-                                } else {
-                                    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
-                                    (quote! { DescriptorDescTy::StorageImage }, true)
-                                }
-                            };
                             let view_type = match (dim, arrayed) {
                                 (Dim::Dim1D, false) => quote! { ImageViewType::Dim1d },
                                 (Dim::Dim1D, true) => quote! { ImageViewType::Dim1dArray },
@@ -494,12 +480,45 @@ fn descriptor_infos(
                                 _ => unreachable!(),
                             };
 
-                            let desc = quote! {
-                                #ty(DescriptorDescImage {
+                            let image_desc = quote! {
+                                DescriptorDescImage {
                                     format: #vulkan_format,
                                     multisampled: #ms,
                                     view_type: #view_type,
-                                })
+                                }
+                            };
+
+                            let (desc, mutable) = if force_combined_image_sampled {
+                                // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                // Never writable.
+                                assert!(sampled, "A combined image sampler must not reference a storage image");
+
+                                (
+                                    quote! {
+                                        DescriptorDescTy::CombinedImageSampler {
+                                            image_desc: #image_desc,
+                                            immutable_samplers: Vec::new(),
+                                        }
+                                    },
+                                    false, // Sampled images are never mutable.
+                                )
+                            } else {
+                                let (ty, mutable) = if sampled {
+                                    // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                                    (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never mutable.
+                                } else {
+                                    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                    (quote! { DescriptorDescTy::StorageImage }, true)
+                                };
+
+                                (
+                                    quote! {
+                                        #ty {
+                                            image_desc: #image_desc,
+                                        }
+                                    },
+                                    mutable,
+                                )
                             };
 
                             Some((desc, mutable, 1, false))
@@ -515,7 +534,7 @@ fn descriptor_infos(
                 }
 
                 &Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
-                    let desc = quote! { DescriptorDescTy::Sampler };
+                    let desc = quote! { DescriptorDescTy::Sampler { immutable_samplers: Vec::new() } };
                     Some((desc, false, 1, false))
                 }
                 &Instruction::TypeArray {
@@ -793,5 +812,7 @@ fn to_vulkan_format(spirv_format: ImageFormat) -> TokenStream {
         ImageFormat::Rg8ui => quote! { Some(Format::R8G8_UINT) },
         ImageFormat::R16ui => quote! { Some(Format::R16_UINT) },
         ImageFormat::R8ui => quote! { Some(Format::R8_UINT) },
+        ImageFormat::R64ui => quote! { Some(Format::R64_UINT) },
+        ImageFormat::R64i => quote! { Some(Format::R64_SINT) },
     }
 }

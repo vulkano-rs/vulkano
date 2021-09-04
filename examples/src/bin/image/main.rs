@@ -154,7 +154,8 @@ fn main() {
         let png_bytes = include_bytes!("image_img.png").to_vec();
         let cursor = Cursor::new(png_bytes);
         let decoder = png::Decoder::new(cursor);
-        let (info, mut reader) = decoder.read_info().unwrap();
+        let mut reader = decoder.read_info().unwrap();
+        let info = reader.info();
         let dimensions = ImageDimensions::Dim2d {
             width: info.width,
             height: info.height,
@@ -210,11 +211,7 @@ fn main() {
         .add_sampled_image(texture.clone(), sampler.clone())
         .unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     let mut viewport = Viewport {
         origin: [0.0, 0.0],

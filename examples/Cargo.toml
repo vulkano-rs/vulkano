@@ -18,7 +18,7 @@ winit = "0.25"
 vulkano-win = { path = "../vulkano-win" }
 
 cgmath = "0.18"
-png = "0.16"
-time = "0.2"
+png = "0.17"
+time = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 ron = "0.6"

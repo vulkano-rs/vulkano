@@ -298,8 +298,16 @@ pub enum DescriptorSetError {
     /// Builder is already within an array.
     AlreadyInArray,
 
-    /// Builder is not in an array.
-    NotInArray,
+    /// The builder has previously return an error and is an unknown state.
+    BuilderPoisoned,
+
+    /// The number of array layers of an image doesn't match what was expected.
+    ArrayLayersMismatch {
+        /// Number of expected array layers for the image.
+        expected: u32,
+        /// Number of array layers of the image that was added.
+        obtained: u32,
+    },
 
     /// Array doesn't contain the correct amount of descriptors
     ArrayLengthMismatch {
@@ -317,28 +325,19 @@ pub enum DescriptorSetError {
         obtained: u32,
     },
 
-    /// Builder doesn't expect anymore descriptors
-    TooManyDescriptors,
+    /// Expected a multisampled image, but got a single-sampled image.
+    ExpectedMultisampled,
+
+    /// Operation can not be performed on an empty descriptor.
+    DescriptorIsEmpty,
 
     /// Not all descriptors have been added.
     DescriptorsMissing {
         /// Expected bindings
-        expected: usize,
+        expected: u32,
         /// Obtained bindings
-        obtained: usize,
+        obtained: u32,
     },
-
-    /// The buffer is missing the correct usage.
-    MissingBufferUsage(MissingBufferUsage),
-
-    /// The image is missing the correct usage.
-    MissingImageUsage(MissingImageUsage),
-
-    /// Expected one type of resource but got another.
-    WrongDescriptorType,
-
-    /// Resource belongs to another device.
-    ResourceWrongDevice,
 
     /// The format of an image view doesn't match what was expected.
     ImageViewFormatMismatch {
@@ -356,37 +355,41 @@ pub enum DescriptorSetError {
         obtained: ImageViewType,
     },
 
-    /// Expected a multisampled image, but got a single-sampled image.
-    ExpectedMultisampled,
+    /// The image view isn't compatible with the sampler.
+    IncompatibleImageViewSampler,
 
-    /// Expected a single-sampled image, but got a multisampled image.
-    UnexpectedMultisampled,
+    /// The buffer is missing the correct usage.
+    MissingBufferUsage(MissingBufferUsage),
 
-    /// The number of array layers of an image doesn't match what was expected.
-    ArrayLayersMismatch {
-        /// Number of expected array layers for the image.
-        expected: u32,
-        /// Number of array layers of the image that was added.
-        obtained: u32,
-    },
+    /// The image is missing the correct usage.
+    MissingImageUsage(MissingImageUsage),
 
     /// The image view has a component swizzle that is different from identity.
     NotIdentitySwizzled,
 
-    /// The image view isn't compatible with the sampler.
-    IncompatibleImageViewSampler,
-
-    /// The builder has previously return an error and is an unknown state.
-    BuilderPoisoned,
+    /// Builder is not in an array.
+    NotInArray,
 
     /// Out of memory
     OomError(OomError),
 
-    /// Operation can not be performed on an empty descriptor.
-    DescriptorIsEmpty,
+    /// Resource belongs to another device.
+    ResourceWrongDevice,
+
+    /// Provided a dynamically assigned sampler, but the descriptor has an immutable sampler.
+    SamplerIsImmutable,
+
+    /// Builder doesn't expect anymore descriptors
+    TooManyDescriptors,
 
     /// Expected a non-arrayed image, but got an arrayed image.
     UnexpectedArrayed,
+
+    /// Expected a single-sampled image, but got a multisampled image.
+    UnexpectedMultisampled,
+
+    /// Expected one type of resource but got another.
+    WrongDescriptorType,
 }
 
 impl From<OomError> for DescriptorSetError {
@@ -405,36 +408,37 @@ impl fmt::Display for DescriptorSetError {
             "{}",
             match *self {
                 Self::AlreadyInArray => "builder is already within an array",
-                Self::NotInArray => "builder is not in an array",
+                Self::ArrayLayersMismatch { .. } =>
+                    "the number of array layers of an image doesn't match what was expected",
                 Self::ArrayLengthMismatch { .. } =>
                     "array doesn't contain the correct amount of descriptors",
-                Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
+                Self::ArrayTooManyDescriptors { .. } =>
+                    "runtime array contains too many descriptors",
+                Self::BuilderPoisoned =>
+                    "the builder has previously return an error and is an unknown state",
+                Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
                 Self::DescriptorsMissing { .. } => "not all descriptors have been added",
-                Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
-                Self::MissingImageUsage(_) => "the image is missing the correct usage",
-                Self::WrongDescriptorType => "expected one type of resource but got another",
-                Self::ResourceWrongDevice => "resource belongs to another device",
+                Self::ExpectedMultisampled =>
+                    "expected a multisampled image, but got a single-sampled image",
                 Self::ImageViewFormatMismatch { .. } =>
                     "the format of an image view doesn't match what was expected",
                 Self::ImageViewTypeMismatch { .. } =>
                     "the type of an image view doesn't match what was expected",
-                Self::ExpectedMultisampled =>
-                    "expected a multisampled image, but got a single-sampled image",
-                Self::UnexpectedMultisampled =>
-                    "expected a single-sampled image, but got a multisampled image",
-                Self::ArrayLayersMismatch { .. } =>
-                    "the number of array layers of an image doesn't match what was expected",
-                Self::NotIdentitySwizzled =>
-                    "the image view has a component swizzle that is different from identity",
                 Self::IncompatibleImageViewSampler =>
                     "the image view isn't compatible with the sampler",
-                Self::BuilderPoisoned =>
-                    "the builder has previously return an error and is an unknown state",
+                Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
+                Self::MissingImageUsage(_) => "the image is missing the correct usage",
+                Self::NotIdentitySwizzled =>
+                    "the image view has a component swizzle that is different from identity",
+                Self::NotInArray => "builder is not in an array",
                 Self::OomError(_) => "out of memory",
-                Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
+                Self::ResourceWrongDevice => "resource belongs to another device",
+                Self::SamplerIsImmutable => "provided a dynamically assigned sampler, but the descriptor has an immutable sampler",
+                Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
                 Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
-                Self::ArrayTooManyDescriptors { .. } =>
-                    "runtime array contains too many descriptors",
+                Self::UnexpectedMultisampled =>
+                    "expected a single-sampled image, but got a multisampled image",
+                Self::WrongDescriptorType => "expected one type of resource but got another",
             }
         )
     }
