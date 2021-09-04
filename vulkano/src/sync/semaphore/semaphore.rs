@@ -304,11 +304,8 @@ impl From<OomError> for SemaphoreError {
 
 #[cfg(test)]
 mod tests {
-    use crate::device::physical::PhysicalDevice;
-    use crate::device::{Device, DeviceExtensions};
-    use crate::instance::{Instance, InstanceExtensions};
     use crate::VulkanObject;
-    use crate::{sync::Semaphore, Version};
+    use crate::sync::Semaphore;
 
     #[test]
     fn semaphore_create() {
@@ -342,6 +339,11 @@ mod tests {
         target_os = "openbsd"
     ))]
     fn semaphore_export() {
+        use crate::device::physical::PhysicalDevice;
+        use crate::device::{Device, DeviceExtensions};
+        use crate::instance::{Instance, InstanceExtensions};
+        use crate::Version;
+
         let supported_ext = InstanceExtensions::supported_by_core().unwrap();
         if supported_ext.khr_get_display_properties2
             && supported_ext.khr_external_semaphore_capabilities
