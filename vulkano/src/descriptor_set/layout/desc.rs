@@ -44,12 +44,14 @@
 use crate::format::Format;
 use crate::image::view::ImageViewType;
 use crate::pipeline::shader::ShaderStages;
+use crate::sampler::Sampler;
 use crate::sync::AccessFlags;
 use crate::sync::PipelineStages;
 use smallvec::SmallVec;
 use std::cmp;
 use std::error;
 use std::fmt;
+use std::sync::Arc;
 
 #[derive(Clone, Debug, Default)]
 pub struct DescriptorSetDesc {
@@ -87,8 +89,8 @@ impl DescriptorSetDesc {
 
     /// Returns the descriptor with the given binding number, or `None` if the binding is empty.
     #[inline]
-    pub fn descriptor(&self, num: usize) -> Option<&DescriptorDesc> {
-        self.descriptors.get(num).and_then(|b| b.as_ref())
+    pub fn descriptor(&self, num: u32) -> Option<&DescriptorDesc> {
+        self.descriptors.get(num as usize).and_then(|b| b.as_ref())
     }
 
     /// Builds the union of this layout description and another.
@@ -136,72 +138,82 @@ impl DescriptorSetDesc {
             .collect()
     }
 
-    /// Transforms a `DescriptorSetDesc`.
+    /// Changes a buffer descriptor's type to dynamic.
+    pub fn set_buffer_dynamic(&mut self, binding_num: u32) {
+        assert!(
+            self.descriptor(binding_num).map_or(false, |desc| matches!(
+                desc.ty,
+                DescriptorDescTy::StorageBuffer | DescriptorDescTy::UniformBuffer
+            )),
+            "tried to make the non-buffer descriptor at binding {} a dynamic buffer",
+            binding_num
+        );
+
+        let binding = self
+            .descriptors
+            .get_mut(binding_num as usize)
+            .and_then(|b| b.as_mut());
+
+        if let Some(desc) = binding {
+            match &desc.ty {
+                DescriptorDescTy::StorageBuffer => {
+                    desc.ty = DescriptorDescTy::StorageBufferDynamic;
+                }
+                DescriptorDescTy::UniformBuffer => {
+                    desc.ty = DescriptorDescTy::UniformBufferDynamic;
+                }
+                _ => (),
+            };
+        }
+    }
+
+    /// Sets the immutable samplers for a sampler or combined image sampler descriptor.
     ///
-    /// Used to adjust automatically inferred `DescriptorSetDesc`s with information that cannot be inferred.
-    pub fn tweak<I>(&mut self, dynamic_buffers: I)
-    where
-        I: IntoIterator<Item = usize>,
-    {
-        for binding_num in dynamic_buffers {
-            debug_assert!(
-                self.descriptor(binding_num).map_or(false, |desc| matches!(
-                    desc.ty,
-                    DescriptorDescTy::StorageBuffer | DescriptorDescTy::UniformBuffer
-                )),
-                "tried to make the non-buffer descriptor at binding {} a dynamic buffer",
-                binding_num
-            );
+    /// # Panics
+    ///
+    /// - Panics if the binding number does not refer to a sampler or combined image sampler
+    ///   descriptor.
+    pub fn set_immutable_samplers(
+        &mut self,
+        binding_num: u32,
+        samplers: impl IntoIterator<Item = Arc<Sampler>>,
+    ) {
+        let immutable_samplers = self
+            .descriptors
+            .get_mut(binding_num as usize)
+            .and_then(|b| b.as_mut())
+            .and_then(|desc| match &mut desc.ty {
+                DescriptorDescTy::Sampler {
+                    immutable_samplers, ..
+                }
+                | DescriptorDescTy::CombinedImageSampler {
+                    immutable_samplers, ..
+                } => Some(immutable_samplers),
+                _ => None,
+            })
+            .expect("binding_num does not refer to a sampler or combined image sampler descriptor");
 
-            let binding = self
-                .descriptors
-                .get_mut(binding_num)
-                .and_then(|b| b.as_mut());
-
-            if let Some(desc) = binding {
-                match &desc.ty {
-                    DescriptorDescTy::StorageBuffer => {
-                        desc.ty = DescriptorDescTy::StorageBufferDynamic;
-                    }
-                    DescriptorDescTy::UniformBuffer => {
-                        desc.ty = DescriptorDescTy::UniformBufferDynamic;
-                    }
-                    _ => (),
-                };
-            }
-        }
+        immutable_samplers.clear();
+        immutable_samplers.extend(samplers.into_iter());
     }
 
-    pub fn tweak_multiple<I>(sets: &mut [DescriptorSetDesc], dynamic_buffers: I)
-    where
-        I: IntoIterator<Item = (usize, usize)>,
-    {
-        for (set_num, binding_num) in dynamic_buffers {
-            debug_assert!(
-                set_num < sets.len(),
-                "tried to make a dynamic buffer in the nonexistent set {}",
-                set_num,
-            );
-
-            sets.get_mut(set_num).map(|set| set.tweak([binding_num]));
-        }
-    }
-
+    /// Sets the descriptor count for a descriptor that has a variable count.
     pub fn set_variable_descriptor_count(&mut self, binding_num: u32, descriptor_count: u32) {
         // TODO: Errors instead of panic
 
-        match self.descriptors.get_mut(binding_num as usize) {
-            Some(desc_op) => match desc_op.as_mut() {
-                Some(desc) => {
-                    if desc.variable_count {
-                        desc.descriptor_count = descriptor_count;
-                    } else {
-                        panic!("descriptor isn't variable count")
-                    }
+        match self
+            .descriptors
+            .get_mut(binding_num as usize)
+            .and_then(|b| b.as_mut())
+        {
+            Some(desc) => {
+                if desc.variable_count {
+                    desc.descriptor_count = descriptor_count;
+                } else {
+                    panic!("descriptor isn't variable count")
                 }
-                None => panic!("descriptor is empty"),
-            },
-            None => panic!("descriptor doesn't exist"),
+            }
+            None => panic!("descriptor is empty"),
         }
     }
 
@@ -212,7 +224,7 @@ impl DescriptorSetDesc {
     /// meaning that all descriptors are compatible.
     #[inline]
     pub fn is_compatible_with(&self, other: &DescriptorSetDesc) -> bool {
-        let num_bindings = cmp::max(self.descriptors.len(), other.descriptors.len());
+        let num_bindings = cmp::max(self.descriptors.len(), other.descriptors.len()) as u32;
         (0..num_bindings).all(|binding_num| {
             match (self.descriptor(binding_num), other.descriptor(binding_num)) {
                 (None, None) => true,
@@ -235,7 +247,7 @@ impl DescriptorSetDesc {
             });
         }
 
-        for binding_num in 0..other.descriptors.len() {
+        for binding_num in 0..other.descriptors.len() as u32 {
             let self_desc = self.descriptor(binding_num);
             let other_desc = self.descriptor(binding_num);
 
@@ -277,7 +289,7 @@ impl DescriptorSetDesc {
             });
         }
 
-        for binding_num in 0..other.descriptors.len() {
+        for binding_num in 0..other.descriptors.len() as u32 {
             let self_desc = self.descriptor(binding_num);
             let other_desc = self.descriptor(binding_num);
 
@@ -353,6 +365,7 @@ impl DescriptorDesc {
     #[inline]
     pub fn is_compatible_with(&self, other: &DescriptorDesc) -> bool {
         self.ty.ty() == other.ty.ty()
+            && self.ty.immutable_samplers() == other.ty.immutable_samplers()
             && self.stages == other.stages
             && self.descriptor_count == other.descriptor_count
             && self.variable_count == other.variable_count
@@ -455,7 +468,7 @@ impl DescriptorDesc {
     ///use vulkano::descriptor_set::layout::DescriptorDescTy::*;
     ///use vulkano::pipeline::shader::ShaderStages;
     ///
-    ///let desc_part1 = DescriptorDesc{ ty: Sampler, descriptor_count: 2, stages: ShaderStages{
+    ///let desc_part1 = DescriptorDesc{ ty: Sampler { immutable_samplers: vec![] }, descriptor_count: 2, stages: ShaderStages{
     ///  vertex: true,
     ///  tessellation_control: true,
     ///  tessellation_evaluation: false,
@@ -464,7 +477,7 @@ impl DescriptorDesc {
     ///  compute: true
     ///}, mutable: true, variable_count: false };
     ///
-    ///let desc_part2 = DescriptorDesc{ ty: Sampler, descriptor_count: 1, stages: ShaderStages{
+    ///let desc_part2 = DescriptorDesc{ ty: Sampler { immutable_samplers: vec![] }, descriptor_count: 1, stages: ShaderStages{
     ///  vertex: true,
     ///  tessellation_control: false,
     ///  tessellation_evaluation: true,
@@ -473,7 +486,7 @@ impl DescriptorDesc {
     ///  compute: true
     ///}, mutable: false, variable_count: false };
     ///
-    ///let desc_union = DescriptorDesc{ ty: Sampler, descriptor_count: 2, stages: ShaderStages{
+    ///let desc_union = DescriptorDesc{ ty: Sampler { immutable_samplers: vec![] }, descriptor_count: 2, stages: ShaderStages{
     ///  vertex: true,
     ///  tessellation_control: true,
     ///  tessellation_evaluation: true,
@@ -579,10 +592,28 @@ impl From<DescriptorType> for ash::vk::DescriptorType {
 /// Describes the content and layout of each array element of a descriptor.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescriptorDescTy {
-    Sampler,                                   // TODO: the sampler has some restrictions as well
-    CombinedImageSampler(DescriptorDescImage), // TODO: the sampler has some restrictions as well
-    SampledImage(DescriptorDescImage),
-    StorageImage(DescriptorDescImage),
+    Sampler {
+        /// Samplers that are included as a fixed part of the descriptor set layout. Once bound, they
+        /// do not need to be provided when creating a descriptor set.
+        ///
+        /// The list must be either empty, or contain exactly `descriptor_count` samplers.
+        immutable_samplers: Vec<Arc<Sampler>>,
+    },
+    CombinedImageSampler {
+        image_desc: DescriptorDescImage,
+
+        /// Samplers that are included as a fixed part of the descriptor set layout. Once bound, they
+        /// do not need to be provided when creating a descriptor set.
+        ///
+        /// The list must be either empty, or contain exactly `descriptor_count` samplers.
+        immutable_samplers: Vec<Arc<Sampler>>,
+    },
+    SampledImage {
+        image_desc: DescriptorDescImage,
+    },
+    StorageImage {
+        image_desc: DescriptorDescImage,
+    },
     UniformTexelBuffer {
         /// The format of the content, or `None` if the format is unknown. Depending on the
         /// context, it may be invalid to have a `None` value here. If the format is `Some`, only
@@ -612,27 +643,63 @@ impl DescriptorDescTy {
     #[inline]
     pub fn ty(&self) -> DescriptorType {
         match *self {
-            DescriptorDescTy::Sampler => DescriptorType::Sampler,
-            DescriptorDescTy::CombinedImageSampler(_) => DescriptorType::CombinedImageSampler,
-            DescriptorDescTy::SampledImage(_) => DescriptorType::SampledImage,
-            DescriptorDescTy::StorageImage(_) => DescriptorType::StorageImage,
-            DescriptorDescTy::UniformTexelBuffer { .. } => DescriptorType::UniformTexelBuffer,
-            DescriptorDescTy::StorageTexelBuffer { .. } => DescriptorType::StorageTexelBuffer,
-            DescriptorDescTy::UniformBuffer => DescriptorType::UniformBuffer,
-            DescriptorDescTy::StorageBuffer => DescriptorType::StorageBuffer,
-            DescriptorDescTy::UniformBufferDynamic => DescriptorType::UniformBufferDynamic,
-            DescriptorDescTy::StorageBufferDynamic => DescriptorType::StorageBufferDynamic,
-            DescriptorDescTy::InputAttachment { .. } => DescriptorType::InputAttachment,
+            Self::Sampler { .. } => DescriptorType::Sampler,
+            Self::CombinedImageSampler { .. } => DescriptorType::CombinedImageSampler,
+            Self::SampledImage { .. } => DescriptorType::SampledImage,
+            Self::StorageImage { .. } => DescriptorType::StorageImage,
+            Self::UniformTexelBuffer { .. } => DescriptorType::UniformTexelBuffer,
+            Self::StorageTexelBuffer { .. } => DescriptorType::StorageTexelBuffer,
+            Self::UniformBuffer => DescriptorType::UniformBuffer,
+            Self::StorageBuffer => DescriptorType::StorageBuffer,
+            Self::UniformBufferDynamic => DescriptorType::UniformBufferDynamic,
+            Self::StorageBufferDynamic => DescriptorType::StorageBufferDynamic,
+            Self::InputAttachment { .. } => DescriptorType::InputAttachment,
+        }
+    }
+
+    #[inline]
+    fn format(&self) -> Option<Format> {
+        match self {
+            Self::UniformTexelBuffer { format } | Self::StorageTexelBuffer { format } => *format,
+            _ => None,
+        }
+    }
+
+    #[inline]
+    fn image_desc(&self) -> Option<&DescriptorDescImage> {
+        match self {
+            Self::CombinedImageSampler { image_desc, .. }
+            | Self::SampledImage { image_desc, .. }
+            | Self::StorageImage { image_desc, .. } => Some(image_desc),
+            _ => None,
+        }
+    }
+
+    #[inline]
+    pub(super) fn immutable_samplers(&self) -> &[Arc<Sampler>] {
+        match self {
+            Self::Sampler {
+                immutable_samplers, ..
+            } => immutable_samplers,
+            Self::CombinedImageSampler {
+                immutable_samplers, ..
+            } => immutable_samplers,
+            _ => &[],
+        }
+    }
+
+    #[inline]
+    fn multisampled(&self) -> bool {
+        match self {
+            DescriptorDescTy::InputAttachment { multisampled } => *multisampled,
+            _ => false,
         }
     }
 
     /// Checks whether we are a superset of another descriptor type.
     // TODO: add example
     #[inline]
-    pub fn ensure_superset_of(
-        &self,
-        other: &DescriptorDescTy,
-    ) -> Result<(), DescriptorCompatibilityError> {
+    pub fn ensure_superset_of(&self, other: &Self) -> Result<(), DescriptorCompatibilityError> {
         if self.ty() != other.ty() {
             return Err(DescriptorCompatibilityError::Type {
                 first: self.ty(),
@@ -640,51 +707,28 @@ impl DescriptorDescTy {
             });
         }
 
-        match (self, other) {
-            (
-                DescriptorDescTy::CombinedImageSampler(ref me)
-                | DescriptorDescTy::SampledImage(ref me)
-                | DescriptorDescTy::StorageImage(ref me),
-                DescriptorDescTy::CombinedImageSampler(ref other)
-                | DescriptorDescTy::SampledImage(ref other)
-                | DescriptorDescTy::StorageImage(ref other),
-            ) => me.ensure_superset_of(other)?,
+        if self.immutable_samplers() != other.immutable_samplers() {
+            return Err(DescriptorCompatibilityError::ImmutableSamplers);
+        }
 
-            (
-                DescriptorDescTy::UniformTexelBuffer { format: me_format }
-                | DescriptorDescTy::StorageTexelBuffer { format: me_format },
-                DescriptorDescTy::UniformTexelBuffer {
-                    format: other_format,
-                }
-                | DescriptorDescTy::StorageTexelBuffer {
-                    format: other_format,
-                },
-            ) => {
-                if other_format.is_some() && me_format != other_format {
-                    return Err(DescriptorCompatibilityError::Format {
-                        first: *me_format,
-                        second: other_format.unwrap(),
-                    });
-                }
+        if let (Some(me), Some(other)) = (self.image_desc(), other.image_desc()) {
+            me.ensure_superset_of(other)?;
+        }
+
+        if let (me, other @ Some(_)) = (self.format(), other.format()) {
+            if me != other {
+                return Err(DescriptorCompatibilityError::Format {
+                    first: me,
+                    second: other.unwrap(),
+                });
             }
+        }
 
-            (
-                DescriptorDescTy::InputAttachment {
-                    multisampled: me_multisampled,
-                },
-                DescriptorDescTy::InputAttachment {
-                    multisampled: other_multisampled,
-                },
-            ) => {
-                if me_multisampled != other_multisampled {
-                    return Err(DescriptorCompatibilityError::Multisampling {
-                        first: *me_multisampled,
-                        second: *other_multisampled,
-                    });
-                }
-            }
-
-            _ => (),
+        if self.multisampled() != other.multisampled() {
+            return Err(DescriptorCompatibilityError::Multisampling {
+                first: self.multisampled(),
+                second: other.multisampled(),
+            });
         }
 
         Ok(())
@@ -782,46 +826,34 @@ impl fmt::Display for DescriptorSetCompatibilityError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DescriptorCompatibilityError {
     /// The number of descriptors is not compatible.
-    DescriptorCount {
-        first: u32,
-        second: u32,
-    },
+    DescriptorCount { first: u32, second: u32 },
 
     /// The variable counts of the descriptors is not compatible.
-    VariableCount {
-        first: bool,
-        second: bool,
-    },
+    VariableCount { first: bool, second: bool },
 
     /// The presence or absence of a descriptor in a binding is not compatible.
-    Empty {
-        first: bool,
-        second: bool,
-    },
+    Empty { first: bool, second: bool },
 
-    // The formats of an image descriptor are not compatible.
+    /// The formats of an image descriptor are not compatible.
     Format {
         first: Option<Format>,
         second: Format,
     },
 
-    // The image view types of an image descriptor are not compatible.
+    /// The image view types of an image descriptor are not compatible.
     ImageViewType {
         first: ImageViewType,
         second: ImageViewType,
     },
 
-    // The multisampling of an image descriptor is not compatible.
-    Multisampling {
-        first: bool,
-        second: bool,
-    },
+    /// The immutable samplers of the descriptors are not compatible.
+    ImmutableSamplers,
+
+    /// The multisampling of an image descriptor is not compatible.
+    Multisampling { first: bool, second: bool },
 
     /// The mutability of the descriptors is not compatible.
-    Mutability {
-        first: bool,
-        second: bool,
-    },
+    Mutability { first: bool, second: bool },
 
     /// The shader stages of the descriptors are not compatible.
     ShaderStages {
@@ -859,6 +891,9 @@ impl fmt::Display for DescriptorCompatibilityError {
                 }
                 DescriptorCompatibilityError::ImageViewType { .. } => {
                     "the image view types of an image descriptor are not compatible"
+                }
+                DescriptorCompatibilityError::ImmutableSamplers { .. } => {
+                    "the immutable samplers of the descriptors are not compatible"
                 }
                 DescriptorCompatibilityError::Multisampling { .. } => {
                     "the multisampling of an image descriptor is not compatible"

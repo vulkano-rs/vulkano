@@ -18,17 +18,13 @@ use std::mem;
 use std::sync::Arc;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
 use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::layout::{DescriptorSetDesc, DescriptorSetLayout};
 use vulkano::descriptor_set::{DescriptorSet, PersistentDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::layout::PipelineLayout;
-use vulkano::pipeline::shader::EntryPointAbstract;
 use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
-use vulkano::descriptor_set::layout::DescriptorSetLayoutError;
 use vulkano::Version;
 
 fn main() {
@@ -101,52 +97,15 @@ fn main() {
     }
 
     let shader = shader::Shader::load(device.clone()).unwrap();
-
-    // For Graphics pipelines, use the `with_auto_layout` method
-    // instead of the `build` method to specify dynamic buffers.
-    // `with_auto_layout` will automatically handle tweaking the
-    // pipeline.
     let pipeline = Arc::new(
-        ComputePipeline::with_pipeline_layout(
+        ComputePipeline::new(
             device.clone(),
             &shader.main_entry_point(),
             &(),
-            {
-                let mut descriptor_set_layout_descs: Vec<_> = shader
-                    .main_entry_point()
-                    .descriptor_set_layout_descs()
-                    .iter()
-                    .cloned()
-                    .collect();
-                DescriptorSetDesc::tweak_multiple(
-                    &mut descriptor_set_layout_descs,
-                    [(0, 0)], // The dynamic uniform buffer is at set 0, descriptor 0
-                );
-                let descriptor_set_layouts = descriptor_set_layout_descs
-                    .into_iter()
-                    .map(|desc| {
-                        Ok(Arc::new(DescriptorSetLayout::new(
-                            device.clone(),
-                            desc.clone(),
-                        )?))
-                    })
-                    .collect::<Result<Vec<_>, DescriptorSetLayoutError>>()
-                    .unwrap();
-
-                Arc::new(
-                    PipelineLayout::new(
-                        device.clone(),
-                        descriptor_set_layouts,
-                        shader
-                            .main_entry_point()
-                            .push_constant_range()
-                            .iter()
-                            .cloned(),
-                    )
-                    .unwrap(),
-                )
-            },
             None,
+            |set_descs| {
+                set_descs[0].set_buffer_dynamic(0);
+            },
         )
         .unwrap(),
     );
@@ -207,11 +166,7 @@ fn main() {
         .add_buffer(output_buffer.clone())
         .unwrap();
 
-    let set = Arc::new(
-        set_builder
-            .build()
-            .unwrap()
-    );
+    let set = Arc::new(set_builder.build().unwrap());
 
     // Build the command buffer, using different offsets for each call.
     let mut builder = AutoCommandBufferBuilder::primary(

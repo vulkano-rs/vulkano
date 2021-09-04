@@ -328,7 +328,7 @@ impl DescriptorWrite {
     pub fn combined_image_sampler<I>(
         binding: u32,
         array_element: u32,
-        sampler: &Arc<Sampler>,
+        sampler: Option<&Arc<Sampler>>, // Some for dynamic sampler, None for immutable
         image_view: &I,
     ) -> DescriptorWrite
     where
@@ -344,7 +344,7 @@ impl DescriptorWrite {
             first_array_element: array_element,
             inner: smallvec!({
                 DescriptorWriteInner::CombinedImageSampler(
-                    sampler.internal_object(),
+                    sampler.map(|s| s.internal_object()).unwrap_or_default(),
                     image_view.inner().internal_object(),
                     layouts.combined_image_sampler.into(),
                 )

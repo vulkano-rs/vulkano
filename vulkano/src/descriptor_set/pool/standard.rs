@@ -193,7 +193,9 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let desc = DescriptorDesc {
-            ty: DescriptorDescTy::Sampler,
+            ty: DescriptorDescTy::Sampler {
+                immutable_samplers: vec![],
+            },
             descriptor_count: 1,
             stages: ShaderStages::all(),
             mutable: true,

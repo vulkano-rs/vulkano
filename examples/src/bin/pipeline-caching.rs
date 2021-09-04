@@ -119,6 +119,7 @@ fn main() {
             &shader.main_entry_point(),
             &(),
             Some(pipeline_cache.clone()),
+            |_| {},
         )
         .unwrap()
     });
