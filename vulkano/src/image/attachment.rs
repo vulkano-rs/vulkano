@@ -478,11 +478,11 @@ impl AttachmentImage {
 }
 
 impl<A> AttachmentImage<A> {
-    /// Returns the dimensions of the image.
+    /// Returns the width, height and layers of the image.
     #[inline]
-    pub fn dimensions(&self) -> [u32; 2] {
+    pub fn dimensions(&self) -> [u32; 3] {
         let dims = self.image.dimensions();
-        [dims.width(), dims.height()]
+        [dims.width(), dims.height(), dims.array_layers()]
     }
 }
 
@@ -598,7 +598,7 @@ unsafe impl<A> ImageAccess for AttachmentImage<A> {
 
     #[inline]
     fn current_layer_levels_access(&self) -> std::ops::Range<u32> {
-        0..1
+        0..self.dimensions()[2]
     }
 }
 
