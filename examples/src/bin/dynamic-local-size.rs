@@ -252,7 +252,7 @@ fn main() {
     let file = File::create(path).unwrap();
     let ref mut w = BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024);
-    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();

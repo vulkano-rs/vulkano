@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::parse::{Instruction, Spirv};
-use spirv_headers::Decoration;
+use spirv::Decoration;
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///

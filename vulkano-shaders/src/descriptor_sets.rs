@@ -10,7 +10,7 @@
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::TokenStream;
-use spirv_headers::{Decoration, Dim, ImageFormat, StorageClass};
+use spirv::{Decoration, Dim, ImageFormat, StorageClass};
 use std::cmp;
 use std::collections::HashSet;
 
@@ -811,5 +811,7 @@ fn to_vulkan_format(spirv_format: ImageFormat) -> TokenStream {
         ImageFormat::Rg8ui => quote! { Some(Format::R8G8_UINT) },
         ImageFormat::R16ui => quote! { Some(Format::R16_UINT) },
         ImageFormat::R8ui => quote! { Some(Format::R8_UINT) },
+        ImageFormat::R64ui => quote! { Some(Format::R64_UINT) },
+        ImageFormat::R64i => quote! { Some(Format::R64_SINT) },
     }
 }
