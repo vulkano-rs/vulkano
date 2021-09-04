@@ -8,14 +8,14 @@
 // according to those terms.
 
 use crate::parse::{Instruction, Spirv};
-use crate::{structs, RegisteredType};
 use crate::{spirv_search, TypesMeta};
+use crate::{structs, RegisteredType};
 use proc_macro2::{Span, TokenStream};
 use spirv_headers::Decoration;
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::mem;
 use syn::Ident;
-use std::collections::HashMap;
-use std::borrow::Cow;
 
 /// Returns true if the document has specialization constants.
 pub fn has_specialization_constants(doc: &Spirv) -> bool {
@@ -116,11 +116,10 @@ pub(super) fn write_specialization_constants<'a>(
     }
 
     let struct_name = Ident::new(
-        &format!("{}SpecializationConstants", if shared_constants {
-            ""
-        } else {
-            shader
-        }),
+        &format!(
+            "{}SpecializationConstants",
+            if shared_constants { "" } else { shader }
+        ),
         Span::call_site(),
     );
 

@@ -89,7 +89,10 @@ pub(super) fn write_entry_point(
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
         let spec_consts_struct_name = Ident::new(
-            &format!("{}SpecializationConstants", if shared_constants {""} else {shader}),
+            &format!(
+                "{}SpecializationConstants",
+                if shared_constants { "" } else { shader }
+            ),
             Span::call_site(),
         );
         quote! { #spec_consts_struct_name }

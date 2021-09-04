@@ -333,8 +333,13 @@ where
     });
 
     let structs = structs::write_structs(prefix, &doc, types_meta, types_registry);
-    let specialization_constants =
-        spec_consts::write_specialization_constants(prefix, &doc, types_meta, shared_constants, types_registry);
+    let specialization_constants = spec_consts::write_specialization_constants(
+        prefix,
+        &doc,
+        types_meta,
+        shared_constants,
+        types_registry,
+    );
     let shader_code = quote! {
         pub struct #struct_name {
             shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
