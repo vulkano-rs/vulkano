@@ -8,22 +8,39 @@
 // according to those terms.
 
 use crate::parse::{Instruction, Spirv};
-use crate::{spirv_search, TypesMeta};
+use crate::{spirv_search, RegisteredType, TypesMeta};
 use proc_macro2::{Span, TokenStream};
 use spirv_headers::Decoration;
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::mem;
 use syn::Ident;
 use syn::LitStr;
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
-pub(super) fn write_structs(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_structs<'a>(
+    shader: &'a str,
+    doc: &Spirv,
+    types_meta: &TypesMeta,
+    types_registry: &'a mut HashMap<String, RegisteredType>,
+) -> TokenStream {
     let mut structs = vec![];
     for instruction in &doc.instructions {
         match *instruction {
             Instruction::TypeStruct {
                 result_id,
                 ref member_types,
-            } => structs.push(write_struct(doc, result_id, member_types, types_meta).0),
+            } => structs.push(
+                write_struct(
+                    shader,
+                    doc,
+                    result_id,
+                    member_types,
+                    types_meta,
+                    Some(types_registry),
+                )
+                .0,
+            ),
             _ => (),
         }
     }
@@ -34,11 +51,13 @@ pub(super) fn write_structs(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream 
 }
 
 /// Analyzes a single struct, returns a string containing its Rust definition, plus its size.
-fn write_struct(
+fn write_struct<'a>(
+    shader: &'a str,
     doc: &Spirv,
     struct_id: u32,
     members: &[u32],
     types_meta: &TypesMeta,
+    types_registry: Option<&'a mut HashMap<String, RegisteredType>>,
 ) -> (TokenStream, Option<usize>) {
     let name = Ident::new(
         &spirv_search::name_from_id(doc, struct_id),
@@ -47,9 +66,10 @@ fn write_struct(
 
     // The members of this struct.
     struct Member {
-        pub name: Ident,
-        pub dummy: bool,
-        pub ty: TokenStream,
+        name: Ident,
+        dummy: bool,
+        ty: TokenStream,
+        signature: Cow<'static, str>,
     }
     let mut rust_members = Vec::with_capacity(members.len());
 
@@ -62,7 +82,7 @@ fn write_struct(
 
     for (num, &member) in members.iter().enumerate() {
         // Compute infos about the member.
-        let (ty, rust_size, rust_align) = type_from_id(doc, member, types_meta);
+        let (ty, signature, rust_size, rust_align) = type_from_id(shader, doc, member, types_meta);
         let member_name = spirv_search::member_name_from_id(doc, struct_id, num as u32);
 
         // Ignore the whole struct is a member is built in, which includes
@@ -107,6 +127,7 @@ fn write_struct(
                     name: Ident::new(&format!("_dummy{}", padding_num), Span::call_site()),
                     dummy: true,
                     ty: quote! { [u8; #diff] },
+                    signature: Cow::from(format!("[u8; {}]", diff)),
                 });
                 *current_rust_offset += diff;
             }
@@ -123,6 +144,7 @@ fn write_struct(
             name: Ident::new(&member_name, Span::call_site()),
             dummy: false,
             ty,
+            signature,
         });
     }
 
@@ -156,8 +178,37 @@ fn write_struct(
                 name: Ident::new(&format!("_dummy{}", next_padding_num), Span::call_site()),
                 dummy: true,
                 ty: quote! { [u8; #diff as usize] },
+                signature: Cow::from(format!("[u8; {}]", diff)),
             });
         }
+    }
+
+    let total_size = spirv_req_total_size
+        .map(|sz| sz as usize)
+        .or(current_rust_offset);
+
+    // For single shader-mode registration mechanism skipped.
+    if let Some(types_registry) = types_registry {
+        let target_type = RegisteredType {
+            shader: shader.to_string(),
+            signature: rust_members
+                .iter()
+                .map(|member| (member.name.to_string(), member.signature.clone()))
+                .collect(),
+        };
+
+        let name = name.to_string();
+
+        // Checking with Registry if this struct already registered by another shader, and if their
+        // signatures match.
+        if let Some(registered) = types_registry.get(name.as_str()) {
+            registered.assert_signatures(name.as_str(), &target_type);
+
+            // If the struct already registered and matches this one, skip duplicate.
+            return (quote! {}, total_size);
+        }
+
+        debug_assert!(types_registry.insert(name, target_type).is_none());
     }
 
     // We can only implement Clone if there's no unsized member in the struct.
@@ -325,22 +376,18 @@ fn write_struct(
         #custom_impls
     };
 
-    (
-        ast,
-        spirv_req_total_size
-            .map(|sz| sz as usize)
-            .or(current_rust_offset),
-    )
+    (ast, total_size)
 }
 
 /// Returns the type name to put in the Rust struct, and its size and alignment.
 ///
 /// The size can be `None` if it's only known at runtime.
 pub(super) fn type_from_id(
+    shader: &str,
     doc: &Spirv,
     searched: u32,
     types_meta: &TypesMeta,
-) -> (TokenStream, Option<usize>, usize) {
+) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
             &Instruction::TypeBool { result_id } if result_id == searched => {
@@ -359,6 +406,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {i8},
+                        Cow::from("i8"),
                         Some(std::mem::size_of::<i8>()),
                         mem::align_of::<Foo>(),
                     );
@@ -371,6 +419,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {u8},
+                        Cow::from("u8"),
                         Some(std::mem::size_of::<u8>()),
                         mem::align_of::<Foo>(),
                     );
@@ -383,6 +432,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {i16},
+                        Cow::from("i16"),
                         Some(std::mem::size_of::<i16>()),
                         mem::align_of::<Foo>(),
                     );
@@ -395,6 +445,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {u16},
+                        Cow::from("u16"),
                         Some(std::mem::size_of::<u16>()),
                         mem::align_of::<Foo>(),
                     );
@@ -407,6 +458,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {i32},
+                        Cow::from("i32"),
                         Some(std::mem::size_of::<i32>()),
                         mem::align_of::<Foo>(),
                     );
@@ -419,6 +471,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {u32},
+                        Cow::from("u32"),
                         Some(std::mem::size_of::<u32>()),
                         mem::align_of::<Foo>(),
                     );
@@ -431,6 +484,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {i64},
+                        Cow::from("i64"),
                         Some(std::mem::size_of::<i64>()),
                         mem::align_of::<Foo>(),
                     );
@@ -443,6 +497,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {u64},
+                        Cow::from("u64"),
                         Some(std::mem::size_of::<u64>()),
                         mem::align_of::<Foo>(),
                     );
@@ -458,6 +513,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {f32},
+                        Cow::from("f32"),
                         Some(std::mem::size_of::<f32>()),
                         mem::align_of::<Foo>(),
                     );
@@ -470,6 +526,7 @@ pub(super) fn type_from_id(
                     }
                     return (
                         quote! {f64},
+                        Cow::from("f64"),
                         Some(std::mem::size_of::<f64>()),
                         mem::align_of::<Foo>(),
                     );
@@ -482,10 +539,16 @@ pub(super) fn type_from_id(
                 count,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id(doc, component_id, types_meta);
+                let (ty, item, t_size, t_align) =
+                    type_from_id(shader, doc, component_id, types_meta);
                 let array_length = count as usize;
                 let size = t_size.map(|s| s * count as usize);
-                return (quote! { [#ty; #array_length] }, size, t_align);
+                return (
+                    quote! { [#ty; #array_length] },
+                    Cow::from(format!("[{}; {}]", item, array_length)),
+                    size,
+                    t_align,
+                );
             }
             &Instruction::TypeMatrix {
                 result_id,
@@ -494,10 +557,16 @@ pub(super) fn type_from_id(
             } if result_id == searched => {
                 // FIXME: row-major or column-major
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id(doc, column_type_id, types_meta);
+                let (ty, item, t_size, t_align) =
+                    type_from_id(shader, doc, column_type_id, types_meta);
                 let array_length = column_count as usize;
                 let size = t_size.map(|s| s * column_count as usize);
-                return (quote! { [#ty; #array_length] }, size, t_align);
+                return (
+                    quote! { [#ty; #array_length] },
+                    Cow::from(format!("[{}; {}]", item, array_length)),
+                    size,
+                    t_align,
+                );
             }
             &Instruction::TypeArray {
                 result_id,
@@ -505,7 +574,7 @@ pub(super) fn type_from_id(
                 length_id,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, t_size, t_align) = type_from_id(doc, type_id, types_meta);
+                let (ty, item, t_size, t_align) = type_from_id(shader, doc, type_id, types_meta);
                 let t_size = t_size.expect("array components must be sized");
                 let len = doc
                     .instructions
@@ -532,30 +601,39 @@ pub(super) fn type_from_id(
                 }
                 let array_length = len as usize;
                 let size = Some(t_size * len as usize);
-                return (quote! { [#ty; #array_length] }, size, t_align);
+                return (
+                    quote! { [#ty; #array_length] },
+                    Cow::from(format!("[{}; {}]", item, array_length)),
+                    size,
+                    t_align,
+                );
             }
             &Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, _, t_align) = type_from_id(doc, type_id, types_meta);
-                return (quote! { [#ty] }, None, t_align);
+                let (ty, name, _, t_align) = type_from_id(shader, doc, type_id, types_meta);
+                return (
+                    quote! { [#ty] },
+                    Cow::from(format!("[{}]", name)),
+                    None,
+                    t_align,
+                );
             }
             &Instruction::TypeStruct {
                 result_id,
                 ref member_types,
             } if result_id == searched => {
                 // TODO: take the Offset member decorate into account?
-                let name = Ident::new(
-                    &spirv_search::name_from_id(doc, result_id),
-                    Span::call_site(),
-                );
+                let name_string = spirv_search::name_from_id(doc, result_id);
+                let name = Ident::new(&name_string, Span::call_site());
                 let ty = quote! { #name };
-                let (_, size) = write_struct(doc, result_id, member_types, types_meta);
+                let (_, size) =
+                    write_struct(shader, doc, result_id, member_types, types_meta, None);
                 let align = member_types
                     .iter()
-                    .map(|&t| type_from_id(doc, t, types_meta).2)
+                    .map(|&t| type_from_id(shader, doc, t, types_meta).3)
                     .max()
                     .unwrap_or(1);
-                return (ty, size, align);
+                return (ty, Cow::from(name_string), size, align);
             }
             _ => (),
         }

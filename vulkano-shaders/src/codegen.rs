@@ -14,11 +14,13 @@ pub use crate::parse::ParseError;
 use crate::read_file_to_string;
 use crate::spec_consts;
 use crate::structs;
+use crate::RegisteredType;
 use crate::TypesMeta;
 use proc_macro2::{Span, TokenStream};
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
 use spirv_headers::{Capability, StorageClass};
+use std::collections::HashMap;
 use std::iter::Iterator;
 use std::path::Path;
 use std::{
@@ -205,17 +207,17 @@ pub fn compile(
 }
 
 pub(super) fn reflect<'a, I>(
-    name: &str,
+    prefix: &'a str,
     spirv: &[u32],
-    types_meta: TypesMeta,
+    types_meta: &TypesMeta,
     input_paths: I,
     exact_entrypoint_interface: bool,
-    dump: bool,
-) -> Result<TokenStream, Error>
+    types_registry: &'a mut HashMap<String, RegisteredType>,
+) -> Result<(TokenStream, TokenStream), Error>
 where
     I: Iterator<Item = &'a str>,
 {
-    let struct_name = Ident::new(&name, Span::call_site());
+    let struct_name = Ident::new(&format!("{}Shader", prefix), Span::call_site());
     let doc = parse::parse_spirv(spirv)?;
 
     // checking whether each required capability is enabled in the Vulkan device
@@ -310,9 +312,10 @@ where
     for instruction in doc.instructions.iter() {
         if let &Instruction::EntryPoint { .. } = instruction {
             let entry_point = entry_point::write_entry_point(
+                prefix,
                 &doc,
                 instruction,
-                &types_meta,
+                types_meta,
                 exact_entrypoint_interface,
             );
             entry_points_inside_impl.push(entry_point);
@@ -327,46 +330,10 @@ where
         }
     });
 
-    let structs = structs::write_structs(&doc, &types_meta);
-    let specialization_constants = spec_consts::write_specialization_constants(&doc, &types_meta);
-    let uses = &types_meta.uses;
-    let ast = quote! {
-        #[allow(unused_imports)]
-        use std::sync::Arc;
-        #[allow(unused_imports)]
-        use std::vec::IntoIter as VecIntoIter;
-
-        #[allow(unused_imports)]
-        use vulkano::device::Device;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDescTy;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorDescImage;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorSetDesc;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::layout::DescriptorSetLayout;
-        #[allow(unused_imports)]
-        use vulkano::descriptor_set::DescriptorSet;
-        #[allow(unused_imports)]
-        use vulkano::format::Format;
-        #[allow(unused_imports)]
-        use vulkano::image::view::ImageViewType;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::layout::PipelineLayout;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::layout::PipelineLayoutPcRange;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::shader::ShaderStages;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::shader::SpecializationConstants as SpecConstsTrait;
-        #[allow(unused_imports)]
-        use vulkano::pipeline::shader::SpecializationMapEntry;
-        #[allow(unused_imports)]
-        use vulkano::Version;
-
+    let structs = structs::write_structs(prefix, &doc, types_meta, types_registry);
+    let specialization_constants =
+        spec_consts::write_specialization_constants(prefix, &doc, types_meta);
+    let shader_code = quote! {
         pub struct #struct_name {
             shader: ::std::sync::Arc<::vulkano::pipeline::shader::ShaderModule>,
         }
@@ -400,20 +367,10 @@ where
             #( #entry_points_inside_impl )*
         }
 
-        pub mod ty {
-            #( #uses )*
-            #structs
-        }
-
         #specialization_constants
     };
 
-    if dump {
-        println!("{}", ast.to_string());
-        panic!("`shader!` rust codegen dumped") // TODO: use span from dump
-    }
-
-    Ok(ast)
+    Ok((shader_code, structs))
 }
 
 #[derive(Debug)]
@@ -827,7 +784,9 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        let res = std::panic::catch_unwind(|| structs::write_structs(&doc, &TypesMeta::default()));
+        let res = std::panic::catch_unwind(|| {
+            structs::write_structs("", &doc, &TypesMeta::default(), None)
+        });
         assert!(res.is_err());
     }
     #[test]
@@ -855,7 +814,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs(&doc, &TypesMeta::default());
+        structs::write_structs("", &doc, &TypesMeta::default(), None);
     }
     #[test]
     fn test_wrap_alignment() {
@@ -887,7 +846,7 @@ mod tests {
         )
         .unwrap();
         let doc = parse::parse_spirv(comp.as_binary()).unwrap();
-        structs::write_structs(&doc, &TypesMeta::default());
+        structs::write_structs("", &doc, &TypesMeta::default(), None);
     }
 
     #[test]

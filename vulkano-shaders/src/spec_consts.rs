@@ -32,7 +32,11 @@ pub fn has_specialization_constants(doc: &Spirv) -> bool {
 
 /// Writes the `SpecializationConstants` struct that contains the specialization constants and
 /// implements the `Default` and the `vulkano::pipeline::shader::SpecializationConstants` traits.
-pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_specialization_constants(
+    shader: &str,
+    doc: &Spirv,
+    types_meta: &TypesMeta,
+) -> TokenStream {
     struct SpecConst {
         name: String,
         constant_id: u32,
@@ -80,7 +84,7 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
         };
 
         let (rust_ty, rust_size, rust_alignment) =
-            spec_const_type_from_id(doc, type_id, types_meta);
+            spec_const_type_from_id(shader, doc, type_id, types_meta);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
         let constant_id = doc.get_decoration_params(result_id, Decoration::SpecId);
@@ -139,23 +143,28 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
         struct_member_defaults.push(quote! { #name: #default_value });
     }
 
+    let struct_name = Ident::new(
+        &format!("{}SpecializationConstants", shader),
+        Span::call_site(),
+    );
+
     quote! {
         #[derive(Debug, Copy, Clone)]
         #[allow(non_snake_case)]
         #[repr(C)]
-        pub struct SpecializationConstants {
+        pub struct #struct_name {
             #( #struct_members ),*
         }
 
-        impl Default for SpecializationConstants {
-            fn default() -> SpecializationConstants {
-                SpecializationConstants {
+        impl Default for #struct_name {
+            fn default() -> #struct_name {
+                #struct_name {
                     #( #struct_member_defaults ),*
                 }
             }
         }
 
-        unsafe impl SpecConstsTrait for SpecializationConstants {
+        unsafe impl SpecConstsTrait for #struct_name {
             fn descriptors() -> &'static [SpecializationMapEntry] {
                 static DESCRIPTORS: [SpecializationMapEntry; #num_map_entries] = [
                     #( #map_entries ),*
@@ -168,6 +177,7 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
 
 // Wrapper around `type_from_id` that also handles booleans.
 fn spec_const_type_from_id(
+    shader: &str,
     doc: &Spirv,
     searched: u32,
     types_meta: &TypesMeta,
@@ -185,5 +195,7 @@ fn spec_const_type_from_id(
         }
     }
 
-    structs::type_from_id(doc, searched, types_meta)
+    let (stream, _, size, alignment) = structs::type_from_id(shader, doc, searched, types_meta);
+
+    (stream, size, alignment)
 }
