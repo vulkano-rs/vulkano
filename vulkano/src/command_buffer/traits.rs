@@ -323,17 +323,14 @@ where
     finished: AtomicBool,
 }
 
-unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
+impl<F, Cb> CommandBufferExecFuture<F, Cb>
 where
     F: GpuFuture,
     Cb: PrimaryCommandBuffer,
 {
-    #[inline]
-    fn cleanup_finished(&mut self) {
-        self.previous.cleanup_finished();
-    }
-
-    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+    // Implementation of `build_submission`. Doesn't check whenever the future was already flushed.
+    // You must make sure to not submit same command buffer multiple times.
+    unsafe fn build_submission_impl(&self) -> Result<SubmitAnyBuilder, FlushError> {
         Ok(match self.previous.build_submission()? {
             SubmitAnyBuilder::Empty => {
                 let mut builder = SubmitCommandBufferBuilder::new();
@@ -359,6 +356,25 @@ where
             }
         })
     }
+}
+
+unsafe impl<F, Cb> GpuFuture for CommandBufferExecFuture<F, Cb>
+where
+    F: GpuFuture,
+    Cb: PrimaryCommandBuffer,
+{
+    #[inline]
+    fn cleanup_finished(&mut self) {
+        self.previous.cleanup_finished();
+    }
+
+    unsafe fn build_submission(&self) -> Result<SubmitAnyBuilder, FlushError> {
+        if *self.submitted.lock().unwrap() {
+            return Ok(SubmitAnyBuilder::Empty);
+        }
+
+        return self.build_submission_impl();
+    }
 
     #[inline]
     fn flush(&self) -> Result<(), FlushError> {
@@ -370,7 +386,7 @@ where
 
             let queue = self.queue.clone();
 
-            match self.build_submission()? {
+            match self.build_submission_impl()? {
                 SubmitAnyBuilder::Empty => {}
                 SubmitAnyBuilder::CommandBuffer(builder) => {
                     builder.submit(&queue)?;
