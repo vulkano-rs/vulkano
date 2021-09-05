@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::{write_file, RegistryData};
 use heck::SnakeCase;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
@@ -60,17 +61,18 @@ fn required_by_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write(
-    types: &HashMap<&str, (&Type, Vec<&str>)>,
-    extensions: &IndexMap<&str, &Extension>,
-) -> TokenStream {
-    let features = write_features(&make_features(types));
-    let features_ffi = write_features_ffi(&make_features_ffi(types, extensions));
-
-    quote! {
-        #features
-        #features_ffi
-    }
+pub fn write(data: &RegistryData) {
+    let features_output = features_output(&features_members(&data.types));
+    let features_ffi_output =
+        features_ffi_output(&features_ffi_members(&data.types, &data.extensions));
+    write_file(
+        "features.rs",
+        format!("vk.xml header version {}", data.header_version),
+        quote! {
+            #features_output
+            #features_ffi_output
+        },
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -85,7 +87,7 @@ struct FeaturesMember {
     optional: bool,
 }
 
-fn write_features(members: &[FeaturesMember]) -> TokenStream {
+fn features_output(members: &[FeaturesMember]) -> TokenStream {
     let struct_items = members.iter().map(|FeaturesMember { name, doc, .. }| {
         quote! {
             #[doc = #doc]
@@ -106,9 +108,9 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                 let string = feature.to_string();
                 quote! {
                     if !self.#feature {
-                        return Err(crate::device::features::FeatureRestrictionError {
+                        return Err(FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: crate::device::features::FeatureRestriction::RequiresFeature(#string),
+                            restriction: FeatureRestriction::RequiresFeature(#string),
                         });
                     }
                 }
@@ -117,9 +119,9 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                 let string = feature.to_string();
                 quote! {
                     if self.#feature {
-                        return Err(crate::device::features::FeatureRestrictionError {
+                        return Err(FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: crate::device::features::FeatureRestriction::ConflictsFeature(#string),
+                            restriction: FeatureRestriction::ConflictsFeature(#string),
                         });
                     }
                 }
@@ -128,9 +130,9 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                 let string = extension.to_string();
                 quote! {
                     if extensions.#extension {
-                        return Err(crate::device::features::FeatureRestrictionError {
+                        return Err(FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: crate::device::features::FeatureRestriction::RequiredByExtension(#string),
+                            restriction: FeatureRestriction::RequiredByExtension(#string),
                         });
                     }
                 }
@@ -138,9 +140,9 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
             quote! {
                 if self.#name {
                     if !supported.#name {
-                        return Err(crate::device::features::FeatureRestrictionError {
+                        return Err(FeatureRestrictionError {
                             feature: #name_string,
-                            restriction: crate::device::features::FeatureRestriction::NotSupported,
+                            restriction: FeatureRestriction::NotSupported,
                         });
                     }
 
@@ -285,9 +287,9 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
                 &self,
                 supported: &Features,
                 api_version:
-                crate::Version,
-                extensions: &crate::device::DeviceExtensions,
-            ) -> Result<(), crate::device::features::FeatureRestrictionError> {
+                Version,
+                extensions: &DeviceExtensions,
+            ) -> Result<(), FeatureRestrictionError> {
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -354,7 +356,7 @@ fn write_features(members: &[FeaturesMember]) -> TokenStream {
     }
 }
 
-fn make_features(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMember> {
+fn features_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<FeaturesMember> {
     let mut features = HashMap::new();
     std::iter::once(&types["VkPhysicalDeviceFeatures"])
         .chain(sorted_structs(types).into_iter())
@@ -501,7 +503,7 @@ struct FeaturesFfiMember {
     conflicts: Vec<Ident>,
 }
 
-fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
+fn features_ffi_output(members: &[FeaturesFfiMember]) -> TokenStream {
     let struct_items = members.iter().map(|FeaturesFfiMember { name, ty, .. }| {
         quote! { #name: Option<ash::vk::#ty>, }
     });
@@ -527,7 +529,7 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
 
     quote! {
         #[derive(Default)]
-        pub struct FeaturesFfi {
+        pub(crate) struct FeaturesFfi {
             features_vulkan10: ash::vk::PhysicalDeviceFeatures2KHR,
             #(#struct_items)*
         }
@@ -535,7 +537,7 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
         impl FeaturesFfi {
             pub(crate) fn make_chain(
                 &mut self,
-                api_version: crate::Version,
+                api_version: Version,
                 device_extensions: &DeviceExtensions,
                 instance_extensions: &InstanceExtensions,
             ) {
@@ -555,7 +557,7 @@ fn write_features_ffi(members: &[FeaturesFfiMember]) -> TokenStream {
     }
 }
 
-fn make_features_ffi<'a>(
+fn features_ffi_members<'a>(
     types: &'a HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&'a str, &Extension>,
 ) -> Vec<FeaturesFfiMember> {
@@ -569,7 +571,7 @@ fn make_features_ffi<'a>(
                 .map(|provided_by| {
                     if let Some(version) = provided_by.strip_prefix("VK_VERSION_") {
                         let version = format_ident!("V{}", version);
-                        quote! { api_version >= crate::Version::#version }
+                        quote! { api_version >= Version::#version }
                     } else {
                         let member = format_ident!(
                             "{}_extensions",

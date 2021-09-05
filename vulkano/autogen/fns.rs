@@ -7,22 +7,30 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::{write_file, RegistryData};
 use heck::{CamelCase, SnakeCase};
 use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
 use quote::{format_ident, quote};
 use vk_parse::{Extension, ExtensionChild, InterfaceItem};
 
-pub fn write(extensions: &IndexMap<&str, &Extension>) -> TokenStream {
-    let entry_fns = write_fns(&[], "Entry");
-    let instance_fns = write_fns(&make_extension_fns("instance", &extensions), "Instance");
-    let device_fns = write_fns(&make_extension_fns("device", &extensions), "Device");
-
-    quote! {
-        #entry_fns
-        #instance_fns
-        #device_fns
-    }
+pub fn write(data: &RegistryData) {
+    let entry_fns_output = fns_output(&[], "Entry");
+    let instance_fns_output = fns_output(
+        &extension_fns_members("instance", &data.extensions),
+        "Instance",
+    );
+    let device_fns_output =
+        fns_output(&extension_fns_members("device", &data.extensions), "Device");
+    write_file(
+        "fns.rs",
+        format!("vk.xml header version {}", data.header_version),
+        quote! {
+            #entry_fns_output
+            #instance_fns_output
+            #device_fns_output
+        },
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -31,7 +39,7 @@ struct FnsMember {
     fn_struct: Ident,
 }
 
-fn write_fns(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
+fn fns_output(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
     let struct_name = format_ident!("{}Functions", fns_level);
     let members = std::array::IntoIter::new(["1_0", "1_1", "1_2"])
         .map(|version| FnsMember {
@@ -56,7 +64,7 @@ fn write_fns(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
 
         impl #struct_name {
             pub fn load<F>(mut load_fn: F) -> #struct_name
-                where F: FnMut(&std::ffi::CStr) -> *const std::ffi::c_void
+                where F: FnMut(&CStr) -> *const c_void
             {
                 #struct_name {
                     #(#load_items)*
@@ -66,7 +74,7 @@ fn write_fns(extension_members: &[FnsMember], fns_level: &str) -> TokenStream {
     }
 }
 
-fn make_extension_fns(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<FnsMember> {
+fn extension_fns_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<FnsMember> {
     extensions
         .values()
         .filter(|ext| ext.ext_type.as_ref().unwrap() == ty)

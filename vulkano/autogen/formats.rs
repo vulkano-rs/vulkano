@@ -7,13 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::{write_file, RegistryData};
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
 
-pub fn write(formats: &[&str]) -> TokenStream {
-    write_formats(&make_formats(formats))
+pub fn write(data: &RegistryData) {
+    write_file(
+        "formats.rs",
+        format!("vk.xml header version {}", data.header_version),
+        formats_output(&formats_members(&data.formats)),
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -39,7 +44,7 @@ struct FormatMember {
     type_stencil: Option<Ident>,
 }
 
-fn write_formats(members: &[FormatMember]) -> TokenStream {
+fn formats_output(members: &[FormatMember]) -> TokenStream {
     let enum_items = members.iter().map(|FormatMember { name, ffi_name, .. }| {
         quote! { #name = ash::vk::Format::#ffi_name.as_raw(), }
     });
@@ -222,15 +227,15 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
 
         impl Format {
             /// Returns the aspects that images of this format have.
-            pub fn aspects(&self) -> crate::image::ImageAspects {
-                crate::image::ImageAspects {
+            pub fn aspects(&self) -> ImageAspects {
+                ImageAspects {
                     color: !matches!(self, #(Format::#aspects_color_items)|* ),
                     depth: matches!(self, #(Format::#aspects_depth_items)|* ),
                     stencil: matches!(self, #(Format::#aspects_stencil_items)|* ),
                     plane0: matches!(self, #(Format::#aspects_plane0_items)|* ),
                     plane1: matches!(self, #(Format::#aspects_plane1_items)|* ),
                     plane2: matches!(self, #(Format::#aspects_plane2_items)|* ),
-                    ..crate::image::ImageAspects::none()
+                    ..ImageAspects::none()
                 }
             }
 
@@ -254,9 +259,8 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
             /// Returns the an opaque object representing the compatibility class of the format.
             /// This can be used to determine whether two formats are compatible for the purposes
             /// of certain Vulkan operations, such as image copying.
-            pub fn compatibility(&self) -> crate::format::FormatCompatibility {
-                use crate::format::{CompressionType, FormatCompatibilityInner};
-                crate::format::FormatCompatibility(match self {
+            pub fn compatibility(&self) -> FormatCompatibility {
+                FormatCompatibility(match self {
                     #(#compatibility_items)*
                 })
             }
@@ -278,8 +282,7 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the block compression scheme used for this format, if any. Returns `None` if
             /// the format does not use compression.
-            pub fn compression(&self) -> Option<crate::format::CompressionType> {
-                use crate::format::CompressionType;
+            pub fn compression(&self) -> Option<CompressionType> {
                 match self {
                     #(#compression_items)*
                     _ => None,
@@ -307,7 +310,7 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
             /// not have a well-defined size. Multi-planar formats store the color components
             /// disjointly in memory, and therefore do not have a well-defined size for all
             /// components as a whole. The individual planes do have a well-defined size.
-            pub fn size(&self) -> Option<crate::DeviceSize> {
+            pub fn size(&self) -> Option<DeviceSize> {
                 match self {
                     #(#size_items)*
                     _ => None,
@@ -316,8 +319,7 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the numeric data type of the color aspect of this format. Returns `None`
             /// for depth/stencil formats.
-            pub fn type_color(&self) -> Option<crate::format::NumericType> {
-                use crate::format::NumericType;
+            pub fn type_color(&self) -> Option<NumericType> {
                 match self {
                     #(#type_color_items)*
                     _ => None,
@@ -326,8 +328,7 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the numeric data type of the depth aspect of this format. Returns `None`
             /// color and stencil-only formats.
-            pub fn type_depth(&self) -> Option<crate::format::NumericType> {
-                use crate::format::NumericType;
+            pub fn type_depth(&self) -> Option<NumericType> {
                 match self {
                     #(#type_depth_items)*
                     _ => None,
@@ -336,8 +337,7 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
 
             /// Returns the numeric data type of the stencil aspect of this format. Returns `None`
             /// for color and depth-only formats.
-            pub fn type_stencil(&self) -> Option<crate::format::NumericType> {
-                use crate::format::NumericType;
+            pub fn type_stencil(&self) -> Option<NumericType> {
                 match self {
                     #(#type_stencil_items)*
                     _ => None,
@@ -345,7 +345,7 @@ fn write_formats(members: &[FormatMember]) -> TokenStream {
             }
         }
 
-        impl std::convert::TryFrom<ash::vk::Format> for Format {
+        impl TryFrom<ash::vk::Format> for Format {
             type Error = ();
 
             fn try_from(val: ash::vk::Format) -> Result<Format, ()> {
@@ -366,7 +366,7 @@ lazy_static! {
     static ref RGB_COMPONENTS_REGEX: Regex = Regex::new(r"([BGR])(\d+)").unwrap();
 }
 
-fn make_formats(formats: &[&str]) -> Vec<FormatMember> {
+fn formats_members(formats: &[&str]) -> Vec<FormatMember> {
     let mut members = formats
         .iter()
         .map(|vulkan_name| {

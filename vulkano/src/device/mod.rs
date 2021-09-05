@@ -94,10 +94,10 @@ pub(crate) use self::features::FeaturesFfi;
 pub use self::features::{FeatureRestriction, FeatureRestrictionError, Features};
 pub use self::properties::Properties;
 pub(crate) use self::properties::PropertiesFfi;
-pub use crate::autogen::DeviceExtensions;
 use crate::check_errors;
 use crate::command_buffer::pool::StandardCommandPool;
 use crate::descriptor_set::pool::StdDescriptorPool;
+pub use crate::device::extensions::DeviceExtensions;
 use crate::device::physical::PhysicalDevice;
 use crate::device::physical::QueueFamily;
 pub use crate::extensions::{

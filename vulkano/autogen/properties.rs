@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::{write_file, RegistryData};
 use heck::SnakeCase;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
@@ -18,17 +19,18 @@ use std::{
 };
 use vk_parse::{Extension, Type, TypeMember, TypeMemberMarkup, TypeSpec};
 
-pub fn write(
-    types: &HashMap<&str, (&Type, Vec<&str>)>,
-    extensions: &IndexMap<&str, &Extension>,
-) -> TokenStream {
-    let properties = write_properties(&make_properties(types));
-    let properties_ffi = write_properties_ffi(&make_properties_ffi(types, extensions));
-
-    quote! {
-        #properties
-        #properties_ffi
-    }
+pub fn write(data: &RegistryData) {
+    let properties_output = properties_output(&properties_members(&data.types));
+    let properties_ffi_output =
+        properties_ffi_output(&properties_ffi_members(&data.types, &data.extensions));
+    write_file(
+        "properties.rs",
+        format!("vk.xml header version {}", data.header_version),
+        quote! {
+            #properties_output
+            #properties_ffi_output
+        },
+    );
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +43,7 @@ struct PropertiesMember {
     optional: bool,
 }
 
-fn write_properties(members: &[PropertiesMember]) -> TokenStream {
+fn properties_output(members: &[PropertiesMember]) -> TokenStream {
     let struct_items = members.iter().map(
         |PropertiesMember {
              name,
@@ -110,8 +112,6 @@ fn write_properties(members: &[PropertiesMember]) -> TokenStream {
 
         impl From<&PropertiesFfi> for Properties {
             fn from(properties_ffi: &PropertiesFfi) -> Self {
-                use crate::device::properties::FromVulkan;
-
                 Properties {
                     #(#from_items)*
                 }
@@ -120,7 +120,7 @@ fn write_properties(members: &[PropertiesMember]) -> TokenStream {
     }
 }
 
-fn make_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<PropertiesMember> {
+fn properties_members(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<PropertiesMember> {
     let mut properties = HashMap::new();
     std::array::IntoIter::new([
         &types["VkPhysicalDeviceProperties"],
@@ -175,7 +175,7 @@ fn make_properties(types: &HashMap<&str, (&Type, Vec<&str>)>) -> Vec<PropertiesM
 
                 let vulkano_member = name.to_snake_case();
                 let vulkano_ty = match name {
-                    "apiVersion" => quote! { crate::Version },
+                    "apiVersion" => quote! { Version },
                     _ => vulkano_type(ty, len),
                 };
                 match properties.entry(vulkano_member.clone()) {
@@ -222,7 +222,7 @@ struct PropertiesFfiMember {
     conflicts: Vec<Ident>,
 }
 
-fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
+fn properties_ffi_output(members: &[PropertiesFfiMember]) -> TokenStream {
     let struct_items = members.iter().map(|PropertiesFfiMember { name, ty, .. }| {
         quote! { #name: Option<ash::vk::#ty>, }
     });
@@ -248,7 +248,7 @@ fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
 
     quote! {
         #[derive(Default)]
-        pub struct PropertiesFfi {
+        pub(crate) struct PropertiesFfi {
             properties_vulkan10: ash::vk::PhysicalDeviceProperties2KHR,
             #(#struct_items)*
         }
@@ -256,9 +256,9 @@ fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
         impl PropertiesFfi {
             pub(crate) fn make_chain(
                 &mut self,
-                api_version: crate::Version,
-                device_extensions: &crate::device::DeviceExtensions,
-                instance_extensions: &crate::instance::InstanceExtensions,
+                api_version: Version,
+                device_extensions: &DeviceExtensions,
+                instance_extensions: &InstanceExtensions,
             ) {
                 self.properties_vulkan10 = Default::default();
                 let head = &mut self.properties_vulkan10;
@@ -276,7 +276,7 @@ fn write_properties_ffi(members: &[PropertiesFfiMember]) -> TokenStream {
     }
 }
 
-fn make_properties_ffi<'a>(
+fn properties_ffi_members<'a>(
     types: &'a HashMap<&str, (&Type, Vec<&str>)>,
     extensions: &IndexMap<&'a str, &Extension>,
 ) -> Vec<PropertiesFfiMember> {
@@ -290,7 +290,7 @@ fn make_properties_ffi<'a>(
                 .map(|provided_by| {
                     if let Some(version) = provided_by.strip_prefix("VK_VERSION_") {
                         let version = format_ident!("V{}", version);
-                        quote! { api_version >= crate::Version::#version }
+                        quote! { api_version >= Version::#version }
                     } else {
                         let member = format_ident!(
                             "{}_extensions",
@@ -462,23 +462,19 @@ fn vulkano_type(ty: &str, len: Option<&str>) -> TokenStream {
             "uint32_t" => quote! { u32 },
             "uint64_t" => quote! { u64 },
             "VkBool32" => quote! { bool },
-            "VkConformanceVersion" => quote! { crate::device::physical::ConformanceVersion },
-            "VkDeviceSize" => quote! { crate::DeviceSize },
-            "VkDriverId" => quote! { crate::device::physical::DriverId },
+            "VkConformanceVersion" => quote! { ConformanceVersion },
+            "VkDeviceSize" => quote! { DeviceSize },
+            "VkDriverId" => quote! { DriverId },
             "VkExtent2D" => quote! { [u32; 2] },
-            "VkPhysicalDeviceType" => quote! { crate::device::physical::PhysicalDeviceType },
-            "VkPointClippingBehavior" => quote! { crate::device::physical::PointClippingBehavior },
-            "VkResolveModeFlags" => quote! { crate::render_pass::ResolveModes },
-            "VkSampleCountFlags" => quote! { crate::image::SampleCounts },
-            "VkSampleCountFlagBits" => quote! { crate::image::SampleCount },
-            "VkShaderCorePropertiesFlagsAMD" => {
-                quote! { crate::device::physical::ShaderCoreProperties }
-            }
-            "VkShaderFloatControlsIndependence" => {
-                quote! { crate::device::physical::ShaderFloatControlsIndependence }
-            }
-            "VkShaderStageFlags" => quote! { crate::pipeline::shader::ShaderStages },
-            "VkSubgroupFeatureFlags" => quote! { crate::device::physical::SubgroupFeatures },
+            "VkPhysicalDeviceType" => quote! { PhysicalDeviceType },
+            "VkPointClippingBehavior" => quote! { PointClippingBehavior },
+            "VkResolveModeFlags" => quote! { ResolveModes },
+            "VkSampleCountFlags" => quote! { SampleCounts },
+            "VkSampleCountFlagBits" => quote! { SampleCount },
+            "VkShaderCorePropertiesFlagsAMD" => quote! { ShaderCoreProperties },
+            "VkShaderFloatControlsIndependence" => quote! { ShaderFloatControlsIndependence },
+            "VkShaderStageFlags" => quote! { ShaderStages },
+            "VkSubgroupFeatureFlags" => quote! { SubgroupFeatures },
             _ => unimplemented!("{}", ty),
         }
     }
