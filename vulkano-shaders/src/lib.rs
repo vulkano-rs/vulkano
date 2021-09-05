@@ -135,13 +135,13 @@
 //!
 //! ## `shaders: { First: {src: "...", ty: "..."}, ... }`
 //!
-//! Within these option the user can compile several shaders at a single macro invocation.
-//! Each entry key is a prefix that will be put in from of generated `Shader`
+//! With these options the user can compile several shaders at a single macro invocation.
+//! Each entry key is a prefix that will be put in front of generated `Shader`
 //! struct(`FirstShader` in this case), and `SpecializationConstants`
 //! struct(`FirstSpecializationConstants` in this case). However all other Rust structs
 //! translated from the shader source will be shared between shaders. The macro checks that the
 //! source structs with the same names between different shaders have the same declaration
-//! signature, and throws compile-time error if they don't.
+//! signature, and throws a compile-time error if they don't.
 //!
 //! Each entry values expecting `src`, `path`, `bytes`, and `ty` pairs same as above.
 //!
