@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use std::{env, fs::File, io::BufWriter, path::Path, process::Command};
+use std::env;
 
 mod autogen;
 
@@ -24,14 +24,7 @@ fn main() {
         println!("cargo:rustc-link-lib=framework=Foundation");
     }
 
-    // Write autogen.rs
+    // Run autogen
     println!("cargo:rerun-if-changed=vk.xml");
-    let path = Path::new(&env::var_os("OUT_DIR").unwrap()).join("autogen.rs");
-
-    {
-        let mut writer = BufWriter::new(File::create(&path).unwrap());
-        autogen::write(&mut writer);
-    }
-
-    Command::new("rustfmt").arg(&path).status().ok();
+    autogen::autogen();
 }

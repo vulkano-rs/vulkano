@@ -7,6 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use super::{write_file, RegistryData};
 use heck::SnakeCase;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -30,14 +31,9 @@ fn conflicts_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write(extensions: &IndexMap<&str, &Extension>) -> TokenStream {
-    let device_extensions = write_device_extensions(&make_extensions("device", &extensions));
-    let instance_extensions = write_instance_extensions(&make_extensions("instance", &extensions));
-
-    quote! {
-        #device_extensions
-        #instance_extensions
-    }
+pub fn write(data: &RegistryData) {
+    write_device_extensions(data);
+    write_instance_extensions(data);
 }
 
 #[derive(Clone, Debug)]
@@ -66,8 +62,24 @@ enum ExtensionStatus {
     Deprecated(Option<Replacement>),
 }
 
-fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
-    let common = write_extensions_common(format_ident!("DeviceExtensions"), members);
+fn write_device_extensions(data: &RegistryData) {
+    write_file(
+        "device_extensions.rs",
+        format!("vk.xml header version {}", data.header_version),
+        device_extensions_output(&extensions_members("device", &data.extensions)),
+    );
+}
+
+fn write_instance_extensions(data: &RegistryData) {
+    write_file(
+        "instance_extensions.rs",
+        format!("vk.xml header version {}", data.header_version),
+        instance_extensions_output(&extensions_members("instance", &data.extensions)),
+    );
+}
+
+fn device_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
+    let common = extensions_common_output(format_ident!("DeviceExtensions"), members);
 
     let check_requirements_items = members.iter().map(|ExtensionsMember {
         name,
@@ -84,9 +96,9 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
             let string = extension.to_string();
             quote! {
                 if !self.#extension {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::RequiresDeviceExtension(#string),
+                        restriction: ExtensionRestriction::RequiresDeviceExtension(#string),
                     });
                 }
             }
@@ -95,9 +107,9 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
             let string = extension.to_string();
             quote! {
                 if !instance_extensions.#extension {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(#string),
+                        restriction: ExtensionRestriction::RequiresInstanceExtension(#string),
                     });
                 }
             }
@@ -106,9 +118,9 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
             let string = extension.to_string();
             quote! {
                 if self.#extension {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::ConflictsDeviceExtension(#string),
+                        restriction: ExtensionRestriction::ConflictsDeviceExtension(#string),
                     });
                 }
             }
@@ -116,9 +128,9 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
         let required_if_supported = if *required_if_supported {
             quote! {
                 if supported.#name {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::RequiredIfSupported,
+                        restriction: ExtensionRestriction::RequiredIfSupported,
                     });
                 }
             }
@@ -129,16 +141,16 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
         quote! {
             if self.#name {
                 if !supported.#name {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::NotSupported,
+                        restriction: ExtensionRestriction::NotSupported,
                     });
                 }
 
-                if api_version < crate::Version::#requires_core {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                if api_version < Version::#requires_core {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::RequiresCore(crate::Version::#requires_core),
+                        restriction: ExtensionRestriction::RequiresCore(Version::#requires_core),
                     });
                 }
 
@@ -171,9 +183,9 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &DeviceExtensions,
-                api_version: crate::Version,
+                api_version: Version,
                 instance_extensions: &InstanceExtensions,
-            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
+            ) -> Result<(), ExtensionRestrictionError> {
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -181,15 +193,15 @@ fn write_device_extensions(members: &[ExtensionsMember]) -> TokenStream {
             pub(crate) fn required_if_supported_extensions() -> Self {
                 Self {
                     #(#required_if_supported_extensions_items)*
-                    _unbuildable: crate::extensions::Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
         }
     }
 }
 
-fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
-    let common = write_extensions_common(format_ident!("InstanceExtensions"), members);
+fn instance_extensions_output(members: &[ExtensionsMember]) -> TokenStream {
+    let common = extensions_common_output(format_ident!("InstanceExtensions"), members);
 
     let check_requirements_items = members.iter().map(|ExtensionsMember { name, requires_core, requires_instance_extensions, .. }| {
         let name_string = name.to_string();
@@ -198,9 +210,9 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
             let string = extension.to_string();
             quote! {
                 if !self.#extension {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::RequiresInstanceExtension(#string),
+                        restriction: ExtensionRestriction::RequiresInstanceExtension(#string),
                     });
                 }
             }
@@ -209,16 +221,16 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
         quote! {
             if self.#name {
                 if !supported.#name {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::NotSupported,
+                        restriction: ExtensionRestriction::NotSupported,
                     });
                 }
 
-                if api_version < crate::Version::#requires_core {
-                    return Err(crate::extensions::ExtensionRestrictionError {
+                if api_version < Version::#requires_core {
+                    return Err(ExtensionRestrictionError {
                         extension: #name_string,
-                        restriction: crate::extensions::ExtensionRestriction::RequiresCore(crate::Version::#requires_core),
+                        restriction: ExtensionRestriction::RequiresCore(Version::#requires_core),
                     });
                 } else {
                     #(#requires_instance_extensions_items)*
@@ -235,8 +247,8 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
             pub(super) fn check_requirements(
                 &self,
                 supported: &InstanceExtensions,
-                api_version: crate::Version,
-            ) -> Result<(), crate::extensions::ExtensionRestrictionError> {
+                api_version: Version,
+            ) -> Result<(), ExtensionRestrictionError> {
                 #(#check_requirements_items)*
                 Ok(())
             }
@@ -244,7 +256,7 @@ fn write_instance_extensions(members: &[ExtensionsMember]) -> TokenStream {
     }
 }
 
-fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> TokenStream {
+fn extensions_common_output(struct_name: Ident, members: &[ExtensionsMember]) -> TokenStream {
     let struct_items = members.iter().map(|ExtensionsMember { name, doc, .. }| {
         quote! {
             #[doc = #doc]
@@ -303,7 +315,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
     let from_extensions_for_vec_cstring_items =
         members.iter().map(|ExtensionsMember { name, raw, .. }| {
             quote! {
-                if x.#name { data.push(std::ffi::CString::new(&#raw[..]).unwrap()); }
+                if x.#name { data.push(CString::new(&#raw[..]).unwrap()); }
             }
         });
 
@@ -317,7 +329,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             /// can only be created through Vulkano functions and the update
             /// syntax. This way, extensions can be added to Vulkano without
             /// breaking existing code.
-            pub _unbuildable: crate::extensions::Unbuildable,
+            pub _unbuildable: Unbuildable,
         }
 
         impl #struct_name {
@@ -326,7 +338,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             pub const fn none() -> Self {
                 Self {
                     #(#none_items)*
-                    _unbuildable: crate::extensions::Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
 
@@ -343,7 +355,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             pub const fn union(&self, other: &Self) -> Self {
                 Self {
                     #(#union_items)*
-                    _unbuildable: crate::extensions::Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
 
@@ -352,7 +364,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             pub const fn intersection(&self, other: &Self) -> Self {
                 Self {
                     #(#intersection_items)*
-                    _unbuildable: crate::extensions::Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
 
@@ -361,14 +373,14 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             pub const fn difference(&self, other: &Self) -> Self {
                 Self {
                     #(#difference_items)*
-                    _unbuildable: crate::extensions::Unbuildable(())
+                    _unbuildable: Unbuildable(())
                 }
             }
         }
 
         impl std::fmt::Debug for #struct_name {
             #[allow(unused_assignments)]
-            fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
                 write!(f, "[")?;
 
                 let mut first = true;
@@ -378,7 +390,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             }
         }
 
-        impl<'a, I> From<I> for #struct_name where I: IntoIterator<Item = &'a std::ffi::CStr> {
+        impl<'a, I> From<I> for #struct_name where I: IntoIterator<Item = &'a CStr> {
             fn from(names: I) -> Self {
                 let mut extensions = Self::none();
                 for name in names {
@@ -391,7 +403,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
             }
         }
 
-        impl<'a> From<&'a #struct_name> for Vec<std::ffi::CString> {
+        impl<'a> From<&'a #struct_name> for Vec<CString> {
             fn from(x: &'a #struct_name) -> Self {
                 let mut data = Self::new();
                 #(#from_extensions_for_vec_cstring_items)*
@@ -401,7 +413,7 @@ fn write_extensions_common(struct_name: Ident, members: &[ExtensionsMember]) -> 
     }
 }
 
-fn make_extensions(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<ExtensionsMember> {
+fn extensions_members(ty: &str, extensions: &IndexMap<&str, &Extension>) -> Vec<ExtensionsMember> {
     extensions
         .values()
         .filter(|ext| ext.ext_type.as_ref().unwrap() == ty)
