@@ -314,6 +314,8 @@
 - Added `DeviceExtensions::required_extensions` function that returns a set of available extensions required to create `Device` on this platform.
 - `FormatFeatures` now implements `Copy`.
 - Removed the `AttachmentImageView` trait, which didn't appear to be used for anything anyway.
+- Added support and validation for the `mutable_format` and `block_texel_view_compatible` image creation flags.
+- Added `format` to the `ImageViewBuilder`, to choose a different format from the underlying image.
 
 # Version 0.20.0 (2020-12-26)
 
