@@ -38,13 +38,13 @@ pub struct ImageView<I>
 where
     I: ImageAccess,
 {
-    image: I,
     inner: UnsafeImageView,
-    format: Format,
+    image: I,
 
-    ty: ImageViewType,
-    component_mapping: ComponentMapping,
     array_layers: Range<u32>,
+    component_mapping: ComponentMapping,
+    format: Format,
+    ty: ImageViewType,
 }
 
 impl<I> ImageView<I>
@@ -74,11 +74,13 @@ where
         let array_layers = 0..image.dimensions().array_layers();
 
         ImageViewBuilder {
-            image,
-            ty,
-            component_mapping: ComponentMapping::default(),
-            mipmap_levels,
             array_layers,
+            component_mapping: ComponentMapping::default(),
+            format: image.format(),
+            mipmap_levels,
+            ty,
+
+            image,
         }
     }
 
@@ -90,11 +92,13 @@ where
 
 #[derive(Debug)]
 pub struct ImageViewBuilder<I> {
-    image: I,
-    ty: ImageViewType,
-    component_mapping: ComponentMapping,
-    mipmap_levels: Range<u32>,
     array_layers: Range<u32>,
+    component_mapping: ComponentMapping,
+    format: Format,
+    mipmap_levels: Range<u32>,
+    ty: ImageViewType,
+
+    image: I,
 }
 
 impl<I> ImageViewBuilder<I>
@@ -121,6 +125,16 @@ where
         self
     }
 
+    /// Sets the format of the image view.
+    ///
+    /// By default, this is the format of the image. Using a different format requires enabling the
+    /// `mutable_format` flag on the image.
+    #[inline]
+    pub fn with_format(mut self, format: Format) -> Self {
+        self.format = format;
+        self
+    }
+
     /// Sets the range of mipmap levels that the view should cover.
     ///
     /// By default, this is the full range of mipmaps present in the image.
@@ -142,10 +156,10 @@ where
     /// Builds the `ImageView`.
     pub fn build(self) -> Result<Arc<ImageView<I>>, ImageViewCreationError> {
         let dimensions = self.image.dimensions();
-        let format = self.image.format();
         let image_inner = self.image.inner().image;
-        let usage = image_inner.usage();
-        let flags = image_inner.flags();
+        let image_flags = image_inner.flags();
+        let image_format = image_inner.format();
+        let image_usage = image_inner.usage();
 
         if self.mipmap_levels.end <= self.mipmap_levels.start
             || self.mipmap_levels.end > image_inner.mipmap_levels()
@@ -159,12 +173,12 @@ where
             return Err(ImageViewCreationError::ArrayLayersOutOfRange);
         }
 
-        if !(usage.sampled
-            || usage.storage
-            || usage.color_attachment
-            || usage.depth_stencil_attachment
-            || usage.input_attachment
-            || usage.transient_attachment)
+        if !(image_usage.sampled
+            || image_usage.storage
+            || image_usage.color_attachment
+            || image_usage.depth_stencil_attachment
+            || image_usage.input_attachment
+            || image_usage.transient_attachment)
         {
             return Err(ImageViewCreationError::InvalidImageUsage);
         }
@@ -180,26 +194,86 @@ where
             (ImageViewType::Dim1dArray, ImageDimensions::Dim1d { .. }, _, _) => (),
             (ImageViewType::Dim2d, ImageDimensions::Dim2d { .. }, 1, _) => (),
             (ImageViewType::Dim2dArray, ImageDimensions::Dim2d { .. }, _, _) => (),
-            (ImageViewType::Cube, ImageDimensions::Dim2d { .. }, 6, _) if flags.cube_compatible => {
+            (ImageViewType::Cube, ImageDimensions::Dim2d { .. }, 6, _)
+                if image_flags.cube_compatible =>
+            {
                 ()
             }
             (ImageViewType::CubeArray, ImageDimensions::Dim2d { .. }, n, _)
-                if flags.cube_compatible && n % 6 == 0 =>
+                if image_flags.cube_compatible && n % 6 == 0 =>
             {
                 ()
             }
             (ImageViewType::Dim3d, ImageDimensions::Dim3d { .. }, 1, _) => (),
             (ImageViewType::Dim2d, ImageDimensions::Dim3d { .. }, 1, 1)
-                if flags.array_2d_compatible =>
+                if image_flags.array_2d_compatible =>
             {
                 ()
             }
             (ImageViewType::Dim2dArray, ImageDimensions::Dim3d { .. }, _, 1)
-                if flags.array_2d_compatible =>
+                if image_flags.array_2d_compatible =>
             {
                 ()
             }
             _ => return Err(ImageViewCreationError::IncompatibleType),
+        }
+
+        if image_format.requires_sampler_ycbcr_conversion() {
+            unimplemented!()
+        }
+
+        if image_flags.block_texel_view_compatible {
+            if self.format.compatibility() != image_format.compatibility()
+                || self.format.size() != image_format.size()
+            {
+                return Err(ImageViewCreationError::IncompatibleFormat);
+            }
+
+            if self.array_layers.end - self.array_layers.start != 1 {
+                return Err(ImageViewCreationError::ArrayLayersOutOfRange);
+            }
+
+            if self.mipmap_levels.end - self.mipmap_levels.start != 1 {
+                return Err(ImageViewCreationError::MipMapLevelsOutOfRange);
+            }
+
+            if self.format.compression().is_none() && self.ty == ImageViewType::Dim3d {
+                return Err(ImageViewCreationError::IncompatibleType);
+            }
+        } else if image_flags.mutable_format {
+            if image_format.planes().is_empty() {
+                if self.format != image_format {
+                    return Err(ImageViewCreationError::IncompatibleFormat);
+                }
+            } else {
+                // TODO: VUID-VkImageViewCreateInfo-image-01586
+                // If image was created with the VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, if the
+                // format of the image is a multi-planar format, and if subresourceRange.aspectMask
+                // is one of VK_IMAGE_ASPECT_PLANE_0_BIT, VK_IMAGE_ASPECT_PLANE_1_BIT, or
+                // VK_IMAGE_ASPECT_PLANE_2_BIT, then format must be compatible with the VkFormat for
+                // the plane of the image format indicated by subresourceRange.aspectMask, as
+                // defined in Compatible formats of planes of multi-planar formats
+
+                // TODO: VUID-VkImageViewCreateInfo-image-01762
+                // If image was not created with the VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT flag, or if
+                // the format of the image is a multi-planar format and if
+                // subresourceRange.aspectMask is VK_IMAGE_ASPECT_COLOR_BIT, format must be
+                // identical to the format used to create image
+            }
+        } else if self.format != image_format {
+            return Err(ImageViewCreationError::IncompatibleFormat);
+        }
+
+        if self.format != image_format {
+            if !(image_flags.mutable_format && image_format.planes().is_empty()) {
+                return Err(ImageViewCreationError::IncompatibleFormat);
+            } else if self.format.compatibility() != image_format.compatibility() {
+                if !image_flags.block_texel_view_compatible {
+                    return Err(ImageViewCreationError::IncompatibleFormat);
+                } else if self.format.size() != image_format.size() {
+                    return Err(ImageViewCreationError::IncompatibleFormat);
+                }
+            }
         }
 
         let inner = unsafe {
@@ -213,13 +287,13 @@ where
         };
 
         Ok(Arc::new(ImageView {
-            image: self.image,
             inner,
-            format,
+            image: self.image,
 
-            ty: self.ty,
-            component_mapping: self.component_mapping,
             array_layers: self.array_layers,
+            component_mapping: self.component_mapping,
+            format: self.format,
+            ty: self.ty,
         }))
     }
 }
@@ -233,6 +307,8 @@ pub enum ImageViewCreationError {
     ArrayLayersOutOfRange,
     /// The specified range of mipmap levels was out of range for the image.
     MipMapLevelsOutOfRange,
+    /// The requested format was not compatible with the image.
+    IncompatibleFormat,
     /// The requested [`ImageViewType`] was not compatible with the image, or with the specified ranges of array layers and mipmap levels.
     IncompatibleType,
     /// The image was not created with
@@ -261,6 +337,7 @@ impl fmt::Display for ImageViewCreationError {
                 ImageViewCreationError::AllocError(err) => "allocating memory failed",
                 ImageViewCreationError::ArrayLayersOutOfRange => "array layers are out of range",
                 ImageViewCreationError::MipMapLevelsOutOfRange => "mipmap levels are out of range",
+                ImageViewCreationError::IncompatibleFormat => "format is not compatible with image",
                 ImageViewCreationError::IncompatibleType =>
                     "image view type is not compatible with image, array layers or mipmap levels",
                 ImageViewCreationError::InvalidImageUsage =>
