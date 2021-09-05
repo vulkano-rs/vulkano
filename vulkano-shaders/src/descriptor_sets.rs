@@ -88,6 +88,7 @@ pub(super) fn write_descriptor_set_layout_descs(
 }
 
 pub(super) fn write_push_constant_ranges(
+    shader: &str,
     doc: &Spirv,
     stage: &TokenStream,
     types_meta: &TypesMeta,
@@ -106,7 +107,7 @@ pub(super) fn write_push_constant_ranges(
             _ => continue,
         };
 
-        let (_, size, _) = crate::structs::type_from_id(doc, type_id, types_meta);
+        let (_, _, size, _) = crate::structs::type_from_id(shader, doc, type_id, types_meta);
         let size = size.expect("Found runtime-sized push constants") as u32;
         push_constants_size = cmp::max(push_constants_size, size);
     }
@@ -562,7 +563,7 @@ fn descriptor_infos(
                         .next()
                         .expect("failed to find array length");
                     let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
-                    
+
                     Some((desc, mutable, len, false))
                 }
 

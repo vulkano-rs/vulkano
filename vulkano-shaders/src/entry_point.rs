@@ -15,10 +15,12 @@ use spirv::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use syn::Ident;
 
 pub(super) fn write_entry_point(
+    shader: &str,
     doc: &Spirv,
     instruction: &Instruction,
     types_meta: &TypesMeta,
     exact_entrypoint_interface: bool,
+    shared_constants: bool,
 ) -> TokenStream {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
@@ -83,10 +85,17 @@ pub(super) fn write_entry_point(
 
     let descriptor_set_layout_descs =
         write_descriptor_set_layout_descs(&doc, id, interface, exact_entrypoint_interface, &stage);
-    let push_constant_ranges = write_push_constant_ranges(&doc, &stage, &types_meta);
+    let push_constant_ranges = write_push_constant_ranges(shader, &doc, &stage, &types_meta);
 
     let spec_consts_struct = if crate::spec_consts::has_specialization_constants(doc) {
-        quote! { SpecializationConstants }
+        let spec_consts_struct_name = Ident::new(
+            &format!(
+                "{}SpecializationConstants",
+                if shared_constants { "" } else { shader }
+            ),
+            Span::call_site(),
+        );
+        quote! { #spec_consts_struct_name }
     } else {
         quote! { () }
     };
