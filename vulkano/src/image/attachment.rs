@@ -30,7 +30,7 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::DedicatedAlloc;
+use crate::memory::{DedicatedAlloc, ExternalMemoryHandleType, DeviceMemoryAllocError};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
 use std::hash::Hash;
@@ -40,6 +40,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::fs::File;
 
 /// ImageAccess whose purpose is to be used as a framebuffer attachment.
 ///
@@ -476,6 +477,95 @@ impl AttachmentImage {
             initialized: AtomicBool::new(false),
             gpu_lock: AtomicUsize::new(0),
         }))
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn new_with_exportable_fd(
+        device: Arc<Device>,
+        dimensions: [u32; 2],
+        array_layers: u32,
+        format: Format,
+        base_usage: ImageUsage,
+        samples: SampleCount,
+    ) -> Result<Arc<AttachmentImage>, ImageCreationError> {
+        // TODO: check dimensions against the max_framebuffer_width/height/layers limits
+
+        let is_depth = match format.ty() {
+            FormatTy::Depth => true,
+            FormatTy::DepthStencil => true,
+            FormatTy::Stencil => true,
+            FormatTy::Compressed => panic!(),
+            _ => false,
+        };
+
+        let usage = ImageUsage {
+            color_attachment: !is_depth,
+            depth_stencil_attachment: is_depth,
+            ..base_usage
+        };
+
+        let (image, mem_reqs) = unsafe {
+            let dims = ImageDimensions::Dim2d {
+                width: dimensions[0],
+                height: dimensions[1],
+                array_layers,
+            };
+
+            UnsafeImage::new(
+                device.clone(),
+                usage,
+                format,
+                ImageCreateFlags::none(),
+                dims,
+                samples,
+                1,
+                Sharing::Exclusive::<Empty<u32>>,
+                false,
+                false,
+            )?
+        };
+
+        let memory = MemoryPool::alloc_from_requirements_with_exportable_fd(
+            &Device::standard_pool(&device),
+            &mem_reqs,
+            AllocLayout::Optimal,
+            MappingRequirement::DoNotMap,
+            DedicatedAlloc::Image(&image),
+            |t| {
+                if t.is_device_local() {
+                    AllocFromRequirementsFilter::Preferred
+                } else {
+                    AllocFromRequirementsFilter::Allowed
+                }
+            },
+        )?;
+        debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
+        unsafe {
+            image.bind_memory(memory.memory(), memory.offset())?;
+        }
+
+        Ok(Arc::new(AttachmentImage {
+            image,
+            memory,
+            format,
+            attachment_layout: if is_depth {
+                ImageLayout::DepthStencilAttachmentOptimal
+            } else {
+                ImageLayout::ColorAttachmentOptimal
+            },
+            initialized: AtomicBool::new(false),
+            gpu_lock: AtomicUsize::new(0),
+        }))
+    }
+
+    /// Exports posix file descriptor for the allocated memory
+    /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
+    /// Only works on Linux.
+    #[cfg(target_os = "linux")]
+    pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
+        self.memory
+            .memory()
+            .export_fd(ExternalMemoryHandleType::posix())
     }
 }
 
