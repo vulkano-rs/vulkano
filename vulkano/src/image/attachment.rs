@@ -41,6 +41,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::fs::File;
+use crate::DeviceSize;
 
 /// ImageAccess whose purpose is to be used as a framebuffer attachment.
 ///
@@ -566,6 +567,11 @@ impl AttachmentImage {
         self.memory
             .memory()
             .export_fd(ExternalMemoryHandleType::posix())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub fn mem_size(&self) -> DeviceSize {
+        self.memory.memory().size()
     }
 }
 
