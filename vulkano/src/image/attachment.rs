@@ -24,15 +24,17 @@ use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
 use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
 use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::{DedicatedAlloc, ExternalMemoryHandleType, DeviceMemoryAllocError};
+use crate::memory::pool::{alloc_dedicated_with_exportable_fd, AllocLayout};
+use crate::memory::{DedicatedAlloc, DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
+use crate::DeviceSize;
+use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::iter::Empty;
@@ -40,8 +42,6 @@ use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::fs::File;
-use crate::DeviceSize;
 
 /// ImageAccess whose purpose is to be used as a framebuffer attachment.
 ///
@@ -526,8 +526,8 @@ impl AttachmentImage {
             )?
         };
 
-        let memory = MemoryPool::alloc_from_requirements_with_exportable_fd(
-            &Device::standard_pool(&device),
+        let memory = alloc_dedicated_with_exportable_fd(
+            device.clone(),
             &mem_reqs,
             AllocLayout::Optimal,
             MappingRequirement::DoNotMap,
@@ -540,6 +540,7 @@ impl AttachmentImage {
                 }
             },
         )?;
+
         debug_assert!((memory.offset() % mem_reqs.alignment) == 0);
         unsafe {
             image.bind_memory(memory.memory(), memory.offset())?;
@@ -569,6 +570,7 @@ impl AttachmentImage {
             .export_fd(ExternalMemoryHandleType::posix())
     }
 
+    /// Return the size of the allocated memory (used for e.g. with cuda)
     #[cfg(target_os = "linux")]
     pub fn mem_size(&self) -> DeviceSize {
         self.memory.memory().size()

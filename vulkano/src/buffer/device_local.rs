@@ -24,12 +24,12 @@ use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::memory::pool::AllocFromRequirementsFilter;
-use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
 use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
+use crate::memory::pool::{alloc_dedicated_with_exportable_fd, AllocLayout};
 use crate::memory::{DedicatedAlloc, MemoryRequirements};
 use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
@@ -194,8 +194,8 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
 
         let (buffer, mem_reqs) = Self::build_buffer(&device, size, usage, &queue_families)?;
 
-        let mem = MemoryPool::alloc_from_requirements_with_exportable_fd(
-            &Device::standard_pool(&device),
+        let mem = alloc_dedicated_with_exportable_fd(
+            device.clone(),
             &mem_reqs,
             AllocLayout::Linear,
             MappingRequirement::DoNotMap,
@@ -208,8 +208,9 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
                 }
             },
         )?;
-        debug_assert!((mem.offset() % mem_reqs.alignment) == 0);
-        buffer.bind_memory(mem.memory(), mem.offset())?;
+        let mem_offset = mem.offset();
+        debug_assert!((mem_offset % mem_reqs.alignment) == 0);
+        buffer.bind_memory(mem.memory(), mem_offset)?;
 
         Ok(Arc::new(DeviceLocalBuffer {
             inner: buffer,
