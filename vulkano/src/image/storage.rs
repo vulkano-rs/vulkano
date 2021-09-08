@@ -23,13 +23,21 @@ use crate::image::ImageInner;
 use crate::image::ImageLayout;
 use crate::image::ImageUsage;
 use crate::image::SampleCount;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+use crate::memory::pool::alloc_dedicated_with_exportable_fd;
+use crate::memory::pool::AllocFromRequirementsFilter;
 use crate::memory::pool::AllocLayout;
 use crate::memory::pool::MappingRequirement;
 use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPool;
-use crate::memory::pool::{alloc_dedicated_with_exportable_fd, AllocFromRequirementsFilter};
 use crate::memory::{DedicatedAlloc, DeviceMemoryAllocError, ExternalMemoryHandleType};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
