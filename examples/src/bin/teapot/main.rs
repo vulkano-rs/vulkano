@@ -9,14 +9,12 @@
 
 use cgmath::{Matrix3, Matrix4, Point3, Rad, Vector3};
 use examples::{Normal, Vertex, INDICES, NORMALS, VERTICES};
-use std::iter;
 use std::sync::Arc;
 use std::time::Instant;
 use vulkano::buffer::cpu_pool::CpuBufferPool;
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
-};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -27,7 +25,7 @@ use vulkano::image::{ImageUsage, SwapchainImage};
 use vulkano::instance::Instance;
 use vulkano::pipeline::vertex::BuffersDefinition;
 use vulkano::pipeline::viewport::Viewport;
-use vulkano::pipeline::{GraphicsPipeline, GraphicsPipelineAbstract};
+use vulkano::pipeline::{GraphicsPipeline, PipelineBindPoint};
 use vulkano::render_pass::{Framebuffer, FramebufferAbstract, RenderPass, Subpass};
 use vulkano::swapchain;
 use vulkano::swapchain::{AcquireError, Swapchain, SwapchainCreationError};
@@ -137,7 +135,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: Format::D16_UNORM,
                     samples: 1,
                 }
             },
@@ -223,16 +221,20 @@ fn main() {
                         proj: proj.into(),
                     };
 
-                    uniform_buffer.next(uniform_data).unwrap()
+                    Arc::new(uniform_buffer.next(uniform_data).unwrap())
                 };
 
                 let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+                let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+                set_builder
+                    .add_buffer(uniform_buffer_subbuffer)
+                    .unwrap();
+
                 let set = Arc::new(
-                    PersistentDescriptorSet::start(layout.clone())
-                        .add_buffer(uniform_buffer_subbuffer)
-                        .unwrap()
+                    set_builder
                         .build()
-                        .unwrap(),
+                        .unwrap()
                 );
 
                 let (image_num, suboptimal, acquire_future) =
@@ -262,14 +264,16 @@ fn main() {
                         vec![[0.0, 0.0, 1.0, 1.0].into(), 1f32.into()],
                     )
                     .unwrap()
-                    .draw_indexed(
-                        pipeline.clone(),
-                        &DynamicState::none(),
-                        vec![vertex_buffer.clone(), normals_buffer.clone()],
-                        index_buffer.clone(),
+                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Graphics,
+                        pipeline.layout().clone(),
+                        0,
                         set.clone(),
-                        (),
                     )
+                    .bind_vertex_buffers(0, (vertex_buffer.clone(), normals_buffer.clone()))
+                    .bind_index_buffer(index_buffer.clone())
+                    .draw_indexed(index_buffer.len() as u32, 1, 0, 0, 0)
                     .unwrap()
                     .end_render_pass()
                     .unwrap();
@@ -311,13 +315,13 @@ fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
 ) -> (
-    Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    Arc<GraphicsPipeline>,
     Vec<Arc<dyn FramebufferAbstract + Send + Sync>>,
 ) {
     let dimensions = images[0].dimensions();
 
     let depth_buffer = ImageView::new(
-        AttachmentImage::transient(device.clone(), dimensions, Format::D16Unorm).unwrap(),
+        AttachmentImage::transient(device.clone(), dimensions, Format::D16_UNORM).unwrap(),
     )
     .unwrap();
 
@@ -351,11 +355,11 @@ fn window_size_dependent_setup(
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
             .viewports_dynamic_scissors_irrelevant(1)
-            .viewports(iter::once(Viewport {
+            .viewports([Viewport {
                 origin: [0.0, 0.0],
                 dimensions: [dimensions[0] as f32, dimensions[1] as f32],
                 depth_range: 0.0..1.0,
-            }))
+            }])
             .fragment_shader(fs.main_entry_point(), ())
             .depth_stencil_simple_depth()
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())

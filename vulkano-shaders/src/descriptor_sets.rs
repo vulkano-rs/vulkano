@@ -10,7 +10,7 @@
 use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::TokenStream;
-use spirv_headers::{Decoration, Dim, ImageFormat, StorageClass};
+use spirv::{Decoration, Dim, ImageFormat, StorageClass};
 use std::cmp;
 use std::collections::HashSet;
 
@@ -19,8 +19,9 @@ struct Descriptor {
     set: u32,
     binding: u32,
     desc_ty: TokenStream,
-    array_count: u64,
-    readonly: bool,
+    descriptor_count: u64,
+    variable_count: bool,
+    mutable: bool,
 }
 
 pub(super) fn write_descriptor_set_layout_descs(
@@ -51,14 +52,16 @@ pub(super) fn write_descriptor_set_layout_descs(
                     {
                         Some(d) => {
                             let desc_ty = &d.desc_ty;
-                            let array_count = d.array_count as u32;
-                            let readonly = d.readonly;
+                            let descriptor_count = d.descriptor_count as u32;
+                            let mutable = d.mutable;
+                            let variable_count = d.variable_count;
                             quote! {
                                 Some(DescriptorDesc {
                                     ty: #desc_ty,
-                                    array_count: #array_count,
+                                    descriptor_count: #descriptor_count,
                                     stages: #stages,
-                                    readonly: #readonly,
+                                    variable_count: #variable_count,
+                                    mutable: #mutable,
                                 }),
                             }
                         }
@@ -84,7 +87,12 @@ pub(super) fn write_descriptor_set_layout_descs(
     }
 }
 
-pub(super) fn write_push_constant_ranges(doc: &Spirv, stage: &TokenStream, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_push_constant_ranges(
+    shader: &str,
+    doc: &Spirv,
+    stage: &TokenStream,
+    types_meta: &TypesMeta,
+) -> TokenStream {
     // TODO: somewhat implemented correctly
 
     // Looping to find all the push constant structs.
@@ -99,8 +107,8 @@ pub(super) fn write_push_constant_ranges(doc: &Spirv, stage: &TokenStream, types
             _ => continue,
         };
 
-        let (_, size, _) = crate::structs::type_from_id(doc, type_id, types_meta);
-        let size = size.expect("Found runtime-sized push constants");
+        let (_, _, size, _) = crate::structs::type_from_id(shader, doc, type_id, types_meta);
+        let size = size.expect("Found runtime-sized push constants") as u32;
         push_constants_size = cmp::max(push_constants_size, size);
     }
 
@@ -173,7 +181,7 @@ fn find_descriptors(
             .is_some();
 
         // Find information about the kind of binding for this descriptor.
-        let (desc_ty, readonly, array_count) =
+        let (desc_ty, mutable, descriptor_count, variable_count) =
             descriptor_infos(doc, pointed_ty, storage_class, false).expect(&format!(
                 "Couldn't find relevant type for uniform `{}` (type {}, maybe unimplemented)",
                 name, pointed_ty
@@ -182,8 +190,9 @@ fn find_descriptors(
             desc_ty,
             set,
             binding,
-            array_count,
-            readonly: nonwritable || readonly,
+            descriptor_count,
+            mutable: !nonwritable && mutable,
+            variable_count: variable_count,
         });
     }
 
@@ -368,7 +377,7 @@ fn descriptor_infos(
     pointed_ty: u32,
     pointer_storage: StorageClass,
     force_combined_image_sampled: bool,
-) -> Option<(TokenStream, bool, u64)> {
+) -> Option<(TokenStream, bool, u64, bool)> {
     doc.instructions
         .iter()
         .filter_map(|i| {
@@ -385,26 +394,20 @@ fn descriptor_infos(
                         "Structs in shader interface are expected to be decorated with one of Block or BufferBlock"
                     );
 
-                    // false -> VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
-                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
-                    let storage = decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer;
+                    let (ty, mutable) = if decoration_buffer_block || decoration_block && pointer_storage == StorageClass::StorageBuffer {
+                        // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
+                        // Determine whether all members have a NonWritable decoration.
+                        let nonwritable = (0..member_types.len() as u32).all(|i| {
+                            doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
+                        });
 
-                    // Determine whether all members have a NonWritable decoration.
-                    let nonwritable = (0..member_types.len() as u32).all(|i| {
-                        doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
-                    });
-
-                    // Uniforms are never writable.
-                    let readonly = !storage || nonwritable;
-
-                    let desc = quote! {
-                        DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: None,
-                            storage: #storage,
-                        })
+                        (quote! { DescriptorDescTy::StorageBuffer }, !nonwritable)
+                    } else {
+                        // VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER
+                        (quote! { DescriptorDescTy::UniformBuffer }, false) // Uniforms are never mutable.
                     };
 
-                    Some((desc, readonly, 1))
+                    Some((ty, mutable, 1, false))
                 }
                 &Instruction::TypeImage {
                     result_id,
@@ -422,11 +425,6 @@ fn descriptor_infos(
 
                     let vulkan_format = to_vulkan_format(*format);
 
-                    let arrayed = match arrayed {
-                        true => quote! { DescriptorImageDescArray::Arrayed { max_layers: None } },
-                        false => quote! { DescriptorImageDescArray::NonArrayed },
-                    };
-
                     match dim {
                         Dim::DimSubpassData => {
                             // VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
@@ -441,67 +439,89 @@ fn descriptor_infos(
                                 "If Dim is SubpassData, Image Format must be Unknown"
                             );
                             assert!(!sampled, "If Dim is SubpassData, Sampled must be 2");
+                            assert!(!arrayed, "If Dim is SubpassData, Arrayed must be 0");
 
                             let desc = quote! {
                                 DescriptorDescTy::InputAttachment {
                                     multisampled: #ms,
-                                    array_layers: #arrayed
                                 }
                             };
 
-                            Some((desc, true, 1)) // Never writable.
+                            Some((desc, true, 1, false)) // Never writable.
                         }
                         Dim::DimBuffer => {
-                            // false -> VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
-                            // true -> VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
-                            let storage = !sampled;
+                            let (ty, mutable) = if sampled {
+                                // VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
+                                (quote! { DescriptorDescTy::UniformTexelBuffer }, false) // Uniforms are never mutable.
+                            } else {
+                                // VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER
+                                (quote! { DescriptorDescTy::StorageTexelBuffer }, true)
+                            };
+
                             let desc = quote! {
-                                DescriptorDescTy::TexelBuffer {
-                                    storage: #storage,
+                                #ty {
                                     format: #vulkan_format,
                                 }
                             };
 
-                            Some((desc, !storage, 1)) // Uniforms are never writable.
+                            Some((desc, mutable, 1, false))
                         }
                         _ => {
-                            let (ty, readonly) = match force_combined_image_sampled {
-                                // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
-                                // Never writable.
-                                true => (quote! { DescriptorDescTy::CombinedImageSampler }, true),
-                                false => {
-                                    // false -> VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
-                                    // true -> VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
-                                    let storage = !sampled;
-                                    (quote! { DescriptorDescTy::Image }, !storage) // Sampled images are never writable.
-                                },
-                            };
-                            let dim = match *dim {
-                                Dim::Dim1D => {
-                                    quote! { DescriptorImageDescDimensions::OneDimensional }
-                                }
-                                Dim::Dim2D => {
-                                    quote! { DescriptorImageDescDimensions::TwoDimensional }
-                                }
-                                Dim::Dim3D => {
-                                    quote! { DescriptorImageDescDimensions::ThreeDimensional }
-                                }
-                                Dim::DimCube => quote! { DescriptorImageDescDimensions::Cube },
-                                Dim::DimRect => panic!("Vulkan doesn't support rectangle textures"),
+                            let view_type = match (dim, arrayed) {
+                                (Dim::Dim1D, false) => quote! { ImageViewType::Dim1d },
+                                (Dim::Dim1D, true) => quote! { ImageViewType::Dim1dArray },
+                                (Dim::Dim2D, false) => quote! { ImageViewType::Dim2d },
+                                (Dim::Dim2D, true) => quote! { ImageViewType::Dim2dArray },
+                                (Dim::Dim3D, false) => quote! { ImageViewType::Dim3d },
+                                (Dim::Dim3D, true) => panic!("Vulkan doesn't support arrayed 3D textures"),
+                                (Dim::DimCube, false) => quote! { ImageViewType::Cube },
+                                (Dim::DimCube, true) => quote! { ImageViewType::CubeArray },
+                                (Dim::DimRect, _) => panic!("Vulkan doesn't support rectangle textures"),
                                 _ => unreachable!(),
                             };
 
-                            let desc = quote! {
-                                #ty(DescriptorImageDesc {
-                                    sampled: #sampled,
-                                    dimensions: #dim,
+                            let image_desc = quote! {
+                                DescriptorDescImage {
                                     format: #vulkan_format,
                                     multisampled: #ms,
-                                    array_layers: #arrayed,
-                                })
+                                    view_type: #view_type,
+                                }
                             };
 
-                            Some((desc, readonly, 1))
+                            let (desc, mutable) = if force_combined_image_sampled {
+                                // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
+                                // Never writable.
+                                assert!(sampled, "A combined image sampler must not reference a storage image");
+
+                                (
+                                    quote! {
+                                        DescriptorDescTy::CombinedImageSampler {
+                                            image_desc: #image_desc,
+                                            immutable_samplers: Vec::new(),
+                                        }
+                                    },
+                                    false, // Sampled images are never mutable.
+                                )
+                            } else {
+                                let (ty, mutable) = if sampled {
+                                    // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
+                                    (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never mutable.
+                                } else {
+                                    // VK_DESCRIPTOR_TYPE_STORAGE_IMAGE
+                                    (quote! { DescriptorDescTy::StorageImage }, true)
+                                };
+
+                                (
+                                    quote! {
+                                        #ty {
+                                            image_desc: #image_desc,
+                                        }
+                                    },
+                                    mutable,
+                                )
+                            };
+
+                            Some((desc, mutable, 1, false))
                         }
                     }
                 }
@@ -514,20 +534,21 @@ fn descriptor_infos(
                 }
 
                 &Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
-                    let desc = quote! { DescriptorDescTy::Sampler };
-                    Some((desc, true, 1))
+                    let desc = quote! { DescriptorDescTy::Sampler { immutable_samplers: Vec::new() } };
+                    Some((desc, false, 1, false))
                 }
                 &Instruction::TypeArray {
                     result_id,
                     type_id,
                     length_id,
                 } if result_id == pointed_ty => {
-                    let (desc, readonly, arr) =
+                    let (desc, mutable, arr, variable_count) =
                         match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
                             None => return None,
                             Some(v) => v,
                         };
                     assert_eq!(arr, 1); // TODO: implement?
+                    assert!(!variable_count); // TODO: Is this even a thing?
                     let len = doc
                         .instructions
                         .iter()
@@ -542,8 +563,25 @@ fn descriptor_infos(
                         .next()
                         .expect("failed to find array length");
                     let len = len.iter().rev().fold(0, |a, &b| (a << 32) | b as u64);
-                    Some((desc, readonly, len))
+
+                    Some((desc, mutable, len, false))
                 }
+
+                &Instruction::TypeRuntimeArray {
+                    result_id,
+                    type_id,
+                } if result_id == pointed_ty => {
+                    let (desc, mutable, arr, variable_count) =
+                        match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
+                            None => return None,
+                            Some(v) => v,
+                        };
+                    assert_eq!(arr, 1); // TODO: implement?
+                    assert!(!variable_count); // TODO: Don't think this is possible?
+
+                    Some((desc, mutable, 1, true))
+                }
+
                 _ => None, // TODO: other types
             }
         })
@@ -735,44 +773,46 @@ mod tests {
 fn to_vulkan_format(spirv_format: ImageFormat) -> TokenStream {
     match spirv_format {
         ImageFormat::Unknown => quote! { None },
-        ImageFormat::Rgba32f => quote! { Some(Format::R32G32B32A32Sfloat) },
-        ImageFormat::Rgba16f => quote! { Some(Format::R16G16B16A16Sfloat) },
-        ImageFormat::R32f => quote! { Some(Format::R32Sfloat) },
-        ImageFormat::Rgba8 => quote! { Some(Format::R8G8B8A8Unorm) },
-        ImageFormat::Rgba8Snorm => quote! { Some(Format::R8G8B8A8Snorm) },
-        ImageFormat::Rg32f => quote! { Some(Format::R32G32Sfloat) },
-        ImageFormat::Rg16f => quote! { Some(Format::R16G16Sfloat) },
-        ImageFormat::R11fG11fB10f => quote! { Some(Format::B10G11R11UfloatPack32) },
-        ImageFormat::R16f => quote! { Some(Format::R16Sfloat) },
-        ImageFormat::Rgba16 => quote! { Some(Format::R16G16B16A16Unorm) },
-        ImageFormat::Rgb10A2 => quote! { Some(Format::A2B10G10R10UnormPack32) },
-        ImageFormat::Rg16 => quote! { Some(Format::R16G16Unorm) },
-        ImageFormat::Rg8 => quote! { Some(Format::R8G8Unorm) },
-        ImageFormat::R16 => quote! { Some(Format::R16Unorm) },
-        ImageFormat::R8 => quote! { Some(Format::R8Unorm) },
-        ImageFormat::Rgba16Snorm => quote! { Some(Format::R16G16B16A16Snorm) },
-        ImageFormat::Rg16Snorm => quote! { Some(Format::R16G16Snorm) },
-        ImageFormat::Rg8Snorm => quote! { Some(Format::R8G8Snorm) },
-        ImageFormat::R16Snorm => quote! { Some(Format::R16Snorm) },
-        ImageFormat::R8Snorm => quote! { Some(Format::R8Snorm) },
-        ImageFormat::Rgba32i => quote! { Some(Format::R32G32B32A32Sint) },
-        ImageFormat::Rgba16i => quote! { Some(Format::R16G16B16A16Sint) },
-        ImageFormat::Rgba8i => quote! { Some(Format::R8G8B8A8Sint) },
-        ImageFormat::R32i => quote! { Some(Format::R32Sint) },
-        ImageFormat::Rg32i => quote! { Some(Format::R32G32Sint) },
-        ImageFormat::Rg16i => quote! { Some(Format::R16G16Sint) },
-        ImageFormat::Rg8i => quote! { Some(Format::R8G8Sint) },
-        ImageFormat::R16i => quote! { Some(Format::R16Sint) },
-        ImageFormat::R8i => quote! { Some(Format::R8Sint) },
-        ImageFormat::Rgba32ui => quote! { Some(Format::R32G32B32A32Uint) },
-        ImageFormat::Rgba16ui => quote! { Some(Format::R16G16B16A16Uint) },
-        ImageFormat::Rgba8ui => quote! { Some(Format::R8G8B8A8Uint) },
-        ImageFormat::R32ui => quote! { Some(Format::R32Uint) },
-        ImageFormat::Rgb10a2ui => quote! { Some(Format::A2B10G10R10UintPack32) },
-        ImageFormat::Rg32ui => quote! { Some(Format::R32G32Uint) },
-        ImageFormat::Rg16ui => quote! { Some(Format::R16G16Uint) },
-        ImageFormat::Rg8ui => quote! { Some(Format::R8G8Uint) },
-        ImageFormat::R16ui => quote! { Some(Format::R16Uint) },
-        ImageFormat::R8ui => quote! { Some(Format::R8Uint) },
+        ImageFormat::Rgba32f => quote! { Some(Format::R32G32B32A32_SFLOAT) },
+        ImageFormat::Rgba16f => quote! { Some(Format::R16G16B16A16_SFLOAT) },
+        ImageFormat::R32f => quote! { Some(Format::R32_SFLOAT) },
+        ImageFormat::Rgba8 => quote! { Some(Format::R8G8B8A8_UNORM) },
+        ImageFormat::Rgba8Snorm => quote! { Some(Format::R8G8B8A8_SNORM) },
+        ImageFormat::Rg32f => quote! { Some(Format::R32G32_SFLOAT) },
+        ImageFormat::Rg16f => quote! { Some(Format::R16G16_SFLOAT) },
+        ImageFormat::R11fG11fB10f => quote! { Some(Format::B10G11R11_UFLOAT_PACK32) },
+        ImageFormat::R16f => quote! { Some(Format::R16_SFLOAT) },
+        ImageFormat::Rgba16 => quote! { Some(Format::R16G16B16A16_UNORM) },
+        ImageFormat::Rgb10A2 => quote! { Some(Format::A2B10G10R10_UNORMPack32) },
+        ImageFormat::Rg16 => quote! { Some(Format::R16G16_UNORM) },
+        ImageFormat::Rg8 => quote! { Some(Format::R8G8_UNORM) },
+        ImageFormat::R16 => quote! { Some(Format::R16_UNORM) },
+        ImageFormat::R8 => quote! { Some(Format::R8_UNORM) },
+        ImageFormat::Rgba16Snorm => quote! { Some(Format::R16G16B16A16_SNORM) },
+        ImageFormat::Rg16Snorm => quote! { Some(Format::R16G16_SNORM) },
+        ImageFormat::Rg8Snorm => quote! { Some(Format::R8G8_SNORM) },
+        ImageFormat::R16Snorm => quote! { Some(Format::R16_SNORM) },
+        ImageFormat::R8Snorm => quote! { Some(Format::R8_SNORM) },
+        ImageFormat::Rgba32i => quote! { Some(Format::R32G32B32A32_SINT) },
+        ImageFormat::Rgba16i => quote! { Some(Format::R16G16B16A16_SINT) },
+        ImageFormat::Rgba8i => quote! { Some(Format::R8G8B8A8_SINT) },
+        ImageFormat::R32i => quote! { Some(Format::R32_SINT) },
+        ImageFormat::Rg32i => quote! { Some(Format::R32G32_SINT) },
+        ImageFormat::Rg16i => quote! { Some(Format::R16G16_SINT) },
+        ImageFormat::Rg8i => quote! { Some(Format::R8G8_SINT) },
+        ImageFormat::R16i => quote! { Some(Format::R16_SINT) },
+        ImageFormat::R8i => quote! { Some(Format::R8_SINT) },
+        ImageFormat::Rgba32ui => quote! { Some(Format::R32G32B32A32_UINT) },
+        ImageFormat::Rgba16ui => quote! { Some(Format::R16G16B16A16_UINT) },
+        ImageFormat::Rgba8ui => quote! { Some(Format::R8G8B8A8_UINT) },
+        ImageFormat::R32ui => quote! { Some(Format::R32_UINT) },
+        ImageFormat::Rgb10a2ui => quote! { Some(Format::A2B10G10R10_UINT_PACK32) },
+        ImageFormat::Rg32ui => quote! { Some(Format::R32G32_UINT) },
+        ImageFormat::Rg16ui => quote! { Some(Format::R16G16_UINT) },
+        ImageFormat::Rg8ui => quote! { Some(Format::R8G8_UINT) },
+        ImageFormat::R16ui => quote! { Some(Format::R16_UINT) },
+        ImageFormat::R8ui => quote! { Some(Format::R8_UINT) },
+        ImageFormat::R64ui => quote! { Some(Format::R64_UINT) },
+        ImageFormat::R64i => quote! { Some(Format::R64_SINT) },
     }
 }

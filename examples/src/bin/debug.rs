@@ -147,7 +147,7 @@ fn main() {
     let queue = queues.next().unwrap();
 
     // Create an image in order to generate some additional logging:
-    let pixel_format = Format::R8G8B8A8Uint;
+    let pixel_format = Format::R8G8B8A8_UINT;
     let dimensions = ImageDimensions::Dim2d {
         width: 4096,
         height: 4096,

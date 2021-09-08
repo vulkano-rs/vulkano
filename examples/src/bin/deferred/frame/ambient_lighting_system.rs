@@ -7,10 +7,12 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SecondaryAutoCommandBuffer,
+    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
@@ -20,16 +22,14 @@ use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineAbstract;
+use vulkano::pipeline::PipelineBindPoint;
 use vulkano::render_pass::Subpass;
-
-use std::sync::Arc;
 
 /// Allows applying an ambient lighting to a scene.
 pub struct AmbientLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<GraphicsPipeline>,
 }
 
 impl AmbientLightingSystem {
@@ -110,15 +110,12 @@ impl AmbientLightingSystem {
     ///   result of the deferred pass.
     /// - `ambient_color` is the color to apply.
     ///
-    pub fn draw<C>(
+    pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: C,
+        color_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         ambient_color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer
-    where
-        C: ImageViewAbstract + Send + Sync + 'static,
-    {
+    ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::ty::PushConstants {
             color: [ambient_color[0], ambient_color[1], ambient_color[2], 1.0],
         };
@@ -129,19 +126,20 @@ impl AmbientLightingSystem {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let descriptor_set = PersistentDescriptorSet::start(layout.clone())
+        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        descriptor_set_builder
             .add_image(color_input)
-            .unwrap()
+            .unwrap();
+
+        let descriptor_set = descriptor_set_builder
             .build()
             .unwrap();
 
-        let dynamic_state = DynamicState {
-            viewports: Some(vec![Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            }]),
-            ..DynamicState::none()
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+            depth_range: 0.0..1.0,
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
@@ -152,13 +150,17 @@ impl AmbientLightingSystem {
         )
         .unwrap();
         builder
-            .draw(
-                self.pipeline.clone(),
-                &dynamic_state,
-                vec![self.vertex_buffer.clone()],
+            .set_viewport(0, [viewport.clone()])
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
                 descriptor_set,
-                push_constants,
             )
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }

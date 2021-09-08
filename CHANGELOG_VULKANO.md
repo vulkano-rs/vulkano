@@ -6,6 +6,74 @@
     description. They will be transferred to this file right after the
     Pull Request merge. 
 -->
+- **Breaking** The `draw` and `draw_indexed` commands on `AutoCommandBufferBuilder` now take parameters to explicitly specify the range of vertices and instances to draw.
+- **Breaking** `BufferlessDefinition` is removed.
+- **Breaking** The `VertexSource` trait is removed, and has been replaced with the new `VertexBuffersCollection` trait, which works analogously to `DescriptorSetsCollection`. Vertex buffers can now be passed in as a tuple, just like descriptor sets.
+- **Breaking** Removed the vertex definition type parameter from `GraphicsPipeline`, which is no longer needed with the change above.
+- **Breaking** The `ComputePipelineAbstract` and `GraphicsPipelineAbstract` traits are no longer needed and have been removed, with their methods made available on the base `ComputePipeline` and `GraphicsPipeline` types.
+- **Breaking** Changes to `DescriptorDesc` and related changes:
+  - The variants of `DescriptorDescTy` now match those of `DescriptorType` and Vulkan.
+  - The `array_count` and `readonly` members are renamed to `descriptor_count` (to match Vulkan) and `mutable` (with the opposite sense, to match familiar Rust usage).
+  - `DescriptorImageDesc` is renamed to `DescriptorDescImage`. The `dimensions` and `arrayed` members have been combined into a single `ImageViewType` value.
+  - Removed the `arrayed` member of the `InputAttachment` variant as well, as the standard now explicitly disallows arrayed input attachments.
+  - The `ensure_superset_of` method has been split into two, one for shader compatibility and one for binding descriptor sets. The error return types of these methods have been revised.
+- **Breaking** The `Cubemap` and `CubemapArray` variants of `ImageViewType` are renamed to `Cube` and `CubeArray` to match Vulkan.
+- **Breaking** Setting state in `AutoCommandBufferBuilder` is now done via separate commands (e.g. `bind_descriptor_sets`, `bind_vertex_buffers`) instead of being provided with dispatch/draw commands. This matches how these commands work in Vulkan.
+  - Validity of the state is checked by the dispatch/draw commands.
+  - `DynamicState` is removed; each individual state now has its own command to set it. This includes some states that were not previously included in `DynamicState`.
+- **Breaking** `StateCacher` is removed; its task is now partially handled by `SyncCommandBufferBuilder`.
+- **BREAKING** `BufferAccess` now requires Send + Sync. This cascades into `TypedBufferAccess`, `BufferSlice`, `ImmutableBufferInitialization`, `ImmutableBuffer`, `DeviceLocalBuffer`, `CpuBufferPoolSubbuffer`, `CpuBufferPoolChunk`, `CpuAccessibleBuffer`, and `BufferView` now requiring their types to be `Send + Sync`.
+- **BREAKING** `DescriptorSetLayout::new()` now returns `Result<Self, DescriptorSetLayoutError>` instead of Result<Self, OomError>`
+- **BREAKING** `DescriptorCompatibilityError` additional variant `VariableCount`.
+- **BREAKING** `GraphicsPipelineCreationError` additional variant `PipelineLayoutCreationError`.
+- **BREAKING** `PipelineLayoutCreationError` additional variant `SetLayoutError`.
+- **BREAKING** `FixedSizeDescriptorSetsPool` has been replaced by `SingleLayoutDescSetPool`.
+- **BREAKING** Set builders now return `&mut Self` instead of `Self` & methods take values wrapped in an `Arc`.
+- **Breaking** Changes to `Format`:
+  - `Format` variants are now all uppercase with underscores. This avoids interpretation problems where the underscore is significant for the meaning.
+  - The `ty` method and the `FormatTy` enum are removed. They are replaced with the `NumericType` enum, which concerns itself only with the numeric representation and not with other properties. There are now three `type_*` methods to retrieve it, for colour, depth and stencil respectively.
+  - The `planes` method now returns a slice containing the equivalent single-plane formats of each plane.
+- **Breaking** The `ImageAccess` trait no longer has the `has_color`, `has_depth` and `has_stencil` methods. This information can be queried using the `aspects` or `type_*` methods of `Format`.
+- **Breaking** Changes made to `DescriptorDescTy` to support immutable samplers.
+- **Breaking** `DescriptorWrite::combined_image_sampler` now takes the sampler in an `Option`. Use `None` when the descriptor has immutable samplers.
+- **Breaking** Changes to pipeline layout tweaks:
+  - `DescriptorSetDesc::tweak` is renamed to `set_buffer_dynamic`, and now takes only a single binding index.
+  - `DescriptorSetDesc::tweak_multiple` is removed.
+  - The dynamic buffers parameter of `GraphicsPipelineBuilder::with_auto_layout` has been replaced with a closure that can be used to make tweaks to the descriptor set layouts as needed.
+  - `ComputePipeline::new` has an additional closure parameter identical to the one described above.
+- **Breaking** `AttachmentImage::dimensions()` now returns `[u32; 3]` which includes the layer count.
+- Vulkano-shaders: added extension/feature checks for more SPIR-V capabilities.
+- Added support for surface creation from a CAMetalLayer using VK_EXT_metal_surface.
+- Bug fixed. Image layout passed to SubImage is now being respected
+- The full Rust code is now generated from vk.xml by autogen directly, instead of using intermediate macros.
+- Added `storage_buffer()` method to `BufferUsage`.
+- Fixed mismatched types on Android.
+- Fixed bug in descriptor set validity checking that allowed drawing/dispatching with descriptor sets that didn't match the pipeline.
+- Fixed bug where the wrong functions were used for retrieving physical device info.
+- Fixed minor bug in retrieving features from the physical device.
+- Add BSD platforms to external memory (dma-buf fd) cfgs
+- `SyncCommandBufferBuilder` now has methods to return the state set by previous commands.
+- Added support for `u8` index buffers with the `ext_index_buffer_uint8` extension.
+- Descriptor sets now support variable count descriptors.
+    - e.g. `layout(set = 0, binding = 0) uniform sampler2D textures[];`
+- Non-breaking `Format` additions:
+  - Formats and their metadata are now auto-generated from vk.xml. This significantly expands the support for YCbCr formats in particular.
+  - The `compatibility` method returns an object that can be used to check the compatibility of two formats, explained [here](https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap43.html#formats-compatibility-classes).
+  - The `components` method returns the number of bits in each colour component.
+  - The `compression` method returns the compression scheme as a new enum, `CompressionType`.
+  - The `requires_sampler_ycbcr_conversion` method returns whether the "sampler YCbCr conversion" must be enabled on an image view and sampler in order to use this format.
+  - `GraphicsPipelineBuilder` now uses `Vec` instead of `SmallVec` internally to reduced stack usage.
+- Added support for descriptors with immutable samplers.
+  - They are included as separate members on the appropriate variants of `DescriptorDescTy`.
+  - Added a `set_immutable_samplers` method to `DescriptorSetDesc`, which lets you set the immutable samplers for a descriptor. This can be used together with the closure provided to pipeline constructors.
+  - `add_image` can be used when building a descriptor set, to provide an image to a combined image sampler descriptor that has immutable samplers.
+- Updated dependencies:
+  - png 0.16 > 0.17
+  - spirv_headers 1.5 > spirv 0.2 (crate was renamed and reversioned)
+  - time 0.2 > 0.3
+- `AttachmentImage::current_layer_levels_access()` now returns the correct range which solves pipeline barriers only affecting the first layers of of a multi-layer `AttachmentImage`.
+- A new Vulkano-shaders macro option `shaders` to compile several shaders in a single macro invocation producing generated Rust structs common for all specified shaders without duplications. This feature improves type-safe interoperability between shaders.
+- Fixed CommandBufferExecFuture adding the command buffer to queue submission after being flushed.
 
 # Version 0.25.0 (2021-08-10)
 
@@ -246,6 +314,8 @@
 - Added `DeviceExtensions::required_extensions` function that returns a set of available extensions required to create `Device` on this platform.
 - `FormatFeatures` now implements `Copy`.
 - Removed the `AttachmentImageView` trait, which didn't appear to be used for anything anyway.
+- Added support and validation for the `mutable_format` and `block_texel_view_compatible` image creation flags.
+- Added `format` to the `ImageViewBuilder`, to choose a different format from the underlying image.
 
 # Version 0.20.0 (2020-12-26)
 

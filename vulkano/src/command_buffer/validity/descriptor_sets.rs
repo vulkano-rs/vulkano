@@ -7,46 +7,51 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use crate::command_buffer::synced::SyncCommandBufferBuilder;
+use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
+use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::PipelineBindPoint;
+use crate::VulkanObject;
 use std::error;
 use std::fmt;
 
-use crate::descriptor_set::layout::DescriptorDescSupersetError;
-use crate::descriptor_set::DescriptorSetWithOffsets;
-use crate::pipeline::layout::PipelineLayout;
-
 /// Checks whether descriptor sets are compatible with the pipeline.
-pub fn check_descriptor_sets_validity(
+pub(in super::super) fn check_descriptor_sets_validity(
+    builder: &SyncCommandBufferBuilder,
     pipeline_layout: &PipelineLayout,
-    descriptor_sets: &[DescriptorSetWithOffsets],
+    pipeline_bind_point: PipelineBindPoint,
 ) -> Result<(), CheckDescriptorSetsValidityError> {
-    // What's important is not that the pipeline layout and the descriptor sets *match*. Instead
-    // what's important is that the descriptor sets are a superset of the pipeline layout. It's not
-    // a problem if the descriptor sets provide more elements than expected.
+    if pipeline_layout.descriptor_set_layouts().is_empty() {
+        return Ok(());
+    }
 
-    for (set_num, set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
-        for (binding_num, pipeline_desc) in
-            (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| (i, d)))
-        {
-            let set_desc = descriptor_sets
-                .get(set_num)
-                .and_then(|so| so.as_ref().0.layout().descriptor(binding_num));
+    let bindings_pipeline_layout = match builder
+        .bound_descriptor_sets_pipeline_layout(pipeline_bind_point)
+    {
+        Some(x) => x,
+        None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num: 0 }),
+    };
 
-            let set_desc = match set_desc {
-                Some(s) => s,
-                None => {
-                    return Err(CheckDescriptorSetsValidityError::MissingDescriptor {
-                        set_num: set_num,
-                        binding_num: binding_num,
-                    })
-                }
-            };
+    if bindings_pipeline_layout.internal_object() != pipeline_layout.internal_object()
+        && bindings_pipeline_layout.push_constant_ranges() != pipeline_layout.push_constant_ranges()
+    {
+        return Err(CheckDescriptorSetsValidityError::IncompatiblePushConstants);
+    }
 
-            if let Err(err) = set_desc.ensure_superset_of(&pipeline_desc) {
-                return Err(CheckDescriptorSetsValidityError::IncompatibleDescriptor {
-                    error: err,
-                    set_num: set_num,
-                    binding_num: binding_num,
-                });
+    for (set_num, pipeline_set) in pipeline_layout.descriptor_set_layouts().iter().enumerate() {
+        let set_num = set_num as u32;
+
+        let descriptor_set = match builder.bound_descriptor_set(pipeline_bind_point, set_num) {
+            Some(s) => s,
+            None => return Err(CheckDescriptorSetsValidityError::MissingDescriptorSet { set_num }),
+        };
+
+        match pipeline_set.ensure_compatible_with_bind(descriptor_set.0.layout()) {
+            Ok(_) => (),
+            Err(error) => {
+                return Err(
+                    CheckDescriptorSetsValidityError::IncompatibleDescriptorSet { error, set_num },
+                );
             }
         }
     }
@@ -57,32 +62,23 @@ pub fn check_descriptor_sets_validity(
 /// Error that can happen when checking descriptor sets validity.
 #[derive(Debug, Clone)]
 pub enum CheckDescriptorSetsValidityError {
-    /// A descriptor is missing in the descriptor sets that were provided.
-    MissingDescriptor {
-        /// The index of the set of the descriptor.
-        set_num: usize,
-        /// The binding number of the descriptor.
-        binding_num: usize,
+    MissingDescriptorSet {
+        set_num: u32,
     },
-
-    /// A descriptor in the provided sets is not compatible with what is expected.
-    IncompatibleDescriptor {
-        /// The reason why the two descriptors aren't compatible.
-        error: DescriptorDescSupersetError,
+    IncompatibleDescriptorSet {
+        /// The error returned by the descriptor set.
+        error: DescriptorSetCompatibilityError,
         /// The index of the set of the descriptor.
-        set_num: usize,
-        /// The binding number of the descriptor.
-        binding_num: usize,
+        set_num: u32,
     },
+    IncompatiblePushConstants,
 }
 
 impl error::Error for CheckDescriptorSetsValidityError {
     #[inline]
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        match *self {
-            CheckDescriptorSetsValidityError::IncompatibleDescriptor { ref error, .. } => {
-                Some(error)
-            }
+        match self {
+            Self::IncompatibleDescriptorSet { error, .. } => Some(error),
             _ => None,
         }
     }
@@ -91,18 +87,17 @@ impl error::Error for CheckDescriptorSetsValidityError {
 impl fmt::Display for CheckDescriptorSetsValidityError {
     #[inline]
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                CheckDescriptorSetsValidityError::MissingDescriptor { .. } => {
-                    "a descriptor is missing in the descriptor sets that were provided"
-                }
-                CheckDescriptorSetsValidityError::IncompatibleDescriptor { .. } => {
-                    "a descriptor in the provided sets is not compatible with what is expected"
-                }
+        match self {
+            Self::MissingDescriptorSet { set_num } => {
+                write!(fmt, "descriptor set {} has not been not bound, but is required by the pipeline layout", set_num)
             }
-        )
+            Self::IncompatibleDescriptorSet { set_num, .. } => {
+                write!(fmt, "compatibility error in descriptor set {}", set_num)
+            }
+            Self::IncompatiblePushConstants => {
+                write!(fmt, "the push constant ranges in the bound pipeline do not match the ranges of layout used to bind the descriptor sets")
+            }
+        }
     }
 }
 

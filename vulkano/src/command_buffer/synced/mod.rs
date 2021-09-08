@@ -64,6 +64,7 @@
 //! queue. If not possible, the queue will be entirely flushed and the command added to a fresh new
 //! queue with a fresh new barrier prototype.
 
+pub use self::builder::StencilState;
 pub use self::builder::SyncCommandBufferBuilder;
 pub use self::builder::SyncCommandBufferBuilderBindDescriptorSets;
 pub use self::builder::SyncCommandBufferBuilderBindVertexBuffer;
@@ -80,7 +81,8 @@ use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::image::ImageAccess;
 use crate::image::ImageLayout;
-use crate::pipeline::{ComputePipelineAbstract, GraphicsPipelineAbstract};
+use crate::pipeline::input_assembly::IndexType;
+use crate::pipeline::{ComputePipeline, GraphicsPipeline};
 use crate::sync::AccessCheckError;
 use crate::sync::AccessError;
 use crate::sync::AccessFlags;
@@ -492,15 +494,15 @@ trait Command {
         panic!()
     }
 
-    fn bound_index_buffer(&self) -> &dyn BufferAccess {
+    fn bound_index_buffer(&self) -> (&dyn BufferAccess, IndexType) {
         panic!()
     }
 
-    fn bound_pipeline_compute(&self) -> &dyn ComputePipelineAbstract {
+    fn bound_pipeline_compute(&self) -> &Arc<ComputePipeline> {
         panic!()
     }
 
-    fn bound_pipeline_graphics(&self) -> &dyn GraphicsPipelineAbstract {
+    fn bound_pipeline_graphics(&self) -> &Arc<GraphicsPipeline> {
         panic!()
     }
 
@@ -685,7 +687,7 @@ mod tests {
                 CpuAccessibleBuffer::from_data(device, BufferUsage::all(), false, 0u32).unwrap();
             let mut buf_builder = sync.bind_vertex_buffers();
             buf_builder.add(buf);
-            buf_builder.submit(1).unwrap();
+            buf_builder.submit(1);
 
             assert!(sync.bound_vertex_buffer(0).is_none());
             assert!(sync.bound_vertex_buffer(1).is_some());
@@ -710,10 +712,13 @@ mod tests {
                 DescriptorSetLayout::new(
                     device.clone(),
                     [Some(DescriptorDesc {
-                        ty: DescriptorDescTy::Sampler,
-                        array_count: 1,
+                        ty: DescriptorDescTy::Sampler {
+                            immutable_samplers: vec![],
+                        },
+                        descriptor_count: 1,
                         stages: ShaderStages::all(),
-                        readonly: true,
+                        mutable: false,
+                        variable_count: false,
                     })],
                 )
                 .unwrap(),
@@ -722,19 +727,18 @@ mod tests {
                 PipelineLayout::new(device.clone(), [set_layout.clone(), set_layout.clone()], [])
                     .unwrap(),
             );
-            let set = Arc::new(
-                PersistentDescriptorSet::start(set_layout)
-                    .add_sampler(Sampler::simple_repeat_linear(device))
-                    .unwrap()
-                    .build()
-                    .unwrap(),
-            );
+
+            let set = {
+                let mut builder = PersistentDescriptorSet::start(set_layout.clone());
+                builder
+                    .add_sampler(Sampler::simple_repeat_linear(device.clone()))
+                    .unwrap();
+                Arc::new(builder.build().unwrap())
+            };
 
             let mut set_builder = sync.bind_descriptor_sets();
             set_builder.add(set.clone());
-            set_builder
-                .submit(PipelineBindPoint::Graphics, pipeline_layout.clone(), 1)
-                .unwrap();
+            set_builder.submit(PipelineBindPoint::Graphics, pipeline_layout.clone(), 1);
 
             assert!(sync
                 .bound_descriptor_set(PipelineBindPoint::Compute, 0)
@@ -751,16 +755,45 @@ mod tests {
 
             let mut set_builder = sync.bind_descriptor_sets();
             set_builder.add(set);
-            set_builder
-                .submit(PipelineBindPoint::Graphics, pipeline_layout, 0)
-                .unwrap();
+            set_builder.submit(PipelineBindPoint::Graphics, pipeline_layout, 0);
 
             assert!(sync
                 .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
                 .is_some());
             assert!(sync
                 .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .is_some());
+
+            let pipeline_layout = Arc::new(
+                PipelineLayout::new(
+                    device.clone(),
+                    [
+                        Arc::new(DescriptorSetLayout::new(device.clone(), []).unwrap()),
+                        set_layout.clone(),
+                    ],
+                    [],
+                )
+                .unwrap(),
+            );
+
+            let set = {
+                let mut builder = PersistentDescriptorSet::start(set_layout.clone());
+                builder
+                    .add_sampler(Sampler::simple_repeat_linear(device.clone()))
+                    .unwrap();
+                Arc::new(builder.build().unwrap())
+            };
+
+            let mut set_builder = sync.bind_descriptor_sets();
+            set_builder.add(set);
+            set_builder.submit(PipelineBindPoint::Graphics, pipeline_layout, 1);
+
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 0)
                 .is_none());
+            assert!(sync
+                .bound_descriptor_set(PipelineBindPoint::Graphics, 1)
+                .is_some());
         }
     }
 }

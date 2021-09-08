@@ -21,7 +21,7 @@ use crate::descriptor_set::sys::UnsafeDescriptorSet;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::format::ClearValue;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::image::ImageAccess;
 use crate::image::ImageAspect;
 use crate::image::ImageAspects;
@@ -33,8 +33,8 @@ use crate::pipeline::layout::PipelineLayout;
 use crate::pipeline::shader::ShaderStages;
 use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueriesRange;
 use crate::query::Query;
@@ -318,7 +318,7 @@ impl UnsafeCommandBufferBuilder {
         &mut self,
         pipeline_bind_point: PipelineBindPoint,
         pipeline_layout: &PipelineLayout,
-        first_binding: u32,
+        first_set: u32,
         sets: S,
         dynamic_offsets: I,
     ) where
@@ -336,14 +336,14 @@ impl UnsafeCommandBufferBuilder {
 
         let num_bindings = sets.len() as u32;
         debug_assert!(
-            first_binding + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
+            first_set + num_bindings <= pipeline_layout.descriptor_set_layouts().len() as u32
         );
 
         fns.v1_0.cmd_bind_descriptor_sets(
             cmd,
             pipeline_bind_point.into(),
             pipeline_layout.internal_object(),
-            first_binding,
+            first_set,
             num_bindings,
             sets.as_ptr(),
             dynamic_offsets.len() as u32,
@@ -374,30 +374,26 @@ impl UnsafeCommandBufferBuilder {
 
     /// Calls `vkCmdBindPipeline` on the builder with a compute pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_compute<Cp>(&mut self, pipeline: &Cp)
-    where
-        Cp: ?Sized + ComputePipelineAbstract,
-    {
+    pub unsafe fn bind_pipeline_compute(&mut self, pipeline: &ComputePipeline) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
         fns.v1_0.cmd_bind_pipeline(
             cmd,
             ash::vk::PipelineBindPoint::COMPUTE,
-            pipeline.inner().internal_object(),
+            pipeline.internal_object(),
         );
     }
 
     /// Calls `vkCmdBindPipeline` on the builder with a graphics pipeline.
     #[inline]
-    pub unsafe fn bind_pipeline_graphics<Gp>(&mut self, pipeline: &Gp)
-    where
-        Gp: ?Sized + GraphicsPipelineAbstract,
-    {
+    pub unsafe fn bind_pipeline_graphics(&mut self, pipeline: &GraphicsPipeline) {
         let fns = self.device().fns();
         let cmd = self.internal_object();
-        let inner = GraphicsPipelineAbstract::inner(pipeline).internal_object();
-        fns.v1_0
-            .cmd_bind_pipeline(cmd, ash::vk::PipelineBindPoint::GRAPHICS, inner);
+        fns.v1_0.cmd_bind_pipeline(
+            cmd,
+            ash::vk::PipelineBindPoint::GRAPHICS,
+            pipeline.internal_object(),
+        );
     }
 
     /// Calls `vkCmdBindVertexBuffers` on the builder.
@@ -459,17 +455,16 @@ impl UnsafeCommandBufferBuilder {
         // TODO: The correct check here is that the uncompressed element size of the source is
         // equal to the compressed element size of the destination.
         debug_assert!(
-            source.format().ty() == FormatTy::Compressed
-                || destination.format().ty() == FormatTy::Compressed
+            source.format().compression().is_some()
+                || destination.format().compression().is_some()
                 || source.format().size() == destination.format().size()
         );
 
         // Depth/Stencil formats are required to match exactly.
+        let source_aspects = source.format().aspects();
         debug_assert!(
-            !matches!(
-                source.format().ty(),
-                FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
-            ) || source.format() == destination.format()
+            !source_aspects.depth && !source_aspects.stencil
+                || source.format() == destination.format()
         );
 
         debug_assert_eq!(source.samples(), destination.samples());
@@ -573,28 +568,22 @@ impl UnsafeCommandBufferBuilder {
         D: ?Sized + ImageAccess,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderImageBlit>,
     {
-        debug_assert!(
-            filter == Filter::Nearest
-                || !matches!(
-                    source.format().ty(),
-                    FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
-                )
-        );
-        debug_assert!(
-            (source.format().ty() == FormatTy::Uint)
-                == (destination.format().ty() == FormatTy::Uint)
-        );
-        debug_assert!(
-            (source.format().ty() == FormatTy::Sint)
-                == (destination.format().ty() == FormatTy::Sint)
-        );
-        debug_assert!(
-            source.format() == destination.format()
-                || !matches!(
-                    source.format().ty(),
-                    FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
-                )
-        );
+        let source_aspects = source.format().aspects();
+
+        if let (Some(source_type), Some(destination_type)) = (
+            source.format().type_color(),
+            destination.format().type_color(),
+        ) {
+            debug_assert!(
+                (source_type == NumericType::UINT) == (destination_type == NumericType::UINT)
+            );
+            debug_assert!(
+                (source_type == NumericType::SINT) == (destination_type == NumericType::SINT)
+            );
+        } else {
+            debug_assert!(source.format() == destination.format());
+            debug_assert!(filter == Filter::Nearest);
+        }
 
         debug_assert_eq!(source.samples(), SampleCount::Sample1);
         let source = source.inner();
@@ -730,11 +719,9 @@ impl UnsafeCommandBufferBuilder {
         I: ?Sized + ImageAccess,
         R: IntoIterator<Item = UnsafeCommandBufferBuilderColorImageClear>,
     {
-        debug_assert!(
-            image.format().ty() == FormatTy::Float
-                || image.format().ty() == FormatTy::Uint
-                || image.format().ty() == FormatTy::Sint
-        );
+        let image_aspects = image.format().aspects();
+        debug_assert!(image_aspects.color && !image_aspects.plane0);
+        debug_assert!(image.format().compression().is_none());
 
         let image = image.inner();
         debug_assert!(image.image.usage().transfer_destination);
@@ -1404,11 +1391,7 @@ impl UnsafeCommandBufferBuilder {
                 || self.device().enabled_features().multi_viewport
         );
         debug_assert!({
-            let max = self
-                .device()
-                .physical_device()
-                .properties()
-                .max_viewports;
+            let max = self.device().physical_device().properties().max_viewports;
             first_scissor + scissors.len() as u32 <= max
         });
 
@@ -1439,11 +1422,7 @@ impl UnsafeCommandBufferBuilder {
                 || self.device().enabled_features().multi_viewport
         );
         debug_assert!({
-            let max = self
-                .device()
-                .physical_device()
-                .properties()
-                .max_viewports;
+            let max = self.device().physical_device().properties().max_viewports;
             first_viewport + viewports.len() as u32 <= max
         });
 
@@ -1908,7 +1887,7 @@ impl UnsafeCommandBufferBuilderPipelineBarrier {
             (ash::vk::QUEUE_FAMILY_IGNORED, ash::vk::QUEUE_FAMILY_IGNORED)
         };
 
-        if image.format().ty() == FormatTy::Ycbcr {
+        if image.format().requires_sampler_ycbcr_conversion() {
             unimplemented!();
         }
 

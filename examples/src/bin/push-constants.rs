@@ -16,7 +16,7 @@ use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, ComputePipelineAbstract};
+use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -92,7 +92,14 @@ fn main() {
 
     let shader = cs::Shader::load(device.clone()).unwrap();
     let pipeline = Arc::new(
-        ComputePipeline::new(device.clone(), &shader.main_entry_point(), &(), None).unwrap(),
+        ComputePipeline::new(
+            device.clone(),
+            &shader.main_entry_point(),
+            &(),
+            None,
+            |_| {},
+        )
+        .unwrap(),
     );
 
     let data_buffer = {
@@ -102,13 +109,11 @@ fn main() {
     };
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_buffer(data_buffer.clone())
-            .unwrap()
-            .build()
-            .unwrap(),
-    );
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+    set_builder.add_buffer(data_buffer.clone()).unwrap();
+
+    let set = Arc::new(set_builder.build().unwrap());
 
     // The `vulkano_shaders::shaders!` macro generates a struct with the correct representation of the push constants struct specified in the shader.
     // Here we create an instance of the generated struct.
@@ -129,7 +134,15 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch([1024, 1, 1], pipeline.clone(), set.clone(), push_constants)
+        .bind_pipeline_compute(pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
+            set.clone(),
+        )
+        .push_constants(pipeline.layout().clone(), 0, push_constants)
+        .dispatch([1024, 1, 1])
         .unwrap();
     let command_buffer = builder.build().unwrap();
 

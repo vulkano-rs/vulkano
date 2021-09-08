@@ -31,18 +31,28 @@ use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
 use crate::memory::pool::{alloc_dedicated_with_exportable_fd, AllocLayout};
 use crate::memory::{DedicatedAlloc, MemoryRequirements};
-use crate::memory::{DeviceMemoryAllocError, ExternalMemoryHandleType};
+use crate::memory::DeviceMemoryAllocError;
 use crate::sync::AccessError;
 use crate::sync::Sharing;
 use crate::DeviceSize;
 use smallvec::SmallVec;
-use std::fs::File;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::marker::PhantomData;
 use std::mem;
 use std::sync::Arc;
 use std::sync::Mutex;
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+use {
+    crate::memory::ExternalMemoryHandleType,
+    std::fs::File
+};
 
 /// Buffer whose content is in device-local memory.
 ///
@@ -173,8 +183,14 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
         }))
     }
 
-    /// Same as `raw` but with exportable fd option for the allocated memory on Linux
-    #[cfg(target_os = "linux")]
+    /// Same as `raw` but with exportable fd option for the allocated memory on Linux/BSD
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub unsafe fn raw_with_exportable_fd<'a, I>(
         device: Arc<Device>,
         size: DeviceSize,
@@ -246,8 +262,14 @@ impl<T: ?Sized> DeviceLocalBuffer<T> {
 
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
-    /// Only works on Linux.
-    #[cfg(target_os = "linux")]
+    /// Only works on Linux/BSD.
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
         self.memory
             .memory()
@@ -282,6 +304,7 @@ unsafe impl<T: ?Sized, A> DeviceOwned for DeviceLocalBuffer<T, A> {
 unsafe impl<T: ?Sized, A> BufferAccess for DeviceLocalBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     #[inline]
     fn inner(&self) -> BufferInner {
@@ -371,6 +394,7 @@ where
 unsafe impl<T: ?Sized, A> TypedBufferAccess for DeviceLocalBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     type Content = T;
 }
@@ -378,6 +402,7 @@ where
 impl<T: ?Sized, A> PartialEq for DeviceLocalBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
@@ -385,11 +410,17 @@ where
     }
 }
 
-impl<T: ?Sized, A> Eq for DeviceLocalBuffer<T, A> where T: 'static + Send + Sync {}
+impl<T: ?Sized, A> Eq for DeviceLocalBuffer<T, A>
+where
+    T: 'static + Send + Sync,
+    A: Send + Sync,
+{
+}
 
 impl<T: ?Sized, A> Hash for DeviceLocalBuffer<T, A>
 where
     T: 'static + Send + Sync,
+    A: Send + Sync,
 {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {

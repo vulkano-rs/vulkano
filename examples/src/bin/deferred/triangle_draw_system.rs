@@ -7,23 +7,22 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
+use std::sync::Arc;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SecondaryAutoCommandBuffer,
+    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::device::Queue;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineAbstract;
 use vulkano::render_pass::Subpass;
-
-use std::sync::Arc;
 
 pub struct TriangleDrawSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<GraphicsPipeline>,
 }
 
 impl TriangleDrawSystem {
@@ -88,20 +87,17 @@ impl TriangleDrawSystem {
         )
         .unwrap();
         builder
-            .draw(
-                self.pipeline.clone(),
-                &DynamicState {
-                    viewports: Some(vec![Viewport {
-                        origin: [0.0, 0.0],
-                        dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                        depth_range: 0.0..1.0,
-                    }]),
-                    ..DynamicState::none()
-                },
-                vec![self.vertex_buffer.clone()],
-                (),
-                (),
+            .set_viewport(
+                0,
+                [Viewport {
+                    origin: [0.0, 0.0],
+                    dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+                    depth_range: 0.0..1.0,
+                }],
             )
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }

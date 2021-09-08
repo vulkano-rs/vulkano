@@ -63,24 +63,19 @@
 //! # }
 //! ```
 
-pub use self::bufferless::BufferlessDefinition;
-pub use self::bufferless::BufferlessVertices;
 pub use self::buffers::BuffersDefinition;
+pub use self::collection::VertexBuffersCollection;
 pub use self::definition::IncompatibleVertexDefinitionError;
 pub use self::definition::VertexDefinition;
-pub use self::definition::VertexSource;
 pub use self::impl_vertex::VertexMember;
 pub use self::vertex::Vertex;
 pub use self::vertex::VertexMemberInfo;
 pub use self::vertex::VertexMemberTy;
-use crate::buffer::BufferAccess;
 use crate::format::Format;
-use crate::DeviceSize;
 use fnv::FnvHashMap;
-use std::convert::TryInto;
 
-mod bufferless;
 mod buffers;
+mod collection;
 mod definition;
 mod impl_vertex;
 mod vertex;
@@ -136,52 +131,6 @@ impl VertexInput {
     #[inline]
     pub fn attributes(&self) -> impl ExactSizeIterator<Item = (u32, &VertexInputAttribute)> {
         self.attributes.iter().map(|(&key, val)| (key, val))
-    }
-
-    /// Given an iterator of vertex buffers and their binding numbers, returns the maximum number
-    /// of vertices and instances that can be drawn with them.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the binding number of a provided vertex buffer does not exist in `self`.
-    pub fn max_vertices_instances<'a>(
-        &self,
-        buffers: impl IntoIterator<Item = (u32, &'a dyn BufferAccess)>,
-    ) -> (u32, u32) {
-        let buffers = buffers.into_iter();
-        let mut max_vertices = u32::MAX;
-        let mut max_instances = u32::MAX;
-
-        for (binding, buffer) in buffers {
-            let binding_desc = &self.bindings[&binding];
-            let mut num_elements = (buffer.size() / binding_desc.stride as DeviceSize)
-                .try_into()
-                .unwrap_or(u32::MAX);
-
-            match binding_desc.input_rate {
-                VertexInputRate::Vertex => {
-                    max_vertices = max_vertices.min(num_elements);
-                }
-                VertexInputRate::Instance { divisor } => {
-                    if divisor == 0 {
-                        // A divisor of 0 means the same instance data is used for all instances,
-                        // so we can draw any number of instances from a single element.
-                        // The buffer must contain at least one element though.
-                        if num_elements != 0 {
-                            num_elements = u32::MAX;
-                        }
-                    } else {
-                        // If divisor is 2, we use only half the amount of data from the source buffer,
-                        // so the number of instances that can be drawn is twice as large.
-                        num_elements = num_elements.saturating_mul(divisor);
-                    }
-
-                    max_instances = max_instances.min(num_elements);
-                }
-            };
-        }
-
-        (max_vertices, max_instances)
     }
 }
 

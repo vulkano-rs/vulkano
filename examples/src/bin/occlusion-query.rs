@@ -13,9 +13,7 @@
 
 use std::sync::Arc;
 use vulkano::buffer::{BufferAccess, BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
-};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, DeviceOwned, Features};
 use vulkano::format::Format;
@@ -227,7 +225,7 @@ fn main() {
                 depth: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::D16Unorm,
+                    format: Format::D16_UNORM,
                     samples: 1,
                 }
             },
@@ -255,17 +253,13 @@ fn main() {
             .unwrap(),
     );
 
-    let mut dynamic_state = DynamicState {
-        line_width: None,
-        viewports: None,
-        scissors: None,
-        compare_mask: None,
-        write_mask: None,
-        reference: None,
+    let mut viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [0.0, 0.0],
+        depth_range: 0.0..1.0,
     };
 
-    let mut framebuffers =
-        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
@@ -296,11 +290,8 @@ fn main() {
                     };
 
                 swapchain = new_swapchain;
-                framebuffers = window_size_dependent_setup(
-                    &new_images,
-                    render_pass.clone(),
-                    &mut dynamic_state,
-                );
+                framebuffers =
+                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
                 recreate_swapchain = false;
             }
 
@@ -334,6 +325,8 @@ fn main() {
                     // This must be done outside a render pass.
                     .reset_query_pool(query_pool.clone(), 0..3)
                     .unwrap()
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(pipeline.clone())
                     .begin_render_pass(
                         framebuffers[image_num].clone(),
                         SubpassContents::Inline,
@@ -345,7 +338,8 @@ fn main() {
                     // the `occlusion_query_precise` feature to be enabled on the device.
                     .begin_query(query_pool.clone(), 0, QueryControlFlags { precise: false })
                     .unwrap()
-                    .draw(pipeline.clone(), &dynamic_state, triangle1.clone(), (), ())
+                    .bind_vertex_buffers(0, triangle1.clone())
+                    .draw(triangle1.len() as u32, 1, 0, 0)
                     .unwrap()
                     // End query 0.
                     .end_query(query_pool.clone(), 0)
@@ -353,14 +347,16 @@ fn main() {
                     // Begin query 1 for the cyan triangle.
                     .begin_query(query_pool.clone(), 1, QueryControlFlags { precise: false })
                     .unwrap()
-                    .draw(pipeline.clone(), &dynamic_state, triangle2.clone(), (), ())
+                    .bind_vertex_buffers(0, triangle2.clone())
+                    .draw(triangle2.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_query(query_pool.clone(), 1)
                     .unwrap()
                     // Finally, query 2 for the green triangle.
                     .begin_query(query_pool.clone(), 2, QueryControlFlags { precise: false })
                     .unwrap()
-                    .draw(pipeline.clone(), &dynamic_state, triangle3.clone(), (), ())
+                    .bind_vertex_buffers(0, triangle3.clone())
+                    .draw(triangle3.len() as u32, 1, 0, 0)
                     .unwrap()
                     .end_query(query_pool.clone(), 2)
                     .unwrap()
@@ -443,22 +439,16 @@ fn main() {
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-    dynamic_state: &mut DynamicState,
+    viewport: &mut Viewport,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
-
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0..1.0,
-    };
-    dynamic_state.viewports = Some(vec![viewport]);
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     let depth_attachment = ImageView::new(
         AttachmentImage::with_usage(
             render_pass.device().clone(),
             dimensions,
-            Format::D16Unorm,
+            Format::D16_UNORM,
             ImageUsage {
                 depth_stencil_attachment: true,
                 transient_attachment: true,

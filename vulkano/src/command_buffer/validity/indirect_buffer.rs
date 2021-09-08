@@ -20,7 +20,7 @@ pub fn check_indirect_buffer<Inb>(
     buffer: &Inb,
 ) -> Result<(), CheckIndirectBufferError>
 where
-    Inb: BufferAccess + Send + Sync + 'static,
+    Inb: BufferAccess + 'static,
 {
     assert_eq!(
         buffer.inner().buffer.device().internal_object(),

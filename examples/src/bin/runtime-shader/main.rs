@@ -25,10 +25,8 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::Arc;
 use vulkano::buffer::cpu_access::CpuAccessibleBuffer;
-use vulkano::buffer::BufferUsage;
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
-};
+use vulkano::buffer::{BufferUsage, TypedBufferAccess};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
@@ -170,12 +168,12 @@ fn main() {
         ShaderInterface::new_unchecked(vec![
             ShaderInterfaceEntry {
                 location: 1..2,
-                format: Format::R32G32B32Sfloat,
+                format: Format::R32G32B32_SFLOAT,
                 name: Some(Cow::Borrowed("color")),
             },
             ShaderInterfaceEntry {
                 location: 0..1,
-                format: Format::R32G32Sfloat,
+                format: Format::R32G32_SFLOAT,
                 name: Some(Cow::Borrowed("position")),
             },
         ])
@@ -186,7 +184,7 @@ fn main() {
     let vertex_output = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
-            format: Format::R32G32B32Sfloat,
+            format: Format::R32G32B32_SFLOAT,
             name: Some(Cow::Borrowed("v_color")),
         }])
     };
@@ -195,7 +193,7 @@ fn main() {
     let fragment_input = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
-            format: Format::R32G32B32Sfloat,
+            format: Format::R32G32B32_SFLOAT,
             name: Some(Cow::Borrowed("v_color")),
         }])
     };
@@ -205,7 +203,7 @@ fn main() {
     let fragment_output = unsafe {
         ShaderInterface::new_unchecked(vec![ShaderInterfaceEntry {
             location: 0..1,
-            format: Format::R32G32B32A32Sfloat,
+            format: Format::R32G32B32A32_SFLOAT,
             name: Some(Cow::Borrowed("f_color")),
         }])
     };
@@ -220,7 +218,7 @@ fn main() {
     let vert_main = unsafe {
         vs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            [], // No descriptor sets.
+            [],   // No descriptor sets.
             None, // No push constants.
             <()>::descriptors(),
             vertex_input,
@@ -232,7 +230,7 @@ fn main() {
     let frag_main = unsafe {
         fs.graphics_entry_point(
             CStr::from_bytes_with_nul_unchecked(b"main\0"),
-            [], // No descriptor sets.
+            [],   // No descriptor sets.
             None, // No push constants.
             <()>::descriptors(),
             fragment_input,
@@ -285,16 +283,12 @@ fn main() {
     // note that passing wrong types, providing sets at wrong indexes will cause
     // descriptor set builder to return Err!
 
-    let mut dynamic_state = DynamicState {
-        line_width: None,
-        viewports: None,
-        scissors: None,
-        compare_mask: None,
-        write_mask: None,
-        reference: None,
+    let mut viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [0.0, 0.0],
+        depth_range: 0.0..1.0,
     };
-    let mut framebuffers =
-        window_size_dependent_setup(&images, render_pass.clone(), &mut dynamic_state);
+    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
     let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
 
     event_loop.run(move |event, _, control_flow| match event {
@@ -323,11 +317,8 @@ fn main() {
                     };
 
                 swapchain = new_swapchain;
-                framebuffers = window_size_dependent_setup(
-                    &new_images,
-                    render_pass.clone(),
-                    &mut dynamic_state,
-                );
+                framebuffers =
+                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
                 recreate_swapchain = false;
             }
 
@@ -359,13 +350,10 @@ fn main() {
                     clear_values,
                 )
                 .unwrap()
-                .draw(
-                    graphics_pipeline.clone(),
-                    &dynamic_state,
-                    vertex_buffer.clone(),
-                    (),
-                    (),
-                )
+                .set_viewport(0, [viewport.clone()])
+                .bind_pipeline_graphics(graphics_pipeline.clone())
+                .bind_vertex_buffers(0, vertex_buffer.clone())
+                .draw(vertex_buffer.len() as u32, 1, 0, 0)
                 .unwrap()
                 .end_render_pass()
                 .unwrap();
@@ -402,16 +390,10 @@ fn main() {
 fn window_size_dependent_setup(
     images: &[Arc<SwapchainImage<Window>>],
     render_pass: Arc<RenderPass>,
-    dynamic_state: &mut DynamicState,
+    viewport: &mut Viewport,
 ) -> Vec<Arc<dyn FramebufferAbstract + Send + Sync>> {
     let dimensions = images[0].dimensions();
-
-    let viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [dimensions[0] as f32, dimensions[1] as f32],
-        depth_range: 0.0..1.0,
-    };
-    dynamic_state.viewports = Some(vec![viewport]);
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
     images
         .iter()

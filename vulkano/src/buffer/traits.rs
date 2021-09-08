@@ -24,7 +24,7 @@ use std::ops::Range;
 /// buffer.
 ///
 /// See also `TypedBufferAccess`.
-pub unsafe trait BufferAccess: DeviceOwned {
+pub unsafe trait BufferAccess: DeviceOwned + Send + Sync {
     /// Returns the inner information about this buffer.
     fn inner(&self) -> BufferInner;
 
@@ -166,7 +166,7 @@ pub struct BufferInner<'a> {
 
 unsafe impl<T> BufferAccess for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: BufferAccess,
 {
     #[inline]
@@ -219,22 +219,22 @@ pub unsafe trait TypedBufferAccess: BufferAccess {
 
 unsafe impl<T> TypedBufferAccess for T
 where
-    T: SafeDeref,
+    T: SafeDeref + Send + Sync,
     T::Target: TypedBufferAccess,
 {
     type Content = <T::Target as TypedBufferAccess>::Content;
 }
 
-impl PartialEq for dyn BufferAccess + Send + Sync {
+impl PartialEq for dyn BufferAccess {
     #[inline]
     fn eq(&self, other: &Self) -> bool {
         self.inner() == other.inner() && self.size() == other.size()
     }
 }
 
-impl Eq for dyn BufferAccess + Send + Sync {}
+impl Eq for dyn BufferAccess {}
 
-impl Hash for dyn BufferAccess + Send + Sync {
+impl Hash for dyn BufferAccess {
     #[inline]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.inner().hash(state);

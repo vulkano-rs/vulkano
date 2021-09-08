@@ -216,13 +216,13 @@ mod tests {
                 a: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 4,
                 },
                 b: {
                     load: DontCare,
                     store: Store,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 1,
                 }
             },

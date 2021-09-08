@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::device::Device;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::image::ImageAccess;
 use crate::image::ImageDimensions;
 use crate::image::SampleCount;
@@ -76,13 +76,21 @@ where
         return Err(CheckBlitImageError::UnexpectedMultisampled);
     }
 
-    let source_format_ty = source.format().ty();
-    let destination_format_ty = destination.format().ty();
-
-    if matches!(
-        source_format_ty,
-        FormatTy::Depth | FormatTy::Stencil | FormatTy::DepthStencil
+    if let (Some(source_type), Some(destination_type)) = (
+        source.format().type_color(),
+        destination.format().type_color(),
     ) {
+        let types_should_be_same = source_type == NumericType::UINT
+            || destination_type == NumericType::UINT
+            || source_type == NumericType::SINT
+            || destination_type == NumericType::SINT;
+        if types_should_be_same && (source_type != destination_type) {
+            return Err(CheckBlitImageError::IncompatibleFormatTypes {
+                source_type,
+                destination_type,
+            });
+        }
+    } else {
         if source.format() != destination.format() {
             return Err(CheckBlitImageError::DepthStencilFormatMismatch);
         }
@@ -90,17 +98,6 @@ where
         if filter != Filter::Nearest {
             return Err(CheckBlitImageError::DepthStencilNearestMandatory);
         }
-    }
-
-    let types_should_be_same = source_format_ty == FormatTy::Uint
-        || destination_format_ty == FormatTy::Uint
-        || source_format_ty == FormatTy::Sint
-        || destination_format_ty == FormatTy::Sint;
-    if types_should_be_same && (source_format_ty != destination_format_ty) {
-        return Err(CheckBlitImageError::IncompatibleFormatsTypes {
-            source_format_ty: source.format().ty(),
-            destination_format_ty: destination.format().ty(),
-        });
     }
 
     let source_dimensions = match source.dimensions().mipmap_dimensions(source_mip_level) {
@@ -237,9 +234,9 @@ pub enum CheckBlitImageError {
     /// The format of the source and destination must be equal when blitting depth/stencil images.
     DepthStencilFormatMismatch,
     /// The types of the source format and the destination format aren't compatible.
-    IncompatibleFormatsTypes {
-        source_format_ty: FormatTy,
-        destination_format_ty: FormatTy,
+    IncompatibleFormatTypes {
+        source_type: NumericType,
+        destination_type: NumericType,
     },
     /// Blitting between multisampled images is forbidden.
     UnexpectedMultisampled,
@@ -279,7 +276,7 @@ impl fmt::Display for CheckBlitImageError {
                     "the format of the source and destination must be equal when blitting \
                  depth/stencil images"
                 }
-                CheckBlitImageError::IncompatibleFormatsTypes { .. } => {
+                CheckBlitImageError::IncompatibleFormatTypes { .. } => {
                     "the types of the source format and the destination format aren't compatible"
                 }
                 CheckBlitImageError::UnexpectedMultisampled => {

@@ -29,6 +29,7 @@ use crate::pipeline::graphics_pipeline::GraphicsPipelineCreationError;
 use crate::pipeline::graphics_pipeline::Inner as GraphicsPipelineInner;
 use crate::pipeline::input_assembly::PrimitiveTopology;
 use crate::pipeline::layout::PipelineLayout;
+use crate::pipeline::layout::PipelineLayoutCreationError;
 use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::pipeline::raster::CullMode;
 use crate::pipeline::raster::DepthBiasControl;
@@ -39,7 +40,6 @@ use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::GraphicsEntryPoint;
 use crate::pipeline::shader::GraphicsShaderType;
 use crate::pipeline::shader::SpecializationConstants;
-use crate::pipeline::vertex::BufferlessDefinition;
 use crate::pipeline::vertex::BuffersDefinition;
 use crate::pipeline::vertex::Vertex;
 use crate::pipeline::vertex::VertexDefinition;
@@ -48,7 +48,6 @@ use crate::pipeline::viewport::Scissor;
 use crate::pipeline::viewport::Viewport;
 use crate::pipeline::viewport::ViewportsState;
 use crate::render_pass::Subpass;
-use crate::OomError;
 use crate::VulkanObject;
 use smallvec::SmallVec;
 use std::collections::hash_map::{Entry, HashMap};
@@ -93,7 +92,7 @@ impl
         'static,
         'static,
         'static,
-        BufferlessDefinition,
+        BuffersDefinition,
         (),
         (),
         (),
@@ -104,7 +103,7 @@ impl
     /// Builds a new empty builder.
     pub(super) fn new() -> Self {
         GraphicsPipelineBuilder {
-            vertex_definition: BufferlessDefinition,
+            vertex_definition: BuffersDefinition::new(),
             vertex_shader: None,
             input_assembly: ash::vk::PipelineInputAssemblyStateCreateInfo {
                 topology: PrimitiveTopology::TriangleList.into(),
@@ -139,19 +138,21 @@ where
     pub fn build(
         self,
         device: Arc<Device>,
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
-        self.with_auto_layout(device, &[])
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
+        self.with_auto_layout(device, |_| {})
     }
 
-    /// Builds the graphics pipeline, using an inferred pipeline layout with some dynamic buffers.
-    ///
-    /// Configures the inferred layout for each descriptor `(set, binding)` in `dynamic_buffers` to accept dynamic
-    /// buffers.
-    pub fn with_auto_layout(
+    /// The same as `new`, but allows you to provide a closure that is given a mutable reference to
+    /// the inferred descriptor set definitions. This can be used to make changes to the layout
+    /// before it's created, for example to add dynamic buffers or immutable samplers.
+    pub fn with_auto_layout<F>(
         self,
         device: Arc<Device>,
-        dynamic_buffers: &[(usize, usize)],
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+        func: F,
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError>
+    where
+        F: FnOnce(&mut [DescriptorSetDesc]),
+    {
         let (descriptor_set_layout_descs, push_constant_ranges) = {
             let stages: SmallVec<[&GraphicsEntryPoint; 5]> = std::array::IntoIter::new([
                 self.vertex_shader.as_ref().map(|s| &s.0),
@@ -179,10 +180,7 @@ where
                     DescriptorSetDesc::union_multiple(&total, shader.descriptor_set_layout_descs())
                 })
                 .expect("Can't be union'd");
-            DescriptorSetDesc::tweak_multiple(
-                &mut descriptor_set_layout_descs,
-                dynamic_buffers.into_iter().cloned(),
-            );
+            func(&mut descriptor_set_layout_descs);
 
             // We want to union each push constant range into a set of ranges that do not have intersecting stage flags.
             // e.g. The range [0, 16) is either made available to Vertex | Fragment or we only make [0, 16) available to
@@ -193,17 +191,19 @@ where
                     match range_map.entry((range.offset, range.size)) {
                         Entry::Vacant(entry) => {
                             entry.insert(range.stages);
-                        },
+                        }
                         Entry::Occupied(mut entry) => {
                             *entry.get_mut() = *entry.get() | range.stages;
-                        },
+                        }
                     }
                 }
             }
             let push_constant_ranges: Vec<_> = range_map
                 .iter()
-                .map(|((offset, size), stages)| {
-                    PipelineLayoutPcRange { offset: *offset, size: *size, stages: *stages }
+                .map(|((offset, size), stages)| PipelineLayoutPcRange {
+                    offset: *offset,
+                    size: *size,
+                    stages: *stages,
                 })
                 .collect();
 
@@ -213,7 +213,7 @@ where
         let descriptor_set_layouts = descriptor_set_layout_descs
             .into_iter()
             .map(|desc| Ok(Arc::new(DescriptorSetLayout::new(device.clone(), desc)?)))
-            .collect::<Result<Vec<_>, OomError>>()?;
+            .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
         let pipeline_layout = Arc::new(
             PipelineLayout::new(device.clone(), descriptor_set_layouts, push_constant_ranges)
                 .unwrap(),
@@ -230,7 +230,7 @@ where
         mut self,
         device: Arc<Device>,
         pipeline_layout: Arc<PipelineLayout>,
-    ) -> Result<GraphicsPipeline<Vdef>, GraphicsPipelineCreationError> {
+    ) -> Result<GraphicsPipeline, GraphicsPipelineCreationError> {
         // TODO: return errors instead of panicking if missing param
 
         let fns = device.fns();
@@ -240,7 +240,7 @@ where
 
         {
             let shader = &self.vertex_shader.as_ref().unwrap().0;
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -248,7 +248,7 @@ where
 
         if let Some(ref geometry_shader) = self.geometry_shader {
             let shader = &geometry_shader.0;
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -257,7 +257,7 @@ where
         if let Some(ref tess) = self.tessellation {
             {
                 let shader = &tess.tessellation_control_shader.0;
-                pipeline_layout.ensure_superset_of(
+                pipeline_layout.ensure_compatible_with_shader(
                     shader.descriptor_set_layout_descs(),
                     shader.push_constant_range(),
                 )?;
@@ -265,7 +265,7 @@ where
 
             {
                 let shader = &tess.tessellation_evaluation_shader.0;
-                pipeline_layout.ensure_superset_of(
+                pipeline_layout.ensure_compatible_with_shader(
                     shader.descriptor_set_layout_descs(),
                     shader.push_constant_range(),
                 )?;
@@ -274,7 +274,7 @@ where
 
         if let Some(ref fragment_shader) = self.fragment_shader {
             let shader = &fragment_shader.0;
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -796,26 +796,10 @@ where
                 return Err(GraphicsPipelineCreationError::MaxViewportDimensionsExceeded);
             }
 
-            if vp.x
-                < device
-                    .physical_device()
-                    .properties()
-                    .viewport_bounds_range[0]
-                || vp.x + vp.width
-                    > device
-                        .physical_device()
-                        .properties()
-                        .viewport_bounds_range[1]
-                || vp.y
-                    < device
-                        .physical_device()
-                        .properties()
-                        .viewport_bounds_range[0]
-                || vp.y + vp.height
-                    > device
-                        .physical_device()
-                        .properties()
-                        .viewport_bounds_range[1]
+            if vp.x < device.physical_device().properties().viewport_bounds_range[0]
+                || vp.x + vp.width > device.physical_device().properties().viewport_bounds_range[1]
+                || vp.y < device.physical_device().properties().viewport_bounds_range[0]
+                || vp.y + vp.height > device.physical_device().properties().viewport_bounds_range[1]
             {
                 return Err(GraphicsPipelineCreationError::ViewportBoundsExceeded);
             }
@@ -1214,7 +1198,6 @@ where
             },
             layout: pipeline_layout,
             subpass: self.subpass.take().unwrap(),
-            vertex_definition: self.vertex_definition,
             vertex_input,
 
             dynamic_line_width: self.raster.line_width.is_none(),

@@ -296,7 +296,8 @@ mod tests {
         };
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone())).unwrap(),
+            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone()), |_| {})
+                .unwrap(),
         );
 
         let cache_data = cache.get_data().unwrap();
@@ -382,13 +383,27 @@ mod tests {
         };
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &first_shader, &(), Some(cache.clone())).unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                &first_shader,
+                &(),
+                Some(cache.clone()),
+                |_| {},
+            )
+            .unwrap(),
         );
 
         let cache_data = cache.get_data().unwrap();
 
         let second_pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &second_shader, &(), Some(cache.clone())).unwrap(),
+            ComputePipeline::new(
+                device.clone(),
+                &second_shader,
+                &(),
+                Some(cache.clone()),
+                |_| {},
+            )
+            .unwrap(),
         );
 
         let second_data = cache.get_data().unwrap();
@@ -436,13 +451,15 @@ mod tests {
         };
 
         let pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone())).unwrap(),
+            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone()), |_| {})
+                .unwrap(),
         );
 
         let cache_data = cache.get_data().unwrap();
 
         let second_pipeline = Arc::new(
-            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone())).unwrap(),
+            ComputePipeline::new(device.clone(), &shader, &(), Some(cache.clone()), |_| {})
+                .unwrap(),
         );
 
         let second_data = cache.get_data().unwrap();

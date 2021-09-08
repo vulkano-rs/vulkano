@@ -8,6 +8,7 @@
 // according to those terms.
 
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetDesc;
 use crate::descriptor_set::layout::DescriptorSetLayout;
 use crate::device::Device;
 use crate::device::DeviceOwned;
@@ -19,7 +20,6 @@ use crate::pipeline::shader::EntryPointAbstract;
 use crate::pipeline::shader::SpecializationConstants;
 use crate::Error;
 use crate::OomError;
-use crate::SafeDeref;
 use crate::VulkanObject;
 use std::error;
 use std::fmt;
@@ -52,32 +52,41 @@ struct Inner {
 
 impl ComputePipeline {
     /// Builds a new `ComputePipeline`.
-    pub fn new<Cs, Css>(
+    ///
+    /// `func` is a closure that is given a mutable reference to the inferred descriptor set
+    /// definitions. This can be used to make changes to the layout before it's created, for example
+    /// to add dynamic buffers or immutable samplers.
+    pub fn new<Cs, Css, F>(
         device: Arc<Device>,
         shader: &Cs,
         spec_constants: &Css,
         cache: Option<Arc<PipelineCache>>,
+        func: F,
     ) -> Result<ComputePipeline, ComputePipelineCreationError>
     where
         Cs: EntryPointAbstract,
         Css: SpecializationConstants,
+        F: FnOnce(&mut [DescriptorSetDesc]),
     {
+        let mut descriptor_set_layout_descs = shader.descriptor_set_layout_descs().to_owned();
+        func(&mut descriptor_set_layout_descs);
+
+        let descriptor_set_layouts = descriptor_set_layout_descs
+            .iter()
+            .map(|desc| {
+                Ok(Arc::new(DescriptorSetLayout::new(
+                    device.clone(),
+                    desc.clone(),
+                )?))
+            })
+            .collect::<Result<Vec<_>, PipelineLayoutCreationError>>()?;
+        let pipeline_layout = Arc::new(PipelineLayout::new(
+            device.clone(),
+            descriptor_set_layouts,
+            shader.push_constant_range().iter().cloned(),
+        )?);
+
         unsafe {
-            let descriptor_set_layouts = shader
-                .descriptor_set_layout_descs()
-                .iter()
-                .map(|desc| {
-                    Ok(Arc::new(DescriptorSetLayout::new(
-                        device.clone(),
-                        desc.clone(),
-                    )?))
-                })
-                .collect::<Result<Vec<_>, OomError>>()?;
-            let pipeline_layout = Arc::new(PipelineLayout::new(
-                device.clone(),
-                descriptor_set_layouts,
-                shader.push_constant_range().iter().cloned(),
-            )?);
             ComputePipeline::with_unchecked_pipeline_layout(
                 device,
                 shader,
@@ -108,7 +117,7 @@ impl ComputePipeline {
         }
 
         unsafe {
-            pipeline_layout.ensure_superset_of(
+            pipeline_layout.ensure_compatible_with_shader(
                 shader.descriptor_set_layout_descs(),
                 shader.push_constant_range(),
             )?;
@@ -193,6 +202,18 @@ impl ComputePipeline {
             pipeline_layout: pipeline_layout,
         })
     }
+
+    /// Returns the `Device` this compute pipeline was created with.
+    #[inline]
+    pub fn device(&self) -> &Arc<Device> {
+        &self.inner.device
+    }
+
+    /// Returns the pipeline layout used in this compute pipeline.
+    #[inline]
+    pub fn layout(&self) -> &Arc<PipelineLayout> {
+        &self.pipeline_layout
+    }
 }
 
 impl fmt::Debug for ComputePipeline {
@@ -202,50 +223,14 @@ impl fmt::Debug for ComputePipeline {
     }
 }
 
-impl ComputePipeline {
-    /// Returns the `Device` this compute pipeline was created with.
+impl PartialEq for ComputePipeline {
     #[inline]
-    pub fn device(&self) -> &Arc<Device> {
-        &self.inner.device
+    fn eq(&self, other: &Self) -> bool {
+        self.internal_object() == other.internal_object()
     }
 }
 
-/// Trait implemented on all compute pipelines.
-pub unsafe trait ComputePipelineAbstract: DeviceOwned {
-    /// Returns an opaque object that represents the inside of the compute pipeline.
-    fn inner(&self) -> ComputePipelineSys;
-
-    /// Returns the pipeline layout used in this compute pipeline.
-    fn layout(&self) -> &Arc<PipelineLayout>;
-}
-
-unsafe impl ComputePipelineAbstract for ComputePipeline {
-    #[inline]
-    fn inner(&self) -> ComputePipelineSys {
-        ComputePipelineSys(self.inner.pipeline, PhantomData)
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
-        &self.pipeline_layout
-    }
-}
-
-unsafe impl<T> ComputePipelineAbstract for T
-where
-    T: SafeDeref,
-    T::Target: ComputePipelineAbstract,
-{
-    #[inline]
-    fn inner(&self) -> ComputePipelineSys {
-        (**self).inner()
-    }
-
-    #[inline]
-    fn layout(&self) -> &Arc<PipelineLayout> {
-        (**self).layout()
-    }
-}
+impl Eq for ComputePipeline {}
 
 /// Opaque object that represents the inside of the compute pipeline. Can be made into a trait
 /// object.
@@ -377,7 +362,6 @@ mod tests {
     use crate::buffer::CpuAccessibleBuffer;
     use crate::command_buffer::AutoCommandBufferBuilder;
     use crate::command_buffer::CommandBufferUsage;
-    use crate::descriptor_set::layout::DescriptorBufferDesc;
     use crate::descriptor_set::layout::DescriptorDesc;
     use crate::descriptor_set::layout::DescriptorDescTy;
     use crate::descriptor_set::layout::DescriptorSetDesc;
@@ -387,7 +371,7 @@ mod tests {
     use crate::pipeline::shader::SpecializationConstants;
     use crate::pipeline::shader::SpecializationMapEntry;
     use crate::pipeline::ComputePipeline;
-    use crate::pipeline::ComputePipelineAbstract;
+    use crate::pipeline::PipelineBindPoint;
     use crate::sync::now;
     use crate::sync::GpuFuture;
     use std::ffi::CStr;
@@ -449,16 +433,14 @@ mod tests {
             module.compute_entry_point(
                 CStr::from_ptr(NAME.as_ptr() as *const _),
                 [DescriptorSetDesc::new([Some(DescriptorDesc {
-                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                        dynamic: Some(false),
-                        storage: true,
-                    }),
-                    array_count: 1,
+                    ty: DescriptorDescTy::StorageBuffer,
+                    descriptor_count: 1,
                     stages: ShaderStages {
                         compute: true,
                         ..ShaderStages::none()
                     },
-                    readonly: true,
+                    mutable: false,
+                    variable_count: false,
                 })])],
                 None,
                 SpecConsts::descriptors(),
@@ -488,6 +470,7 @@ mod tests {
                 &shader,
                 &SpecConsts { VALUE: 0x12345678 },
                 None,
+                |_| {},
             )
             .unwrap(),
         );
@@ -495,11 +478,11 @@ mod tests {
         let data_buffer =
             CpuAccessibleBuffer::from_data(device.clone(), BufferUsage::all(), false, 0).unwrap();
         let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-        let set = PersistentDescriptorSet::start(layout.clone())
-            .add_buffer(data_buffer.clone())
-            .unwrap()
-            .build()
-            .unwrap();
+        let mut builder = PersistentDescriptorSet::start(layout.clone());
+
+        builder.add_buffer(data_buffer.clone()).unwrap();
+
+        let set = builder.build().unwrap();
 
         let mut cbb = AutoCommandBufferBuilder::primary(
             device.clone(),
@@ -507,7 +490,15 @@ mod tests {
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-        cbb.dispatch([1, 1, 1], pipeline.clone(), set, ()).unwrap();
+        cbb.bind_pipeline_compute(pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                pipeline.layout().clone(),
+                0,
+                set,
+            )
+            .dispatch([1, 1, 1])
+            .unwrap();
         let cb = cbb.build().unwrap();
 
         let future = now(device.clone())

@@ -9,10 +9,12 @@
 
 use cgmath::Matrix4;
 use cgmath::Vector3;
+use std::sync::Arc;
 use vulkano::buffer::BufferUsage;
 use vulkano::buffer::CpuAccessibleBuffer;
+use vulkano::buffer::TypedBufferAccess;
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SecondaryAutoCommandBuffer,
+    AutoCommandBufferBuilder, CommandBufferUsage, SecondaryAutoCommandBuffer,
 };
 use vulkano::descriptor_set::PersistentDescriptorSet;
 use vulkano::device::Queue;
@@ -22,15 +24,13 @@ use vulkano::pipeline::blend::BlendFactor;
 use vulkano::pipeline::blend::BlendOp;
 use vulkano::pipeline::viewport::Viewport;
 use vulkano::pipeline::GraphicsPipeline;
-use vulkano::pipeline::GraphicsPipelineAbstract;
+use vulkano::pipeline::PipelineBindPoint;
 use vulkano::render_pass::Subpass;
-
-use std::sync::Arc;
 
 pub struct PointLightingSystem {
     gfx_queue: Arc<Queue>,
     vertex_buffer: Arc<CpuAccessibleBuffer<[Vertex]>>,
-    pipeline: Arc<dyn GraphicsPipelineAbstract + Send + Sync>,
+    pipeline: Arc<GraphicsPipeline>,
 }
 
 impl PointLightingSystem {
@@ -127,21 +127,16 @@ impl PointLightingSystem {
     /// - `position` is the position of the spot light in world coordinates.
     /// - `color` is the color of the light.
     ///
-    pub fn draw<C, N, D>(
+    pub fn draw(
         &self,
         viewport_dimensions: [u32; 2],
-        color_input: C,
-        normals_input: N,
-        depth_input: D,
+        color_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        normals_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
+        depth_input: Arc<dyn ImageViewAbstract + Send + Sync + 'static>,
         screen_to_world: Matrix4<f32>,
         position: Vector3<f32>,
         color: [f32; 3],
-    ) -> SecondaryAutoCommandBuffer
-    where
-        C: ImageViewAbstract + Send + Sync + 'static,
-        N: ImageViewAbstract + Send + Sync + 'static,
-        D: ImageViewAbstract + Send + Sync + 'static,
-    {
+    ) -> SecondaryAutoCommandBuffer {
         let push_constants = fs::ty::PushConstants {
             screen_to_world: screen_to_world.into(),
             color: [color[0], color[1], color[2], 1.0],
@@ -154,23 +149,24 @@ impl PointLightingSystem {
             .descriptor_set_layouts()
             .get(0)
             .unwrap();
-        let descriptor_set = PersistentDescriptorSet::start(layout.clone())
+        let mut descriptor_set_builder = PersistentDescriptorSet::start(layout.clone());
+
+        descriptor_set_builder
             .add_image(color_input)
             .unwrap()
             .add_image(normals_input)
             .unwrap()
             .add_image(depth_input)
-            .unwrap()
+            .unwrap();
+
+        let descriptor_set = descriptor_set_builder
             .build()
             .unwrap();
 
-        let dynamic_state = DynamicState {
-            viewports: Some(vec![Viewport {
-                origin: [0.0, 0.0],
-                dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
-                depth_range: 0.0..1.0,
-            }]),
-            ..DynamicState::none()
+        let viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [viewport_dimensions[0] as f32, viewport_dimensions[1] as f32],
+            depth_range: 0.0..1.0,
         };
 
         let mut builder = AutoCommandBufferBuilder::secondary_graphics(
@@ -181,13 +177,17 @@ impl PointLightingSystem {
         )
         .unwrap();
         builder
-            .draw(
-                self.pipeline.clone(),
-                &dynamic_state,
-                vec![self.vertex_buffer.clone()],
+            .set_viewport(0, [viewport.clone()])
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
                 descriptor_set,
-                push_constants,
             )
+            .push_constants(self.pipeline.layout().clone(), 0, push_constants)
+            .bind_vertex_buffers(0, self.vertex_buffer.clone())
+            .draw(self.vertex_buffer.len() as u32, 1, 0, 0)
             .unwrap();
         builder.build().unwrap()
     }

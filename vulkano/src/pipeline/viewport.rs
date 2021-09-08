@@ -161,7 +161,7 @@ impl From<Viewport> for ash::vk::Viewport {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Scissor {
     /// Coordinates in pixels of the top-left hand corner of the box.
-    pub origin: [i32; 2],
+    pub origin: [u32; 2],
 
     /// Dimensions in pixels of the box.
     pub dimensions: [u32; 2],
@@ -190,8 +190,8 @@ impl From<Scissor> for ash::vk::Rect2D {
     fn from(val: Scissor) -> Self {
         ash::vk::Rect2D {
             offset: ash::vk::Offset2D {
-                x: val.origin[0],
-                y: val.origin[1],
+                x: val.origin[0] as i32,
+                y: val.origin[1] as i32,
             },
             extent: ash::vk::Extent2D {
                 width: val.dimensions[0],

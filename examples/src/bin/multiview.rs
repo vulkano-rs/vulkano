@@ -15,14 +15,10 @@
 
 use std::fs::File;
 use std::io::BufWriter;
-use std::iter;
 use std::path::Path;
 use std::sync::Arc;
-
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
-use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, SubpassContents,
-};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
@@ -120,7 +116,7 @@ fn main() {
             height: 512,
             array_layers: 2,
         },
-        Format::B8G8R8A8Srgb,
+        Format::B8G8R8A8_SRGB,
         ImageUsage {
             transfer_source: true,
             color_attachment: true,
@@ -245,21 +241,19 @@ fn main() {
             .vertex_input_single_buffer::<Vertex>()
             .vertex_shader(vs.main_entry_point(), ())
             .triangle_list()
-            .viewports(iter::once(Viewport {
+            .viewports([Viewport {
                 origin: [0.0, 0.0],
                 dimensions: [
                     image.dimensions().width() as f32,
                     image.dimensions().height() as f32,
                 ],
                 depth_range: 0.0..1.0,
-            }))
+            }])
             .fragment_shader(fs.main_entry_point(), ())
             .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
             .build(device.clone())
             .unwrap(),
     );
-
-    let dynamic_state = DynamicState::none();
 
     let clear_values = vec![[0.0, 0.0, 1.0, 1.0].into()];
 
@@ -288,13 +282,9 @@ fn main() {
     builder
         .begin_render_pass(framebuffer.clone(), SubpassContents::Inline, clear_values)
         .unwrap()
-        .draw(
-            pipeline.clone(),
-            &dynamic_state,
-            vertex_buffer.clone(),
-            (),
-            (),
-        )
+        .bind_pipeline_graphics(pipeline.clone())
+        .bind_vertex_buffers(0, vertex_buffer.clone())
+        .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
         .end_render_pass()
         .unwrap();
@@ -358,7 +348,7 @@ fn write_image_buffer_to_file(
     let file = File::create(path).unwrap();
     let ref mut w = BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, width, height);
-    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();

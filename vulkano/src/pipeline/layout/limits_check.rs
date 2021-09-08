@@ -36,39 +36,40 @@ pub fn check_desc_against_limits(
 
     for set in descriptor_set_layouts {
         for descriptor in (0..set.num_bindings()).filter_map(|i| set.descriptor(i).map(|d| d)) {
-            num_resources.increment(descriptor.array_count, &descriptor.stages);
+            num_resources.increment(descriptor.descriptor_count, &descriptor.stages);
 
             match descriptor.ty.ty() {
                 // TODO:
                 DescriptorType::Sampler => {
-                    num_samplers.increment(descriptor.array_count, &descriptor.stages);
+                    num_samplers.increment(descriptor.descriptor_count, &descriptor.stages);
                 }
                 DescriptorType::CombinedImageSampler => {
-                    num_samplers.increment(descriptor.array_count, &descriptor.stages);
-                    num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
+                    num_samplers.increment(descriptor.descriptor_count, &descriptor.stages);
+                    num_sampled_images.increment(descriptor.descriptor_count, &descriptor.stages);
                 }
                 DescriptorType::SampledImage | DescriptorType::UniformTexelBuffer => {
-                    num_sampled_images.increment(descriptor.array_count, &descriptor.stages);
+                    num_sampled_images.increment(descriptor.descriptor_count, &descriptor.stages);
                 }
                 DescriptorType::StorageImage | DescriptorType::StorageTexelBuffer => {
-                    num_storage_images.increment(descriptor.array_count, &descriptor.stages);
+                    num_storage_images.increment(descriptor.descriptor_count, &descriptor.stages);
                 }
                 DescriptorType::UniformBuffer => {
-                    num_uniform_buffers.increment(descriptor.array_count, &descriptor.stages);
+                    num_uniform_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
                 }
                 DescriptorType::UniformBufferDynamic => {
-                    num_uniform_buffers.increment(descriptor.array_count, &descriptor.stages);
+                    num_uniform_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
                     num_uniform_buffers_dynamic += 1;
                 }
                 DescriptorType::StorageBuffer => {
-                    num_storage_buffers.increment(descriptor.array_count, &descriptor.stages);
+                    num_storage_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
                 }
                 DescriptorType::StorageBufferDynamic => {
-                    num_storage_buffers.increment(descriptor.array_count, &descriptor.stages);
+                    num_storage_buffers.increment(descriptor.descriptor_count, &descriptor.stages);
                     num_storage_buffers_dynamic += 1;
                 }
                 DescriptorType::InputAttachment => {
-                    num_input_attachments.increment(descriptor.array_count, &descriptor.stages);
+                    num_input_attachments
+                        .increment(descriptor.descriptor_count, &descriptor.stages);
                 }
             }
         }
@@ -98,9 +99,7 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_uniform_buffers.max_per_stage()
-        > properties.max_per_stage_descriptor_uniform_buffers
-    {
+    if num_uniform_buffers.max_per_stage() > properties.max_per_stage_descriptor_uniform_buffers {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorUniformBuffersLimitExceeded {
                 limit: properties.max_per_stage_descriptor_uniform_buffers,
@@ -108,9 +107,7 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_storage_buffers.max_per_stage()
-        > properties.max_per_stage_descriptor_storage_buffers
-    {
+    if num_storage_buffers.max_per_stage() > properties.max_per_stage_descriptor_storage_buffers {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorStorageBuffersLimitExceeded {
                 limit: properties.max_per_stage_descriptor_storage_buffers,
@@ -118,9 +115,7 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_sampled_images.max_per_stage()
-        > properties.max_per_stage_descriptor_sampled_images
-    {
+    if num_sampled_images.max_per_stage() > properties.max_per_stage_descriptor_sampled_images {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorSampledImagesLimitExceeded {
                 limit: properties.max_per_stage_descriptor_sampled_images,
@@ -128,9 +123,7 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_storage_images.max_per_stage()
-        > properties.max_per_stage_descriptor_storage_images
-    {
+    if num_storage_images.max_per_stage() > properties.max_per_stage_descriptor_storage_images {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorStorageImagesLimitExceeded {
                 limit: properties.max_per_stage_descriptor_storage_images,
@@ -138,14 +131,11 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_input_attachments.max_per_stage()
-        > properties
-            .max_per_stage_descriptor_input_attachments
+    if num_input_attachments.max_per_stage() > properties.max_per_stage_descriptor_input_attachments
     {
         return Err(
             PipelineLayoutLimitsError::MaxPerStageDescriptorInputAttachmentsLimitExceeded {
-                limit: properties
-                    .max_per_stage_descriptor_input_attachments,
+                limit: properties.max_per_stage_descriptor_input_attachments,
                 requested: num_input_attachments.max_per_stage(),
             },
         );
@@ -167,14 +157,10 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_uniform_buffers_dynamic
-        > properties
-            .max_descriptor_set_uniform_buffers_dynamic
-    {
+    if num_uniform_buffers_dynamic > properties.max_descriptor_set_uniform_buffers_dynamic {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetUniformBuffersDynamicLimitExceeded {
-                limit: properties
-                    .max_descriptor_set_uniform_buffers_dynamic,
+                limit: properties.max_descriptor_set_uniform_buffers_dynamic,
                 requested: num_uniform_buffers_dynamic,
             },
         );
@@ -187,14 +173,10 @@ pub fn check_desc_against_limits(
             },
         );
     }
-    if num_storage_buffers_dynamic
-        > properties
-            .max_descriptor_set_storage_buffers_dynamic
-    {
+    if num_storage_buffers_dynamic > properties.max_descriptor_set_storage_buffers_dynamic {
         return Err(
             PipelineLayoutLimitsError::MaxDescriptorSetStorageBuffersDynamicLimitExceeded {
-                limit: properties
-                    .max_descriptor_set_storage_buffers_dynamic,
+                limit: properties.max_descriptor_set_storage_buffers_dynamic,
                 requested: num_storage_buffers_dynamic,
             },
         );
@@ -225,9 +207,9 @@ pub fn check_desc_against_limits(
     }
 
     for &PipelineLayoutPcRange { offset, size, .. } in push_constants_ranges {
-        if offset + size > properties.max_push_constants_size as usize {
+        if offset + size > properties.max_push_constants_size {
             return Err(PipelineLayoutLimitsError::MaxPushConstantsSizeExceeded {
-                limit: properties.max_push_constants_size as usize,
+                limit: properties.max_push_constants_size,
                 requested: offset + size,
             });
         }
@@ -250,9 +232,9 @@ pub enum PipelineLayoutLimitsError {
     /// The maximum size of push constants has been exceeded.
     MaxPushConstantsSizeExceeded {
         /// The limit that must be fulfilled.
-        limit: usize,
+        limit: u32,
         /// What was requested.
-        requested: usize,
+        requested: u32,
     },
 
     /// The `max_per_stage_resources()` limit has been exceeded.

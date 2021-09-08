@@ -619,7 +619,7 @@ mod tests {
                     color: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -632,7 +632,7 @@ mod tests {
         );
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let _ = Framebuffer::start(render_pass)
@@ -664,7 +664,7 @@ mod tests {
                     color: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -677,7 +677,7 @@ mod tests {
         );
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [1024, 768], Format::R8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [1024, 768], Format::R8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -699,7 +699,7 @@ mod tests {
                     color: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -712,7 +712,7 @@ mod tests {
         );
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [600, 600], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -733,7 +733,7 @@ mod tests {
                     color: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -746,7 +746,7 @@ mod tests {
         );
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [512, 700], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -772,13 +772,13 @@ mod tests {
                     a: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     },
                     b: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -791,11 +791,11 @@ mod tests {
         );
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [512, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [512, 513], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -821,13 +821,13 @@ mod tests {
                     a: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     },
                     b: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -840,11 +840,11 @@ mod tests {
         );
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [512, 128], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -872,13 +872,13 @@ mod tests {
                     a: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     },
                     b: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -891,7 +891,7 @@ mod tests {
         );
 
         let view = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 
@@ -919,7 +919,7 @@ mod tests {
                     a: {
                         load: Clear,
                         store: DontCare,
-                        format: Format::R8G8B8A8Unorm,
+                        format: Format::R8G8B8A8_UNORM,
                         samples: 1,
                     }
                 },
@@ -932,11 +932,11 @@ mod tests {
         );
 
         let a = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
         let b = ImageView::new(
-            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8Unorm).unwrap(),
+            AttachmentImage::new(device.clone(), [256, 512], Format::R8G8B8A8_UNORM).unwrap(),
         )
         .unwrap();
 

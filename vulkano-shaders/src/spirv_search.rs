@@ -8,7 +8,7 @@
 // according to those terms.
 
 use crate::parse::{Instruction, Spirv};
-use spirv_headers::Decoration;
+use spirv::Decoration;
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///
@@ -25,14 +25,14 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
             } if result_id == searched => {
                 assert!(!ignore_first_array);
                 let format = match (width, signedness) {
-                    (8, true) => "R8Sint",
-                    (8, false) => "R8Uint",
-                    (16, true) => "R16Sint",
-                    (16, false) => "R16Uint",
-                    (32, true) => "R32Sint",
-                    (32, false) => "R32Uint",
-                    (64, true) => "R64Sint",
-                    (64, false) => "R64Uint",
+                    (8, true) => "R8_SINT",
+                    (8, false) => "R8_UINT",
+                    (16, true) => "R16_SINT",
+                    (16, false) => "R16_UINT",
+                    (32, true) => "R32_SINT",
+                    (32, false) => "R32_UINT",
+                    (64, true) => "R64_SINT",
+                    (64, false) => "R64_UINT",
                     _ => panic!(),
                 };
                 return (format.to_string(), 1);
@@ -40,8 +40,8 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
             &Instruction::TypeFloat { result_id, width } if result_id == searched => {
                 assert!(!ignore_first_array);
                 let format = match width {
-                    32 => "R32Sfloat",
-                    64 => "R64Sfloat",
+                    32 => "R32_SFLOAT",
+                    64 => "R64_SFLOAT",
                     _ => panic!(),
                 };
                 return (format.to_string(), 1);

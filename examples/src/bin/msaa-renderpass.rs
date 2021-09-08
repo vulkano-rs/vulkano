@@ -69,10 +69,9 @@ use std::fs::File;
 use std::io::BufWriter;
 use std::path::Path;
 use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer};
+use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::{
-    AutoCommandBufferBuilder, CommandBufferUsage, DynamicState, PrimaryCommandBuffer,
-    SubpassContents,
+    AutoCommandBufferBuilder, CommandBufferUsage, PrimaryCommandBuffer, SubpassContents,
 };
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
@@ -139,7 +138,7 @@ fn main() {
             device.clone(),
             [1024, 1024],
             SampleCount::Sample4,
-            Format::R8G8B8A8Unorm,
+            Format::R8G8B8A8_UNORM,
         )
         .unwrap(),
     )
@@ -153,7 +152,7 @@ fn main() {
             height: 1024,
             array_layers: 1,
         },
-        Format::R8G8B8A8Unorm,
+        Format::R8G8B8A8_UNORM,
         Some(queue.family()),
     )
     .unwrap();
@@ -171,14 +170,14 @@ fn main() {
                 intermediary: {
                     load: Clear,
                     store: DontCare,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 4,     // This has to match the image definition.
                 },
                 // The second framebuffer attachment is the final image.
                 color: {
                     load: DontCare,
                     store: Store,
-                    format: Format::R8G8B8A8Unorm,
+                    format: Format::R8G8B8A8_UNORM,
                     samples: 1,     // Same here, this has to match.
                 }
             },
@@ -281,13 +280,10 @@ fn main() {
             .unwrap(),
     );
 
-    let dynamic_state = DynamicState {
-        viewports: Some(vec![Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [1024.0, 1024.0],
-            depth_range: 0.0..1.0,
-        }]),
-        ..DynamicState::none()
+    let viewport = Viewport {
+        origin: [0.0, 0.0],
+        dimensions: [1024.0, 1024.0],
+        depth_range: 0.0..1.0,
     };
 
     let buf = CpuAccessibleBuffer::from_iter(
@@ -311,13 +307,10 @@ fn main() {
             vec![[0.0, 0.0, 1.0, 1.0].into(), ClearValue::None],
         )
         .unwrap()
-        .draw(
-            pipeline.clone(),
-            &dynamic_state,
-            vertex_buffer.clone(),
-            (),
-            (),
-        )
+        .set_viewport(0, [viewport.clone()])
+        .bind_pipeline_graphics(pipeline.clone())
+        .bind_vertex_buffers(0, vertex_buffer.clone())
+        .draw(vertex_buffer.len() as u32, 1, 0, 0)
         .unwrap()
         .end_render_pass()
         .unwrap()
@@ -337,7 +330,7 @@ fn main() {
     let file = File::create(path).unwrap();
     let ref mut w = BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024); // Width is 2 pixels and height is 1.
-    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();

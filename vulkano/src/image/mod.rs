@@ -287,28 +287,47 @@ impl From<ash::vk::ImageFormatProperties> for ImageFormatProperties {
     }
 }
 
+/// Flags that can be set when creating a new image.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct ImageCreateFlags {
+    /// The image will be backed by sparsely bound memory.
+    ///
+    /// Requires the [`sparse_binding`](crate::device::Features::sparse_binding) feature to be
+    /// enabled.
     pub sparse_binding: bool,
+    /// The image is allowed to be only partially resident in memory, not all parts of the image
+    /// must be backed by memory.
+    ///
+    /// Requires the `sparse_binding` flag, and depending on the image dimensions, either the
+    /// [`sparse_residency_image2_d`](crate::device::Features::sparse_residency_image2_d) or the
+    /// [`sparse_residency_image3_d`](crate::device::Features::sparse_residency_image3_d) feature to
+    /// be enabled. For a multisampled image, this also requires the appropriate sparse residency
+    /// feature for the number of samples to be enabled.
     pub sparse_residency: bool,
+    /// The image can be backed by memory that is shared (aliased) with other images.
+    ///
+    /// Requires the `sparse_binding` flag and the
+    /// [`sparse_residency_aliased`](crate::device::Features::sparse_residency_aliased) feature to
+    /// be enabled.
     pub sparse_aliased: bool,
+    /// For non-multi-planar formats, an image view wrapping this image can have a different format.
+    ///
+    /// For multi-planar formats, an image view wrapping this image can be created from a single
+    /// plane of the image.
     pub mutable_format: bool,
+    /// For 2D images, allows creation of an image view of type `Cube` or `CubeArray`.
     pub cube_compatible: bool,
+    /// For 3D images, allows creation of an image view of type `Dim2d` or `Dim2dArray`.
     pub array_2d_compatible: bool,
+    /// For images with a compressed format, allows creation of an image view with an uncompressed
+    /// format, where each texel in the view will correspond to a compressed texel block in the
+    /// image.
+    ///
+    /// Requires `mutable_format`.
+    pub block_texel_view_compatible: bool,
 }
 
 impl ImageCreateFlags {
-    pub fn all() -> Self {
-        Self {
-            sparse_binding: true,
-            sparse_residency: true,
-            sparse_aliased: true,
-            mutable_format: true,
-            cube_compatible: true,
-            array_2d_compatible: true,
-        }
-    }
-
     pub fn none() -> Self {
         Self::default()
     }
@@ -316,24 +335,37 @@ impl ImageCreateFlags {
 
 impl From<ImageCreateFlags> for ash::vk::ImageCreateFlags {
     fn from(flags: ImageCreateFlags) -> Self {
+        let ImageCreateFlags {
+            sparse_binding,
+            sparse_residency,
+            sparse_aliased,
+            mutable_format,
+            cube_compatible,
+            array_2d_compatible,
+            block_texel_view_compatible,
+        } = flags;
+
         let mut vk_flags = Self::default();
-        if flags.sparse_binding {
+        if sparse_binding {
             vk_flags |= ash::vk::ImageCreateFlags::SPARSE_BINDING
         };
-        if flags.sparse_residency {
+        if sparse_residency {
             vk_flags |= ash::vk::ImageCreateFlags::SPARSE_RESIDENCY
         };
-        if flags.sparse_aliased {
+        if sparse_aliased {
             vk_flags |= ash::vk::ImageCreateFlags::SPARSE_ALIASED
         };
-        if flags.mutable_format {
+        if mutable_format {
             vk_flags |= ash::vk::ImageCreateFlags::MUTABLE_FORMAT
         };
-        if flags.cube_compatible {
+        if cube_compatible {
             vk_flags |= ash::vk::ImageCreateFlags::CUBE_COMPATIBLE
         };
-        if flags.array_2d_compatible {
-            vk_flags |= ash::vk::ImageCreateFlags::TYPE_2D_ARRAY_COMPATIBLE_KHR
+        if array_2d_compatible {
+            vk_flags |= ash::vk::ImageCreateFlags::TYPE_2D_ARRAY_COMPATIBLE
+        };
+        if block_texel_view_compatible {
+            vk_flags |= ash::vk::ImageCreateFlags::BLOCK_TEXEL_VIEW_COMPATIBLE
         };
         vk_flags
     }
@@ -676,7 +708,7 @@ mod tests {
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::One,
-                Format::R8Unorm,
+                Format::R8_UNORM,
                 queue.clone(),
             )
             .unwrap();
@@ -691,7 +723,7 @@ mod tests {
                 vec.into_iter(),
                 dimensions,
                 MipmapsCount::Log2,
-                Format::R8Unorm,
+                Format::R8_UNORM,
                 queue.clone(),
             )
             .unwrap();

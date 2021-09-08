@@ -9,9 +9,10 @@
 
 use super::limits_check;
 use crate::check_errors;
+use crate::descriptor_set::layout::DescriptorSetCompatibilityError;
 use crate::descriptor_set::layout::DescriptorSetDesc;
-use crate::descriptor_set::layout::DescriptorSetDescSupersetError;
 use crate::descriptor_set::layout::DescriptorSetLayout;
+use crate::descriptor_set::layout::DescriptorSetLayoutError;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::pipeline::layout::PipelineLayoutLimitsError;
@@ -51,7 +52,7 @@ impl PipelineLayout {
         let fns = device.fns();
         let descriptor_set_layouts: SmallVec<[Arc<DescriptorSetLayout>; 16]> =
             descriptor_set_layouts.into_iter().collect();
-        let push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
+        let mut push_constant_ranges: SmallVec<[PipelineLayoutPcRange; 8]> =
             push_constant_ranges.into_iter().collect();
 
         // Check for overlapping stages
@@ -65,6 +66,17 @@ impl PipelineLayout {
                 }
             }
         }
+
+        // Sort the ranges for the purpose of comparing for equality.
+        // The stage mask is guaranteed to be unique by the above check, so it's a suitable
+        // sorting key.
+        push_constant_ranges.sort_unstable_by_key(|range| {
+            (
+                range.offset,
+                range.size,
+                ash::vk::ShaderStageFlags::from(range.stages),
+            )
+        });
 
         // Check against device limits
         limits_check::check_desc_against_limits(
@@ -95,8 +107,8 @@ impl PipelineLayout {
 
                 out.push(ash::vk::PushConstantRange {
                     stage_flags: stages.into(),
-                    offset: offset as u32,
-                    size: size as u32,
+                    offset,
+                    size,
                 });
             }
 
@@ -150,9 +162,7 @@ impl PipelineLayout {
             push_constant_ranges,
         })
     }
-}
 
-impl PipelineLayout {
     /// Returns the descriptor set layouts this pipeline layout was created from.
     #[inline]
     pub fn descriptor_set_layouts(&self) -> &[Arc<DescriptorSetLayout>] {
@@ -160,6 +170,9 @@ impl PipelineLayout {
     }
 
     /// Returns a slice containing the push constant ranges this pipeline layout was created from.
+    ///
+    /// The ranges are guaranteed to be sorted deterministically by offset, size, then stages.
+    /// This means that two slices containing the same elements will always have the same order.
     #[inline]
     pub fn push_constant_ranges(&self) -> &[PipelineLayoutPcRange] {
         &self.push_constant_ranges
@@ -167,7 +180,7 @@ impl PipelineLayout {
 
     /// Makes sure that `self` is a superset of the provided descriptor set layouts and push
     /// constant ranges. Returns an `Err` if this is not the case.
-    pub fn ensure_superset_of(
+    pub fn ensure_compatible_with_shader(
         &self,
         descriptor_set_layout_descs: &[DescriptorSetDesc],
         push_constant_range: &Option<PipelineLayoutPcRange>,
@@ -189,7 +202,7 @@ impl PipelineLayout {
                 .get(set_num)
                 .unwrap_or_else(|| &empty);
 
-            if let Err(error) = first.ensure_superset_of(second) {
+            if let Err(error) = first.ensure_compatible_with_shader(second) {
                 return Err(PipelineLayoutSupersetError::DescriptorSet {
                     error,
                     set_num: set_num as u32,
@@ -202,7 +215,8 @@ impl PipelineLayout {
             for own_range in self.push_constant_ranges.as_ref().into_iter() {
                 if range.stages.intersects(&own_range.stages) &&       // check if it shares any stages
                     (range.offset < own_range.offset || // our range must start before and end after the given range
-                        own_range.offset + own_range.size < range.offset + range.size) {
+                        own_range.offset + own_range.size < range.offset + range.size)
+                {
                     return Err(PipelineLayoutSupersetError::PushConstantRange {
                         first_range: *own_range,
                         second_range: *range,
@@ -270,6 +284,8 @@ pub enum PipelineLayoutCreationError {
         first_range: PipelineLayoutPcRange,
         second_range: PipelineLayoutPcRange,
     },
+    /// One of the set layouts has an error.
+    SetLayoutError(DescriptorSetLayoutError),
 }
 
 impl error::Error for PipelineLayoutCreationError {
@@ -278,6 +294,7 @@ impl error::Error for PipelineLayoutCreationError {
         match *self {
             PipelineLayoutCreationError::OomError(ref err) => Some(err),
             PipelineLayoutCreationError::LimitsError(ref err) => Some(err),
+            PipelineLayoutCreationError::SetLayoutError(ref err) => Some(err),
             _ => None,
         }
     }
@@ -300,6 +317,9 @@ impl fmt::Display for PipelineLayoutCreationError {
                 PipelineLayoutCreationError::PushConstantsConflict { .. } => {
                     "conflict between different push constants ranges"
                 }
+                PipelineLayoutCreationError::SetLayoutError(_) => {
+                    "one of the sets has an error"
+                }
             }
         )
     }
@@ -316,6 +336,13 @@ impl From<PipelineLayoutLimitsError> for PipelineLayoutCreationError {
     #[inline]
     fn from(err: PipelineLayoutLimitsError) -> PipelineLayoutCreationError {
         PipelineLayoutCreationError::LimitsError(err)
+    }
+}
+
+impl From<DescriptorSetLayoutError> for PipelineLayoutCreationError {
+    #[inline]
+    fn from(err: DescriptorSetLayoutError) -> PipelineLayoutCreationError {
+        PipelineLayoutCreationError::SetLayoutError(err)
     }
 }
 
@@ -338,7 +365,7 @@ impl From<Error> for PipelineLayoutCreationError {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PipelineLayoutSupersetError {
     DescriptorSet {
-        error: DescriptorSetDescSupersetError,
+        error: DescriptorSetCompatibilityError,
         set_num: u32,
     },
     PushConstantRange {
@@ -362,13 +389,16 @@ impl fmt::Display for PipelineLayoutSupersetError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match *self {
             PipelineLayoutSupersetError::DescriptorSet { .. } => {
-                write!(
+                write!(fmt, "the descriptor set was not a superset of the other")
+            }
+            PipelineLayoutSupersetError::PushConstantRange {
+                first_range,
+                second_range,
+            } => {
+                writeln!(
                     fmt,
-                    "the descriptor set was not a superset of the other"
-                )
-            },
-            PipelineLayoutSupersetError::PushConstantRange { first_range, second_range } => {
-                writeln!(fmt, "our range did not completely encompass the other range")?;
+                    "our range did not completely encompass the other range"
+                )?;
                 writeln!(fmt, "    our stages: {:?}", first_range.stages)?;
                 writeln!(
                     fmt,
@@ -377,26 +407,26 @@ impl fmt::Display for PipelineLayoutSupersetError {
                     first_range.offset + first_range.size
                 )?;
                 writeln!(fmt, "    other stages: {:?}", second_range.stages)?;
-                write!(fmt,
+                write!(
+                    fmt,
                     "    other range: {} - {}",
                     second_range.offset,
                     second_range.offset + second_range.size
                 )
-            },
+            }
         }
     }
 }
 
 /// Description of a range of the push constants of a pipeline layout.
-// TODO: should contain the layout as well
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct PipelineLayoutPcRange {
     /// Offset in bytes from the start of the push constants to this range.
-    pub offset: usize,
+    pub offset: u32,
     /// Size in bytes of the range.
-    pub size: usize,
-    /// The stages which can access this range. Note that the same shader stage can't access two
-    /// different ranges.
+    pub size: u32,
+    /// The stages which can access this range.
+    /// A stage can access at most one push constant range.
     pub stages: ShaderStages,
 }
 

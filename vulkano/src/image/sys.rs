@@ -15,9 +15,10 @@
 
 use crate::check_errors;
 use crate::device::Device;
+use crate::format::CompressionType;
 use crate::format::Format;
 use crate::format::FormatFeatures;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::image::ImageAspect;
 use crate::image::ImageCreateFlags;
 use crate::image::ImageDimensions;
@@ -136,11 +137,7 @@ impl UnsafeImage {
     ) -> Result<(UnsafeImage, MemoryRequirements), ImageCreationError> {
         // TODO: doesn't check that the proper features are enabled
 
-        if flags.sparse_binding
-            || flags.sparse_residency
-            || flags.sparse_aliased
-            || flags.mutable_format
-        {
+        if flags.sparse_binding || flags.sparse_residency || flags.sparse_aliased {
             unimplemented!();
         }
 
@@ -246,54 +243,48 @@ impl UnsafeImage {
         let mut supported_samples = ash::vk::SampleCountFlags::from_raw(0x7f); // all bits up to VK_SAMPLE_COUNT_64_BIT
 
         if usage.sampled {
-            match format.ty() {
-                FormatTy::Float | FormatTy::Compressed => {
-                    supported_samples &= device
-                        .physical_device()
-                        .properties()
-                        .sampled_image_color_sample_counts
-                        .into();
+            let aspects = format.aspects();
+
+            if format.requires_sampler_ycbcr_conversion() {
+                supported_samples &= ash::vk::SampleCountFlags::TYPE_1;
+            } else if let Some(numeric_type) = format.type_color() {
+                match numeric_type {
+                    NumericType::UINT | NumericType::SINT => {
+                        supported_samples &= device
+                            .physical_device()
+                            .properties()
+                            .sampled_image_integer_sample_counts
+                            .into();
+                    }
+                    NumericType::SFLOAT
+                    | NumericType::UFLOAT
+                    | NumericType::SNORM
+                    | NumericType::UNORM
+                    | NumericType::SSCALED
+                    | NumericType::USCALED
+                    | NumericType::SRGB => {
+                        supported_samples &= device
+                            .physical_device()
+                            .properties()
+                            .sampled_image_color_sample_counts
+                            .into();
+                    }
                 }
-                FormatTy::Uint | FormatTy::Sint => {
-                    supported_samples &= device
-                        .physical_device()
-                        .properties()
-                        .sampled_image_integer_sample_counts
-                        .into();
-                }
-                FormatTy::Depth => {
+            } else {
+                if aspects.depth {
                     supported_samples &= device
                         .physical_device()
                         .properties()
                         .sampled_image_depth_sample_counts
                         .into();
                 }
-                FormatTy::Stencil => {
+
+                if aspects.stencil {
                     supported_samples &= device
                         .physical_device()
                         .properties()
                         .sampled_image_stencil_sample_counts
                         .into();
-                }
-                FormatTy::DepthStencil => {
-                    supported_samples &= device
-                        .physical_device()
-                        .properties()
-                        .sampled_image_depth_sample_counts
-                        .into();
-                    supported_samples &= device
-                        .physical_device()
-                        .properties()
-                        .sampled_image_stencil_sample_counts
-                        .into();
-                }
-                FormatTy::Ycbcr => {
-                    /*
-                     * VUID-VkImageCreateInfo-format-02562:  If the image format is one of
-                     * those formats requiring sampler ycbcr conversion, samples *must* be
-                     * VK_SAMPLE_COUNT_1_BIT
-                     */
-                    supported_samples &= ash::vk::SampleCountFlags::TYPE_1;
                 }
             }
 
@@ -310,46 +301,35 @@ impl UnsafeImage {
                 || usage.input_attachment
                 || usage.transient_attachment
             {
-                match format.ty() {
-                    FormatTy::Float | FormatTy::Compressed | FormatTy::Uint | FormatTy::Sint => {
-                        supported_samples &= device
-                            .physical_device()
-                            .properties()
-                            .framebuffer_color_sample_counts
-                            .into();
-                    }
-                    FormatTy::Depth => {
-                        supported_samples &= device
-                            .physical_device()
-                            .properties()
-                            .framebuffer_depth_sample_counts
-                            .into();
-                    }
-                    FormatTy::Stencil => {
-                        supported_samples &= device
-                            .physical_device()
-                            .properties()
-                            .framebuffer_stencil_sample_counts
-                            .into();
-                    }
-                    FormatTy::DepthStencil => {
-                        supported_samples &= device
-                            .physical_device()
-                            .properties()
-                            .framebuffer_depth_sample_counts
-                            .into();
-                        supported_samples &= device
-                            .physical_device()
-                            .properties()
-                            .framebuffer_stencil_sample_counts
-                            .into();
-                    }
-                    FormatTy::Ycbcr => {
-                        /*
-                         * It's generally not possible to use a Ycbcr image as a framebuffer color
-                         * attachment.
-                         */
-                        return Err(ImageCreationError::UnsupportedUsage);
+                if format.requires_sampler_ycbcr_conversion() {
+                    /*
+                     * It's generally not possible to use a Ycbcr image as a framebuffer color
+                     * attachment.
+                     */
+                    return Err(ImageCreationError::UnsupportedUsage);
+                } else if format.type_color().is_some() {
+                    supported_samples &= device
+                        .physical_device()
+                        .properties()
+                        .framebuffer_color_sample_counts
+                        .into();
+                } else {
+                    if aspects.depth || aspects.stencil {
+                        if aspects.depth {
+                            supported_samples &= device
+                                .physical_device()
+                                .properties()
+                                .framebuffer_depth_sample_counts
+                                .into();
+                        }
+
+                        if aspects.stencil {
+                            supported_samples &= device
+                                .physical_device()
+                                .properties()
+                                .framebuffer_stencil_sample_counts
+                                .into();
+                        }
                     }
                 }
             }
@@ -434,33 +414,44 @@ impl UnsafeImage {
             }
         }
 
+        if flags.block_texel_view_compatible {
+            if !flags.mutable_format {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+
+            if !matches!(
+                format.compression(),
+                Some(
+                    CompressionType::BC1
+                        | CompressionType::BC2
+                        | CompressionType::BC3
+                        | CompressionType::BC4
+                        | CompressionType::BC5
+                        | CompressionType::BC6H
+                        | CompressionType::BC7
+                        | CompressionType::ETC2
+                        | CompressionType::ASTC
+                )
+            ) {
+                return Err(ImageCreationError::CreationFlagRequirementsNotMet);
+            }
+        }
+
         // Checking the dimensions against the limits.
-        if array_layers
-            > device
-                .physical_device()
-                .properties()
-                .max_image_array_layers
-        {
+        if array_layers > device.physical_device().properties().max_image_array_layers {
             let err = ImageCreationError::UnsupportedDimensions { dimensions };
             capabilities_error = Some(err);
         }
+
         match ty {
             ash::vk::ImageType::TYPE_1D => {
-                if extent.width
-                    > device
-                        .physical_device()
-                        .properties()
-                        .max_image_dimension1_d
-                {
+                if extent.width > device.physical_device().properties().max_image_dimension1_d {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
                 }
             }
             ash::vk::ImageType::TYPE_2D => {
-                let limit = device
-                    .physical_device()
-                    .properties()
-                    .max_image_dimension2_d;
+                let limit = device.physical_device().properties().max_image_dimension2_d;
                 if extent.width > limit || extent.height > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -478,10 +469,7 @@ impl UnsafeImage {
                 }
             }
             ash::vk::ImageType::TYPE_3D => {
-                let limit = device
-                    .physical_device()
-                    .properties()
-                    .max_image_dimension3_d;
+                let limit = device.physical_device().properties().max_image_dimension3_d;
                 if extent.width > limit || extent.height > limit || extent.depth > limit {
                     let err = ImageCreationError::UnsupportedDimensions { dimensions };
                     capabilities_error = Some(err);
@@ -804,8 +792,8 @@ impl UnsafeImage {
         self.linear_layout_impl(mip_level, ImageAspect::Stencil)
     }
 
-    /// Same as `color_linear_layout`, except that it retrieves layout for the requested ycbcr
-    /// component too if the format is a YcbCr format.
+    /// Same as `color_linear_layout`, except that it retrieves layout for the requested YCbCr
+    /// component too if the format is a YCbCr format.
     ///
     /// # Panic
     ///
@@ -825,11 +813,7 @@ impl UnsafeImage {
             aspect,
             ImageAspect::Plane0 | ImageAspect::Plane1 | ImageAspect::Plane2
         ) {
-            assert_eq!(self.format.ty(), FormatTy::Ycbcr);
-            if aspect == ImageAspect::Plane2 {
-                // Vulkano only supports NV12 and YV12 currently.  If that changes, this will too.
-                assert!(self.format == Format::G8B8R8_3PLANE420Unorm);
-            }
+            debug_assert!(self.format.requires_sampler_ycbcr_conversion());
         }
 
         self.linear_layout_impl(0, aspect)
@@ -1082,7 +1066,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1113,7 +1097,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1143,7 +1127,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1178,7 +1162,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1218,7 +1202,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1253,7 +1237,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::ASTC_5x4UnormBlock,
+                Format::ASTC_5x4_UNORM_BLOCK,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1289,7 +1273,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags::none(),
                 ImageDimensions::Dim2d {
                     width: 32,
@@ -1323,7 +1307,7 @@ mod tests {
             UnsafeImage::new(
                 device,
                 usage,
-                Format::R8G8B8A8Unorm,
+                Format::R8G8B8A8_UNORM,
                 ImageCreateFlags {
                     cube_compatible: true,
                     ..ImageCreateFlags::none()

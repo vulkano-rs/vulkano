@@ -30,21 +30,17 @@ use crate::command_buffer::CommandBufferUsage;
 use crate::command_buffer::DispatchIndirectCommand;
 use crate::command_buffer::DrawIndexedIndirectCommand;
 use crate::command_buffer::DrawIndirectCommand;
-use crate::command_buffer::DynamicState;
 use crate::command_buffer::ImageUninitializedSafe;
 use crate::command_buffer::PrimaryCommandBuffer;
 use crate::command_buffer::SecondaryCommandBuffer;
-use crate::command_buffer::StateCacher;
-use crate::command_buffer::StateCacherOutcome;
 use crate::command_buffer::SubpassContents;
-use crate::descriptor_set::DescriptorSetWithOffsets;
 use crate::descriptor_set::DescriptorSetsCollection;
 use crate::device::physical::QueueFamily;
 use crate::device::Device;
 use crate::device::DeviceOwned;
 use crate::device::Queue;
 use crate::format::ClearValue;
-use crate::format::FormatTy;
+use crate::format::NumericType;
 use crate::format::Pixel;
 use crate::image::ImageAccess;
 use crate::image::ImageAspect;
@@ -52,10 +48,14 @@ use crate::image::ImageAspects;
 use crate::image::ImageLayout;
 use crate::pipeline::depth_stencil::StencilFaces;
 use crate::pipeline::input_assembly::Index;
+use crate::pipeline::input_assembly::IndexType;
 use crate::pipeline::layout::PipelineLayout;
-use crate::pipeline::vertex::VertexSource;
-use crate::pipeline::ComputePipelineAbstract;
-use crate::pipeline::GraphicsPipelineAbstract;
+use crate::pipeline::shader::ShaderStages;
+use crate::pipeline::vertex::VertexBuffersCollection;
+use crate::pipeline::viewport::Scissor;
+use crate::pipeline::viewport::Viewport;
+use crate::pipeline::ComputePipeline;
+use crate::pipeline::GraphicsPipeline;
 use crate::pipeline::PipelineBindPoint;
 use crate::query::QueryControlFlags;
 use crate::query::QueryPipelineStatisticFlags;
@@ -79,6 +79,7 @@ use crate::DeviceSize;
 use crate::VulkanObject;
 use crate::{OomError, SafeDeref};
 use fnv::FnvHashMap;
+use smallvec::SmallVec;
 use std::error;
 use std::ffi::CStr;
 use std::fmt;
@@ -98,12 +99,12 @@ use std::sync::Arc;
 pub struct AutoCommandBufferBuilder<L, P = StandardCommandPoolBuilder> {
     inner: SyncCommandBufferBuilder,
     pool_builder_alloc: P, // Safety: must be dropped after `inner`
-    state_cacher: StateCacher,
 
     // The queue family that this command buffer is being created for.
     queue_family_id: u32,
 
     // The inheritance for secondary command buffers.
+    // Must be `None` in a primary command buffer and `Some` in a secondary command buffer.
     inheritance: Option<CommandBufferInheritance<Box<dyn FramebufferAbstract + Send + Sync>>>,
 
     // Usage flags passed when creating the command buffer.
@@ -322,7 +323,6 @@ impl<L> AutoCommandBufferBuilder<L, StandardCommandPoolBuilder> {
             Ok(AutoCommandBufferBuilder {
                 inner,
                 pool_builder_alloc,
-                state_cacher: StateCacher::new(),
                 queue_family_id: queue_family.id(),
                 render_pass_state,
                 query_state: FnvHashMap::default(),
@@ -456,13 +456,10 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     }
 
     #[inline]
-    fn ensure_inside_render_pass_inline<Gp>(
+    fn ensure_inside_render_pass_inline(
         &self,
-        pipeline: &Gp,
-    ) -> Result<(), AutoCommandBufferBuilderContextError>
-    where
-        Gp: ?Sized + GraphicsPipelineAbstract,
-    {
+        pipeline: &GraphicsPipeline,
+    ) -> Result<(), AutoCommandBufferBuilderContextError> {
         let render_pass_state = self
             .render_pass_state
             .as_ref()
@@ -499,94 +496,285 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             .unwrap()
     }
 
-    /// Adds a command that copies an image to another.
+    /// Binds descriptor sets for future dispatch or draw calls.
     ///
-    /// Copy operations have several restrictions:
+    /// # Panics
     ///
-    /// - Copy operations are only allowed on queue families that support transfer, graphics, or
-    ///   compute operations.
-    /// - The number of samples in the source and destination images must be equal.
-    /// - The size of the uncompressed element format of the source image must be equal to the
-    ///   compressed element format of the destination.
-    /// - If you copy between depth, stencil or depth-stencil images, the format of both images
-    ///   must match exactly.
-    /// - For two-dimensional images, the Z coordinate must be 0 for the image offsets and 1 for
-    ///   the extent. Same for the Y coordinate for one-dimensional images.
-    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
-    ///
-    /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
-    /// if they were separate images.
-    ///
-    /// # Panic
-    ///
-    /// - Panics if the source or the destination was not created with `device`.
-    ///
-    pub fn copy_image<S, D>(
+    /// - Panics if the queue family of the command buffer does not support `pipeline_bind_point`.
+    /// - Panics if the highest descriptor set slot being bound is not less than the number of sets
+    ///   in `pipeline_layout`.
+    /// - Panics if `self` and any element of `descriptor_sets` do not belong to the same device.
+    pub fn bind_descriptor_sets<S>(
         &mut self,
-        source: S,
-        source_offset: [i32; 3],
-        source_base_array_layer: u32,
-        source_mip_level: u32,
-        destination: D,
-        destination_offset: [i32; 3],
-        destination_base_array_layer: u32,
-        destination_mip_level: u32,
-        extent: [u32; 3],
-        layer_count: u32,
-    ) -> Result<&mut Self, CopyImageError>
+        pipeline_bind_point: PipelineBindPoint,
+        pipeline_layout: Arc<PipelineLayout>,
+        first_set: u32,
+        descriptor_sets: S,
+    ) -> &mut Self
     where
-        S: ImageAccess + Send + Sync + 'static,
-        D: ImageAccess + Send + Sync + 'static,
+        S: DescriptorSetsCollection,
     {
-        unsafe {
-            self.ensure_outside_render_pass()?;
-
-            check_copy_image(
-                self.device(),
-                &source,
-                source_offset,
-                source_base_array_layer,
-                source_mip_level,
-                &destination,
-                destination_offset,
-                destination_base_array_layer,
-                destination_mip_level,
-                extent,
-                layer_count,
-            )?;
-
-            let copy = UnsafeCommandBufferBuilderImageCopy {
-                // TODO: Allowing choosing a subset of the image aspects, but note that if color
-                // is included, neither depth nor stencil may.
-                aspects: ImageAspects {
-                    color: source.has_color(),
-                    depth: !source.has_color() && source.has_depth() && destination.has_depth(),
-                    stencil: !source.has_color()
-                        && source.has_stencil()
-                        && destination.has_stencil(),
-                    ..ImageAspects::none()
-                },
-                source_mip_level,
-                destination_mip_level,
-                source_base_array_layer,
-                destination_base_array_layer,
-                layer_count,
-                source_offset,
-                destination_offset,
-                extent,
-            };
-
-            // TODO: Allow choosing layouts, but note that only Transfer*Optimal and General are
-            // valid.
-            self.inner.copy_image(
-                source,
-                ImageLayout::TransferSrcOptimal,
-                destination,
-                ImageLayout::TransferDstOptimal,
-                iter::once(copy),
-            )?;
-            Ok(self)
+        match pipeline_bind_point {
+            PipelineBindPoint::Compute => assert!(
+                self.queue_family().supports_compute(),
+                "the queue family of the command buffer must support compute operations"
+            ),
+            PipelineBindPoint::Graphics => assert!(
+                self.queue_family().supports_graphics(),
+                "the queue family of the command buffer must support graphics operations"
+            ),
         }
+
+        let descriptor_sets = descriptor_sets.into_vec();
+
+        assert!(
+            first_set as usize + descriptor_sets.len()
+                <= pipeline_layout.descriptor_set_layouts().len(),
+            "the highest descriptor set slot being bound must be less than the number of sets in pipeline_layout"
+        );
+
+        for (num, set) in descriptor_sets.iter().enumerate() {
+            assert_eq!(
+                set.as_ref().0.device().internal_object(),
+                self.device().internal_object()
+            );
+
+            let pipeline_set = &pipeline_layout.descriptor_set_layouts()[first_set as usize + num];
+            assert!(
+                pipeline_set.is_compatible_with(set.as_ref().0.layout()),
+                "the element of descriptor_sets being bound to slot {} is not compatible with the corresponding slot in pipeline_layout",
+                first_set as usize + num,
+            );
+
+            // TODO: see https://github.com/vulkano-rs/vulkano/issues/1643
+            // For each dynamic uniform or storage buffer binding in pDescriptorSets, the sum of the
+            // effective offset, as defined above, and the range of the binding must be less than or
+            // equal to the size of the buffer
+
+            // TODO:
+            // Each element of pDescriptorSets must not have been allocated from a VkDescriptorPool
+            // with the VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_VALVE flag set
+        }
+
+        unsafe {
+            let mut sets_binder = self.inner.bind_descriptor_sets();
+            for set in descriptor_sets.into_iter() {
+                sets_binder.add(set);
+            }
+            sets_binder.submit(pipeline_bind_point, pipeline_layout, first_set);
+        }
+
+        self
+    }
+
+    /// Binds an index buffer for future indexed draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if `self` and `index_buffer` do not belong to the same device.
+    /// - Panics if `index_buffer` does not have the
+    ///   [`index_buffer`](crate::buffer::BufferUsage::index_buffer) usage enabled.
+    /// - If the index buffer contains `u8` indices, panics if the
+    ///   [`ext_index_type_uint8`](crate::device::DeviceExtensions::ext_index_type_uint8) extension is not
+    ///   enabled on the device.
+    pub fn bind_index_buffer<Ib, I>(&mut self, index_buffer: Ib) -> &mut Self
+    where
+        Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
+        I: Index + 'static,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        assert_eq!(
+            index_buffer.device().internal_object(),
+            self.device().internal_object()
+        );
+
+        // TODO:
+        // The sum of offset and the address of the range of VkDeviceMemory object that is backing
+        // buffer, must be a multiple of the type indicated by indexType
+
+        assert!(
+            index_buffer.inner().buffer.usage().index_buffer,
+            "index_buffer must have the index_buffer usage enabled"
+        );
+
+        // TODO:
+        // If buffer is non-sparse then it must be bound completely and contiguously to a single
+        // VkDeviceMemory object
+
+        if !self.device().enabled_features().index_type_uint8 {
+            assert!(I::ty() != IndexType::U8, "if the index buffer contains u8 indices, the index_type_uint8 extension must be enabled on the device");
+        }
+
+        unsafe {
+            self.inner.bind_index_buffer(index_buffer, I::ty());
+        }
+
+        self
+    }
+
+    /// Binds a compute pipeline for future dispatch calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support compute operations.
+    /// - Panics if `self` and `pipeline` do not belong to the same device.
+    pub fn bind_pipeline_compute(&mut self, pipeline: Arc<ComputePipeline>) -> &mut Self {
+        assert!(
+            self.queue_family().supports_compute(),
+            "the queue family of the command buffer must support compute operations"
+        );
+
+        assert_eq!(
+            pipeline.device().internal_object(),
+            self.device().internal_object()
+        );
+
+        // TODO:
+        // This command must not be recorded when transform feedback is active
+
+        // TODO:
+        // pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR set
+
+        unsafe {
+            self.inner.bind_pipeline_compute(pipeline);
+        }
+
+        self
+    }
+
+    /// Binds a graphics pipeline for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if `self` and `pipeline` do not belong to the same device.
+    pub fn bind_pipeline_graphics(&mut self, pipeline: Arc<GraphicsPipeline>) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        assert_eq!(
+            pipeline.device().internal_object(),
+            self.device().internal_object()
+        );
+
+        // TODO:
+        // If the variable multisample rate feature is not supported, pipeline is a graphics
+        // pipeline, the current subpass uses no attachments, and this is not the first call to
+        // this function with a graphics pipeline after transitioning to the current subpass, then
+        // the sample count specified by this pipeline must match that set in the previous pipeline
+
+        // TODO:
+        // If VkPhysicalDeviceSampleLocationsPropertiesEXT::variableSampleLocations is VK_FALSE, and
+        // pipeline is a graphics pipeline created with a
+        // VkPipelineSampleLocationsStateCreateInfoEXT structure having its sampleLocationsEnable
+        // member set to VK_TRUE but without VK_DYNAMIC_STATE_SAMPLE_LOCATIONS_EXT enabled then the
+        // current render pass instance must have been begun by specifying a
+        // VkRenderPassSampleLocationsBeginInfoEXT structure whose pPostSubpassSampleLocations
+        // member contains an element with a subpassIndex matching the current subpass index and the
+        // sampleLocationsInfo member of that element must match the sampleLocationsInfo specified
+        // in VkPipelineSampleLocationsStateCreateInfoEXT when the pipeline was created
+
+        // TODO:
+        // This command must not be recorded when transform feedback is active
+
+        // TODO:
+        // pipeline must not have been created with VK_PIPELINE_CREATE_LIBRARY_BIT_KHR set
+
+        // TODO:
+        // If commandBuffer is a secondary command buffer with
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled and
+        // pipelineBindPoint is VK_PIPELINE_BIND_POINT_GRAPHICS, then the pipeline must have been
+        // created with VK_DYNAMIC_STATE_VIEWPORT_WITH_COUNT_EXT or VK_DYNAMIC_STATE_VIEWPORT, and
+        // VK_DYNAMIC_STATE_SCISSOR_WITH_COUNT_EXT or VK_DYNAMIC_STATE_SCISSOR enabled
+
+        // TODO:
+        // If pipelineBindPoint is VK_PIPELINE_BIND_POINT_GRAPHICS and the
+        // provokingVertexModePerPipeline limit is VK_FALSE, then pipeline’s
+        // VkPipelineRasterizationProvokingVertexStateCreateInfoEXT::provokingVertexMode must be the
+        // same as that of any other pipelines previously bound to this bind point within the
+        // current renderpass instance, including any pipeline already bound when beginning the
+        // renderpass instance
+
+        unsafe {
+            self.inner.bind_pipeline_graphics(pipeline);
+        }
+
+        self
+    }
+
+    /// Binds vertex buffers for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the highest vertex buffer binding being bound is greater than the
+    ///   [`max_vertex_input_bindings`](crate::device::Properties::max_vertex_input_bindings)
+    //    device property.
+    /// - Panics if `self` and any element of `vertex_buffers` do not belong to the same device.
+    /// - Panics if any element of `vertex_buffers` does not have the
+    ///   [`vertex_buffer`](crate::buffer::BufferUsage::vertex_buffer) usage enabled.
+    pub fn bind_vertex_buffers<V>(&mut self, first_binding: u32, vertex_buffers: V) -> &mut Self
+    where
+        V: VertexBuffersCollection,
+    {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        let vertex_buffers = vertex_buffers.into_vec();
+
+        assert!(
+            first_binding + vertex_buffers.len() as u32
+                <= self
+                    .device()
+                    .physical_device()
+                    .properties()
+                    .max_vertex_input_bindings,
+            "the highest vertex buffer binding being bound must not be higher than the max_vertex_input_bindings device property"
+        );
+
+        for (num, buf) in vertex_buffers.iter().enumerate() {
+            assert_eq!(
+                buf.device().internal_object(),
+                self.device().internal_object()
+            );
+
+            assert!(
+                buf.inner().buffer.usage().vertex_buffer,
+                "vertex_buffers element {} must have the vertex_buffer usage",
+                num
+            );
+
+            // TODO:
+            // Each element of pBuffers that is non-sparse must be bound completely and contiguously
+            // to a single VkDeviceMemory object
+
+            // TODO:
+            // If the nullDescriptor feature is not enabled, all elements of pBuffers must not be
+            // VK_NULL_HANDLE
+
+            // TODO:
+            // If an element of pBuffers is VK_NULL_HANDLE, then the corresponding element of
+            // pOffsets must be zero
+        }
+
+        unsafe {
+            let mut binder = self.inner.bind_vertex_buffers();
+            for vb in vertex_buffers.into_iter() {
+                binder.add(vb);
+            }
+            binder.submit(first_binding);
+        }
+
+        self
     }
 
     /// Adds a command that blits an image to another.
@@ -664,7 +852,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
             let blit = UnsafeCommandBufferBuilderImageBlit {
                 // TODO:
-                aspects: if source.has_color() {
+                aspects: if source.format().aspects().color {
                     ImageAspects {
                         color: true,
                         ..ImageAspects::none()
@@ -884,7 +1072,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
-                image_aspect: if destination.has_color() {
+                image_aspect: if destination.format().aspects().color {
                     ImageAspect::Color
                 } else {
                     unimplemented!()
@@ -900,6 +1088,100 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 source,
                 destination,
                 ImageLayout::TransferDstOptimal, // TODO: let choose layout
+                iter::once(copy),
+            )?;
+            Ok(self)
+        }
+    }
+
+    /// Adds a command that copies an image to another.
+    ///
+    /// Copy operations have several restrictions:
+    ///
+    /// - Copy operations are only allowed on queue families that support transfer, graphics, or
+    ///   compute operations.
+    /// - The number of samples in the source and destination images must be equal.
+    /// - The size of the uncompressed element format of the source image must be equal to the
+    ///   compressed element format of the destination.
+    /// - If you copy between depth, stencil or depth-stencil images, the format of both images
+    ///   must match exactly.
+    /// - For two-dimensional images, the Z coordinate must be 0 for the image offsets and 1 for
+    ///   the extent. Same for the Y coordinate for one-dimensional images.
+    /// - For non-array images, the base array layer must be 0 and the number of layers must be 1.
+    ///
+    /// If `layer_count` is greater than 1, the copy will happen between each individual layer as
+    /// if they were separate images.
+    ///
+    /// # Panic
+    ///
+    /// - Panics if the source or the destination was not created with `device`.
+    ///
+    pub fn copy_image<S, D>(
+        &mut self,
+        source: S,
+        source_offset: [i32; 3],
+        source_base_array_layer: u32,
+        source_mip_level: u32,
+        destination: D,
+        destination_offset: [i32; 3],
+        destination_base_array_layer: u32,
+        destination_mip_level: u32,
+        extent: [u32; 3],
+        layer_count: u32,
+    ) -> Result<&mut Self, CopyImageError>
+    where
+        S: ImageAccess + Send + Sync + 'static,
+        D: ImageAccess + Send + Sync + 'static,
+    {
+        unsafe {
+            self.ensure_outside_render_pass()?;
+
+            check_copy_image(
+                self.device(),
+                &source,
+                source_offset,
+                source_base_array_layer,
+                source_mip_level,
+                &destination,
+                destination_offset,
+                destination_base_array_layer,
+                destination_mip_level,
+                extent,
+                layer_count,
+            )?;
+
+            let source_aspects = source.format().aspects();
+            let destination_aspects = destination.format().aspects();
+            let copy = UnsafeCommandBufferBuilderImageCopy {
+                // TODO: Allowing choosing a subset of the image aspects, but note that if color
+                // is included, neither depth nor stencil may.
+                aspects: ImageAspects {
+                    color: source_aspects.color,
+                    depth: !source_aspects.color
+                        && source_aspects.depth
+                        && destination_aspects.depth,
+                    stencil: !source_aspects.color
+                        && source_aspects.stencil
+                        && destination_aspects.stencil,
+                    ..ImageAspects::none()
+                },
+                source_mip_level,
+                destination_mip_level,
+                source_base_array_layer,
+                destination_base_array_layer,
+                layer_count,
+                source_offset,
+                destination_offset,
+                extent,
+            };
+
+            // TODO: Allow choosing layouts, but note that only Transfer*Optimal and General are
+            // valid.
+            self.inner.copy_image(
+                source,
+                ImageLayout::TransferSrcOptimal,
+                destination,
+                ImageLayout::TransferDstOptimal,
                 iter::once(copy),
             )?;
             Ok(self)
@@ -956,16 +1238,17 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
                 mipmap,
             )?;
 
+            let source_aspects = source.format().aspects();
             let copy = UnsafeCommandBufferBuilderBufferImageCopy {
                 buffer_offset: 0,
                 buffer_row_length: 0,
                 buffer_image_height: 0,
                 // TODO: Allow the user to choose aspect
-                image_aspect: if source.has_color() {
+                image_aspect: if source_aspects.color {
                     ImageAspect::Color
-                } else if source.has_depth() {
+                } else if source_aspects.depth {
                     ImageAspect::Depth
-                } else if source.has_stencil() {
+                } else if source_aspects.stencil {
                     ImageAspect::Stencil
                 } else {
                     unimplemented!()
@@ -1052,58 +1335,30 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
 
     /// Perform a single compute operation using a compute pipeline.
     #[inline]
-    pub fn dispatch<Cp, S, Pc>(
-        &mut self,
-        group_counts: [u32; 3],
-        pipeline: Cp,
-        descriptor_sets: S,
-        push_constants: Pc,
-    ) -> Result<&mut Self, DispatchError>
-    where
-        Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
-    {
-        let descriptor_sets = descriptor_sets.into_vec();
+    pub fn dispatch(&mut self, group_counts: [u32; 3]) -> Result<&mut Self, DispatchError> {
+        if !self.queue_family().supports_compute() {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
+
+        let pipeline = check_pipeline_compute(&self.inner)?;
+        self.ensure_outside_render_pass()?;
+        check_descriptor_sets_validity(&self.inner, pipeline.layout(), PipelineBindPoint::Compute)?;
+        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_dispatch(self.device(), group_counts)?;
 
         unsafe {
-            if !self.queue_family().supports_compute() {
-                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-            }
-
-            self.ensure_outside_render_pass()?;
-            check_push_constants_validity(pipeline.layout(), &push_constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            check_dispatch(pipeline.device(), group_counts)?;
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_compute_pipeline(&pipeline)
-            {
-                self.inner.bind_pipeline_compute(pipeline.clone());
-            }
-
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
-            bind_descriptor_sets(
-                &mut self.inner,
-                &mut self.state_cacher,
-                PipelineBindPoint::Compute,
-                pipeline.layout(),
-                descriptor_sets,
-            )?;
-
             self.inner.dispatch(group_counts);
-            Ok(self)
         }
+
+        Ok(self)
     }
 
     /// Perform multiple compute operations using a compute pipeline. One dispatch is performed for
     /// each `vulkano::command_buffer::DispatchIndirectCommand` struct in `indirect_buffer`.
     #[inline]
-    pub fn dispatch_indirect<Inb, Cp, S, Pc>(
+    pub fn dispatch_indirect<Inb>(
         &mut self,
         indirect_buffer: Inb,
-        pipeline: Cp,
-        descriptor_sets: S,
-        push_constants: Pc,
     ) -> Result<&mut Self, DispatchIndirectError>
     where
         Inb: BufferAccess
@@ -1111,39 +1366,22 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             + Send
             + Sync
             + 'static,
-        Cp: ComputePipelineAbstract + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
     {
-        let descriptor_sets = descriptor_sets.into_vec();
+        if !self.queue_family().supports_compute() {
+            return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
+        }
+
+        let pipeline = check_pipeline_compute(&self.inner)?;
+        self.ensure_outside_render_pass()?;
+        check_descriptor_sets_validity(&self.inner, pipeline.layout(), PipelineBindPoint::Compute)?;
+        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_indirect_buffer(self.device(), &indirect_buffer)?;
 
         unsafe {
-            if !self.queue_family().supports_compute() {
-                return Err(AutoCommandBufferBuilderContextError::NotSupportedByQueueFamily.into());
-            }
-
-            self.ensure_outside_render_pass()?;
-            check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_push_constants_validity(pipeline.layout(), &push_constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_compute_pipeline(&pipeline)
-            {
-                self.inner.bind_pipeline_compute(pipeline.clone());
-            }
-
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
-            bind_descriptor_sets(
-                &mut self.inner,
-                &mut self.state_cacher,
-                PipelineBindPoint::Compute,
-                pipeline.layout(),
-                descriptor_sets,
-            )?;
-
             self.inner.dispatch_indirect(indirect_buffer)?;
-            Ok(self)
         }
+
+        Ok(self)
     }
 
     /// Perform a single draw operation using a graphics pipeline.
@@ -1153,62 +1391,35 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for the draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw<V, Gp, S, Pc>(
+    pub fn draw(
         &mut self,
-        pipeline: Gp,
-        dynamic: &DynamicState,
-        vertex_buffers: V,
-        descriptor_sets: S,
-        push_constants: Pc,
-    ) -> Result<&mut Self, DrawError>
-    where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
-    {
-        let descriptor_sets = descriptor_sets.into_vec();
+        vertex_count: u32,
+        instance_count: u32,
+        first_vertex: u32,
+        first_instance: u32,
+    ) -> Result<&mut Self, DrawError> {
+        let pipeline = check_pipeline_graphics(&self.inner)?;
+        self.ensure_inside_render_pass_inline(pipeline)?;
+        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_descriptor_sets_validity(
+            &self.inner,
+            pipeline.layout(),
+            PipelineBindPoint::Graphics,
+        )?;
+        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_vertex_buffers(
+            &self.inner,
+            pipeline,
+            Some((first_vertex, vertex_count)),
+            Some((first_instance, instance_count)),
+        )?;
 
         unsafe {
-            // TODO: must check that pipeline is compatible with render pass
-
-            self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &push_constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_graphics_pipeline(&pipeline)
-            {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
-            }
-
-            let dynamic = self.state_cacher.dynamic_state(dynamic);
-
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
-            set_state(&mut self.inner, &dynamic);
-            bind_descriptor_sets(
-                &mut self.inner,
-                &mut self.state_cacher,
-                PipelineBindPoint::Graphics,
-                pipeline.layout(),
-                descriptor_sets,
-            )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
-
-            debug_assert!(self.queue_family().supports_graphics());
-
-            self.inner.draw(
-                vb_infos.vertex_count as u32,
-                vb_infos.instance_count as u32,
-                0,
-                0,
-            );
-            Ok(self)
+            self.inner
+                .draw(vertex_count, instance_count, first_vertex, first_instance);
         }
+
+        Ok(self)
     }
 
     /// Perform multiple draw operations using a graphics pipeline.
@@ -1226,85 +1437,52 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` is used for every draw operation. To use only some data in the
     /// buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indirect<V, Gp, S, Pc, Inb>(
+    pub fn draw_indirect<Inb>(
         &mut self,
-        pipeline: Gp,
-        dynamic: &DynamicState,
-        vertex_buffers: V,
         indirect_buffer: Inb,
-        descriptor_sets: S,
-        push_constants: Pc,
     ) -> Result<&mut Self, DrawIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
         Inb: BufferAccess
             + TypedBufferAccess<Content = [DrawIndirectCommand]>
             + Send
             + Sync
             + 'static,
     {
-        let descriptor_sets = descriptor_sets.into_vec();
+        let pipeline = check_pipeline_graphics(&self.inner)?;
+        self.ensure_inside_render_pass_inline(pipeline)?;
+        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_descriptor_sets_validity(
+            &self.inner,
+            pipeline.layout(),
+            PipelineBindPoint::Graphics,
+        )?;
+        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_vertex_buffers(&self.inner, pipeline, None, None)?;
+        check_indirect_buffer(self.device(), &indirect_buffer)?;
+
+        let requested = indirect_buffer.len() as u32;
+        let limit = self
+            .device()
+            .physical_device()
+            .properties()
+            .max_draw_indirect_count;
+
+        if requested > limit {
+            return Err(
+                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded { limit, requested }
+                    .into(),
+            );
+        }
 
         unsafe {
-            // TODO: must check that pipeline is compatible with render pass
-
-            self.ensure_inside_render_pass_inline(&pipeline)?;
-            check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &push_constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
-
-            let requested = indirect_buffer.len() as u32;
-            let limit = self
-                .device()
-                .physical_device()
-                .properties()
-                .max_draw_indirect_count;
-
-            if requested > limit {
-                return Err(
-                    CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
-                        limit,
-                        requested,
-                    }
-                    .into(),
-                );
-            }
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_graphics_pipeline(&pipeline)
-            {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
-            }
-
-            let dynamic = self.state_cacher.dynamic_state(dynamic);
-
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
-            set_state(&mut self.inner, &dynamic);
-            bind_descriptor_sets(
-                &mut self.inner,
-                &mut self.state_cacher,
-                PipelineBindPoint::Graphics,
-                pipeline.layout(),
-                descriptor_sets,
-            )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
-
-            debug_assert!(self.queue_family().supports_graphics());
-
             self.inner.draw_indirect(
                 indirect_buffer,
                 requested,
                 mem::size_of::<DrawIndirectCommand>() as u32,
             )?;
-            Ok(self)
         }
+
+        Ok(self)
     }
 
     /// Perform a single draw operation using a graphics pipeline, using an index buffer.
@@ -1316,74 +1494,43 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for the draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed<V, Gp, S, Pc, Ib, I>(
+    pub fn draw_indexed(
         &mut self,
-        pipeline: Gp,
-        dynamic: &DynamicState,
-        vertex_buffers: V,
-        index_buffer: Ib,
-        descriptor_sets: S,
-        push_constants: Pc,
-    ) -> Result<&mut Self, DrawIndexedError>
-    where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
-        Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
-        I: Index + 'static,
-    {
-        let descriptor_sets = descriptor_sets.into_vec();
+        index_count: u32,
+        instance_count: u32,
+        first_index: u32,
+        vertex_offset: i32,
+        first_instance: u32,
+    ) -> Result<&mut Self, DrawIndexedError> {
+        // TODO: how to handle an index out of range of the vertex buffers?
+        let pipeline = check_pipeline_graphics(&self.inner)?;
+        self.ensure_inside_render_pass_inline(pipeline)?;
+        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_descriptor_sets_validity(
+            &self.inner,
+            pipeline.layout(),
+            PipelineBindPoint::Graphics,
+        )?;
+        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_vertex_buffers(
+            &self.inner,
+            pipeline,
+            None,
+            Some((first_instance, instance_count)),
+        )?;
+        check_index_buffer(&self.inner, Some((first_index, index_count)))?;
 
         unsafe {
-            // TODO: must check that pipeline is compatible with render pass
-
-            self.ensure_inside_render_pass_inline(&pipeline)?;
-            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
-            check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &push_constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_graphics_pipeline(&pipeline)
-            {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
-            }
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_index_buffer(&index_buffer, I::ty())
-            {
-                self.inner.bind_index_buffer(index_buffer, I::ty())?;
-            }
-
-            let dynamic = self.state_cacher.dynamic_state(dynamic);
-
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
-            set_state(&mut self.inner, &dynamic);
-            bind_descriptor_sets(
-                &mut self.inner,
-                &mut self.state_cacher,
-                PipelineBindPoint::Graphics,
-                pipeline.layout(),
-                descriptor_sets,
-            )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
-            // TODO: how to handle an index out of range of the vertex buffers?
-
-            debug_assert!(self.queue_family().supports_graphics());
-
             self.inner.draw_indexed(
-                ib_infos.num_indices as u32,
-                vb_infos.instance_count as u32,
-                0,
-                0,
-                0,
+                index_count,
+                instance_count,
+                first_index,
+                vertex_offset,
+                first_instance,
             );
-            Ok(self)
         }
+
+        Ok(self)
     }
 
     /// Perform multiple draw operations using a graphics pipeline, using an index buffer.
@@ -1402,95 +1549,53 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     /// All data in `vertex_buffer` and `index_buffer` is used for every draw operation. To use
     /// only some data in the buffer, wrap it in a `vulkano::buffer::BufferSlice`.
     #[inline]
-    pub fn draw_indexed_indirect<V, Gp, S, Pc, Ib, Inb, I>(
+    pub fn draw_indexed_indirect<Inb>(
         &mut self,
-        pipeline: Gp,
-        dynamic: &DynamicState,
-        vertex_buffers: V,
-        index_buffer: Ib,
         indirect_buffer: Inb,
-        descriptor_sets: S,
-        push_constants: Pc,
     ) -> Result<&mut Self, DrawIndexedIndirectError>
     where
-        Gp: GraphicsPipelineAbstract + VertexSource<V> + Send + Sync + 'static + Clone, // TODO: meh for Clone
-        S: DescriptorSetsCollection,
-        Ib: BufferAccess + TypedBufferAccess<Content = [I]> + Send + Sync + 'static,
         Inb: BufferAccess
             + TypedBufferAccess<Content = [DrawIndexedIndirectCommand]>
             + Send
             + Sync
             + 'static,
-        I: Index + 'static,
     {
-        let descriptor_sets = descriptor_sets.into_vec();
+        let pipeline = check_pipeline_graphics(&self.inner)?;
+        self.ensure_inside_render_pass_inline(pipeline)?;
+        check_dynamic_state_validity(&self.inner, pipeline)?;
+        check_descriptor_sets_validity(
+            &self.inner,
+            pipeline.layout(),
+            PipelineBindPoint::Graphics,
+        )?;
+        check_push_constants_validity(&self.inner, pipeline.layout())?;
+        check_vertex_buffers(&self.inner, pipeline, None, None)?;
+        check_index_buffer(&self.inner, None)?;
+        check_indirect_buffer(self.device(), &indirect_buffer)?;
+
+        let requested = indirect_buffer.len() as u32;
+        let limit = self
+            .device()
+            .physical_device()
+            .properties()
+            .max_draw_indirect_count;
+
+        if requested > limit {
+            return Err(
+                CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded { limit, requested }
+                    .into(),
+            );
+        }
 
         unsafe {
-            // TODO: must check that pipeline is compatible with render pass
-
-            self.ensure_inside_render_pass_inline(&pipeline)?;
-            let ib_infos = check_index_buffer(self.device(), &index_buffer)?;
-            check_indirect_buffer(self.device(), &indirect_buffer)?;
-            check_dynamic_state_validity(&pipeline, dynamic)?;
-            check_push_constants_validity(pipeline.layout(), &push_constants)?;
-            check_descriptor_sets_validity(pipeline.layout(), &descriptor_sets)?;
-            let vb_infos = check_vertex_buffers(&pipeline, vertex_buffers)?;
-
-            let requested = indirect_buffer.len() as u32;
-            let limit = self
-                .device()
-                .physical_device()
-                .properties()
-                .max_draw_indirect_count;
-
-            if requested > limit {
-                return Err(
-                    CheckIndirectBufferError::MaxDrawIndirectCountLimitExceeded {
-                        limit,
-                        requested,
-                    }
-                    .into(),
-                );
-            }
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_graphics_pipeline(&pipeline)
-            {
-                self.inner.bind_pipeline_graphics(pipeline.clone());
-            }
-
-            if let StateCacherOutcome::NeedChange =
-                self.state_cacher.bind_index_buffer(&index_buffer, I::ty())
-            {
-                self.inner.bind_index_buffer(index_buffer, I::ty())?;
-            }
-
-            let dynamic = self.state_cacher.dynamic_state(dynamic);
-
-            set_push_constants(&mut self.inner, pipeline.layout(), push_constants);
-            set_state(&mut self.inner, &dynamic);
-            bind_descriptor_sets(
-                &mut self.inner,
-                &mut self.state_cacher,
-                PipelineBindPoint::Graphics,
-                pipeline.layout(),
-                descriptor_sets,
-            )?;
-            bind_vertex_buffers(
-                &mut self.inner,
-                &mut self.state_cacher,
-                vb_infos.vertex_buffers,
-            )?;
-
-            debug_assert!(self.queue_family().supports_graphics());
-
             self.inner.draw_indexed_indirect(
                 indirect_buffer,
                 requested,
                 mem::size_of::<DrawIndexedIndirectCommand>() as u32,
             )?;
-            Ok(self)
         }
+
+        Ok(self)
     }
 
     /// Adds a command that writes the content of a buffer.
@@ -1506,7 +1611,7 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
     #[inline]
     pub fn fill_buffer<B>(&mut self, buffer: B, data: u32) -> Result<&mut Self, FillBufferError>
     where
-        B: BufferAccess + Send + Sync + 'static,
+        B: BufferAccess + 'static,
     {
         unsafe {
             self.ensure_outside_render_pass()?;
@@ -1514,6 +1619,312 @@ impl<L, P> AutoCommandBufferBuilder<L, P> {
             self.inner.fill_buffer(buffer, data);
             Ok(self)
         }
+    }
+
+    /// Sets push constants for future dispatch or draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if `offset` is not a multiple of 4.
+    /// - Panics if the size of `push_constants` is not a multiple of 4.
+    /// - Panics if any of the bytes in `push_constants` do not fall within any of the pipeline
+    ///   layout's push constant ranges.
+    pub fn push_constants<Pc>(
+        &mut self,
+        pipeline_layout: Arc<PipelineLayout>,
+        offset: u32,
+        push_constants: Pc,
+    ) -> &mut Self {
+        let size = mem::size_of::<Pc>() as u32;
+
+        if size == 0 {
+            return self;
+        }
+
+        assert!(offset % 4 == 0, "the offset must be a multiple of 4");
+        assert!(
+            size % 4 == 0,
+            "the size of push_constants must be a multiple of 4"
+        );
+
+        // Figure out which shader stages in the pipeline layout overlap this byte range.
+        // Also check that none of the bytes being set are outside all push constant ranges.
+        let shader_stages = pipeline_layout
+            .push_constant_ranges()
+            .iter()
+            .filter(|range| range.offset < offset + size && offset < range.offset + range.size)
+            .try_fold(
+                (ShaderStages::none(), offset),
+                |(shader_stages, last_bound), range| {
+                    if range.offset > last_bound {
+                        Err(())
+                    } else {
+                        Ok((
+                            shader_stages.union(&range.stages),
+                            last_bound.max(range.offset + range.size),
+                        ))
+                    }
+                },
+            )
+            .and_then(|(shader_stages, last_bound)| {
+                if shader_stages == ShaderStages::none() || last_bound < offset + size {
+                    Err(())
+                } else {
+                    Ok(shader_stages)
+                }
+            })
+            .expect(
+                "not all bytes in push_constants fall within the pipeline layout's push constant ranges",
+            );
+
+        unsafe {
+            let data = slice::from_raw_parts(
+                (&push_constants as *const Pc as *const u8).offset(offset as isize),
+                size as usize,
+            );
+
+            self.inner.push_constants::<[u8]>(
+                pipeline_layout.clone(),
+                shader_stages,
+                offset,
+                size,
+                data,
+            );
+        }
+
+        self
+    }
+
+    /// Sets the dynamic blend constants for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    pub fn set_blend_constants(&mut self, constants: [f32; 4]) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        unsafe {
+            self.inner.set_blend_constants(constants);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic depth bounds for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - If the
+    ///   [`ext_depth_range_unrestricted`](crate::device::DeviceExtensions::ext_depth_range_unrestricted)
+    ///   device extension is not enabled, panics if `min` or `max` is not between 0.0 and 1.0 inclusive.
+    pub fn set_depth_bounds(&mut self, min: f32, max: f32) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        if !self
+            .device()
+            .enabled_extensions()
+            .ext_depth_range_unrestricted
+        {
+            assert!(
+                min >= 0.0 && min <= 1.0 && max >= 0.0 && max <= 1.0,
+                "if the ext_depth_range_unrestricted device extension is not enabled, depth bounds values must be between 0.0 and 1.0"
+            );
+        }
+
+        unsafe {
+            self.inner.set_depth_bounds(min, max);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic line width for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - If the [`wide_lines`](crate::device::Features::wide_lines) feature is not enabled, panics
+    ///   if `line_width` is not 1.0.
+    pub fn set_line_width(&mut self, line_width: f32) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        if !self.device().enabled_features().wide_lines {
+            assert!(
+                line_width == 1.0,
+                "if the wide_line features is not enabled, line width must be 1.0"
+            );
+        }
+
+        unsafe {
+            self.inner.set_line_width(line_width);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic scissors for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the highest scissor slot being set is greater than the
+    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
+    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
+    ///   panics if `first_scissor` is not 0, or if more than 1 scissor is provided.
+    pub fn set_scissor<I>(&mut self, first_scissor: u32, scissors: I) -> &mut Self
+    where
+        I: IntoIterator<Item = Scissor>,
+    {
+        let scissors: SmallVec<[Scissor; 2]> = scissors.into_iter().collect();
+
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        assert!(
+            first_scissor + scissors.len() as u32 <= self.device().physical_device().properties().max_viewports,
+            "the highest scissor slot being set must not be higher than the max_viewports device property"
+        );
+
+        if !self.device().enabled_features().multi_viewport {
+            assert!(
+                first_scissor == 0,
+                "if the multi_viewport feature is not enabled, first_scissor must be 0"
+            );
+
+            assert!(
+                scissors.len() <= 1,
+                "if the multi_viewport feature is not enabled, no more than 1 scissor must be provided"
+            );
+        }
+
+        // TODO:
+        // If this command is recorded in a secondary command buffer with
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled, then this
+        // function must not be called
+
+        unsafe {
+            self.inner.set_scissor(first_scissor, scissors);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic stencil compare mask on one or both faces for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    pub fn set_stencil_compare_mask(
+        &mut self,
+        faces: StencilFaces,
+        compare_mask: u32,
+    ) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        unsafe {
+            self.inner.set_stencil_compare_mask(faces, compare_mask);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic stencil reference on one or both faces for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    pub fn set_stencil_reference(&mut self, faces: StencilFaces, reference: u32) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        unsafe {
+            self.inner.set_stencil_reference(faces, reference);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic stencil write mask on one or both faces for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    pub fn set_stencil_write_mask(&mut self, faces: StencilFaces, write_mask: u32) -> &mut Self {
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        unsafe {
+            self.inner.set_stencil_write_mask(faces, write_mask);
+        }
+
+        self
+    }
+
+    /// Sets the dynamic viewports for future draw calls.
+    ///
+    /// # Panics
+    ///
+    /// - Panics if the queue family of the command buffer does not support graphics operations.
+    /// - Panics if the highest viewport slot being set is greater than the
+    ///   [`max_viewports`](crate::device::Properties::max_viewports) device property.
+    /// - If the [`multi_viewport`](crate::device::Features::multi_viewport) feature is not enabled,
+    ///   panics if `first_viewport` is not 0, or if more than 1 viewport is provided.
+    pub fn set_viewport<I>(&mut self, first_viewport: u32, viewports: I) -> &mut Self
+    where
+        I: IntoIterator<Item = Viewport>,
+    {
+        let viewports: SmallVec<[Viewport; 2]> = viewports.into_iter().collect();
+
+        assert!(
+            self.queue_family().supports_graphics(),
+            "the queue family of the command buffer must support graphics operations"
+        );
+
+        assert!(
+            first_viewport + viewports.len() as u32 <= self.device().physical_device().properties().max_viewports,
+            "the highest viewport slot being set must not be higher than the max_viewports device property"
+        );
+
+        if !self.device().enabled_features().multi_viewport {
+            assert!(
+                first_viewport == 0,
+                "if the multi_viewport feature is not enabled, first_viewport must be 0"
+            );
+
+            assert!(
+                viewports.len() <= 1,
+                "if the multi_viewport feature is not enabled, no more than 1 viewport must be provided"
+            );
+        }
+
+        // TODO:
+        // commandBuffer must not have
+        // VkCommandBufferInheritanceViewportScissorInfoNV::viewportScissor2D enabled
+
+        unsafe {
+            self.inner.set_viewport(first_viewport, viewports);
+        }
+
+        self
     }
 
     /// Adds a command that writes data to a buffer.
@@ -1776,39 +2187,79 @@ where
                 match clear_values_copy.next() {
                     Some((clear_i, clear_value)) => {
                         if atch_desc.load == LoadOp::Clear {
-                            match clear_value {
-                                ClearValue::None => panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: None",
-                                    clear_i, atch_i, atch_desc.format.ty()),
-                                ClearValue::Float(_) => if atch_desc.format.ty() != FormatTy::Float {
-                                   panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Float",
-                                       clear_i, atch_i, atch_desc.format.ty());
+                            let aspects = atch_desc.format.aspects();
+
+                            if aspects.depth && aspects.stencil {
+                                assert!(
+                                    matches!(clear_value, ClearValue::DepthStencil(_)),
+                                    "Bad ClearValue! index: {}, attachment index: {}, expected: DepthStencil, got: {:?}",
+                                    clear_i,
+                                    atch_i,
+                                    clear_value,
+                                );
+                            } else if aspects.depth {
+                                assert!(
+                                    matches!(clear_value, ClearValue::Depth(_)),
+                                    "Bad ClearValue! index: {}, attachment index: {}, expected: Depth, got: {:?}",
+                                    clear_i,
+                                    atch_i,
+                                    clear_value,
+                                );
+                            } else if aspects.depth {
+                                assert!(
+                                    matches!(clear_value, ClearValue::Stencil(_)),
+                                    "Bad ClearValue! index: {}, attachment index: {}, expected: Stencil, got: {:?}",
+                                    clear_i,
+                                    atch_i,
+                                    clear_value,
+                                );
+                            } else if let Some(numeric_type) = atch_desc.format.type_color() {
+                                match numeric_type {
+                                    NumericType::SFLOAT
+                                    | NumericType::UFLOAT
+                                    | NumericType::SNORM
+                                    | NumericType::UNORM
+                                    | NumericType::SSCALED
+                                    | NumericType::USCALED
+                                    | NumericType::SRGB => {
+                                        assert!(
+                                            matches!(clear_value, ClearValue::Float(_)),
+                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Float, got: {:?}",
+                                            clear_i,
+                                            atch_i,
+                                            clear_value,
+                                        );
+                                    }
+                                    NumericType::SINT => {
+                                        assert!(
+                                            matches!(clear_value, ClearValue::Int(_)),
+                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Int, got: {:?}",
+                                            clear_i,
+                                            atch_i,
+                                            clear_value,
+                                        );
+                                    }
+                                    NumericType::UINT => {
+                                        assert!(
+                                            matches!(clear_value, ClearValue::Uint(_)),
+                                            "Bad ClearValue! index: {}, attachment index: {}, expected: Uint, got: {:?}",
+                                            clear_i,
+                                            atch_i,
+                                            clear_value,
+                                        );
+                                    }
                                 }
-                                ClearValue::Int(_) => if atch_desc.format.ty() != FormatTy::Sint {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Int",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::Uint(_) => if atch_desc.format.ty() != FormatTy::Uint {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Uint",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::Depth(_) => if atch_desc.format.ty() != FormatTy::Depth {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Depth",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::Stencil(_) => if atch_desc.format.ty() != FormatTy::Stencil {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: Stencil",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
-                                ClearValue::DepthStencil(_) => if atch_desc.format.ty() != FormatTy::DepthStencil {
-                                    panic!("Bad ClearValue! index: {}, attachment index: {}, expected: {:?}, got: DepthStencil",
-                                       clear_i, atch_i, atch_desc.format.ty());
-                                }
+                            } else {
+                                panic!("Shouldn't happen!");
                             }
                         } else {
-                            if clear_value != ClearValue::None {
-                                panic!("Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
-                                   clear_i, atch_i, clear_value);
-                            }
+                            assert!(
+                                matches!(clear_value, ClearValue::None),
+                                "Bad ClearValue! index: {}, attachment index: {}, expected: None, got: {:?}",
+                                clear_i,
+                                atch_i,
+                                clear_value,
+                            );
                         }
                     }
                     None => panic!("Not enough clear values"),
@@ -1821,7 +2272,7 @@ where
 
             if let Some(multiview_desc) = framebuffer.render_pass().desc().multiview() {
                 // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
-                self.state_cacher.invalidate();
+                self.inner.reset_state();
 
                 // ensure that the framebuffer is compatible with the render pass multiview configuration
                 if multiview_desc
@@ -1901,7 +2352,7 @@ where
         }
 
         // Secondary command buffer could leave the primary in any state.
-        self.state_cacher.invalidate();
+        self.inner.reset_state();
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
         self.usage = std::cmp::min(self.usage, secondary_usage);
@@ -1937,7 +2388,7 @@ where
         }
 
         // Secondary command buffer could leave the primary in any state.
-        self.state_cacher.invalidate();
+        self.inner.reset_state();
 
         // If the secondary is non-concurrent or one-time use, that restricts the primary as well.
         self.usage = std::cmp::min(self.usage, secondary_usage);
@@ -2053,7 +2504,7 @@ where
 
                 if let Some(multiview) = rp.desc().multiview() {
                     // When multiview is enabled, at the beginning of each subpass all non-render pass state is undefined
-                    self.state_cacher.invalidate();
+                    self.inner.reset_state();
                 }
             } else {
                 return Err(AutoCommandBufferBuilderContextError::ForbiddenOutsideRenderPass);
@@ -2081,123 +2532,6 @@ unsafe impl<L, P> DeviceOwned for AutoCommandBufferBuilder<L, P> {
     fn device(&self) -> &Arc<Device> {
         self.inner.device()
     }
-}
-
-// Shortcut function to set the push constants.
-unsafe fn set_push_constants<Pc>(
-    destination: &mut SyncCommandBufferBuilder,
-    pipeline_layout: &Arc<PipelineLayout>,
-    push_constants: Pc,
-) {
-    for range in pipeline_layout.push_constant_ranges() {
-        debug_assert_eq!(range.offset % 4, 0);
-        debug_assert_eq!(range.size % 4, 0);
-
-        let data = slice::from_raw_parts(
-            (&push_constants as *const Pc as *const u8).offset(range.offset as isize),
-            range.size as usize,
-        );
-
-        destination.push_constants::<[u8]>(
-            pipeline_layout.clone(),
-            range.stages,
-            range.offset as u32,
-            range.size as u32,
-            data,
-        );
-    }
-}
-
-// Shortcut function to change the state of the pipeline.
-unsafe fn set_state(destination: &mut SyncCommandBufferBuilder, dynamic: &DynamicState) {
-    if let Some(line_width) = dynamic.line_width {
-        destination.set_line_width(line_width);
-    }
-
-    if let Some(ref viewports) = dynamic.viewports {
-        destination.set_viewport(0, viewports.iter().cloned().collect::<Vec<_>>().into_iter());
-        // TODO: don't collect
-    }
-
-    if let Some(ref scissors) = dynamic.scissors {
-        destination.set_scissor(0, scissors.iter().cloned().collect::<Vec<_>>().into_iter());
-        // TODO: don't collect
-    }
-
-    if let Some(compare_mask) = dynamic.compare_mask {
-        destination.set_stencil_compare_mask(StencilFaces::Front, compare_mask.front);
-        destination.set_stencil_compare_mask(StencilFaces::Back, compare_mask.back);
-    }
-
-    if let Some(write_mask) = dynamic.write_mask {
-        destination.set_stencil_write_mask(StencilFaces::Front, write_mask.front);
-        destination.set_stencil_write_mask(StencilFaces::Back, write_mask.back);
-    }
-
-    if let Some(reference) = dynamic.reference {
-        destination.set_stencil_reference(StencilFaces::Front, reference.front);
-        destination.set_stencil_reference(StencilFaces::Back, reference.back);
-    }
-}
-
-// Shortcut function to bind vertex buffers.
-unsafe fn bind_vertex_buffers(
-    destination: &mut SyncCommandBufferBuilder,
-    state_cacher: &mut StateCacher,
-    vertex_buffers: Vec<Box<dyn BufferAccess + Send + Sync>>,
-) -> Result<(), SyncCommandBufferBuilderError> {
-    let binding_range = {
-        let mut compare = state_cacher.bind_vertex_buffers();
-        for vb in vertex_buffers.iter() {
-            compare.add(vb);
-        }
-        match compare.compare() {
-            Some(r) => r,
-            None => return Ok(()),
-        }
-    };
-
-    let first_binding = binding_range.start;
-    let num_bindings = binding_range.end - binding_range.start;
-
-    let mut binder = destination.bind_vertex_buffers();
-    for vb in vertex_buffers
-        .into_iter()
-        .skip(first_binding as usize)
-        .take(num_bindings as usize)
-    {
-        binder.add(vb);
-    }
-    binder.submit(first_binding)?;
-    Ok(())
-}
-
-unsafe fn bind_descriptor_sets(
-    destination: &mut SyncCommandBufferBuilder,
-    state_cacher: &mut StateCacher,
-    pipeline_bind_point: PipelineBindPoint,
-    pipeline_layout: &Arc<PipelineLayout>,
-    descriptor_sets: Vec<DescriptorSetWithOffsets>,
-) -> Result<(), SyncCommandBufferBuilderError> {
-    let first_binding = {
-        let mut compare = state_cacher.bind_descriptor_sets(pipeline_bind_point);
-        for descriptor_set in descriptor_sets.iter() {
-            compare.add(descriptor_set);
-        }
-        compare.compare()
-    };
-
-    let first_binding = match first_binding {
-        None => return Ok(()),
-        Some(fb) => fb,
-    };
-
-    let mut sets_binder = destination.bind_descriptor_sets();
-    for set in descriptor_sets.into_iter().skip(first_binding as usize) {
-        sets_binder.add(set);
-    }
-    sets_binder.submit(pipeline_bind_point, pipeline_layout.clone(), first_binding)?;
-    Ok(())
 }
 
 pub struct PrimaryAutoCommandBuffer<P = StandardCommandPoolAlloc> {
@@ -2540,6 +2874,7 @@ err_gen!(DebugMarkerError {
 
 err_gen!(DispatchError {
     AutoCommandBufferBuilderContextError,
+    CheckPipelineError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
     CheckDispatchError,
@@ -2548,14 +2883,17 @@ err_gen!(DispatchError {
 
 err_gen!(DispatchIndirectError {
     AutoCommandBufferBuilderContextError,
+    CheckPipelineError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
     CheckIndirectBufferError,
+    CheckDispatchError,
     SyncCommandBufferBuilderError,
 });
 
 err_gen!(DrawError {
     AutoCommandBufferBuilderContextError,
+    CheckPipelineError,
     CheckDynamicStateValidityError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
@@ -2565,6 +2903,7 @@ err_gen!(DrawError {
 
 err_gen!(DrawIndexedError {
     AutoCommandBufferBuilderContextError,
+    CheckPipelineError,
     CheckDynamicStateValidityError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
@@ -2575,6 +2914,7 @@ err_gen!(DrawIndexedError {
 
 err_gen!(DrawIndirectError {
     AutoCommandBufferBuilderContextError,
+    CheckPipelineError,
     CheckDynamicStateValidityError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,
@@ -2585,6 +2925,7 @@ err_gen!(DrawIndirectError {
 
 err_gen!(DrawIndexedIndirectError {
     AutoCommandBufferBuilderContextError,
+    CheckPipelineError,
     CheckDynamicStateValidityError,
     CheckPushConstantsValidityError,
     CheckDescriptorSetsValidityError,

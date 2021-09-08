@@ -193,10 +193,13 @@ mod tests {
         let (device, _) = gfx_dev_and_queue!();
 
         let desc = DescriptorDesc {
-            ty: DescriptorDescTy::Sampler,
-            array_count: 1,
+            ty: DescriptorDescTy::Sampler {
+                immutable_samplers: vec![],
+            },
+            descriptor_count: 1,
             stages: ShaderStages::all(),
-            readonly: false,
+            mutable: true,
+            variable_count: false,
         };
         let layout = DescriptorSetLayout::new(
             device.clone(),

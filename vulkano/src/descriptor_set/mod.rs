@@ -74,28 +74,33 @@
 //!   `DescriptorSet`. It is what you pass to the draw functions.
 
 pub use self::collection::DescriptorSetsCollection;
-pub use self::fixed_size_pool::FixedSizeDescriptorSetsPool;
 use self::layout::DescriptorSetLayout;
 pub use self::persistent::PersistentDescriptorSet;
-pub use self::persistent::PersistentDescriptorSetBuildError;
-pub use self::persistent::PersistentDescriptorSetError;
+pub use self::single_layout_pool::SingleLayoutDescSetPool;
 use self::sys::UnsafeDescriptorSet;
 use crate::buffer::BufferAccess;
-use crate::descriptor_set::layout::{DescriptorBufferDesc, DescriptorDescTy};
+use crate::descriptor_set::layout::DescriptorDescTy;
 use crate::device::DeviceOwned;
+use crate::format::Format;
 use crate::image::view::ImageViewAbstract;
+use crate::image::view::ImageViewType;
+use crate::OomError;
 use crate::SafeDeref;
 use crate::VulkanObject;
 use smallvec::SmallVec;
+use std::error;
+use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::Arc;
 
+mod builder;
 mod collection;
-pub mod fixed_size_pool;
 pub mod layout;
 pub mod persistent;
 pub mod pool;
+mod resources;
+pub mod single_layout_pool;
 pub mod sys;
 
 /// Trait for objects that contain a collection of resources that will be accessible by shaders.
@@ -213,22 +218,22 @@ impl DescriptorSetWithOffsets {
         // dynamic offset is a multiple of the minimum offset alignment specified
         // by the physical device.
         for desc in layout.desc().bindings() {
-            let desc = desc.as_ref().unwrap();
-            if let DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                dynamic: Some(true),
-                storage,
-            }) = desc.ty
-            {
-                // Don't check alignment if there are not enough offsets anyway
-                if dynamic_offsets.len() > dynamic_offset_index {
-                    if storage {
+            match desc.as_ref().unwrap().ty {
+                DescriptorDescTy::StorageBufferDynamic => {
+                    // Don't check alignment if there are not enough offsets anyway
+                    if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_storage_off_align == 0,
                             "Dynamic storage buffer offset must be a multiple of min_storage_buffer_offset_alignment: got {}, expected a multiple of {}",
                             dynamic_offsets[dynamic_offset_index],
                             min_storage_off_align
                         );
-                    } else {
+                    }
+                    dynamic_offset_index += 1;
+                }
+                DescriptorDescTy::UniformBufferDynamic => {
+                    // Don't check alignment if there are not enough offsets anyway
+                    if dynamic_offsets.len() > dynamic_offset_index {
                         assert!(
                             dynamic_offsets[dynamic_offset_index] % min_uniform_off_align == 0,
                             "Dynamic uniform buffer offset must be a multiple of min_uniform_buffer_offset_alignment: got {}, expected a multiple of {}",
@@ -236,8 +241,9 @@ impl DescriptorSetWithOffsets {
                             min_uniform_off_align
                         );
                     }
+                    dynamic_offset_index += 1;
                 }
-                dynamic_offset_index += 1;
+                _ => (),
             }
         }
 
@@ -284,4 +290,175 @@ where
     fn from(descriptor_set: S) -> Self {
         Self::new(descriptor_set, std::iter::empty())
     }
+}
+
+/// Error related to descriptor sets.
+#[derive(Debug, Clone)]
+pub enum DescriptorSetError {
+    /// Builder is already within an array.
+    AlreadyInArray,
+
+    /// The builder has previously return an error and is an unknown state.
+    BuilderPoisoned,
+
+    /// The number of array layers of an image doesn't match what was expected.
+    ArrayLayersMismatch {
+        /// Number of expected array layers for the image.
+        expected: u32,
+        /// Number of array layers of the image that was added.
+        obtained: u32,
+    },
+
+    /// Array doesn't contain the correct amount of descriptors
+    ArrayLengthMismatch {
+        /// Expected length
+        expected: u32,
+        /// Obtained length
+        obtained: u32,
+    },
+
+    /// Runtime array contains too many descriptors
+    ArrayTooManyDescriptors {
+        /// Capacity of array
+        capacity: u32,
+        /// Obtained length
+        obtained: u32,
+    },
+
+    /// Expected a multisampled image, but got a single-sampled image.
+    ExpectedMultisampled,
+
+    /// Operation can not be performed on an empty descriptor.
+    DescriptorIsEmpty,
+
+    /// Not all descriptors have been added.
+    DescriptorsMissing {
+        /// Expected bindings
+        expected: u32,
+        /// Obtained bindings
+        obtained: u32,
+    },
+
+    /// The format of an image view doesn't match what was expected.
+    ImageViewFormatMismatch {
+        /// Expected format.
+        expected: Format,
+        /// Format of the image view that was passed.
+        obtained: Format,
+    },
+
+    /// The type of an image view doesn't match what was expected.
+    ImageViewTypeMismatch {
+        /// Expected type.
+        expected: ImageViewType,
+        /// Type of the image view that was passed.
+        obtained: ImageViewType,
+    },
+
+    /// The image view isn't compatible with the sampler.
+    IncompatibleImageViewSampler,
+
+    /// The buffer is missing the correct usage.
+    MissingBufferUsage(MissingBufferUsage),
+
+    /// The image is missing the correct usage.
+    MissingImageUsage(MissingImageUsage),
+
+    /// The image view has a component swizzle that is different from identity.
+    NotIdentitySwizzled,
+
+    /// Builder is not in an array.
+    NotInArray,
+
+    /// Out of memory
+    OomError(OomError),
+
+    /// Resource belongs to another device.
+    ResourceWrongDevice,
+
+    /// Provided a dynamically assigned sampler, but the descriptor has an immutable sampler.
+    SamplerIsImmutable,
+
+    /// Builder doesn't expect anymore descriptors
+    TooManyDescriptors,
+
+    /// Expected a non-arrayed image, but got an arrayed image.
+    UnexpectedArrayed,
+
+    /// Expected a single-sampled image, but got a multisampled image.
+    UnexpectedMultisampled,
+
+    /// Expected one type of resource but got another.
+    WrongDescriptorType,
+}
+
+impl From<OomError> for DescriptorSetError {
+    fn from(error: OomError) -> Self {
+        Self::OomError(error)
+    }
+}
+
+impl error::Error for DescriptorSetError {}
+
+impl fmt::Display for DescriptorSetError {
+    #[inline]
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(
+            fmt,
+            "{}",
+            match *self {
+                Self::AlreadyInArray => "builder is already within an array",
+                Self::ArrayLayersMismatch { .. } =>
+                    "the number of array layers of an image doesn't match what was expected",
+                Self::ArrayLengthMismatch { .. } =>
+                    "array doesn't contain the correct amount of descriptors",
+                Self::ArrayTooManyDescriptors { .. } =>
+                    "runtime array contains too many descriptors",
+                Self::BuilderPoisoned =>
+                    "the builder has previously return an error and is an unknown state",
+                Self::DescriptorIsEmpty => "operation can not be performed on an empty descriptor",
+                Self::DescriptorsMissing { .. } => "not all descriptors have been added",
+                Self::ExpectedMultisampled =>
+                    "expected a multisampled image, but got a single-sampled image",
+                Self::ImageViewFormatMismatch { .. } =>
+                    "the format of an image view doesn't match what was expected",
+                Self::ImageViewTypeMismatch { .. } =>
+                    "the type of an image view doesn't match what was expected",
+                Self::IncompatibleImageViewSampler =>
+                    "the image view isn't compatible with the sampler",
+                Self::MissingBufferUsage(_) => "the buffer is missing the correct usage",
+                Self::MissingImageUsage(_) => "the image is missing the correct usage",
+                Self::NotIdentitySwizzled =>
+                    "the image view has a component swizzle that is different from identity",
+                Self::NotInArray => "builder is not in an array",
+                Self::OomError(_) => "out of memory",
+                Self::ResourceWrongDevice => "resource belongs to another device",
+                Self::SamplerIsImmutable => "provided a dynamically assigned sampler, but the descriptor has an immutable sampler",
+                Self::TooManyDescriptors => "builder doesn't expect anymore descriptors",
+                Self::UnexpectedArrayed => "expected a non-arrayed image, but got an arrayed image",
+                Self::UnexpectedMultisampled =>
+                    "expected a single-sampled image, but got a multisampled image",
+                Self::WrongDescriptorType => "expected one type of resource but got another",
+            }
+        )
+    }
+}
+
+// Part of the DescriptorSetError for the case
+// of missing usage on a buffer.
+#[derive(Debug, Clone)]
+pub enum MissingBufferUsage {
+    StorageBuffer,
+    UniformBuffer,
+    StorageTexelBuffer,
+    UniformTexelBuffer,
+}
+
+// Part of the DescriptorSetError for the case
+// of missing usage on an image.
+#[derive(Debug, Clone)]
+pub enum MissingImageUsage {
+    InputAttachment,
+    Sampled,
+    Storage,
 }

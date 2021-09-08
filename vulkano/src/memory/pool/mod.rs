@@ -68,7 +68,13 @@ where
 
 /// Allocate dedicated memory with exportable fd.
 /// Memory pool memory always exports the same fd, thus dedicated is preferred.
-#[cfg(target_os = "linux")]
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonflybsd",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
 pub(crate) fn alloc_dedicated_with_exportable_fd<F>(
     device: Arc<Device>,
     requirements: &MemoryRequirements,

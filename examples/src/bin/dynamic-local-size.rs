@@ -26,8 +26,7 @@ use vulkano::device::{Device, DeviceExtensions, Features};
 use vulkano::format::Format;
 use vulkano::image::{view::ImageView, ImageDimensions, StorageImage};
 use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::ComputePipeline;
-use vulkano::pipeline::ComputePipelineAbstract;
+use vulkano::pipeline::{ComputePipeline, PipelineBindPoint};
 use vulkano::sync;
 use vulkano::sync::GpuFuture;
 use vulkano::Version;
@@ -181,6 +180,7 @@ fn main() {
             &shader.main_entry_point(),
             &spec_consts,
             None,
+            |_| {},
         )
         .unwrap(),
     );
@@ -192,20 +192,18 @@ fn main() {
             height: 1024,
             array_layers: 1,
         },
-        Format::R8G8B8A8Unorm,
+        Format::R8G8B8A8_UNORM,
         Some(queue.family()),
     )
     .unwrap();
     let view = ImageView::new(image.clone()).unwrap();
 
     let layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let set = Arc::new(
-        PersistentDescriptorSet::start(layout.clone())
-            .add_image(view.clone())
-            .unwrap()
-            .build()
-            .unwrap(),
-    );
+    let mut set_builder = PersistentDescriptorSet::start(layout.clone());
+
+    set_builder.add_image(view.clone()).unwrap();
+
+    let set = Arc::new(set_builder.build().unwrap());
 
     let buf = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -222,16 +220,18 @@ fn main() {
     )
     .unwrap();
     builder
-        .dispatch(
-            [
-                1024 / local_size_x, // Note that dispatch dimensions must be
-                1024 / local_size_y, // proportional to local size
-                1,
-            ],
-            pipeline.clone(),
+        .bind_pipeline_compute(pipeline.clone())
+        .bind_descriptor_sets(
+            PipelineBindPoint::Compute,
+            pipeline.layout().clone(),
+            0,
             set.clone(),
-            (),
         )
+        .dispatch([
+            1024 / local_size_x, // Note that dispatch dimensions must be
+            1024 / local_size_y, // proportional to local size
+            1,
+        ])
         .unwrap()
         .copy_image_to_buffer(image.clone(), buf.clone())
         .unwrap();
@@ -252,7 +252,7 @@ fn main() {
     let file = File::create(path).unwrap();
     let ref mut w = BufWriter::new(file);
     let mut encoder = png::Encoder::new(w, 1024, 1024);
-    encoder.set_color(png::ColorType::RGBA);
+    encoder.set_color(png::ColorType::Rgba);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().unwrap();
     writer.write_image_data(&buffer_content).unwrap();

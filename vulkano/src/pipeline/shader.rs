@@ -26,7 +26,6 @@ use crate::pipeline::layout::PipelineLayoutPcRange;
 use crate::sync::PipelineStages;
 use crate::OomError;
 use crate::VulkanObject;
-use smallvec::SmallVec;
 use std::borrow::Cow;
 use std::error;
 use std::ffi::CStr;
@@ -231,7 +230,7 @@ pub struct GraphicsEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
 
-    descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
+    descriptor_set_layout_descs: Vec<DescriptorSetDesc>,
     push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
     input: ShaderInterface,
@@ -344,7 +343,7 @@ impl GeometryShaderExecutionMode {
 pub struct ComputeEntryPoint<'a> {
     module: &'a ShaderModule,
     name: &'a CStr,
-    descriptor_set_layout_descs: SmallVec<[DescriptorSetDesc; 16]>,
+    descriptor_set_layout_descs: Vec<DescriptorSetDesc>,
     push_constant_range: Option<PipelineLayoutPcRange>,
     spec_constants: &'static [SpecializationMapEntry],
 }
@@ -681,24 +680,16 @@ impl ShaderStages {
         }
     }
 
-    /// Checks whether we have more stages enabled than `other`.
+    /// Returns whether `self` contains all the stages of `other`.
     // TODO: add example
     #[inline]
-    pub const fn ensure_superset_of(
-        &self,
-        other: &ShaderStages,
-    ) -> Result<(), ShaderStagesSupersetError> {
-        if (self.vertex || !other.vertex)
+    pub const fn is_superset_of(&self, other: &ShaderStages) -> bool {
+        (self.vertex || !other.vertex)
             && (self.tessellation_control || !other.tessellation_control)
             && (self.tessellation_evaluation || !other.tessellation_evaluation)
             && (self.geometry || !other.geometry)
             && (self.fragment || !other.fragment)
             && (self.compute || !other.compute)
-        {
-            Ok(())
-        } else {
-            Err(ShaderStagesSupersetError::NotSuperset)
-        }
     }
 
     /// Checks whether any of the stages in `self` are also present in `other`.
@@ -711,6 +702,19 @@ impl ShaderStages {
             || (self.geometry && other.geometry)
             || (self.fragment && other.fragment)
             || (self.compute && other.compute)
+    }
+
+    /// Returns the union of the stages in `self` and `other`.
+    #[inline]
+    pub const fn union(&self, other: &Self) -> Self {
+        Self {
+            vertex: self.vertex || other.vertex,
+            tessellation_control: self.tessellation_control || other.tessellation_control,
+            tessellation_evaluation: self.tessellation_evaluation || other.tessellation_evaluation,
+            geometry: self.geometry || other.geometry,
+            fragment: self.fragment || other.fragment,
+            compute: self.compute || other.compute,
+        }
     }
 }
 
@@ -783,26 +787,5 @@ impl From<ShaderStages> for PipelineStages {
             compute_shader: stages.compute,
             ..PipelineStages::none()
         }
-    }
-}
-
-/// Error when checking that a `ShaderStages` object is a superset of another.
-#[derive(Debug, Clone)]
-pub enum ShaderStagesSupersetError {
-    NotSuperset,
-}
-
-impl error::Error for ShaderStagesSupersetError {}
-
-impl fmt::Display for ShaderStagesSupersetError {
-    #[inline]
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(
-            fmt,
-            "{}",
-            match *self {
-                ShaderStagesSupersetError::NotSuperset => "shader stages not a superset",
-            }
-        )
     }
 }

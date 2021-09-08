@@ -8,10 +8,12 @@
 // according to those terms.
 
 use crate::parse::{Instruction, Spirv};
-use crate::structs;
 use crate::{spirv_search, TypesMeta};
+use crate::{structs, RegisteredType};
 use proc_macro2::{Span, TokenStream};
-use spirv_headers::Decoration;
+use spirv::Decoration;
+use std::borrow::Cow;
+use std::collections::HashMap;
 use std::mem;
 use syn::Ident;
 
@@ -32,11 +34,18 @@ pub fn has_specialization_constants(doc: &Spirv) -> bool {
 
 /// Writes the `SpecializationConstants` struct that contains the specialization constants and
 /// implements the `Default` and the `vulkano::pipeline::shader::SpecializationConstants` traits.
-pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta) -> TokenStream {
+pub(super) fn write_specialization_constants<'a>(
+    shader: &'a str,
+    doc: &Spirv,
+    types_meta: &TypesMeta,
+    shared_constants: bool,
+    types_registry: &'a mut HashMap<String, RegisteredType>,
+) -> TokenStream {
     struct SpecConst {
         name: String,
         constant_id: u32,
         rust_ty: TokenStream,
+        rust_signature: Cow<'static, str>,
         rust_size: usize,
         rust_alignment: u32,
         default_value: TokenStream,
@@ -79,8 +88,8 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
             _ => continue,
         };
 
-        let (rust_ty, rust_size, rust_alignment) =
-            spec_const_type_from_id(doc, type_id, types_meta);
+        let (rust_ty, rust_signature, rust_size, rust_alignment) =
+            spec_const_type_from_id(shader, doc, type_id, types_meta);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
         let constant_id = doc.get_decoration_params(result_id, Decoration::SpecId);
@@ -98,11 +107,44 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
                 name,
                 constant_id,
                 rust_ty,
+                rust_signature,
                 rust_size,
                 rust_alignment: rust_alignment as u32,
                 default_value,
             });
         }
+    }
+
+    let struct_name = Ident::new(
+        &format!(
+            "{}SpecializationConstants",
+            if shared_constants { "" } else { shader }
+        ),
+        Span::call_site(),
+    );
+
+    // For multi-constants mode registration mechanism skipped
+    if shared_constants {
+        let target_type = RegisteredType {
+            shader: shader.to_string(),
+            signature: spec_consts
+                .iter()
+                .map(|member| (member.name.to_string(), member.rust_signature.clone()))
+                .collect(),
+        };
+
+        let name = struct_name.to_string();
+
+        // Checking with Registry if this struct already registered by another shader, and if their
+        // signatures match.
+        if let Some(registered) = types_registry.get(name.as_str()) {
+            registered.assert_signatures(name.as_str(), &target_type);
+
+            // If the struct already registered and matches this one, skip duplicate.
+            return quote! {};
+        }
+
+        debug_assert!(types_registry.insert(name, target_type).is_none());
     }
 
     let map_entries = {
@@ -143,19 +185,19 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
         #[derive(Debug, Copy, Clone)]
         #[allow(non_snake_case)]
         #[repr(C)]
-        pub struct SpecializationConstants {
+        pub struct #struct_name {
             #( #struct_members ),*
         }
 
-        impl Default for SpecializationConstants {
-            fn default() -> SpecializationConstants {
-                SpecializationConstants {
+        impl Default for #struct_name {
+            fn default() -> #struct_name {
+                #struct_name {
                     #( #struct_member_defaults ),*
                 }
             }
         }
 
-        unsafe impl SpecConstsTrait for SpecializationConstants {
+        unsafe impl SpecConstsTrait for #struct_name {
             fn descriptors() -> &'static [SpecializationMapEntry] {
                 static DESCRIPTORS: [SpecializationMapEntry; #num_map_entries] = [
                     #( #map_entries ),*
@@ -168,15 +210,17 @@ pub(super) fn write_specialization_constants(doc: &Spirv, types_meta: &TypesMeta
 
 // Wrapper around `type_from_id` that also handles booleans.
 fn spec_const_type_from_id(
+    shader: &str,
     doc: &Spirv,
     searched: u32,
     types_meta: &TypesMeta,
-) -> (TokenStream, Option<usize>, usize) {
+) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
     for instruction in doc.instructions.iter() {
         match instruction {
             &Instruction::TypeBool { result_id } if result_id == searched => {
                 return (
                     quote! {u32},
+                    Cow::from("u32"),
                     Some(mem::size_of::<u32>()),
                     mem::align_of::<u32>(),
                 );
@@ -185,5 +229,5 @@ fn spec_const_type_from_id(
         }
     }
 
-    structs::type_from_id(doc, searched, types_meta)
+    structs::type_from_id(shader, doc, searched, types_meta)
 }

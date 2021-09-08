@@ -1,8 +1,6 @@
 use std::borrow::Borrow;
 use std::error;
 use std::fmt;
-#[cfg(target_os = "windows")]
-use std::ptr;
 use std::rc::Rc;
 use std::sync::Arc;
 
