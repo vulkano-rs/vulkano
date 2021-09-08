@@ -8,11 +8,12 @@
 // according to those terms.
 
 use crate::descriptor_sets::{write_descriptor_set_layout_descs, write_push_constant_ranges};
-use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::{Span, TokenStream};
-use spirv::{Decoration, ExecutionMode, ExecutionModel, StorageClass};
 use syn::Ident;
+use vulkano::spirv::{
+    Decoration, ExecutionMode, ExecutionModel, Id, Instruction, Spirv, StorageClass,
+};
 
 pub(super) fn write_entry_point(
     shader: &str,
@@ -24,12 +25,12 @@ pub(super) fn write_entry_point(
 ) -> TokenStream {
     let (execution, id, ep_name, interface) = match instruction {
         &Instruction::EntryPoint {
-            ref execution,
-            id,
+            ref execution_model,
+            entry_point,
             ref name,
             ref interface,
             ..
-        } => (execution, id, name, interface),
+        } => (execution_model, entry_point, name, interface),
         _ => unreachable!(),
     };
 
@@ -74,12 +75,12 @@ pub(super) fn write_entry_point(
             | ExecutionModel::Kernel
             | ExecutionModel::TaskNV
             | ExecutionModel::MeshNV
-            | ExecutionModel::RayGenerationNV
-            | ExecutionModel::IntersectionNV
-            | ExecutionModel::AnyHitNV
-            | ExecutionModel::ClosestHitNV
-            | ExecutionModel::MissNV
-            | ExecutionModel::CallableNV => unreachable!(),
+            | ExecutionModel::RayGenerationKHR
+            | ExecutionModel::IntersectionKHR
+            | ExecutionModel::AnyHitKHR
+            | ExecutionModel::ClosestHitKHR
+            | ExecutionModel::MissKHR
+            | ExecutionModel::CallableKHR => unreachable!(),
         }
     };
 
@@ -128,14 +129,14 @@ pub(super) fn write_entry_point(
                 ExecutionModel::Geometry => {
                     let mut execution_mode = None;
 
-                    for instruction in doc.instructions.iter() {
+                    for instruction in doc.instructions() {
                         if let &Instruction::ExecutionMode {
-                            target_id,
+                            entry_point,
                             ref mode,
                             ..
                         } = instruction
                         {
-                            if target_id == id {
+                            if entry_point == id {
                                 execution_mode = match mode {
                                     &ExecutionMode::InputPoints => Some(quote! { Points }),
                                     &ExecutionMode::InputLines => Some(quote! { Lines }),
@@ -169,12 +170,12 @@ pub(super) fn write_entry_point(
                 ExecutionModel::Kernel
                 | ExecutionModel::TaskNV
                 | ExecutionModel::MeshNV
-                | ExecutionModel::RayGenerationNV
-                | ExecutionModel::IntersectionNV
-                | ExecutionModel::AnyHitNV
-                | ExecutionModel::ClosestHitNV
-                | ExecutionModel::MissNV
-                | ExecutionModel::CallableNV => {
+                | ExecutionModel::RayGenerationKHR
+                | ExecutionModel::IntersectionKHR
+                | ExecutionModel::AnyHitKHR
+                | ExecutionModel::ClosestHitKHR
+                | ExecutionModel::MissKHR
+                | ExecutionModel::CallableKHR => {
                     panic!("Shaders with {:?} are not supported", execution)
                 }
             };
@@ -228,7 +229,7 @@ struct Element {
 
 fn write_interfaces(
     doc: &Spirv,
-    interface: &[u32],
+    interface: &[Id],
     ignore_first_array_in: bool,
     ignore_first_array_out: bool,
 ) -> (TokenStream, TokenStream) {
@@ -237,7 +238,7 @@ fn write_interfaces(
 
     // Filling `input_elements` and `output_elements`.
     for interface in interface.iter() {
-        for i in doc.instructions.iter() {
+        for i in doc.instructions() {
             match i {
                 &Instruction::Variable {
                     result_type_id,
@@ -260,13 +261,15 @@ fn write_interfaces(
                         continue;
                     } // FIXME: hack
 
-                    let location = match doc.get_decoration_params(result_id, Decoration::Location)
-                    {
-                        Some(l) => l[0],
+                    let location = match doc.get_decoration_params(result_id, |d| {
+                        matches!(d, Decoration::Location { .. })
+                    }) {
+                        Some(Decoration::Location { location }) => *location,
                         None => panic!(
                             "Attribute `{}` (id {}) is missing a location",
                             name, result_id
                         ),
+                        _ => unreachable!(),
                     };
 
                     let (format, location_len) =

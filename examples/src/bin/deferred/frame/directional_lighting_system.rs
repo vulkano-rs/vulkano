@@ -145,9 +145,7 @@ impl DirectionalLightingSystem {
             .add_image(normals_input)
             .unwrap();
 
-        let descriptor_set = descriptor_set_builder
-            .build()
-            .unwrap();
+        let descriptor_set = descriptor_set_builder.build().unwrap();
 
         let viewport = Viewport {
             origin: [0.0, 0.0],

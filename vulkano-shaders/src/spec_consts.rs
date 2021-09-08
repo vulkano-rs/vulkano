@@ -7,19 +7,18 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use crate::{structs, RegisteredType};
 use proc_macro2::{Span, TokenStream};
-use spirv::Decoration;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::mem;
 use syn::Ident;
+use vulkano::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Returns true if the document has specialization constants.
 pub fn has_specialization_constants(doc: &Spirv) -> bool {
-    for instruction in doc.instructions.iter() {
+    for instruction in doc.instructions() {
         match instruction {
             &Instruction::SpecConstantTrue { .. } => return true,
             &Instruction::SpecConstantFalse { .. } => return true,
@@ -53,7 +52,7 @@ pub(super) fn write_specialization_constants<'a>(
 
     let mut spec_consts = Vec::new();
 
-    for instruction in doc.instructions.iter() {
+    for instruction in doc.instructions() {
         let (type_id, result_id, default_value) = match instruction {
             &Instruction::SpecConstantTrue {
                 result_type_id,
@@ -68,20 +67,21 @@ pub(super) fn write_specialization_constants<'a>(
             &Instruction::SpecConstant {
                 result_type_id,
                 result_id,
-                ref data,
+                ref value,
             } => {
                 let def_val = quote! {
-                    unsafe {{ ::std::mem::transmute([ #( #data ),* ]) }}
+                    unsafe {{ ::std::mem::transmute([ #( #value ),* ]) }}
                 };
                 (result_type_id, result_id, def_val)
             }
             &Instruction::SpecConstantComposite {
                 result_type_id,
                 result_id,
-                ref data,
+                ref constituents,
             } => {
+                let constituents = constituents.iter().map(|&id| u32::from(id));
                 let def_val = quote! {
-                    unsafe {{ ::std::mem::transmute([ #( #data ),* ]) }}
+                    unsafe {{ ::std::mem::transmute([ #( #constituents ),* ]) }}
                 };
                 (result_type_id, result_id, def_val)
             }
@@ -92,11 +92,13 @@ pub(super) fn write_specialization_constants<'a>(
             spec_const_type_from_id(shader, doc, type_id, types_meta);
         let rust_size = rust_size.expect("Found runtime-sized specialization constant");
 
-        let constant_id = doc.get_decoration_params(result_id, Decoration::SpecId);
+        let constant_id =
+            doc.get_decoration_params(result_id, |d| matches!(d, Decoration::SpecId { .. }));
 
-        if let Some(constant_id) = constant_id {
-            let constant_id = constant_id[0];
-
+        if let Some(&Decoration::SpecId {
+            specialization_constant_id: constant_id,
+        }) = constant_id
+        {
             let mut name = spirv_search::name_from_id(doc, result_id);
 
             if name == "__unnamed".to_owned() {
@@ -212,10 +214,10 @@ pub(super) fn write_specialization_constants<'a>(
 fn spec_const_type_from_id(
     shader: &str,
     doc: &Spirv,
-    searched: u32,
+    searched: Id,
     types_meta: &TypesMeta,
 ) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
-    for instruction in doc.instructions.iter() {
+    for instruction in doc.instructions() {
         match instruction {
             &Instruction::TypeBool { result_id } if result_id == searched => {
                 return (

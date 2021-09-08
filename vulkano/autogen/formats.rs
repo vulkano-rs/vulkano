@@ -7,17 +7,17 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, RegistryData};
+use super::{write_file, VkRegistryData};
 use lazy_static::lazy_static;
 use proc_macro2::{Ident, Literal, TokenStream};
 use quote::{format_ident, quote};
 use regex::Regex;
 
-pub fn write(data: &RegistryData) {
+pub fn write(vk_data: &VkRegistryData) {
     write_file(
         "formats.rs",
-        format!("vk.xml header version {}", data.header_version),
-        formats_output(&formats_members(&data.formats)),
+        format!("vk.xml header version {}", vk_data.header_version),
+        formats_output(&formats_members(&vk_data.formats)),
     );
 }
 

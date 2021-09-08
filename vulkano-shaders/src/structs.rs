@@ -7,15 +7,14 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, RegisteredType, TypesMeta};
 use proc_macro2::{Span, TokenStream};
-use spirv::Decoration;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::mem;
 use syn::Ident;
 use syn::LitStr;
+use vulkano::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Translates all the structs that are contained in the SPIR-V document as Rust structs.
 pub(super) fn write_structs<'a>(
@@ -25,7 +24,7 @@ pub(super) fn write_structs<'a>(
     types_registry: &'a mut HashMap<String, RegisteredType>,
 ) -> TokenStream {
     let mut structs = vec![];
-    for instruction in &doc.instructions {
+    for instruction in doc.instructions() {
         match *instruction {
             Instruction::TypeStruct {
                 result_id,
@@ -54,8 +53,8 @@ pub(super) fn write_structs<'a>(
 fn write_struct<'a>(
     shader: &'a str,
     doc: &Spirv,
-    struct_id: u32,
-    members: &[u32],
+    struct_id: Id,
+    members: &[Id],
     types_meta: &TypesMeta,
     types_registry: Option<&'a mut HashMap<String, RegisteredType>>,
 ) -> (TokenStream, Option<usize>) {
@@ -88,7 +87,9 @@ fn write_struct<'a>(
         // Ignore the whole struct is a member is built in, which includes
         // `gl_Position` for example.
         if doc
-            .get_member_decoration_params(struct_id, num as u32, Decoration::BuiltIn)
+            .get_member_decoration_params(struct_id, num as u32, |d| {
+                matches!(d, Decoration::BuiltIn { .. })
+            })
             .is_some()
         {
             return (quote! {}, None); // TODO: is this correct? shouldn't it return a correct struct but with a flag or something?
@@ -96,8 +97,13 @@ fn write_struct<'a>(
 
         // Finding offset of the current member, as requested by the SPIR-V code.
         let spirv_offset = doc
-            .get_member_decoration_params(struct_id, num as u32, Decoration::Offset)
-            .map(|x| x[0]);
+            .get_member_decoration_params(struct_id, num as u32, |d| {
+                matches!(d, Decoration::Offset { .. })
+            })
+            .map(|x| match x {
+                Decoration::Offset { byte_offset } => *byte_offset,
+                _ => unreachable!(),
+            });
 
         // Some structs don't have `Offset` decorations, in the case they are used as local
         // variables only. Ignoring these.
@@ -150,20 +156,33 @@ fn write_struct<'a>(
 
     // Try determine the total size of the struct in order to add padding at the end of the struct.
     let mut spirv_req_total_size = None;
-    for inst in doc.instructions.iter() {
+    for inst in doc.instructions() {
         match *inst {
             Instruction::TypeArray {
-                result_id, type_id, ..
-            } if type_id == struct_id => {
-                if let Some(params) = doc.get_decoration_params(result_id, Decoration::ArrayStride)
-                {
-                    spirv_req_total_size = Some(params[0]);
+                result_id,
+                element_type,
+                ..
+            } if element_type == struct_id => {
+                if let Some(params) = doc.get_decoration_params(result_id, |d| {
+                    matches!(d, Decoration::ArrayStride { .. })
+                }) {
+                    spirv_req_total_size = Some(match params {
+                        Decoration::ArrayStride { array_stride } => *array_stride,
+                        _ => unreachable!(),
+                    });
                 }
             }
-            Instruction::TypeRuntimeArray { result_id, type_id } if type_id == struct_id => {
-                if let Some(params) = doc.get_decoration_params(result_id, Decoration::ArrayStride)
-                {
-                    spirv_req_total_size = Some(params[0]);
+            Instruction::TypeRuntimeArray {
+                result_id,
+                element_type,
+            } if element_type == struct_id => {
+                if let Some(params) = doc.get_decoration_params(result_id, |d| {
+                    matches!(d, Decoration::ArrayStride { .. })
+                }) {
+                    spirv_req_total_size = Some(match params {
+                        Decoration::ArrayStride { array_stride } => *array_stride,
+                        _ => unreachable!(),
+                    });
                 }
             }
             _ => (),
@@ -385,10 +404,10 @@ fn write_struct<'a>(
 pub(super) fn type_from_id(
     shader: &str,
     doc: &Spirv,
-    searched: u32,
+    searched: Id,
     types_meta: &TypesMeta,
 ) -> (TokenStream, Cow<'static, str>, Option<usize>, usize) {
-    for instruction in doc.instructions.iter() {
+    for instruction in doc.instructions() {
         match instruction {
             &Instruction::TypeBool { result_id } if result_id == searched => {
                 panic!("Can't put booleans in structs")
@@ -398,7 +417,7 @@ pub(super) fn type_from_id(
                 width,
                 signedness,
             } if result_id == searched => match (width, signedness) {
-                (8, true) => {
+                (8, 1) => {
                     #[repr(C)]
                     struct Foo {
                         data: i8,
@@ -411,7 +430,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (8, false) => {
+                (8, 0) => {
                     #[repr(C)]
                     struct Foo {
                         data: u8,
@@ -424,7 +443,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (16, true) => {
+                (16, 1) => {
                     #[repr(C)]
                     struct Foo {
                         data: i16,
@@ -437,7 +456,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (16, false) => {
+                (16, 0) => {
                     #[repr(C)]
                     struct Foo {
                         data: u16,
@@ -450,7 +469,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (32, true) => {
+                (32, 1) => {
                     #[repr(C)]
                     struct Foo {
                         data: i32,
@@ -463,7 +482,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (32, false) => {
+                (32, 0) => {
                     #[repr(C)]
                     struct Foo {
                         data: u32,
@@ -476,7 +495,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (64, true) => {
+                (64, 1) => {
                     #[repr(C)]
                     struct Foo {
                         data: i64,
@@ -489,7 +508,7 @@ pub(super) fn type_from_id(
                         mem::align_of::<Foo>(),
                     );
                 }
-                (64, false) => {
+                (64, 0) => {
                     #[repr(C)]
                     struct Foo {
                         data: u64,
@@ -535,14 +554,14 @@ pub(super) fn type_from_id(
             },
             &Instruction::TypeVector {
                 result_id,
-                component_id,
-                count,
+                component_type,
+                component_count,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
                 let (ty, item, t_size, t_align) =
-                    type_from_id(shader, doc, component_id, types_meta);
-                let array_length = count as usize;
-                let size = t_size.map(|s| s * count as usize);
+                    type_from_id(shader, doc, component_type, types_meta);
+                let array_length = component_count as usize;
+                let size = t_size.map(|s| s * component_count as usize);
                 return (
                     quote! { [#ty; #array_length] },
                     Cow::from(format!("[{}; {}]", item, array_length)),
@@ -552,13 +571,13 @@ pub(super) fn type_from_id(
             }
             &Instruction::TypeMatrix {
                 result_id,
-                column_type_id,
+                column_type,
                 column_count,
             } if result_id == searched => {
                 // FIXME: row-major or column-major
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
                 let (ty, item, t_size, t_align) =
-                    type_from_id(shader, doc, column_type_id, types_meta);
+                    type_from_id(shader, doc, column_type, types_meta);
                 let array_length = column_count as usize;
                 let size = t_size.map(|s| s * column_count as usize);
                 return (
@@ -570,29 +589,36 @@ pub(super) fn type_from_id(
             }
             &Instruction::TypeArray {
                 result_id,
-                type_id,
-                length_id,
+                element_type,
+                length,
             } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, item, t_size, t_align) = type_from_id(shader, doc, type_id, types_meta);
+                let (ty, item, t_size, t_align) =
+                    type_from_id(shader, doc, element_type, types_meta);
                 let t_size = t_size.expect("array components must be sized");
                 let len = doc
-                    .instructions
+                    .instructions()
                     .iter()
                     .filter_map(|e| match e {
                         &Instruction::Constant {
                             result_id,
-                            ref data,
+                            ref value,
                             ..
-                        } if result_id == length_id => Some(data.clone()),
+                        } if result_id == length => Some(value.clone()),
                         _ => None,
                     })
                     .next()
                     .expect("failed to find array length");
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
-                let stride = doc
-                    .get_decoration_params(searched, Decoration::ArrayStride)
-                    .unwrap()[0];
+                let stride = match doc
+                    .get_decoration_params(searched, |d| {
+                        matches!(d, Decoration::ArrayStride { .. })
+                    })
+                    .unwrap()
+                {
+                    Decoration::ArrayStride { array_stride } => *array_stride,
+                    _ => unreachable!(),
+                };
                 if stride as usize > t_size {
                     panic!("Not possible to generate a rust array with the correct alignment since the SPIR-V \
                             ArrayStride is larger than the size of the array element in rust. Try wrapping \
@@ -608,9 +634,12 @@ pub(super) fn type_from_id(
                     t_align,
                 );
             }
-            &Instruction::TypeRuntimeArray { result_id, type_id } if result_id == searched => {
+            &Instruction::TypeRuntimeArray {
+                result_id,
+                element_type,
+            } if result_id == searched => {
                 debug_assert_eq!(mem::align_of::<[u32; 3]>(), mem::align_of::<u32>());
-                let (ty, name, _, t_align) = type_from_id(shader, doc, type_id, types_meta);
+                let (ty, name, _, t_align) = type_from_id(shader, doc, element_type, types_meta);
                 return (
                     quote! { [#ty] },
                     Cow::from(format!("[{}]", name)),

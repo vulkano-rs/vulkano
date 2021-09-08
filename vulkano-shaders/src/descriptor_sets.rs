@@ -7,12 +7,11 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::parse::{Instruction, Spirv};
 use crate::{spirv_search, TypesMeta};
 use proc_macro2::TokenStream;
-use spirv::{Decoration, Dim, ImageFormat, StorageClass};
 use std::cmp;
 use std::collections::HashSet;
+use vulkano::spirv::{Decoration, Dim, Id, ImageFormat, Instruction, Spirv, StorageClass};
 
 #[derive(Debug)]
 struct Descriptor {
@@ -26,8 +25,8 @@ struct Descriptor {
 
 pub(super) fn write_descriptor_set_layout_descs(
     doc: &Spirv,
-    entrypoint_id: u32,
-    interface: &[u32],
+    entrypoint_id: Id,
+    interface: &[Id],
     exact_entrypoint_interface: bool,
     stages: &TokenStream,
 ) -> TokenStream {
@@ -97,13 +96,13 @@ pub(super) fn write_push_constant_ranges(
 
     // Looping to find all the push constant structs.
     let mut push_constants_size = 0;
-    for instruction in doc.instructions.iter() {
+    for instruction in doc.instructions() {
         let type_id = match instruction {
             &Instruction::TypePointer {
-                type_id,
+                ty,
                 storage_class: StorageClass::PushConstant,
                 ..
-            } => type_id,
+            } => ty,
             _ => continue,
         };
 
@@ -131,8 +130,8 @@ pub(super) fn write_push_constant_ranges(
 
 fn find_descriptors(
     doc: &Spirv,
-    entrypoint_id: u32,
-    interface: &[u32],
+    entrypoint_id: Id,
+    interface: &[Id],
     exact: bool,
 ) -> Vec<Descriptor> {
     let mut descriptors = Vec::new();
@@ -142,8 +141,8 @@ fn find_descriptors(
     // SPIR-V 1.0-1.3 do not specify variables other than Input/Output ones in the interface,
     // and instead the function itself must be inspected.
     let variables = if exact {
-        let mut found_variables: HashSet<u32> = interface.iter().cloned().collect();
-        let mut inspected_functions: HashSet<u32> = HashSet::new();
+        let mut found_variables: HashSet<Id> = interface.iter().cloned().collect();
+        let mut inspected_functions: HashSet<Id> = HashSet::new();
         find_variables_in_function(
             &doc,
             entrypoint_id,
@@ -156,14 +155,17 @@ fn find_descriptors(
     };
 
     // Looping to find all the interface elements that have the `DescriptorSet` decoration.
-    for set_decoration in doc.get_decorations(Decoration::DescriptorSet) {
+    for set_decoration in doc.get_decorations(|d| matches!(d, Decoration::DescriptorSet { .. })) {
         let variable_id = set_decoration.target_id;
 
         if exact && !variables.as_ref().unwrap().contains(&variable_id) {
             continue;
         }
 
-        let set = set_decoration.params[0];
+        let set = match set_decoration.decoration {
+            Decoration::DescriptorSet { descriptor_set } => *descriptor_set,
+            _ => unreachable!(),
+        };
 
         // Find which type is pointed to by this variable.
         let (pointed_ty, storage_class) = pointer_variable_ty(doc, variable_id);
@@ -172,12 +174,16 @@ fn find_descriptors(
 
         // Find the binding point of this descriptor.
         // TODO: There was a previous todo here, I think it was asking for this to be implemented for member decorations? check git history
-        let binding = doc
-            .get_decoration_params(variable_id, Decoration::Binding)
-            .unwrap()[0];
+        let binding = match doc
+            .get_decoration_params(variable_id, |d| matches!(d, Decoration::Binding { .. }))
+            .unwrap()
+        {
+            Decoration::Binding { binding_point } => *binding_point,
+            _ => unreachable!(),
+        };
 
         let nonwritable = doc
-            .get_decoration_params(variable_id, Decoration::NonWritable)
+            .get_decoration_params(variable_id, |d| matches!(d, Decoration::NonWritable))
             .is_some();
 
         // Find information about the kind of binding for this descriptor.
@@ -202,13 +208,13 @@ fn find_descriptors(
 // Recursively finds every pointer variable used in the execution of a function.
 fn find_variables_in_function(
     doc: &Spirv,
-    function: u32,
-    inspected_functions: &mut HashSet<u32>,
-    found_variables: &mut HashSet<u32>,
+    function: Id,
+    inspected_functions: &mut HashSet<Id>,
+    found_variables: &mut HashSet<Id>,
 ) {
     inspected_functions.insert(function);
     let mut in_function = false;
-    for instruction in &doc.instructions {
+    for instruction in doc.instructions() {
         if !in_function {
             match instruction {
                 Instruction::Function { result_id, .. } if result_id == &function => {
@@ -223,20 +229,22 @@ fn find_variables_in_function(
                 Instruction::Load { pointer, .. } | Instruction::Store { pointer, .. } => {
                     found_variables.insert(*pointer);
                 }
-                Instruction::AccessChain { base_id, .. }
-                | Instruction::InBoundsAccessChain { base_id, .. } => {
-                    found_variables.insert(*base_id);
+                Instruction::AccessChain { base, .. }
+                | Instruction::InBoundsAccessChain { base, .. } => {
+                    found_variables.insert(*base);
                 }
                 Instruction::FunctionCall {
-                    function_id, args, ..
+                    function,
+                    arguments,
+                    ..
                 } => {
-                    args.iter().for_each(|&x| {
+                    arguments.iter().for_each(|&x| {
                         found_variables.insert(x);
                     });
-                    if !inspected_functions.contains(function_id) {
+                    if !inspected_functions.contains(function) {
                         find_variables_in_function(
                             doc,
-                            *function_id,
+                            *function,
                             inspected_functions,
                             found_variables,
                         );
@@ -252,16 +260,12 @@ fn find_variables_in_function(
                     found_variables.insert(*coordinate);
                     found_variables.insert(*sample);
                 }
-                Instruction::CopyMemory {
-                    target_id,
-                    source_id,
-                    ..
-                } => {
-                    found_variables.insert(*target_id);
-                    found_variables.insert(*source_id);
+                Instruction::CopyMemory { target, source, .. } => {
+                    found_variables.insert(*target);
+                    found_variables.insert(*source);
                 }
-                Instruction::CopyObject { operand_id, .. } => {
-                    found_variables.insert(*operand_id);
+                Instruction::CopyObject { operand, .. } => {
+                    found_variables.insert(*operand);
                 }
                 Instruction::AtomicLoad { pointer, .. }
                 | Instruction::AtomicIIncrement { pointer, .. }
@@ -270,57 +274,35 @@ fn find_variables_in_function(
                 | Instruction::AtomicFlagClear { pointer, .. } => {
                     found_variables.insert(*pointer);
                 }
-                Instruction::AtomicStore {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicExchange {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicIAdd {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicISub {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicSMin {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicUMin {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicSMax {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicUMax {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicAnd {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicOr {
-                    pointer, value_id, ..
-                }
-                | Instruction::AtomicXor {
-                    pointer, value_id, ..
-                } => {
+                Instruction::AtomicStore { pointer, value, .. }
+                | Instruction::AtomicExchange { pointer, value, .. }
+                | Instruction::AtomicIAdd { pointer, value, .. }
+                | Instruction::AtomicISub { pointer, value, .. }
+                | Instruction::AtomicSMin { pointer, value, .. }
+                | Instruction::AtomicUMin { pointer, value, .. }
+                | Instruction::AtomicSMax { pointer, value, .. }
+                | Instruction::AtomicUMax { pointer, value, .. }
+                | Instruction::AtomicAnd { pointer, value, .. }
+                | Instruction::AtomicOr { pointer, value, .. }
+                | Instruction::AtomicXor { pointer, value, .. } => {
                     found_variables.insert(*pointer);
-                    found_variables.insert(*value_id);
+                    found_variables.insert(*value);
                 }
                 Instruction::AtomicCompareExchange {
                     pointer,
-                    value_id,
-                    comparator_id,
+                    value,
+                    comparator,
                     ..
                 }
                 | Instruction::AtomicCompareExchangeWeak {
                     pointer,
-                    value_id,
-                    comparator_id,
+                    value,
+                    comparator,
                     ..
                 } => {
                     found_variables.insert(*pointer);
-                    found_variables.insert(*value_id);
-                    found_variables.insert(*comparator_id);
+                    found_variables.insert(*value);
+                    found_variables.insert(*comparator);
                 }
                 Instruction::ExtInst { operands, .. } => {
                     // We don't know which extended instructions take pointers,
@@ -338,9 +320,9 @@ fn find_variables_in_function(
 
 /// Assumes that `variable` is a variable with a `TypePointer` and returns the id of the pointed
 /// type and the storage class.
-fn pointer_variable_ty(doc: &Spirv, variable: u32) -> (u32, StorageClass) {
+fn pointer_variable_ty(doc: &Spirv, variable: Id) -> (Id, StorageClass) {
     let var_ty = doc
-        .instructions
+        .instructions()
         .iter()
         .filter_map(|i| match i {
             &Instruction::Variable {
@@ -353,15 +335,15 @@ fn pointer_variable_ty(doc: &Spirv, variable: u32) -> (u32, StorageClass) {
         .next()
         .unwrap();
 
-    doc.instructions
+    doc.instructions()
         .iter()
         .filter_map(|i| match i {
             &Instruction::TypePointer {
                 result_id,
-                type_id,
+                ty,
                 ref storage_class,
                 ..
-            } if result_id == var_ty => Some((type_id, storage_class.clone())),
+            } if result_id == var_ty => Some((ty, storage_class.clone())),
             _ => None,
         })
         .next()
@@ -374,20 +356,20 @@ fn pointer_variable_ty(doc: &Spirv, variable: u32) -> (u32, StorageClass) {
 /// See also section 14.5.2 of the Vulkan specs: Descriptor Set Interface
 fn descriptor_infos(
     doc: &Spirv,
-    pointed_ty: u32,
+    pointed_ty: Id,
     pointer_storage: StorageClass,
     force_combined_image_sampled: bool,
 ) -> Option<(TokenStream, bool, u64, bool)> {
-    doc.instructions
+    doc.instructions()
         .iter()
         .filter_map(|i| {
             match i {
                 Instruction::TypeStruct { result_id, member_types } if *result_id == pointed_ty => {
                     let decoration_block = doc
-                        .get_decoration_params(pointed_ty, Decoration::Block)
+                        .get_decoration_params(pointed_ty, |d| matches!(d, Decoration::Block))
                         .is_some();
                     let decoration_buffer_block = doc
-                        .get_decoration_params(pointed_ty, Decoration::BufferBlock)
+                        .get_decoration_params(pointed_ty, |d| matches!(d, Decoration::BufferBlock))
                         .is_some();
                     assert!(
                         decoration_block ^ decoration_buffer_block,
@@ -398,7 +380,7 @@ fn descriptor_infos(
                         // VK_DESCRIPTOR_TYPE_STORAGE_BUFFER
                         // Determine whether all members have a NonWritable decoration.
                         let nonwritable = (0..member_types.len() as u32).all(|i| {
-                            doc.get_member_decoration_params(pointed_ty, i, Decoration::NonWritable).is_some()
+                            doc.get_member_decoration_params(pointed_ty, i, |d| matches!(d, Decoration::NonWritable)).is_some()
                         });
 
                         (quote! { DescriptorDescTy::StorageBuffer }, !nonwritable)
@@ -415,18 +397,15 @@ fn descriptor_infos(
                     arrayed,
                     ms,
                     sampled,
-                    ref format,
+                    ref image_format,
                     ..
                 } if result_id == pointed_ty => {
-                    let sampled = sampled.expect(
-                        "Vulkan requires that variables of type OpTypeImage \
-                                              have a Sampled operand of 1 or 2",
-                    );
-
-                    let vulkan_format = to_vulkan_format(*format);
+                    let ms = ms != 0;
+                    assert!(sampled != 0, "Vulkan requires that variables of type OpTypeImage have a Sampled operand of 1 or 2");
+                    let vulkan_format = to_vulkan_format(image_format);
 
                     match dim {
-                        Dim::DimSubpassData => {
+                        Dim::SubpassData => {
                             // VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT
                             assert!(
                                 !force_combined_image_sampled,
@@ -435,11 +414,11 @@ fn descriptor_infos(
                                                                 SubpassData"
                             );
                             assert!(
-                                *format == ImageFormat::Unknown,
+                                *image_format == ImageFormat::Unknown,
                                 "If Dim is SubpassData, Image Format must be Unknown"
                             );
-                            assert!(!sampled, "If Dim is SubpassData, Sampled must be 2");
-                            assert!(!arrayed, "If Dim is SubpassData, Arrayed must be 0");
+                            assert!(sampled == 2, "If Dim is SubpassData, Sampled must be 2");
+                            assert!(arrayed == 0, "If Dim is SubpassData, Arrayed must be 0");
 
                             let desc = quote! {
                                 DescriptorDescTy::InputAttachment {
@@ -449,8 +428,8 @@ fn descriptor_infos(
 
                             Some((desc, true, 1, false)) // Never writable.
                         }
-                        Dim::DimBuffer => {
-                            let (ty, mutable) = if sampled {
+                        Dim::Buffer => {
+                            let (ty, mutable) = if sampled == 1 {
                                 // VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER
                                 (quote! { DescriptorDescTy::UniformTexelBuffer }, false) // Uniforms are never mutable.
                             } else {
@@ -468,15 +447,15 @@ fn descriptor_infos(
                         }
                         _ => {
                             let view_type = match (dim, arrayed) {
-                                (Dim::Dim1D, false) => quote! { ImageViewType::Dim1d },
-                                (Dim::Dim1D, true) => quote! { ImageViewType::Dim1dArray },
-                                (Dim::Dim2D, false) => quote! { ImageViewType::Dim2d },
-                                (Dim::Dim2D, true) => quote! { ImageViewType::Dim2dArray },
-                                (Dim::Dim3D, false) => quote! { ImageViewType::Dim3d },
-                                (Dim::Dim3D, true) => panic!("Vulkan doesn't support arrayed 3D textures"),
-                                (Dim::DimCube, false) => quote! { ImageViewType::Cube },
-                                (Dim::DimCube, true) => quote! { ImageViewType::CubeArray },
-                                (Dim::DimRect, _) => panic!("Vulkan doesn't support rectangle textures"),
+                                (Dim::Dim1D, 0) => quote! { ImageViewType::Dim1d },
+                                (Dim::Dim1D, 1) => quote! { ImageViewType::Dim1dArray },
+                                (Dim::Dim2D, 0) => quote! { ImageViewType::Dim2d },
+                                (Dim::Dim2D, 1) => quote! { ImageViewType::Dim2dArray },
+                                (Dim::Dim3D, 0) => quote! { ImageViewType::Dim3d },
+                                (Dim::Dim3D, 1) => panic!("Vulkan doesn't support arrayed 3D textures"),
+                                (Dim::Cube, 0) => quote! { ImageViewType::Cube },
+                                (Dim::Cube, 1) => quote! { ImageViewType::CubeArray },
+                                (Dim::Rect, _) => panic!("Vulkan doesn't support rectangle textures"),
                                 _ => unreachable!(),
                             };
 
@@ -491,7 +470,7 @@ fn descriptor_infos(
                             let (desc, mutable) = if force_combined_image_sampled {
                                 // VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER
                                 // Never writable.
-                                assert!(sampled, "A combined image sampler must not reference a storage image");
+                                assert!(sampled == 1, "A combined image sampler must not reference a storage image");
 
                                 (
                                     quote! {
@@ -503,7 +482,7 @@ fn descriptor_infos(
                                     false, // Sampled images are never mutable.
                                 )
                             } else {
-                                let (ty, mutable) = if sampled {
+                                let (ty, mutable) = if sampled == 1 {
                                     // VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE
                                     (quote! { DescriptorDescTy::SampledImage }, false) // Sampled images are never mutable.
                                 } else {
@@ -528,9 +507,9 @@ fn descriptor_infos(
 
                 &Instruction::TypeSampledImage {
                     result_id,
-                    image_type_id,
+                    image_type,
                 } if result_id == pointed_ty => {
-                    descriptor_infos(doc, image_type_id, pointer_storage.clone(), true)
+                    descriptor_infos(doc, image_type, pointer_storage.clone(), true)
                 }
 
                 &Instruction::TypeSampler { result_id } if result_id == pointed_ty => {
@@ -539,25 +518,25 @@ fn descriptor_infos(
                 }
                 &Instruction::TypeArray {
                     result_id,
-                    type_id,
-                    length_id,
+                    element_type,
+                    length,
                 } if result_id == pointed_ty => {
                     let (desc, mutable, arr, variable_count) =
-                        match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
+                        match descriptor_infos(doc, element_type, pointer_storage.clone(), false) {
                             None => return None,
                             Some(v) => v,
                         };
                     assert_eq!(arr, 1); // TODO: implement?
                     assert!(!variable_count); // TODO: Is this even a thing?
                     let len = doc
-                        .instructions
+                        .instructions()
                         .iter()
                         .filter_map(|e| match e {
                             &Instruction::Constant {
                                 result_id,
-                                ref data,
+                                ref value,
                                 ..
-                            } if result_id == length_id => Some(data.clone()),
+                            } if result_id == length => Some(value.clone()),
                             _ => None,
                         })
                         .next()
@@ -569,10 +548,10 @@ fn descriptor_infos(
 
                 &Instruction::TypeRuntimeArray {
                     result_id,
-                    type_id,
+                    element_type,
                 } if result_id == pointed_ty => {
                     let (desc, mutable, arr, variable_count) =
-                        match descriptor_infos(doc, type_id, pointer_storage.clone(), false) {
+                        match descriptor_infos(doc, element_type, pointer_storage.clone(), false) {
                             None => return None,
                             Some(v) => v,
                         };
@@ -592,7 +571,6 @@ fn descriptor_infos(
 mod tests {
     use super::*;
     use crate::codegen::compile;
-    use crate::parse;
     use shaderc::ShaderKind;
     use std::path::{Path, PathBuf};
 
@@ -668,15 +646,17 @@ mod tests {
                 ((c[3] as u32) << 24) | ((c[2] as u32) << 16) | ((c[1] as u32) << 8) | c[0] as u32
             })
             .collect();
-        let doc = parse::parse_spirv(&instructions).unwrap();
+        let doc = Spirv::new(&instructions).unwrap();
 
         let mut descriptors = Vec::new();
-        for instruction in doc.instructions.iter() {
+        for instruction in doc.instructions() {
             if let &Instruction::EntryPoint {
-                id, ref interface, ..
+                entry_point,
+                ref interface,
+                ..
             } = instruction
             {
-                descriptors.push(find_descriptors(&doc, id, interface, true));
+                descriptors.push(find_descriptors(&doc, entry_point, interface, true));
             }
         }
 
@@ -745,14 +725,16 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        let doc = Spirv::new(comp.as_binary()).unwrap();
 
-        for instruction in doc.instructions.iter() {
+        for instruction in doc.instructions() {
             if let &Instruction::EntryPoint {
-                id, ref interface, ..
+                entry_point,
+                ref interface,
+                ..
             } = instruction
             {
-                let descriptors = find_descriptors(&doc, id, interface, true);
+                let descriptors = find_descriptors(&doc, entry_point, interface, true);
                 let mut bindings = Vec::new();
                 for d in descriptors {
                     bindings.push((d.set, d.binding));
@@ -770,7 +752,7 @@ mod tests {
     }
 }
 
-fn to_vulkan_format(spirv_format: ImageFormat) -> TokenStream {
+fn to_vulkan_format(spirv_format: &ImageFormat) -> TokenStream {
     match spirv_format {
         ImageFormat::Unknown => quote! { None },
         ImageFormat::Rgba32f => quote! { Some(Format::R32G32B32A32_SFLOAT) },

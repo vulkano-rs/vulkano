@@ -30,8 +30,8 @@ use crate::memory::pool::MemoryPool;
 use crate::memory::pool::MemoryPoolAlloc;
 use crate::memory::pool::PotentialDedicatedAllocation;
 use crate::memory::pool::StdMemoryPoolAlloc;
-use crate::memory::{DedicatedAlloc, MemoryRequirements};
 use crate::memory::DeviceMemoryAllocError;
+use crate::memory::{DedicatedAlloc, MemoryRequirements};
 use crate::sync::AccessError;
 use crate::sync::Sharing;
 use crate::DeviceSize;
@@ -49,10 +49,7 @@ use std::sync::Mutex;
     target_os = "netbsd",
     target_os = "openbsd"
 ))]
-use {
-    crate::memory::ExternalMemoryHandleType,
-    std::fs::File
-};
+use {crate::memory::ExternalMemoryHandleType, std::fs::File};
 
 /// Buffer whose content is in device-local memory.
 ///

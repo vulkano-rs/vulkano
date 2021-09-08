@@ -7,16 +7,15 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use crate::parse::{Instruction, Spirv};
-use spirv::Decoration;
+use vulkano::spirv::{Decoration, Id, Instruction, Spirv};
 
 /// Returns the vulkano `Format` and number of occupied locations from an id.
 ///
 /// If `ignore_first_array` is true, the function expects the outermost instruction to be
 /// `OpTypeArray`. If it's the case, the OpTypeArray will be ignored. If not, the function will
 /// panic.
-pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (String, usize) {
-    for instruction in doc.instructions.iter() {
+pub fn format_from_id(doc: &Spirv, searched: Id, ignore_first_array: bool) -> (String, usize) {
+    for instruction in doc.instructions() {
         match instruction {
             &Instruction::TypeInt {
                 result_id,
@@ -25,14 +24,14 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
             } if result_id == searched => {
                 assert!(!ignore_first_array);
                 let format = match (width, signedness) {
-                    (8, true) => "R8_SINT",
-                    (8, false) => "R8_UINT",
-                    (16, true) => "R16_SINT",
-                    (16, false) => "R16_UINT",
-                    (32, true) => "R32_SINT",
-                    (32, false) => "R32_UINT",
-                    (64, true) => "R64_SINT",
-                    (64, false) => "R64_UINT",
+                    (8, 1) => "R8_SINT",
+                    (8, 0) => "R8_UINT",
+                    (16, 1) => "R16_SINT",
+                    (16, 0) => "R16_UINT",
+                    (32, 1) => "R32_SINT",
+                    (32, 0) => "R32_UINT",
+                    (64, 1) => "R64_SINT",
+                    (64, 0) => "R64_UINT",
                     _ => panic!(),
                 };
                 return (format.to_string(), 1);
@@ -48,14 +47,14 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
             }
             &Instruction::TypeVector {
                 result_id,
-                component_id,
-                count,
+                component_type,
+                component_count,
             } if result_id == searched => {
                 assert!(!ignore_first_array);
-                let (format, sz) = format_from_id(doc, component_id, false);
+                let (format, sz) = format_from_id(doc, component_type, false);
                 assert!(format.starts_with("R32"));
                 assert_eq!(sz, 1);
-                let format = match count {
+                let format = match component_count {
                     1 => format,
                     2 => format!("R32G32{}", &format[3..]),
                     3 => format!("R32G32B32{}", &format[3..]),
@@ -66,32 +65,32 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
             }
             &Instruction::TypeMatrix {
                 result_id,
-                column_type_id,
+                column_type,
                 column_count,
             } if result_id == searched => {
                 assert!(!ignore_first_array);
-                let (format, sz) = format_from_id(doc, column_type_id, false);
+                let (format, sz) = format_from_id(doc, column_type, false);
                 return (format, sz * column_count as usize);
             }
             &Instruction::TypeArray {
                 result_id,
-                type_id,
-                length_id,
+                element_type,
+                length,
             } if result_id == searched => {
                 if ignore_first_array {
-                    return format_from_id(doc, type_id, false);
+                    return format_from_id(doc, element_type, false);
                 }
 
-                let (format, sz) = format_from_id(doc, type_id, false);
+                let (format, sz) = format_from_id(doc, element_type, false);
                 let len = doc
-                    .instructions
+                    .instructions()
                     .iter()
                     .filter_map(|e| match e {
                         &Instruction::Constant {
                             result_id,
-                            ref data,
+                            ref value,
                             ..
-                        } if result_id == length_id => Some(data.clone()),
+                        } if result_id == length => Some(value.clone()),
                         _ => None,
                     })
                     .next()
@@ -99,10 +98,8 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
                 let len = len.iter().rev().fold(0u64, |a, &b| (a << 32) | b as u64);
                 return (format, sz * len as usize);
             }
-            &Instruction::TypePointer {
-                result_id, type_id, ..
-            } if result_id == searched => {
-                return format_from_id(doc, type_id, ignore_first_array);
+            &Instruction::TypePointer { result_id, ty, .. } if result_id == searched => {
+                return format_from_id(doc, ty, ignore_first_array);
             }
             _ => (),
         }
@@ -111,14 +108,10 @@ pub fn format_from_id(doc: &Spirv, searched: u32, ignore_first_array: bool) -> (
     panic!("Type #{} not found or invalid", searched)
 }
 
-pub fn name_from_id(doc: &Spirv, searched: u32) -> String {
-    for instruction in &doc.instructions {
-        if let &Instruction::Name {
-            target_id,
-            ref name,
-        } = instruction
-        {
-            if target_id == searched {
+pub fn name_from_id(doc: &Spirv, searched: Id) -> String {
+    for instruction in doc.instructions() {
+        if let &Instruction::Name { target, ref name } = instruction {
+            if target == searched {
                 return name.clone();
             }
         }
@@ -127,15 +120,15 @@ pub fn name_from_id(doc: &Spirv, searched: u32) -> String {
     String::from("__unnamed")
 }
 
-pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> String {
-    for instruction in &doc.instructions {
+pub fn member_name_from_id(doc: &Spirv, searched: Id, searched_member: u32) -> String {
+    for instruction in doc.instructions() {
         if let &Instruction::MemberName {
-            target_id,
+            ty,
             member,
             ref name,
         } = instruction
         {
-            if target_id == searched && member == searched_member {
+            if ty == searched && member == searched_member {
                 return name.clone();
             }
         }
@@ -145,15 +138,18 @@ pub fn member_name_from_id(doc: &Spirv, searched: u32, searched_member: u32) -> 
 }
 
 /// Returns true if a `BuiltIn` decorator is applied on an id.
-pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
-    if doc.get_decoration_params(id, Decoration::BuiltIn).is_some() {
+pub fn is_builtin(doc: &Spirv, id: Id) -> bool {
+    if doc
+        .get_decoration_params(id, |d| matches!(d, Decoration::BuiltIn { .. }))
+        .is_some()
+    {
         return true;
     }
     if doc.get_member_decoration_builtin_params(id).is_some() {
         return true;
     }
 
-    for instruction in &doc.instructions {
+    for instruction in doc.instructions() {
         match *instruction {
             Instruction::Variable {
                 result_type_id,
@@ -163,12 +159,17 @@ pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
                 return is_builtin(doc, result_type_id);
             }
             Instruction::TypeArray {
-                result_id, type_id, ..
+                result_id,
+                element_type,
+                ..
             } if result_id == id => {
-                return is_builtin(doc, type_id);
+                return is_builtin(doc, element_type);
             }
-            Instruction::TypeRuntimeArray { result_id, type_id } if result_id == id => {
-                return is_builtin(doc, type_id);
+            Instruction::TypeRuntimeArray {
+                result_id,
+                element_type,
+            } if result_id == id => {
+                return is_builtin(doc, element_type);
             }
             Instruction::TypeStruct {
                 result_id,
@@ -180,10 +181,8 @@ pub fn is_builtin(doc: &Spirv, id: u32) -> bool {
                     }
                 }
             }
-            Instruction::TypePointer {
-                result_id, type_id, ..
-            } if result_id == id => {
-                return is_builtin(doc, type_id);
+            Instruction::TypePointer { result_id, ty, .. } if result_id == id => {
+                return is_builtin(doc, ty);
             }
             _ => (),
         }

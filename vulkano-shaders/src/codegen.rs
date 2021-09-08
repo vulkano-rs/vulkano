@@ -8,9 +8,6 @@
 // according to those terms.
 
 use crate::entry_point;
-use crate::parse;
-use crate::parse::Instruction;
-pub use crate::parse::ParseError;
 use crate::read_file_to_string;
 use crate::spec_consts;
 use crate::structs;
@@ -20,7 +17,6 @@ use proc_macro2::{Span, TokenStream};
 pub use shaderc::{CompilationArtifact, IncludeType, ResolvedInclude, ShaderKind};
 use shaderc::{CompileOptions, Compiler, EnvVersion, SpirvVersion, TargetEnv};
 use std::collections::HashMap;
-use spirv::{Capability, StorageClass};
 use std::iter::Iterator;
 use std::path::Path;
 use std::{
@@ -28,6 +24,10 @@ use std::{
     io::Error as IoError,
 };
 use syn::Ident;
+use vulkano::spirv::Spirv;
+use vulkano::spirv::SpirvError;
+use vulkano::spirv::{Capability, Instruction, StorageClass};
+use vulkano::Version;
 
 pub(super) fn path_to_str(path: &Path) -> &str {
     path.to_str().expect(
@@ -219,20 +219,20 @@ where
     I: Iterator<Item = &'a str>,
 {
     let struct_name = Ident::new(&format!("{}Shader", prefix), Span::call_site());
-    let doc = parse::parse_spirv(spirv)?;
+    let doc = Spirv::new(spirv)?;
 
     // checking whether each required capability is enabled in the Vulkan device
     let mut cap_checks: Vec<TokenStream> = vec![];
-    match doc.version {
-        (1, 0) => {}
-        (1, 1) | (1, 2) | (1, 3) => {
+    match doc.version() {
+        Version::V1_0 => {}
+        Version::V1_1 | Version::V1_2 | Version::V1_3 => {
             cap_checks.push(quote! {
                 if device.api_version() < Version::V1_1 {
                     panic!("Device API version 1.1 required");
                 }
             });
         }
-        (1, 4) => {
+        Version::V1_4 => {
             cap_checks.push(quote! {
                 if device.api_version() < Version::V1_2
                     && !device.enabled_extensions().khr_spirv_1_4 {
@@ -240,7 +240,7 @@ where
                 }
             });
         }
-        (1, 5) => {
+        Version::V1_5 => {
             cap_checks.push(quote! {
                 if device.api_version() < Version::V1_2 {
                     panic!("Device API version 1.2 required");
@@ -250,7 +250,7 @@ where
         _ => return Err(Error::UnsupportedSpirvVersion),
     }
 
-    for i in doc.instructions.iter() {
+    for i in doc.instructions() {
         let dev_req = {
             match i {
                 Instruction::Variable {
@@ -262,9 +262,9 @@ where
                 Instruction::TypePointer {
                     result_id: _,
                     storage_class,
-                    type_id: _,
+                    ty: _,
                 } => storage_class_requirement(storage_class),
-                Instruction::Capability(cap) => capability_requirement(cap),
+                Instruction::Capability { capability } => capability_requirement(capability),
                 _ => &[],
             }
         };
@@ -310,7 +310,7 @@ where
 
     // writing one method for each entry point of this module
     let mut entry_points_inside_impl: Vec<TokenStream> = vec![];
-    for instruction in doc.instructions.iter() {
+    for instruction in doc.instructions() {
         if let &Instruction::EntryPoint { .. } = instruction {
             let entry_point = entry_point::write_entry_point(
                 prefix,
@@ -384,7 +384,7 @@ where
 pub enum Error {
     UnsupportedSpirvVersion,
     IoError(IoError),
-    ParseError(ParseError),
+    SpirvError(SpirvError),
 }
 
 impl From<IoError> for Error {
@@ -394,10 +394,10 @@ impl From<IoError> for Error {
     }
 }
 
-impl From<ParseError> for Error {
+impl From<SpirvError> for Error {
     #[inline]
-    fn from(err: ParseError) -> Error {
-        Error::ParseError(err)
+    fn from(err: SpirvError) -> Error {
+        Error::SpirvError(err)
     }
 }
 
@@ -735,12 +735,12 @@ fn storage_class_requirement(storage_class: &StorageClass) -> &'static [DeviceRe
         StorageClass::StorageBuffer => &[DeviceRequirement::Extension(
             "khr_storage_buffer_storage_class",
         )],
-        StorageClass::CallableDataNV => todo!(),
-        StorageClass::IncomingCallableDataNV => todo!(),
-        StorageClass::RayPayloadNV => todo!(),
-        StorageClass::HitAttributeNV => todo!(),
-        StorageClass::IncomingRayPayloadNV => todo!(),
-        StorageClass::ShaderRecordBufferNV => todo!(),
+        StorageClass::CallableDataKHR => todo!(),
+        StorageClass::IncomingCallableDataKHR => todo!(),
+        StorageClass::RayPayloadKHR => todo!(),
+        StorageClass::HitAttributeKHR => todo!(),
+        StorageClass::IncomingRayPayloadKHR => todo!(),
+        StorageClass::ShaderRecordBufferKHR => todo!(),
         StorageClass::PhysicalStorageBuffer => todo!(),
         StorageClass::CodeSectionINTEL => todo!(),
     }
@@ -804,7 +804,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        let doc = Spirv::new(comp.as_binary()).unwrap();
         let res = std::panic::catch_unwind(|| {
             structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new())
         });
@@ -834,7 +834,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        let doc = Spirv::new(comp.as_binary()).unwrap();
         structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new());
     }
     #[test]
@@ -866,7 +866,7 @@ mod tests {
             None,
         )
         .unwrap();
-        let doc = parse::parse_spirv(comp.as_binary()).unwrap();
+        let doc = Spirv::new(comp.as_binary()).unwrap();
         structs::write_structs("", &doc, &TypesMeta::default(), &mut HashMap::new());
     }
 

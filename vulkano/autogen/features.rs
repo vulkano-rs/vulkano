@@ -7,7 +7,7 @@
 // notice may not be copied, modified, or distributed except
 // according to those terms.
 
-use super::{write_file, RegistryData};
+use super::{write_file, VkRegistryData};
 use heck::SnakeCase;
 use indexmap::IndexMap;
 use proc_macro2::{Ident, TokenStream};
@@ -61,13 +61,13 @@ fn required_by_extensions(name: &str) -> &'static [&'static str] {
     }
 }
 
-pub fn write(data: &RegistryData) {
-    let features_output = features_output(&features_members(&data.types));
+pub fn write(vk_data: &VkRegistryData) {
+    let features_output = features_output(&features_members(&vk_data.types));
     let features_ffi_output =
-        features_ffi_output(&features_ffi_members(&data.types, &data.extensions));
+        features_ffi_output(&features_ffi_members(&vk_data.types, &vk_data.extensions));
     write_file(
         "features.rs",
-        format!("vk.xml header version {}", data.header_version),
+        format!("vk.xml header version {}", vk_data.header_version),
         quote! {
             #features_output
             #features_ffi_output
