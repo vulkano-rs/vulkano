@@ -478,7 +478,13 @@ impl AttachmentImage {
         }))
     }
 
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn new_with_exportable_fd(
         device: Arc<Device>,
         dimensions: [u32; 2],
@@ -556,7 +562,13 @@ impl AttachmentImage {
     /// Exports posix file descriptor for the allocated memory
     /// requires `khr_external_memory_fd` and `khr_external_memory` extensions to be loaded.
     /// Only works on Linux.
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn export_posix_fd(&self) -> Result<File, DeviceMemoryAllocError> {
         self.memory
             .memory()
@@ -564,7 +576,13 @@ impl AttachmentImage {
     }
 
     /// Return the size of the allocated memory (used for e.g. with cuda)
-    #[cfg(target_os = "linux")]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "dragonflybsd",
+        target_os = "freebsd",
+        target_os = "netbsd",
+        target_os = "openbsd"
+    ))]
     pub fn mem_size(&self) -> DeviceSize {
         self.memory.memory().size()
     }
