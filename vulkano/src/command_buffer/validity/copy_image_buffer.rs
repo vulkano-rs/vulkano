@@ -118,13 +118,13 @@ where
             if image_offset[2] != 0 || image_size[2] != 1 {
                 return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
             }
-        },
+        }
         ImageDimensions::Dim2d { .. } => {
             // VUID-vkCmdCopyBufferToImage-srcImage-00201
             if image_offset[2] != 0 || image_size[2] != 1 {
                 return Err(CheckCopyBufferImageError::ImageCoordinatesOutOfRange);
             }
-        },
+        }
         ImageDimensions::Dim3d { .. } => {
             // VUID-vkCmdCopyBufferToImage-baseArrayLayer-00213
             if image_first_layer != 0 || image_num_layers != 1 {
